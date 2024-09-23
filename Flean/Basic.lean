@@ -13,7 +13,7 @@ import Flean.FloatFormat
 variable [F : FloatFormat]
 
 /-- Whether the (e, M)-pair of the exponent and integral significand is valid for a finite floating point number  -/
-def IsValidFiniteVal (e : ℤ) (m : ℤ) : Prop :=
+def IsValidFiniteVal [F : FloatFormat] (e : ℤ) (m : ℤ) : Prop :=
   sorry
 
 @[ext]

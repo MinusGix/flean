@@ -13,10 +13,8 @@ namespace Radix
 
 instance : LawfulBEq Radix where
   eq_of_beq {a b} h := by
-    induction' a with a; induction' b with b
-    simp only [beq_iff_eq, mk.injEq] at h
-    rename_i valid valid_i
-    simp_all only [mk.injEq]
+    rw [beq_iff_eq] at h
+    exact h
   rfl {a} := by simp only [beq_self_eq_true]
 
 -- TODO: linear order on Radix
