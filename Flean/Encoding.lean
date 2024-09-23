@@ -258,7 +258,6 @@ theorem construct_exponent_eq_BitsTriple (hr : FloatFormat.radix = Radix.Binary)
 theorem construct_significand_eq_BitsTriple (hr : FloatFormat.radix = Radix.Binary) (s : BitVec FloatFormat.signBits) (E : BitVec FloatFormat.exponentBits) (T : BitVec FloatFormat.significandBits) :
   (FloatBits.mk' s E T).toBitsTriple.significand = T := (construct_triple_eq_BitsTriple hr s E T).2.2
 
-
 /-- Get the bit representation of an infinite float. -/
 def infinite (b : Bool) : FloatBits :=
   if FloatFormat.radix = Radix.Binary then
@@ -297,6 +296,8 @@ theorem NaN_isNaN (hr : FloatFormat.radix = Radix.Binary) (sign : Bool) (T : Bit
   · rw [construct_exponent_eq_BitsTriple hr]
   · rw [construct_significand_eq_BitsTriple hr]
     simp_all only [BitVec.ofNat_eq_ofNat, ne_eq, not_false_eq_true]
+
+-- TODO: proof for finite floats that we are able to fit the values into the bits, that is, `.toNat` on the fields will return the original value
 
 end FloatBits
 
@@ -390,16 +391,32 @@ def FpQuotient.representative [FloatFormat] (f : FpQuotient) : FloatBits :=
   else
     sorry
 
+theorem FpQuotient.representative_eq [FloatFormat] (f : FpQuotient) : f = ⟦FpQuotient.representative f⟧ := by
+  unfold FpQuotient.representative
+  split_ifs
+  simp only [Quotient.eq, FpEquiv]
+  sorry
+
+
 -- TODO: We should hopefully be able to use the bitvec representation with the solver integrated into lean, but I need to look into that more.
-def toBits [FloatFormat] (f : Fp) : FpQuotient := by
-  -- unfold FloatFormat.bitSize FloatFormat.signBits
-  -- if hr: FloatFormat.radix == Radix.Binary then
-  --   simp only [LawfulBEq.eq_of_beq hr, ↓reduceIte]
+def toBits [FloatFormat] (f : Fp) : FpQuotient :=
   match f with
   | .finite f => sorry
   | .infinite b =>
-    exact ⟦FloatBits.infinite b⟧
-  | .NaN => sorry
+    ⟦FloatBits.infinite b⟧
+  | .NaN =>
+    ⟦FloatBits.NaN false (BitVec.ofNat FloatFormat.significandBits 1) (by
+      have := FloatFormat.valid_prec
+      unfold FloatFormat.significandBits
+
+      intro h
+      rw [BitVec.ofNat_eq_ofNat] at h
+      have h := (BitVec.toNat_eq _ _).mp h
+      repeat rw [BitVec.toNat_ofNat] at h
+      simp only [Nat.zero_mod] at h
+      rw [Nat.one_mod_two_pow] at h
+      <;> omega
+    )⟧
   -- else
   --   exact BitVec.ofNat FloatFormat.bitSize 0
 

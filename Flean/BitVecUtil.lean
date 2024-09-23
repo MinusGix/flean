@@ -18,6 +18,18 @@ theorem Nat.testBit_lt_two_pow' {x : Nat} {i : Nat} : x < 2^i ↔ ∀ j, j ≥ i
   · intro h
     exact Nat.lt_pow_two_of_testBit x h
 
+-- These two are from mathlib, but I don't think they're in the current version that I'm using
+@[simp] theorem Nat.one_mod_two_pow_eq_one : 1 % 2 ^ n = 1 ↔ 0 < n := by
+  cases n with
+  | zero => simp
+  | succ n =>
+    rw [Nat.mod_eq_of_lt (a := 1) (Nat.one_lt_two_pow (by omega))]
+    simp
+
+@[simp] theorem Nat.one_mod_two_pow (h : 0 < n) : 1 % 2 ^ n = 1 :=
+  one_mod_two_pow_eq_one.mpr h
+
+
 namespace BitVec
 
 
