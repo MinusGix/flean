@@ -152,58 +152,43 @@ def mk' (sign : BitVec FloatFormat.signBits) (exponent : BitVec FloatFormat.expo
   else
     {b := 0}
 
+def ext1 (b : FloatBits) (c : BitVec FloatFormat.bitSize) : b = ⟨c⟩ ↔ b.b = c := by
+  constructor
+  <;> intro a
+  <;> subst a
+  <;> simp_all only
 
 def toBitsTriple (b : FloatBits) : FloatBitsTriple :=
   let b := b.b
-  let sign := b.extractLsb' (FloatFormat.bitSize - 1) 1
-  let exponent := b.extractLsb' (FloatFormat.bitSize - FloatFormat.exponentBits - 1) FloatFormat.exponentBits
+  let sign := b.extractLsb' (FloatFormat.bitSize - FloatFormat.signBits) FloatFormat.signBits
+  let exponent := b.extractLsb' (FloatFormat.bitSize - FloatFormat.exponentBits - FloatFormat.signBits) FloatFormat.exponentBits
   let significand := b.extractLsb' 0 FloatFormat.significandBits
   {sign := sign, exponent := exponent, significand := significand}
 
-theorem appendToBitsTriple_eq (t : FloatBitsTriple) : (b : FloatBits) → b.toBitsTriple = t → b = FloatBits.mk' t.sign t.exponent t.significand := by
+theorem appendToBitsTriple_eq (hr : FloatFormat.radix = Radix.Binary) (t : FloatBitsTriple) : (b : FloatBits) → b.toBitsTriple = t → b = FloatBits.mk' t.sign t.exponent t.significand := by
   intro b h
-  -- ext
   unfold FloatBits.toBitsTriple at h
-  -- unfold FloatBits.mk'
   simp_all only
-  if hr : FloatFormat.radix = Radix.Binary then
-    -- simp only [hr, beq_self_eq_true, ↓reduceDIte, eq_mpr_eq_cast, id_eq]
-    -- have hs : t.sign = BitVec.extractLsb' (FloatFormat.bitSize - 1) 1 b.b := by
-    --   subst h
-    subst h
-    simp only
 
-    unfold FloatBits.mk'
-    unfold FloatFormat.bitSize
-    simp only [hr, ↓reduceDIte, ↓reduceIte]
-    unfold FloatFormat.signBits
-    rw [show 1 + FloatFormat.exponentBits + FloatFormat.significandBits - 1 = FloatFormat.significandBits + FloatFormat.exponentBits by omega]
-    rw [show 1 + FloatFormat.exponentBits + FloatFormat.significandBits - FloatFormat.exponentBits - 1 = FloatFormat.significandBits by omega]
+  subst h
+  simp only
 
-    let bi := BitVec.extractLsb' (FloatFormat.significandBits + FloatFormat.exponentBits) 1 b.b ++
-            BitVec.extractLsb' FloatFormat.significandBits FloatFormat.exponentBits b.b ++
-          BitVec.extractLsb' 0 FloatFormat.significandBits b.b
-    have hr' := FloatFormat.bitSize_eq_binary hr
-    have ha : BitVec.cast hr'.symm bi = b.b := by
-      unfold_let
-      -- cases hr'.symm
-      sorry
-    sorry
-  else
-    sorry
+  unfold FloatBits.mk'
+  unfold FloatFormat.bitSize
+  simp only [hr, ↓reduceDIte, ↓reduceIte]
+  apply (ext1 _ _).mpr
 
-theorem auxbv (hr : FloatFormat.radix = Radix.Binary) (h : FloatFormat.signBits + FloatFormat.exponentBits + FloatFormat.significandBits = FloatFormat.bitSize) (b : BitVec FloatFormat.bitSize) : BitVec.cast h
-    (BitVec.extractLsb' (FloatFormat.significandBits + FloatFormat.exponentBits) 1 b ++
-        BitVec.extractLsb' FloatFormat.significandBits FloatFormat.exponentBits b ++
-      BitVec.extractLsb' 0 FloatFormat.significandBits b) = b := by
-  -- unfold FloatFormat.signBits FloatFormat.significandBits FloatFormat.exponentBits at *
-  -- have k := Decidable.rec
-  -- cases h
-  -- have j := BitVec.extractBreakup₃
-  sorry
-  -- rw [j]
+  rw [show 1 + FloatFormat.exponentBits + FloatFormat.significandBits - 1 = FloatFormat.significandBits + FloatFormat.exponentBits by omega]
+  rw [show 1 + FloatFormat.exponentBits + FloatFormat.significandBits - FloatFormat.exponentBits - 1 = FloatFormat.significandBits by omega]
 
+  let bb' : BitVec (FloatFormat.signBits + FloatFormat.exponentBits + FloatFormat.significandBits) := BitVec.cast (FloatFormat.bitSize_eq_binary hr) b.b
+  have bz := @BitVec.extractBreakup₃ FloatFormat.signBits FloatFormat.exponentBits FloatFormat.significandBits bb'
+  rw [add_comm FloatFormat.exponentBits] at bz
 
+  rw [BitVec.cast_eq_swap (FloatFormat.bitSize_eq_binary hr)]
+  repeat rw [← BitVec.extractLsb'_cast (FloatFormat.bitSize_eq_binary hr)]
+  unfold_let bb' at bz
+  rw [bz]
 
 def toValueTriple (b : FloatBits) : Bool × ℤ × ℤ :=
   let ⟨sign, exponent, significand⟩ := b.toBitsTriple

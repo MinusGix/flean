@@ -42,7 +42,9 @@ theorem func_cast_eq {n m : Nat} (h : n = m) (f : (l : Nat) → BitVec l → α)
   cases h
   rfl
 
--- theorem func_cast_eq {n m : Nat} (h : n = m) (fn : BitVec n → α) (fm : BitVec m → α) (hf : ∀ x : BitVec n, fn x = fm (x.cast h)) (x : BitVec n) : fm (x.cast h) = fn x := by
+theorem cast_eq_swap {n m : Nat} (h : n = m) (x : BitVec n) (y : BitVec m) : x = (y.cast h.symm) ↔ x.cast h = y := by
+  subst h
+  simp_all only [cast_eq]
 
 
 -- Has to use cast, which I wish we could replace with a better mechanism, since I don't really think the information about the sizes being equivalent should be in the proposition statement itself.
