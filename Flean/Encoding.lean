@@ -25,8 +25,18 @@ def FloatFormat.signBits : ℕ := 1
 def FloatFormat.significandBits [FloatFormat] : ℕ :=
   FloatFormat.prec - 1
 
-@[reducible]
+theorem FloatFormat.significandBits_ge_one [FloatFormat] :
+  FloatFormat.significandBits ≥ 1 := by
+  unfold FloatFormat.significandBits
+  have := FloatFormat.valid_prec
+  omega
 
+theorem FloatFormat.significandBits_pos [FloatFormat] :
+  FloatFormat.significandBits > 0 := by
+  have := FloatFormat.significandBits_ge_one
+  omega
+
+@[reducible]
 def FloatFormat.exponentRange [FloatFormat] : ℤ :=
   FloatFormat.max_exp - FloatFormat.min_exp + 1
 
@@ -34,12 +44,19 @@ def FloatFormat.exponentRange [FloatFormat] : ℤ :=
 def FloatFormat.exponentBits [FloatFormat] : ℕ :=
   Nat.log2 ((FloatFormat.exponentRange).toNat - 1) + 1
 
+@[simp]
 theorem FloatFormat.exponentRange_nonneg [FloatFormat] :
   FloatFormat.exponentRange ≥ 0 := by
-  simp [FloatFormat.exponentRange]
+  simp only [exponentRange, ge_iff_le]
   have h := FloatFormat.valid_exp
-  linarith
+  omega
 
+@[simp]
+theorem FloatFormat.exponentBits_pos [FloatFormat] :
+  FloatFormat.exponentBits > 0 := by
+  unfold FloatFormat.exponentBits
+  have := FloatFormat.valid_exp
+  omega
 
 @[reducible]
 def FloatFormat.bitSize [FloatFormat] : ℕ :=
@@ -55,6 +72,29 @@ def FloatFormat.bitSize [FloatFormat] : ℕ :=
 def FloatFormat.bitSize_eq_binary [FloatFormat] (h : FloatFormat.radix = Radix.Binary) :
   FloatFormat.bitSize = FloatFormat.signBits + FloatFormat.exponentBits + FloatFormat.significandBits := by
   simp only [FloatFormat.bitSize, h, ↓reduceIte]
+
+/-- Added to the exponent to make the biased exponent, a non-negative number -/
+def FloatFormat.exponentBias [FloatFormat] : ℤ :=
+  FloatFormat.max_exp
+
+-- TODO: any ways to weaken this for non-standard exp values?
+theorem FloatFormat.exponentBias_add_standard_pos [FloatFormat] (e : ℤ) (e_range : FloatFormat.min_exp ≤ e ∧ e ≤ FloatFormat.max_exp) (standard : FloatFormat.isStandardExpRange) :
+  e + FloatFormat.exponentBias > 0 := by
+  unfold FloatFormat.exponentBias
+  unfold FloatFormat.isStandardExpRange at standard
+  omega
+
+theorem FloatFormat.exponentBias_add_standard_nonneg [FloatFormat] (e : ℤ) (e_range : FloatFormat.min_exp ≤ e ∧ e ≤ FloatFormat.max_exp) (standard : FloatFormat.isStandardExpRange) :
+  e + FloatFormat.exponentBias ≥ 0 := by
+  unfold FloatFormat.exponentBias
+  unfold FloatFormat.isStandardExpRange at standard
+  omega
+
+/-- The biased exponent as a nat is equivalent to the biased exponent as an int -/
+theorem FloatFormat.exponentBias_add_standard_toNat [FloatFormat] (e : ℤ) (e_range : FloatFormat.min_exp ≤ e ∧ e ≤ FloatFormat.max_exp) (standard : FloatFormat.isStandardExpRange) :
+  ↑(e + FloatFormat.exponentBias).toNat = e + FloatFormat.exponentBias := by
+  apply Int.toNat_of_nonneg
+  exact FloatFormat.exponentBias_add_standard_nonneg e e_range standard
 
 end BitSize
 
@@ -92,19 +132,19 @@ structure FloatBits [FloatFormat] where
   b: BitVec FloatFormat.bitSize
 deriving Repr, DecidableEq -- TODO: actual usable repr
 
-@[reducible]
-instance [FloatFormat] : BEq FloatBits where
-  beq := λ a b => a.b == b.b
+-- @[reducible]
+-- instance [FloatFormat] : BEq FloatBits where
+--   beq := λ a b => a.b == b.b
 
-instance [FloatFormat] : LawfulBEq FloatBits where
-  eq_of_beq {a b} h := by
-    ext
-    unfold BEq.beq at h
-    simp only at h
-    simp_all only [beq_iff_eq]
-  rfl {a} := by
-    unfold BEq.beq
-    simp only [beq_self_eq_true]
+-- instance [FloatFormat] : LawfulBEq FloatBits where
+--   eq_of_beq {a b} h := by
+--     ext
+--     unfold BEq.beq at h
+--     simp only at h
+--     simp_all only [beq_iff_eq]
+--   rfl {a} := by
+--     unfold BEq.beq
+--     simp only [beq_self_eq_true]
 
 @[ext]
 structure FloatBitsTriple [FloatFormat] where
@@ -115,35 +155,46 @@ structure FloatBitsTriple [FloatFormat] where
   significand: BitVec FloatFormat.significandBits
 deriving Repr, DecidableEq
 
-@[reducible]
-instance [FloatFormat] : BEq FloatBitsTriple where
-  beq := λ a b => a.sign == b.sign ∧ a.exponent == b.exponent ∧ a.significand == b.significand
+-- @[reducible]
+-- instance [FloatFormat] : BEq FloatBitsTriple where
+--   beq := λ a b => a.sign == b.sign ∧ a.exponent == b.exponent ∧ a.significand == b.significand
 
-instance [FloatFormat] : LawfulBEq FloatBitsTriple where
-  eq_of_beq {a b} h := by
-    -- ext
-    unfold BEq.beq at h
-    simp only [beq_iff_eq, Bool.decide_and, Bool.and_eq_true, decide_eq_true_eq] at h
+-- instance [FloatFormat] : LawfulBEq FloatBitsTriple where
+--   eq_of_beq {a b} h := by
+--     -- ext
+--     unfold BEq.beq at h
+--     simp only [beq_iff_eq, Bool.decide_and, Bool.and_eq_true, decide_eq_true_eq] at h
+--     ext1
+--     exact h.1
+--     exact h.2.1
+--     exact h.2.2
+--   rfl {a} := by
+--     simp only [BEq.beq, decide_True, and_self]
+
+namespace FloatBitsTriple
+
+-- More useful ext than the bitvec extensionality `@[ext]` seems to utilize
+def ext' [FloatFormat] (t c : FloatBitsTriple) : t = c ↔ t.sign = c.sign ∧ t.exponent = c.exponent ∧ t.significand = c.significand := by
+  apply Iff.intro
+  · intro a
+    subst a
+    simp_all only [and_self]
+  · intro a
+    obtain ⟨left, right⟩ := a
+    obtain ⟨left_1, right⟩ := right
     ext1
-    exact h.1
-    exact h.2.1
-    exact h.2.2
-  rfl {a} := by
-    simp only [BEq.beq, decide_True, and_self]
+    · ext1 i
+      simp_all only
+    · ext1 i
+      simp_all only
+    · ext1 i
+      simp_all only
+
+end FloatBitsTriple
 
 namespace FloatBits
 
 variable [FloatFormat]
-
--- def mk' (sign : BitVec FloatFormat.signBits) (exponent : BitVec FloatFormat.exponentBits) (significand : BitVec FloatFormat.significandBits) : FloatBits := by
---   -- TODO: this shouldn't be in proof mode
---   constructor
---   unfold FloatFormat.bitSize
---   if hr: FloatFormat.radix == Radix.Binary then
---     simp only [LawfulBEq.eq_of_beq hr, ↓reduceIte]
---     exact sign ++ exponent ++ significand
---   else
---     exact 0
 
 def mk' (sign : BitVec FloatFormat.signBits) (exponent : BitVec FloatFormat.exponentBits) (significand : BitVec FloatFormat.significandBits) : FloatBits :=
   if hr : FloatFormat.radix = Radix.Binary then
@@ -197,7 +248,13 @@ def toValueTriple (b : FloatBits) : Bool × ℤ × ℤ :=
   let significand := significand.toNat
   (sign, exponent, significand)
 
-def isExponentAllOnes (b : FloatBits) : Prop := b.toBitsTriple.exponent = BitVec.allOnes FloatFormat.exponentBits
+def sign (b : FloatBits) : Bool := b.toBitsTriple.sign == 1
+
+abbrev isExponentAllOnes (b : FloatBits) : Prop := b.toBitsTriple.exponent = BitVec.allOnes FloatFormat.exponentBits
+
+-- TODO: replace these annoying clutter instances with some sort of derive
+instance [FloatFormat] : DecidablePred FloatBits.isExponentAllOnes := inferInstanceAs (DecidablePred (λ (b : FloatBits) => b.toBitsTriple.exponent = BitVec.allOnes FloatFormat.exponentBits))
+
 /-- The exponent being all ones means that it is equivalent to 2^W - 1 -/
 def isExponentAllOnes_eq_ofNat (b : FloatBits) : b.isExponentAllOnes ↔ b.toBitsTriple.exponent.toNat = (2^FloatFormat.exponentBits - 1) := by
   unfold isExponentAllOnes
@@ -212,15 +269,157 @@ def isExponentAllOnes_eq_ofNat (b : FloatBits) : b.isExponentAllOnes ↔ b.toBit
     simp only [BitVec.getLsb, h, Nat.testBit_two_pow_sub_one, Fin.is_lt, decide_True,
       BitVec.toNat_ofNatLt]
 
-
-
+-- TODO: probably get rid of this. We should justh have a `.significand` method that does the conversion to bitstriple inside it
 @[reducible]
 def isTSignificandZero (b : FloatBits) : Prop := b.toBitsTriple.significand = 0
 
 def isNaN (b : FloatBits) : Prop := b.isExponentAllOnes ∧ ¬b.isTSignificandZero
 -- TODO qNaN vs sNaN
 
+instance [FloatFormat] : DecidablePred FloatBits.isNaN := inferInstanceAs (DecidablePred (λ (b : FloatBits) => b.isExponentAllOnes ∧ ¬b.isTSignificandZero))
+
+-- set_option diagnostics true
+
+/-- Assigns all NaN values a positive sign. Used mostly for FpQuotient. -/
+def fake_sign (b : FloatBits) : Bool := if b.isNaN then false else b.sign
+
 def isInfinite (b : FloatBits) : Prop := b.isExponentAllOnes ∧ b.isTSignificandZero
+
+instance [FloatFormat] : DecidablePred FloatBits.isInfinite := inferInstanceAs (DecidablePred (λ (b : FloatBits) => b.isExponentAllOnes ∧ b.isTSignificandZero))
+
+
+def isZero (b : FloatBits) : Prop := b.toBitsTriple.exponent = 0 ∧ b.isTSignificandZero
+
+instance [FloatFormat] : DecidablePred FloatBits.isZero := inferInstanceAs (DecidablePred (λ (b : FloatBits) => b.toBitsTriple.exponent = 0 ∧ b.isTSignificandZero))
+
+def isFinite (b : FloatBits) : Prop := ¬b.isNaN ∧ ¬b.isInfinite
+
+instance [FloatFormat] : DecidablePred FloatBits.isFinite := inferInstanceAs (DecidablePred (λ (b : FloatBits) => ¬b.isNaN ∧ ¬b.isInfinite))
+
+def isSubnormal (b : FloatBits) : Prop := b.toBitsTriple.exponent = 0 ∧ ¬b.isTSignificandZero
+
+instance [FloatFormat] : DecidablePred FloatBits.isSubnormal := inferInstanceAs (DecidablePred (λ (b : FloatBits) => b.toBitsTriple.exponent = 0 ∧ ¬b.isTSignificandZero))
+
+def isNormal (b : FloatBits) : Prop := b.toBitsTriple.exponent ≠ 0 ∧ ¬b.isExponentAllOnes
+
+instance [FloatFormat] : DecidablePred FloatBits.isNormal := inferInstanceAs (DecidablePred (λ (b : FloatBits) => b.toBitsTriple.exponent ≠ 0 ∧ ¬b.isExponentAllOnes))
+
+theorem isFinite_def' (b : FloatBits) : b.isFinite ↔ b.isZero ∨ b.isNormal ∨ b.isSubnormal := by
+  unfold FloatBits.isFinite FloatBits.isNaN FloatBits.isInfinite FloatBits.isZero FloatBits.isNormal FloatBits.isSubnormal
+  unfold FloatBits.isExponentAllOnes FloatBits.isTSignificandZero
+  constructor
+  · intro hfin
+
+    if h1 : b.toBitsTriple.exponent = 0 then
+      simp_all only [ne_eq, BitVec.ofNat_eq_ofNat, not_and, Decidable.not_not, true_and,
+        not_true_eq_false, false_and, false_or]
+      by_cases b.toBitsTriple.significand = 0
+      <;> simp_all only [BitVec.ofNat_eq_ofNat, implies_true, not_true_eq_false, imp_false,
+        true_and, or_false, not_false_eq_true, or_true]
+    else
+      by_cases b.toBitsTriple.significand = 0
+      <;> simp_all only [BitVec.ofNat_eq_ofNat, not_true_eq_false, and_false, not_false_eq_true,
+          and_true, true_and, ne_eq, and_self, or_false, or_true]
+  · intro h
+    if h1 : b.toBitsTriple.exponent = 0 then
+      simp_all only [BitVec.ofNat_eq_ofNat, true_and, ne_eq, not_true_eq_false, false_and, false_or,
+        not_and, Decidable.not_not]
+      have := FloatFormat.exponentBits_pos
+      by_cases b.toBitsTriple.significand = 0
+      <;> {
+        simp_all only [BitVec.ofNat_eq_ofNat, not_true_eq_false, or_false, implies_true, imp_false, true_and, not_false_eq_true, and_true]
+        rw [← ne_eq]
+        symm
+        apply BitVec.allOnes_ne_zero
+        omega
+      }
+    else
+      simp_all only [BitVec.ofNat_eq_ofNat, ne_eq, not_and, Decidable.not_not, false_and,
+        not_false_eq_true, true_and, or_false, false_or, false_implies, and_self]
+
+theorem isZero_notSubnormal (b : FloatBits) : b.isZero → ¬b.isSubnormal := by
+  unfold FloatBits.isSubnormal FloatBits.isZero
+  intro h
+  simp only [h, BitVec.ofNat_eq_ofNat, ne_eq, not_true_eq_false, and_false, not_false_eq_true]
+
+theorem isZero_notNormal (b : FloatBits) : b.isZero → ¬b.isNormal := by
+  unfold FloatBits.isNormal FloatBits.isZero
+  intro h
+  simp only [h, BitVec.ofNat_eq_ofNat, ne_eq, not_true_eq_false, false_and, not_false_eq_true]
+
+@[simp]
+theorem isNaN_notInfinite (b : FloatBits) : b.isNaN → ¬b.isInfinite := by
+  unfold FloatBits.isNaN FloatBits.isInfinite
+  intro h
+  simp only [h, and_false, not_false_eq_true]
+
+@[simp]
+theorem isNaN_notFinite (b : FloatBits) : b.isNaN → ¬b.isFinite := by
+  unfold FloatBits.isFinite FloatBits.isNaN FloatBits.isInfinite
+  intro h
+  simp_all only [ne_eq, BitVec.ofNat_eq_ofNat, not_false_eq_true, and_true, not_true_eq_false,
+    not_and, implies_true]
+
+@[simp]
+theorem isInfinite_notNaN (b : FloatBits) : b.isInfinite → ¬b.isNaN := by
+  unfold FloatBits.isNaN FloatBits.isInfinite
+  intro h
+  simp only [h, ne_eq, BitVec.ofNat_eq_ofNat, not_true_eq_false, and_false, not_false_eq_true]
+
+@[simp]
+theorem isInfinite_notFinite (b : FloatBits) : b.isInfinite → ¬b.isFinite := by
+  unfold FloatBits.isFinite FloatBits.isInfinite FloatBits.isNaN
+  intro h
+  simp only [ne_eq, h, BitVec.ofNat_eq_ofNat, not_true_eq_false, and_false, not_false_eq_true,
+    not_and, imp_false]
+
+@[simp]
+theorem isFinite_notNaN (b : FloatBits) : b.isFinite → ¬b.isNaN := λ h => h.left
+
+@[simp]
+theorem isFinite_notInfinite (b : FloatBits) : b.isFinite → ¬b.isInfinite := λ h => h.right
+
+@[simp]
+theorem notAll (b : FloatBits) : ¬(b.isNaN ∧ b.isInfinite ∧ b.isFinite) := by
+  unfold FloatBits.isNaN FloatBits.isInfinite FloatBits.isFinite
+  intro h
+  simp_all only [ne_eq, BitVec.ofNat_eq_ofNat]
+  obtain ⟨left, right⟩ := h
+  obtain ⟨_, right_1⟩ := left
+  obtain ⟨left_1, _⟩ := right
+  obtain ⟨_, right_2⟩ := left_1
+  simp_all only [BitVec.ofNat_eq_ofNat, not_true_eq_false]
+
+
+theorem cases (b : FloatBits) : b.isNaN ∨ b.isInfinite ∨ b.isFinite := by
+  unfold FloatBits.isNaN FloatBits.isInfinite FloatBits.isFinite
+  simp only [ne_eq, BitVec.ofNat_eq_ofNat, not_true_eq_false, and_false, not_false_eq_true, true_and]
+  by_cases b.isNaN
+  · left
+    rename_i h
+    exact h
+  · by_cases b.isInfinite
+    · right
+      left
+      rename_i h1
+      simp_all only [isInfinite_notNaN, not_false_eq_true]
+      exact h1
+    · simp_all only [not_false_eq_true, and_self, or_true]
+
+
+-- You may want to use this with `notAll`
+theorem disj (b : FloatBits) : (Xor' (Xor' b.isNaN b.isInfinite) b.isFinite) := by
+  if h1 : b.isFinite then
+    simp only [h1, isFinite_notNaN, isFinite_notInfinite, xor_self, xor_false, id_eq]
+  else
+    constructor
+    if h2 : b.isNaN then
+      simp_all only [isNaN_notFinite, not_false_eq_true, isNaN_notInfinite, xor_true, and_self]
+    else
+      simp_all only [isFinite, isNaN, isExponentAllOnes, isTSignificandZero, BitVec.ofNat_eq_ofNat,
+        not_and, Decidable.not_not, isInfinite, not_true_eq_false, imp_false, implies_true,
+        and_false, and_self, xor_false, id_eq, not_false_eq_true]
+-- TODO: disj between nan, infinite, normal finite, subnormal finite and zero
 
 /-- Constructing a `FloatBitsTriple` from a `FloatBits` made by `(s, E, T)` will yield the same `(s, E, T)` -/
 theorem construct_triple_eq_BitsTriple (hr : FloatFormat.radix = Radix.Binary) (s : BitVec FloatFormat.signBits) (E : BitVec FloatFormat.exponentBits) (T : BitVec FloatFormat.significandBits) :
@@ -272,10 +471,37 @@ def infinite (b : Bool) : FloatBits :=
 theorem infinite_isInfinite (hr : FloatFormat.radix = Radix.Binary) (b : Bool) :
   (infinite b).isInfinite := by
   unfold FloatBits.isInfinite FloatBits.isExponentAllOnes FloatBits.isTSignificandZero FloatBits.infinite
-  simp only [hr, ↓reduceIte, BitVec.ofNat_eq_ofNat]
+  split_ifs
+  norm_num
+  rw [BitVec.ofNat_eq_ofNat]
   constructor
   · rw [construct_exponent_eq_BitsTriple hr]
   · rw [construct_significand_eq_BitsTriple hr]
+
+theorem isInfinite_val (b : FloatBits) (hr : FloatFormat.radix = Radix.Binary) : b.isInfinite ↔ b = FloatBits.infinite true ∨ b = FloatBits.infinite false := by
+  constructor
+  · unfold FloatBits.isInfinite FloatBits.infinite
+    intro ⟨he, hsig⟩
+    simp only [hr, ↓reduceIte, BitVec.ofBool_true, BitVec.ofNat_eq_ofNat, BitVec.ofBool_false]
+    unfold FloatBits.isExponentAllOnes at he
+    cases (BitVec.one_or b.toBitsTriple.sign)
+    <;> {
+      rename_i h0
+      have h1 : b.toBitsTriple = FloatBitsTriple.mk (b.toBitsTriple.sign) (BitVec.allOnes FloatFormat.exponentBits) 0 := by
+        apply (FloatBitsTriple.ext' _ _).mpr
+        simp only [he, hsig, BitVec.ofNat_eq_ofNat, and_self]
+
+      have k := FloatBits.appendToBitsTriple_eq hr _ b h1
+      rw [h0] at k
+      simp only [k, BitVec.ofNat_eq_ofNat, or_true, true_or]
+    }
+  · intro hv
+    apply Or.elim hv
+    <;> {
+      intro hv
+      rw [hv]
+      apply infinite_isInfinite hr
+    }
 
 /-- Construct a NaN with the given sign bit and significand. -/
 def NaN (sign : Bool) (T : BitVec FloatFormat.significandBits) (_hT : T ≠ 0): FloatBits :=
@@ -299,16 +525,44 @@ theorem NaN_isNaN (hr : FloatFormat.radix = Radix.Binary) (sign : Bool) (T : Bit
 
 -- TODO: proof for finite floats that we are able to fit the values into the bits, that is, `.toNat` on the fields will return the original value
 
+def sigToTrailing (m : ℕ) := m &&& (2^FloatFormat.significandBits - 1)
+
+/-- Construct a finite float from the sign, exponent, and integral significand. -/
+def finite (s : Bool) (e : ℤ) (m : ℕ) : FloatBits :=
+  if FloatFormat.radix = Radix.Binary then
+    -- Biased exponent
+    let E := e + FloatFormat.exponentBias
+    let E := E.toNat
+    -- TODO: we aren't doing this dependent on the Nat which likely makes it harder to infer that it is necessary
+    -- Trailing significand. We can cut off the leading bit because that is entangled with the exponent's value.
+    let T := sigToTrailing m
+    let sign := BitVec.ofBool s
+    let significand := BitVec.ofNat FloatFormat.significandBits T
+    let exponent := BitVec.ofNat FloatFormat.exponentBits E
+    FloatBits.mk' sign exponent significand
+  else
+    FloatBits.mk 0
+
+-- TODO: trailing to significand, takes E as well
+
+theorem sigToTrailing_le (m : ℕ) : sigToTrailing m < 2^FloatFormat.significandBits := by
+  unfold sigToTrailing
+  simp only [Nat.and_pow_two_is_mod]
+  omega
+
+/-- Converting to bitvec and back will yield the same number as the significandToTrailing function. Showing that we don't lose anything. -/
+theorem sigToTrailing_eq_bits (m : ℕ) :
+  (BitVec.ofNat FloatFormat.significandBits (sigToTrailing m)).toNat = sigToTrailing m := by
+  apply (BitVec.toNat_eq_nat (BitVec.ofNat FloatFormat.significandBits (sigToTrailing m)) _).mpr
+  constructor
+  · exact sigToTrailing_le m
+  · rfl
+
 end FloatBits
 
 instance [FloatFormat] {f : FloatBits} : Decidable f.isNaN := by
   unfold FloatBits.isNaN FloatBits.isExponentAllOnes
   infer_instance
-
--- TODO: For NaNs we really should be using a Quotient over the bit representations
--- def NaNFloatBits [F : FloatFormat] (b : Bool) : BitVec FloatFormat.bitSize := by
-
--- def NaNEquivalence [FloatFormat] (x y : FloatBits) : Prop := x.isNaN ∧ y.isNaN
 
 def FpEquiv [FloatFormat] (x y : FloatBits) : Prop := x = y ∨ (x.isNaN ∧ y.isNaN)
 
@@ -337,7 +591,8 @@ def FpSetoid [FloatFormat] : Setoid FloatBits where
       | inl h_1 =>
         subst h_1
         simp_all only [and_self, true_or]
-      | inr h_2 => simp_all only [and_self, or_true]
+      -- | inr h_2 => simp_all only [and_self, or_true]
+      | inr h_2 => right; symm; exact h_2
     trans := by
       unfold FpEquiv
       intro x y z h1 h2
@@ -349,18 +604,46 @@ def FpSetoid [FloatFormat] : Setoid FloatBits where
           simp_all only [and_self, true_or]
         | inr h_2 =>
           subst h
-          simp_all only [and_self, or_true]
+          right
+          exact h_2
       | inr h_1 =>
         cases h2 with
         | inl h =>
           subst h
-          simp_all only [and_self, or_true]
-        | inr h_2 => simp_all only [and_true, and_self, or_true]
+          right
+          exact h_1
+        | inr h_2 =>
+          right
+          obtain ⟨left, _⟩ := h_1
+          obtain ⟨_, right_1⟩ := h_2
+          obtain ⟨left, right_2⟩ := left
+          obtain ⟨left_3, right_1⟩ := right_1
+          simp_all only [ne_eq, BitVec.ofNat_eq_ofNat, not_false_eq_true]
+          apply And.intro
+          · apply And.intro
+            · exact left
+            · simp_all only [ne_eq, BitVec.ofNat_eq_ofNat, not_false_eq_true]
+          · apply And.intro
+            · exact left_3
+            · simp_all only [ne_eq, BitVec.ofNat_eq_ofNat, not_false_eq_true]
   }
 
 def FpQuotient [FloatFormat] : Type := Quotient FpSetoid
 
 -- TODO: it may be possible to have a general way to turn a proof that applies to `Fp` and make it apply to `FpQuotient`..
+
+@[reducible]
+def FpQuotient.isInfinite [FloatFormat] (f : FpQuotient) : Prop :=
+  Quotient.liftOn f (fun b => b.isInfinite) (by
+    intro a b h
+    cases h with
+    | inl h =>
+      rw [h]
+    | inr h =>
+      unfold FloatBits.isInfinite
+      unfold FloatBits.isNaN at h
+      simp only [h, and_false]
+  )
 
 @[reducible]
 def FpQuotient.isNaN [FloatFormat] (f : FpQuotient) : Prop :=
@@ -373,12 +656,37 @@ def FpQuotient.isNaN [FloatFormat] (f : FpQuotient) : Prop :=
       simp only [h]
   )
 
+def FpQuotient.isFinite [FloatFormat] (f : FpQuotient) : Prop :=
+  Quotient.liftOn f (fun b => b.isFinite) (by
+    intro a b h
+    cases h with
+    | inl h =>
+      rw [h]
+    | inr h =>
+      unfold FloatBits.isFinite
+      simp only [h, not_true_eq_false, false_and]
+  )
+
+-- Normal `sign` can't be equivalent over the quotient because two NaN values can have different signs
+-- We simply say that an FpQuotient sign is always positive for NaN values, but doing such in FloatBits would be confusing.
+def FpQuotient.fake_sign [FloatFormat] (f : FpQuotient) : Bool :=
+  Quotient.liftOn f (fun b => b.fake_sign) (by
+    intro a b h
+    cases h with
+    | inl h =>
+      subst h
+      simp only [FloatBits.sign, true_and]
+    | inr h =>
+      unfold FloatBits.fake_sign
+      simp only [h, ↓reduceIte]
+  )
+
 noncomputable
 def FpQuotient.choose [FloatFormat] (f : FpQuotient) : FloatBits :=
   @Quotient.out _ FpSetoid f
 
 /-! Get a concrete bit pattern for the float, using a fixed representation for NaN values. -/
-def FpQuotient.representative [FloatFormat] (f : FpQuotient) : FloatBits :=
+def FpQuotient.representative [FloatFormat] (f : FpQuotient) (standard : FloatFormat.isStandardExpRange) : FloatBits :=
   if f.isNaN then
     -- TODO: Make sure this isn't a signaling NaN
     have nz : BitVec.allOnes FloatFormat.significandBits ≠ 0 := by
@@ -388,20 +696,29 @@ def FpQuotient.representative [FloatFormat] (f : FpQuotient) : FloatBits :=
       have h := FloatFormat.valid_prec
       omega
     FloatBits.NaN false (BitVec.allOnes FloatFormat.significandBits) nz
+  else if f.isInfinite then
+    sorry
   else
     sorry
 
-theorem FpQuotient.representative_eq [FloatFormat] (f : FpQuotient) : f = ⟦FpQuotient.representative f⟧ := by
-  unfold FpQuotient.representative
-  split_ifs
-  simp only [Quotient.eq, FpEquiv]
-  sorry
+
+-- theorem FpQuotient.representative_eq [FloatFormat] (f : FpQuotient) : f = ⟦FpQuotient.representative f⟧ := by
+--   unfold FpQuotient.representative
+--   split_ifs
+--   simp only [Quotient.eq, FpEquiv]
+--   sorry
+--   sorry
 
 
 -- TODO: We should hopefully be able to use the bitvec representation with the solver integrated into lean, but I need to look into that more.
+-- TODO: do we really need to require standard exp range? I think we do for the usual bit saving optimization for finite floats. This isn't major, anyway, since I believe all practical floating point formats are standard.
 def toBits [FloatFormat] (f : Fp) : FpQuotient :=
   match f with
-  | .finite f => sorry
+  | .finite f =>
+    -- We don't need the valid proof to construct the bit pattern, though for reasoning we will need to know it is valid
+    let ⟨s, e, m, _valid⟩ := f
+    let b := FloatBits.finite s e m
+    ⟦b⟧
   | .infinite b =>
     ⟦FloatBits.infinite b⟧
   | .NaN =>
@@ -425,13 +742,18 @@ def ofBits [FloatFormat] (b : FloatBits) : Fp := by
   let ⟨sign, exponent, significand⟩ := b.toBitsTriple
   sorry
 
-
-
 -- TODO: proof that we can convert bitsFloatTriple back to bits
 
 -- TODO: have proofs that these are approximately inverses (except for NaN)
 -- we can have subproofs for each of finite/infinite/nan
 
-
+-- TODO: proof about the number of finite floats, the number of finite floats in a certain range, etc.
 
 end Fp
+
+def f := @FiniteFp.toRat FloatFormat.Binary32
+#eval! f (0 : @FiniteFp FloatFormat.Binary32)
+def f' := @Fp.toBits FloatFormat.Binary32
+def v := f' (0 : @Fp FloatFormat.Binary32)
+-- #eval! @Fp.FpQuotient.representative FloatFormat.Binary32 v FloatFormat.binary32_standard_exp_range
+-- #eval! (@toBits FloatFormat.Binary32 (0 : @Fp FloatFormat.Binary32) FloatFormat.binary32_standard_exp_range).representative

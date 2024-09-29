@@ -32,7 +32,7 @@ theorem Nat.testBit_lt_two_pow' {x : Nat} {i : Nat} : x < 2^i ↔ ∀ j, j ≥ i
 
 namespace BitVec
 
-
+@[simp]
 theorem allOnes_ne_zero {n : Nat} (h : n ≠ 0): BitVec.allOnes n ≠ 0 := by
   have e : 2^n > 1 := by
     simp_all only [ne_eq, OfNat.ofNat_ne_zero, not_false_eq_true, pow_eq_zero_iff, gt_iff_lt, Nat.one_lt_pow_iff,
@@ -45,6 +45,24 @@ theorem allOnes_ne_zero {n : Nat} (h : n ≠ 0): BitVec.allOnes n ≠ 0 := by
   unfold BitVec.toNat at j
   simp only [ofNat_eq_ofNat, toFin_ofNat, Fin.val_ofNat', Nat.zero_mod] at j
   exact e' j
+
+@[aesop safe]
+theorem zero_ne_allOnes {n : Nat} (h : n ≠ 0) : 0 ≠ BitVec.allOnes n := by
+  symm
+  apply allOnes_ne_zero
+  exact h
+
+theorem one_or (x : BitVec 1) : x = 0#1 ∨ x = 1#1 := by
+  if h : x = 0#1 then
+    apply Or.intro_left
+    exact h
+  else
+    apply Or.intro_right
+    apply BitVec.eq_of_toNat_eq
+    have i := x.isLt
+    have h := (BitVec.toNat_ne _ _).mp h
+    simp_all only [pow_one, toNat_ofNat, Nat.zero_mod, ne_eq, Nat.mod_succ]
+    omega
 
 theorem extractLsb'_cast {n m : Nat} (h : n = m) (start : Nat) (len : Nat) (x : BitVec n) : (BitVec.extractLsb' start len (x.cast h)) = BitVec.extractLsb' start len x := by
   unfold BitVec.cast BitVec.extractLsb'

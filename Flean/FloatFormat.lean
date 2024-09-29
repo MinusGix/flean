@@ -153,7 +153,58 @@ def Decimal128 : FloatFormat := {
   valid_exp := by norm_num
 }
 
-def isStandardExpRange (F : FloatFormat) : Prop :=
-  F.min_exp = 1 - F.max_exp
+def isStandardExpRange [FloatFormat] : Prop :=
+  FloatFormat.min_exp = 1 - FloatFormat.max_exp
+
+theorem binary16_standard_exp_range : Binary16.isStandardExpRange := by
+  unfold isStandardExpRange
+  simp only [Binary16, min_exp, max_exp]
+  norm_num
+
+theorem binary32_standard_exp_range : Binary32.isStandardExpRange := by
+  unfold isStandardExpRange
+  simp only [Binary32, min_exp, max_exp]
+  norm_num
+
+theorem binary64_standard_exp_range : Binary64.isStandardExpRange := by
+  unfold isStandardExpRange
+  simp only [Binary64, min_exp, max_exp]
+  norm_num
+
+theorem binary128_standard_exp_range : Binary128.isStandardExpRange := by
+  unfold isStandardExpRange
+  simp only [Binary128, min_exp, max_exp]
+  norm_num
+
+theorem bf16_standard_exp_range : BF16.isStandardExpRange := by
+  unfold isStandardExpRange
+  simp only [BF16, min_exp, max_exp]
+  norm_num
+
+theorem tf32_standard_exp_range : TF32.isStandardExpRange := by
+  unfold isStandardExpRange
+  simp only [TF32, min_exp, max_exp]
+  norm_num
+
+theorem decimal32_standard_exp_range : Decimal32.isStandardExpRange := by
+  unfold isStandardExpRange
+  simp only [Decimal32, min_exp, max_exp]
+  norm_num
+
+theorem decimal64_standard_exp_range : Decimal64.isStandardExpRange := by
+  unfold isStandardExpRange
+  simp only [Decimal64, min_exp, max_exp]
+  norm_num
+
+theorem decimal128_standard_exp_range : Decimal128.isStandardExpRange := by
+  unfold isStandardExpRange
+  simp only [Decimal128, min_exp, max_exp]
+  norm_num
+
+@[simp]
+theorem valid_exp' [FloatFormat] : FloatFormat.min_exp < FloatFormat.max_exp := FloatFormat.valid_exp
+
+@[simp]
+theorem valid_exp'_le [FloatFormat] : FloatFormat.min_exp ≤ FloatFormat.max_exp := FloatFormat.valid_exp.le
 
 end FloatFormat
