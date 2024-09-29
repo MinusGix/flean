@@ -61,18 +61,11 @@ theorem FloatFormat.exponentBits_pos [FloatFormat] :
 
 @[reducible]
 def FloatFormat.bitSize [FloatFormat] : ℕ :=
-  if FloatFormat.radix = Radix.Binary then
-    -- 1 for the sign bit, F.prec - 1 for the significand, and F.prec for the exponent
-    -- we can skip 1 bit because we don't need to represent the leading 1/0 in the significand
-    FloatFormat.signBits + FloatFormat.exponentBits + FloatFormat.significandBits
-  else
-    -- TODO: How do you compute this for the decimal format, or other cases?
-    -- Should we have this be in the units that the radix is defined in, instead of general bits?
-    0
+  -- 1 for the sign bit, F.prec - 1 for the significand, and F.prec for the exponent
+  -- we can skip 1 bit because we don't need to represent the leading 1/0 in the significand
+  FloatFormat.signBits + FloatFormat.exponentBits + FloatFormat.significandBits
 
-def FloatFormat.bitSize_eq_binary [FloatFormat] (h : FloatFormat.radix = Radix.Binary) :
-  FloatFormat.bitSize = FloatFormat.signBits + FloatFormat.exponentBits + FloatFormat.significandBits := by
-  simp only [FloatFormat.bitSize, h, ↓reduceIte]
+def FloatFormat.bitSize_eq [FloatFormat] : FloatFormat.bitSize = FloatFormat.signBits + FloatFormat.exponentBits + FloatFormat.significandBits := rfl
 
 /-- Added to the exponent to make the biased exponent, a non-negative number -/
 @[reducible]
@@ -164,11 +157,8 @@ namespace FloatBits
 variable [FloatFormat]
 
 def mk' (sign : BitVec FloatFormat.signBits) (exponent : BitVec FloatFormat.exponentBits) (significand : BitVec FloatFormat.significandBits) : FloatBits :=
-  if hr : FloatFormat.radix = Radix.Binary then
-    let b := sign ++ exponent ++ significand
-    {b := BitVec.cast (FloatFormat.bitSize_eq_binary hr).symm b}
-  else
-    {b := 0}
+  let b := sign ++ exponent ++ significand
+  {b := BitVec.cast FloatFormat.bitSize_eq.symm b}
 
 def ext1 (b : FloatBits) (c : BitVec FloatFormat.bitSize) : b = ⟨c⟩ ↔ b.b = c := by
   constructor
@@ -183,7 +173,7 @@ def toBitsTriple (b : FloatBits) : FloatBitsTriple :=
   let significand := b.extractLsb' 0 FloatFormat.significandBits
   {sign := sign, exponent := exponent, significand := significand}
 
-theorem appendToBitsTriple_eq (hr : FloatFormat.radix = Radix.Binary) (t : FloatBitsTriple) : (b : FloatBits) → b.toBitsTriple = t → b = FloatBits.mk' t.sign t.exponent t.significand := by
+theorem appendToBitsTriple_eq (t : FloatBitsTriple) : (b : FloatBits) → b.toBitsTriple = t → b = FloatBits.mk' t.sign t.exponent t.significand := by
   intro b h
   unfold FloatBits.toBitsTriple at h
   lift_lets at h
@@ -193,19 +183,28 @@ theorem appendToBitsTriple_eq (hr : FloatFormat.radix = Radix.Binary) (t : Float
 
   unfold FloatBits.mk'
   unfold FloatFormat.bitSize
-  split_ifs
   apply (ext1 _ _).mpr
 
   rw [show 1 + FloatFormat.exponentBits + FloatFormat.significandBits - 1 = FloatFormat.significandBits + FloatFormat.exponentBits by omega]
   rw [show 1 + FloatFormat.exponentBits + FloatFormat.significandBits - FloatFormat.exponentBits - 1 = FloatFormat.significandBits by omega]
 
-  let bb' : BitVec (FloatFormat.signBits + FloatFormat.exponentBits + FloatFormat.significandBits) := BitVec.cast (FloatFormat.bitSize_eq_binary hr) b.b
+  let bb' : BitVec (FloatFormat.signBits + FloatFormat.exponentBits + FloatFormat.significandBits) := BitVec.cast FloatFormat.bitSize_eq.symm b.b
   have bz := @BitVec.extractBreakup₃ FloatFormat.signBits FloatFormat.exponentBits FloatFormat.significandBits bb'
   rw [add_comm FloatFormat.exponentBits] at bz
 
-  rw [BitVec.cast_eq_swap (FloatFormat.bitSize_eq_binary hr)]
-  repeat rw [← BitVec.extractLsb'_cast (FloatFormat.bitSize_eq_binary hr)]
+  rw [BitVec.cast_eq_swap (FloatFormat.bitSize_eq)]
   unfold_let bb' at bz
+  -- We run into the issue that it will just nest the cast inside the cast when we apply it again, is there a better way?
+  rw [← BitVec.extractLsb'_cast (FloatFormat.bitSize_eq)]
+  conv =>
+    rhs
+    rhs
+    rw [← BitVec.extractLsb'_cast (FloatFormat.bitSize_eq)]
+  conv =>
+    rhs
+    lhs
+    rhs
+    rw [← BitVec.extractLsb'_cast (FloatFormat.bitSize_eq)]
   rw [bz]
 
 def toValueTriple (b : FloatBits) : Bool × ℤ × ℤ :=
@@ -378,28 +377,15 @@ theorem disj (b : FloatBits) : (Xor' (Xor' b.isNaN b.isInfinite) b.isFinite) := 
 -- TODO: disj between nan, infinite, normal finite, subnormal finite and zero
 
 /-- Constructing a `FloatBitsTriple` from a `FloatBits` made by `(s, E, T)` will yield the same `(s, E, T)` -/
-theorem construct_triple_eq_BitsTriple (hr : FloatFormat.radix = Radix.Binary) (s : BitVec FloatFormat.signBits) (E : BitVec FloatFormat.exponentBits) (T : BitVec FloatFormat.significandBits) :
+theorem construct_triple_eq_BitsTriple (s : BitVec FloatFormat.signBits) (E : BitVec FloatFormat.exponentBits) (T : BitVec FloatFormat.significandBits) :
   (FloatBits.mk' s E T).toBitsTriple.sign = s ∧ (FloatBits.mk' s E T).toBitsTriple.exponent = E ∧ (FloatBits.mk' s E T).toBitsTriple.significand = T := by
   unfold FloatBits.mk' FloatBits.toBitsTriple
   lift_lets
   norm_num
-  split_ifs
   unfold FloatFormat.signBits
   -- Is there no way to use omega to simplify?
   rw [show 1 + FloatFormat.exponentBits + FloatFormat.significandBits - FloatFormat.exponentBits - 1 = FloatFormat.significandBits by omega]
   rw [show 1 + FloatFormat.exponentBits + FloatFormat.significandBits - 1 = FloatFormat.significandBits + FloatFormat.exponentBits by omega]
-
-  have kh : 1 + FloatFormat.exponentBits + FloatFormat.significandBits = FloatFormat.bitSize := by
-    unfold FloatFormat.bitSize
-    split_ifs
-    linarith
-
-  -- Simplify the casts out
-  have k0 := λ (off size) => BitVec.extractLsb'_cast kh off size (s ++ E ++ T)
-  have kS := k0 (FloatFormat.significandBits + FloatFormat.exponentBits) FloatFormat.signBits
-  have kE := k0 FloatFormat.significandBits FloatFormat.exponentBits
-  have kT := k0 0 FloatFormat.significandBits
-  rw [kE, kT, kS]
 
   have jS := @BitVec.extractAppend_third₃ FloatFormat.signBits FloatFormat.exponentBits FloatFormat.significandBits s E T
   have jE := @BitVec.extractAppend_second₃ FloatFormat.signBits FloatFormat.exponentBits FloatFormat.significandBits s E T
@@ -407,41 +393,36 @@ theorem construct_triple_eq_BitsTriple (hr : FloatFormat.radix = Radix.Binary) (
   rw [jE, jT, jS]
   repeat1 constructor
 
-theorem construct_sign_eq_BitsTriple (hr : FloatFormat.radix = Radix.Binary) (s : BitVec FloatFormat.signBits) (E : BitVec FloatFormat.exponentBits) (T : BitVec FloatFormat.significandBits) :
-  (FloatBits.mk' s E T).toBitsTriple.sign = s := (construct_triple_eq_BitsTriple hr s E T).1
+theorem construct_sign_eq_BitsTriple (s : BitVec FloatFormat.signBits) (E : BitVec FloatFormat.exponentBits) (T : BitVec FloatFormat.significandBits) :
+  (FloatBits.mk' s E T).toBitsTriple.sign = s := (construct_triple_eq_BitsTriple s E T).1
 
-theorem construct_exponent_eq_BitsTriple (hr : FloatFormat.radix = Radix.Binary) (s : BitVec FloatFormat.signBits) (E : BitVec FloatFormat.exponentBits) (T : BitVec FloatFormat.significandBits) :
-  (FloatBits.mk' s E T).toBitsTriple.exponent = E := (construct_triple_eq_BitsTriple hr s E T).2.1
+theorem construct_exponent_eq_BitsTriple (s : BitVec FloatFormat.signBits) (E : BitVec FloatFormat.exponentBits) (T : BitVec FloatFormat.significandBits) :
+  (FloatBits.mk' s E T).toBitsTriple.exponent = E := (construct_triple_eq_BitsTriple s E T).2.1
 
-theorem construct_significand_eq_BitsTriple (hr : FloatFormat.radix = Radix.Binary) (s : BitVec FloatFormat.signBits) (E : BitVec FloatFormat.exponentBits) (T : BitVec FloatFormat.significandBits) :
-  (FloatBits.mk' s E T).toBitsTriple.significand = T := (construct_triple_eq_BitsTriple hr s E T).2.2
+theorem construct_significand_eq_BitsTriple (s : BitVec FloatFormat.signBits) (E : BitVec FloatFormat.exponentBits) (T : BitVec FloatFormat.significandBits) :
+  (FloatBits.mk' s E T).toBitsTriple.significand = T := (construct_triple_eq_BitsTriple s E T).2.2
 
 /-- Get the bit representation of an infinite float. -/
 def infinite (b : Bool) : FloatBits :=
-  if FloatFormat.radix = Radix.Binary then
-    let sign := BitVec.ofBool b
-    let significand := BitVec.ofNat FloatFormat.significandBits 0
-    let exponent := BitVec.allOnes FloatFormat.exponentBits
-    FloatBits.mk' sign exponent significand
-  else
-    FloatBits.mk 0
+  let sign := BitVec.ofBool b
+  let significand := BitVec.ofNat FloatFormat.significandBits 0
+  let exponent := BitVec.allOnes FloatFormat.exponentBits
+  FloatBits.mk' sign exponent significand
 
 /-- Constructing an infinite float will yield an infinite float. -/
-theorem infinite_isInfinite (hr : FloatFormat.radix = Radix.Binary) (b : Bool) :
+theorem infinite_isInfinite (b : Bool) :
   (infinite b).isInfinite := by
   unfold FloatBits.isInfinite FloatBits.isExponentAllOnes FloatBits.isTSignificandZero FloatBits.infinite
-  split_ifs
   norm_num
   rw [BitVec.ofNat_eq_ofNat]
   constructor
-  · rw [construct_exponent_eq_BitsTriple hr]
-  · rw [construct_significand_eq_BitsTriple hr]
+  · rw [construct_exponent_eq_BitsTriple]
+  · rw [construct_significand_eq_BitsTriple]
 
-theorem isInfinite_val (b : FloatBits) (hr : FloatFormat.radix = Radix.Binary) : b.isInfinite ↔ b = FloatBits.infinite true ∨ b = FloatBits.infinite false := by
+theorem isInfinite_val (b : FloatBits) : b.isInfinite ↔ b = FloatBits.infinite true ∨ b = FloatBits.infinite false := by
   constructor
   · unfold FloatBits.isInfinite FloatBits.infinite
     intro ⟨he, hsig⟩
-    split_ifs
     norm_num
     cases (BitVec.one_or b.toBitsTriple.sign)
     <;> {
@@ -452,7 +433,7 @@ theorem isInfinite_val (b : FloatBits) (hr : FloatFormat.radix = Radix.Binary) :
         <;> norm_num
         assumption; assumption
 
-      have k := FloatBits.appendToBitsTriple_eq hr _ b h1
+      have k := FloatBits.appendToBitsTriple_eq _ b h1
       rw [h0] at k
       simp only [k, BitVec.ofNat_eq_ofNat, or_true, true_or]
     }
@@ -461,28 +442,24 @@ theorem isInfinite_val (b : FloatBits) (hr : FloatFormat.radix = Radix.Binary) :
     <;> {
       intro hv
       rw [hv]
-      apply infinite_isInfinite hr
+      apply infinite_isInfinite
     }
 
 /-- Construct a NaN with the given sign bit and significand. -/
 def NaN (sign : Bool) (T : BitVec FloatFormat.significandBits) (_hT : T ≠ 0): FloatBits :=
-  if FloatFormat.radix = Radix.Binary then
-    let sign := BitVec.ofBool sign
-    let significand := T
-    let exponent := BitVec.allOnes FloatFormat.exponentBits
-    FloatBits.mk' sign exponent significand
-  else
-    FloatBits.mk 0
+  let sign := BitVec.ofBool sign
+  let significand := T
+  let exponent := BitVec.allOnes FloatFormat.exponentBits
+  FloatBits.mk' sign exponent significand
 
 /-- Constructing a NaN will yield a NaN. -/
-theorem NaN_isNaN (hr : FloatFormat.radix = Radix.Binary) (sign : Bool) (T : BitVec FloatFormat.significandBits) (hT : T ≠ 0):
+theorem NaN_isNaN (sign : Bool) (T : BitVec FloatFormat.significandBits) (hT : T ≠ 0):
   (NaN sign T hT).isNaN := by
   unfold FloatBits.isNaN FloatBits.isExponentAllOnes FloatBits.NaN
-  split_ifs
   norm_num
   constructor
-  · rw [construct_exponent_eq_BitsTriple hr]
-  · rw [construct_significand_eq_BitsTriple hr]
+  · rw [construct_exponent_eq_BitsTriple]
+  · rw [construct_significand_eq_BitsTriple]
     trivial
 
 -- TODO: proof for finite floats that we are able to fit the values into the bits, that is, `.toNat` on the fields will return the original value
@@ -491,19 +468,16 @@ def sigToTrailing (m : ℕ) := m &&& (2^FloatFormat.significandBits - 1)
 
 /-- Construct a finite float from the sign, exponent, and integral significand. -/
 def finite (s : Bool) (e : ℤ) (m : ℕ) : FloatBits :=
-  if FloatFormat.radix = Radix.Binary then
-    -- Biased exponent
-    let E := e + FloatFormat.exponentBias
-    let E := E.toNat
-    -- TODO: we aren't doing this dependent on the Nat which likely makes it harder to infer that it is necessary
-    -- Trailing significand. We can cut off the leading bit because that is entangled with the exponent's value.
-    let T := sigToTrailing m
-    let sign := BitVec.ofBool s
-    let significand := BitVec.ofNat FloatFormat.significandBits T
-    let exponent := BitVec.ofNat FloatFormat.exponentBits E
-    FloatBits.mk' sign exponent significand
-  else
-    FloatBits.mk 0
+  -- Biased exponent
+  let E := e + FloatFormat.exponentBias
+  let E := E.toNat
+  -- TODO: we aren't doing this dependent on the Nat which likely makes it harder to infer that it is necessary
+  -- Trailing significand. We can cut off the leading bit because that is entangled with the exponent's value.
+  let T := sigToTrailing m
+  let sign := BitVec.ofBool s
+  let significand := BitVec.ofNat FloatFormat.significandBits T
+  let exponent := BitVec.ofNat FloatFormat.exponentBits E
+  FloatBits.mk' sign exponent significand
 
 -- TODO: trailing to significand, takes E as well
 

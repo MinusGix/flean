@@ -61,7 +61,7 @@ def sign (x : FiniteFp) : ℤ :=
   if x.s then -1 else 1
 
 def toRat (x : FiniteFp) : ℚ :=
-  x.sign * x.m * (F.radix.val : ℚ)^(x.e - FloatFormat.prec + 1)
+  x.sign * x.m * (FloatFormat.radix.val : ℚ)^(x.e - FloatFormat.prec + 1)
 
 noncomputable
 def toReal (x : FiniteFp) : ℝ :=

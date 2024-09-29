@@ -57,7 +57,7 @@ theorem two_le : 2 ≤ β.val := by
 end Radix
 
 class FloatFormat where
-  radix : Radix
+  -- radix : Radix
   prec : ℕ
   min_exp : ℤ
   max_exp : ℤ
@@ -65,8 +65,10 @@ class FloatFormat where
   valid_exp : min_exp < max_exp
 namespace FloatFormat
 
+def radix [FloatFormat] : Radix := Radix.Binary
+
 def Binary16 : FloatFormat := {
-  radix := Radix.Binary,
+  -- radix := Radix.Binary,
   prec := 11,
   min_exp := -14,
   max_exp := 15,
@@ -76,7 +78,7 @@ def Binary16 : FloatFormat := {
 
 /-- Commonly known as 'float' or 'single-precision' -/
 def Binary32 : FloatFormat := {
-  radix := Radix.Binary,
+  -- radix := Radix.Binary,
   prec := 24,
   min_exp := -126,
   max_exp := 127,
@@ -86,7 +88,7 @@ def Binary32 : FloatFormat := {
 
 /-- Commonly known as 'double' or 'double-precision' -/
 def Binary64 : FloatFormat := {
-  radix := Radix.Binary,
+  -- radix := Radix.Binary,
   prec := 53,
   min_exp := -1022,
   max_exp := 1023,
@@ -95,7 +97,7 @@ def Binary64 : FloatFormat := {
 }
 
 def Binary128 : FloatFormat := {
-  radix := Radix.Binary,
+  -- radix := Radix.Binary,
   prec := 113,
   min_exp := -16382,
   max_exp := 16383,
@@ -107,7 +109,7 @@ def Binary128 : FloatFormat := {
 
 /-- BFloat16 format. Has a lower precision but a higher exponent, which gives it a higher range for less precision. -/
 def BF16 : FloatFormat := {
-  radix := Radix.Binary,
+  -- radix := Radix.Binary,
   prec := 8,
   min_exp := -126,
   max_exp := 127,
@@ -118,7 +120,7 @@ def BF16 : FloatFormat := {
 /-- NVIDIA's Tensor Float 32 Format. This uses the same half-precision of FP16, while having the exponent of FP32.
 This is termed '32' though it really only uses 19 bits, but in practice it is stored using 32-bits.  -/
 def TF32 : FloatFormat := {
-  radix := Radix.Binary,
+  -- radix := Radix.Binary,
   prec := 11,
   min_exp := -126,
   max_exp := 127,
@@ -126,32 +128,32 @@ def TF32 : FloatFormat := {
   valid_exp := by norm_num
 }
 
-def Decimal32 : FloatFormat := {
-  radix := Radix.Decimal,
-  prec := 7,
-  min_exp := -95,
-  max_exp := 96,
-  valid_prec := by norm_num,
-  valid_exp := by norm_num
-}
+-- def Decimal32 : FloatFormat := {
+--   radix := Radix.Decimal,
+--   prec := 7,
+--   min_exp := -95,
+--   max_exp := 96,
+--   valid_prec := by norm_num,
+--   valid_exp := by norm_num
+-- }
 
-def Decimal64 : FloatFormat := {
-  radix := Radix.Decimal,
-  prec := 16,
-  min_exp := -383,
-  max_exp := 384,
-  valid_prec := by norm_num,
-  valid_exp := by norm_num
-}
+-- def Decimal64 : FloatFormat := {
+--   radix := Radix.Decimal,
+--   prec := 16,
+--   min_exp := -383,
+--   max_exp := 384,
+--   valid_prec := by norm_num,
+--   valid_exp := by norm_num
+-- }
 
-def Decimal128 : FloatFormat := {
-  radix := Radix.Decimal,
-  prec := 34,
-  min_exp := -6143,
-  max_exp := 6144,
-  valid_prec := by norm_num,
-  valid_exp := by norm_num
-}
+-- def Decimal128 : FloatFormat := {
+--   radix := Radix.Decimal,
+--   prec := 34,
+--   min_exp := -6143,
+--   max_exp := 6144,
+--   valid_prec := by norm_num,
+--   valid_exp := by norm_num
+-- }
 
 def isStandardExpRange [FloatFormat] : Prop :=
   FloatFormat.min_exp = 1 - FloatFormat.max_exp
@@ -186,20 +188,20 @@ theorem tf32_standard_exp_range : TF32.isStandardExpRange := by
   simp only [TF32, min_exp, max_exp]
   norm_num
 
-theorem decimal32_standard_exp_range : Decimal32.isStandardExpRange := by
-  unfold isStandardExpRange
-  simp only [Decimal32, min_exp, max_exp]
-  norm_num
+-- theorem decimal32_standard_exp_range : Decimal32.isStandardExpRange := by
+--   unfold isStandardExpRange
+--   simp only [Decimal32, min_exp, max_exp]
+--   norm_num
 
-theorem decimal64_standard_exp_range : Decimal64.isStandardExpRange := by
-  unfold isStandardExpRange
-  simp only [Decimal64, min_exp, max_exp]
-  norm_num
+-- theorem decimal64_standard_exp_range : Decimal64.isStandardExpRange := by
+--   unfold isStandardExpRange
+--   simp only [Decimal64, min_exp, max_exp]
+--   norm_num
 
-theorem decimal128_standard_exp_range : Decimal128.isStandardExpRange := by
-  unfold isStandardExpRange
-  simp only [Decimal128, min_exp, max_exp]
-  norm_num
+-- theorem decimal128_standard_exp_range : Decimal128.isStandardExpRange := by
+--   unfold isStandardExpRange
+--   simp only [Decimal128, min_exp, max_exp]
+--   norm_num
 
 @[simp]
 theorem valid_exp' [FloatFormat] : FloatFormat.min_exp < FloatFormat.max_exp := FloatFormat.valid_exp
