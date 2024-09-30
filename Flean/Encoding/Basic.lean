@@ -170,12 +170,6 @@ def isInfinite (b : FloatBits) : Prop := b.isExponentAllOnes ∧ b.isTSignifican
 
 instance [FloatFormat] : DecidablePred FloatBits.isInfinite := inferInstanceAs (DecidablePred (λ (b : FloatBits) => b.isExponentAllOnes ∧ b.isTSignificandZero))
 
-theorem isInfinite_mk' (b : FloatBits) : b.isInfinite → b = FloatBits.mk' b.sign' (BitVec.allOnes _) 0 := by
-  intro ⟨he, hsig⟩
-
-  sorry
-
-
 def isZero (b : FloatBits) : Prop := b.toBitsTriple.exponent = 0 ∧ b.isTSignificandZero
 
 instance [FloatFormat] : DecidablePred FloatBits.isZero := inferInstanceAs (DecidablePred (λ (b : FloatBits) => b.toBitsTriple.exponent = 0 ∧ b.isTSignificandZero))
@@ -367,6 +361,13 @@ theorem isInfinite_val (b : FloatBits) : b.isInfinite ↔ b = FloatBits.infinite
       rw [hv]
       apply infinite_isInfinite
     }
+
+theorem isInfinite_mk' (b : FloatBits) : b.isInfinite → b = FloatBits.mk' b.sign' (BitVec.allOnes _) 0 := by
+  intro ⟨he, hsig⟩
+  apply (ext_triple' _ _).mpr
+  rw [construct_sign_eq_BitsTriple, construct_exponent_eq_BitsTriple, construct_significand_eq_BitsTriple]
+  unfold sign'
+  simp_all only [BitVec.ofNat_eq_ofNat, and_self]
 
 /-- Construct a NaN with the given sign bit and significand. -/
 def NaN (sign : Bool) (T : BitVec FloatFormat.significandBits) (_hT : T ≠ 0): FloatBits :=
