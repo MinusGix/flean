@@ -70,6 +70,13 @@ theorem cast_eq_swap {n m : Nat} (h : n = m) (x : BitVec n) (y : BitVec m) : x =
   subst h
   simp_all only [cast_eq]
 
+/-- If it is not equal to all ones, then it is less than all ones -/
+theorem ne_allOnes_lt { n : Nat} (E : BitVec n) (hE : E ≠ BitVec.allOnes n) :
+  E.toNat < 2 ^ n - 1 := by
+  have hLt := E.isLt
+  have hA : (BitVec.allOnes n).toNat = 2 ^ n - 1 := BitVec.toNat_allOnes
+  have h : E.toNat ≠ (BitVec.allOnes n).toNat := (BitVec.toNat_ne _ _).mp hE
+  omega
 
 -- Has to use cast, which I wish we could replace with a better mechanism, since I don't really think the information about the sizes being equivalent should be in the proposition statement itself.
 /-! BitVec.append is associative -/

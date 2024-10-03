@@ -3,6 +3,7 @@ import Mathlib.Data.Rat.Defs
 import Mathlib.Data.Rat.Cast.Defs
 import Mathlib.Tactic.Linarith
 import Mathlib.Data.Real.Basic
+import Mathlib.Tactic.Ring
 
 @[ext]
 structure Radix where
@@ -62,7 +63,7 @@ class FloatFormat where
   min_exp : ℤ
   max_exp : ℤ
   valid_prec : prec ≥ 2
-  valid_exp : min_exp < max_exp
+  valid_exp : min_exp < max_exp ∧ 0 < max_exp
 namespace FloatFormat
 
 def radix [FloatFormat] : Radix := Radix.Binary
@@ -158,6 +159,11 @@ def TF32 : FloatFormat := {
 def isStandardExpRange [FloatFormat] : Prop :=
   FloatFormat.min_exp = 1 - FloatFormat.max_exp
 
+theorem standardExpRange_pos [FloatFormat] (standard : FloatFormat.isStandardExpRange) : 0 < FloatFormat.max_exp - FloatFormat.min_exp := by
+  have := FloatFormat.valid_exp
+  rw [standard] at this ⊢
+  omega
+
 theorem binary16_standard_exp_range : Binary16.isStandardExpRange := by
   unfold isStandardExpRange
   simp only [Binary16, min_exp, max_exp]
@@ -204,9 +210,12 @@ theorem tf32_standard_exp_range : TF32.isStandardExpRange := by
 --   norm_num
 
 @[simp]
-theorem valid_exp' [FloatFormat] : FloatFormat.min_exp < FloatFormat.max_exp := FloatFormat.valid_exp
+theorem valid_exp' [FloatFormat] : FloatFormat.min_exp < FloatFormat.max_exp := FloatFormat.valid_exp.left
 
 @[simp]
-theorem valid_exp'_le [FloatFormat] : FloatFormat.min_exp ≤ FloatFormat.max_exp := FloatFormat.valid_exp.le
+theorem valid_exp'_le [FloatFormat] : FloatFormat.min_exp ≤ FloatFormat.max_exp := FloatFormat.valid_exp.left.le
+
+@[simp]
+theorem max_exp_pos [FloatFormat] : 0 < FloatFormat.max_exp := FloatFormat.valid_exp.right
 
 end FloatFormat
