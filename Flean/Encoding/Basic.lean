@@ -261,6 +261,12 @@ theorem isFinite_notNaN (b : FloatBits) : b.isFinite → ¬b.isNaN := λ h => h.
 @[simp]
 theorem isFinite_notInfinite (b : FloatBits) : b.isFinite → ¬b.isInfinite := λ h => h.right
 
+theorem isFinite_exponent_not_allOnes (b : FloatBits) : b.isFinite → ¬b.isExponentAllOnes := by
+  intro hf he
+  have := not_not.mp (not_and.mp (b.isFinite_notNaN hf) he)
+  have := not_and.mp (b.isFinite_notInfinite hf) he
+  contradiction
+
 @[simp]
 theorem notAll (b : FloatBits) : ¬(b.isNaN ∧ b.isInfinite ∧ b.isFinite) := by
   intro ⟨h1, h2⟩
@@ -292,6 +298,11 @@ theorem disj (b : FloatBits) : (Xor' (Xor' b.isNaN b.isInfinite) b.isFinite) := 
         not_and, Decidable.not_not, isInfinite, not_true_eq_false, imp_false, implies_true,
         and_false, and_self, xor_false, id_eq, not_false_eq_true]
 -- TODO: disj between nan, infinite, normal finite, subnormal finite and zero
+
+theorem notNaN_notInfinite (b : FloatBits) : ¬b.isNaN → ¬b.isInfinite → b.isFinite := by
+  unfold FloatBits.isFinite FloatBits.isNaN FloatBits.isInfinite
+  intro h1 h2
+  exact ⟨h1, h2⟩
 
 /-- Constructing a `FloatBitsTriple` from a `FloatBits` made by `(s, E, T)` will yield the same `(s, E, T)` -/
 theorem construct_triple_eq_BitsTriple (s : BitVec FloatFormat.signBits) (E : BitVec FloatFormat.exponentBits) (T : BitVec FloatFormat.significandBits) :
