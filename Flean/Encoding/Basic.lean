@@ -4,10 +4,13 @@ import Mathlib.Data.Rat.Cast.Defs
 import Mathlib.Tactic.Linarith
 import Mathlib.Data.Real.Basic
 import Mathlib.Tactic.LiftLets
+import Mathlib.Tactic.Rify
+import Mathlib.Analysis.SpecialFunctions.Log.Base
 
 import Flean.Basic
 import Flean.BitVecUtil
 import Flean.Encoding.BitSize
+import Flean.Encoding.Util
 
 namespace Fp
 
@@ -50,6 +53,22 @@ variable [FloatFormat]
 def mk' (sign : BitVec FloatFormat.signBits) (exponent : BitVec FloatFormat.exponentBits) (significand : BitVec FloatFormat.significandBits) : FloatBits :=
   let b := sign ++ exponent ++ significand
   {b := BitVec.cast FloatFormat.bitSize_eq.symm b}
+
+instance : Zero FloatBits := ⟨FloatBits.mk (0 : BitVec FloatFormat.bitSize)⟩
+
+instance : Inhabited FloatBits := ⟨0⟩
+
+theorem zero_def : (0 : FloatBits) = FloatBits.mk (0 : BitVec FloatFormat.bitSize) := rfl
+
+theorem zero_def' : (0 : FloatBits) = FloatBits.mk' (0 : BitVec FloatFormat.signBits) (0 : BitVec FloatFormat.exponentBits) (0 : BitVec FloatFormat.significandBits) := by
+  rw [zero_def]
+  unfold mk'
+  norm_num
+  rw [BitVec.ofNat_eq_ofNat]
+  ext1 i
+  simp_all only [BitVec.getLsb_zero, BitVec.ofNat_eq_ofNat, BitVec.getLsb_append, Bool.cond_self]
+
+
 
 def ext1 (b : FloatBits) (c : BitVec FloatFormat.bitSize) : b = ⟨c⟩ ↔ b.b = c := by
   constructor
@@ -402,17 +421,183 @@ theorem NaN_isNaN (sign : Bool) (T : BitVec FloatFormat.significandBits) (hT : T
 def sigToTrailing (m : ℕ) := m &&& (2^FloatFormat.significandBits - 1)
 
 /-- Construct a finite float from the sign, exponent, and integral significand. -/
-def finite (s : Bool) (e : ℤ) (m : ℕ) : FloatBits :=
+def finite (s : Bool) (e : ℤ) (m : ℕ) (vf : IsValidFiniteVal e m) : FloatBits :=
   -- Biased exponent
-  let E := e + FloatFormat.exponentBias
+  let E := if e = FloatFormat.min_exp then 0 else e + FloatFormat.exponentBias
   let E := E.toNat
-  -- TODO: we aren't doing this dependent on the Nat which likely makes it harder to infer that it is necessary
-  -- Trailing significand. We can cut off the leading bit because that is entangled with the exponent's value.
-  let T := sigToTrailing m
+  let T := if e = FloatFormat.min_exp then sigToTrailing m else m
   let sign := BitVec.ofBool s
   let significand := BitVec.ofNat FloatFormat.significandBits T
   let exponent := BitVec.ofNat FloatFormat.exponentBits E
   FloatBits.mk' sign exponent significand
+
+
+theorem validFiniteVal_biasedExponent_notAllOnes (vf : IsValidFiniteVal e m) :
+  ¬(BitVec.ofNat FloatFormat.exponentBits (e + FloatFormat.exponentBias).toNat = BitVec.allOnes _) := by
+  unfold IsValidFiniteVal at vf
+  intro h
+  have l := (BitVec.ofNat FloatFormat.exponentBits (e + FloatFormat.exponentBias).toNat).isLt
+  unfold FloatFormat.exponentBias at h l
+  -- unfold FloatFormat.exponentBits at h l
+  have h := (BitVec.toNat_eq _ _).mp h
+  rw [BitVec.toNat_ofNat] at h l
+  rw [BitVec.toNat_allOnes] at h
+  have h1 : FloatFormat.max_exp.toNat + 1 < 2^FloatFormat.exponentBits := Nat.lt_log2_self
+  have h1 : FloatFormat.max_exp.toNat < 2^FloatFormat.exponentBits - 1 := by omega
+  have h1' : FloatFormat.max_exp < 2^FloatFormat.exponentBits - 1 := by
+    zify at h1
+    norm_cast at h1
+    zify at h1
+    rw [Nat.cast_sub, Nat.cast_one, Nat.cast_pow, Nat.cast_two] at h1
+    rw [Int.toNat_of_nonneg] at h1
+    omega
+    have := FloatFormat.max_exp_pos
+    omega
+    omega
+  have h1'' : FloatFormat.max_exp < 2^FloatFormat.exponentBits := by
+    zify at h1
+    norm_cast at h1
+    zify at h1
+    rw [Nat.cast_sub, Nat.cast_one, Nat.cast_pow, Nat.cast_two] at h1
+    rw [Int.toNat_of_nonneg] at h1
+    omega
+    have := FloatFormat.max_exp_pos
+    omega
+    omega
+  have h10 : FloatFormat.max_exp.toNat < 2^FloatFormat.exponentBits := by omega
+
+  if e ≤ 0 then
+    have a1 : ∀ (a b c : ℕ), a < c → b ≤ 0 → a + b < c := by omega
+    have h2 : (e + FloatFormat.max_exp).toNat < 2^FloatFormat.exponentBits - 1:= by
+      rw [add_comm]
+      apply lt_add_neg_toNat_lt
+      exact FloatFormat.max_exp_pos
+      rw [Nat.cast_sub, Nat.cast_pow, Nat.cast_one, Nat.cast_two]
+      exact h1'
+      omega
+      omega
+    have a0 : (FloatFormat.max_exp + e).toNat < 2^FloatFormat.exponentBits := by
+      rw [add_comm]
+      omega
+    have a0 : (e + FloatFormat.max_exp).toNat < 2^FloatFormat.exponentBits := by
+      rw [add_comm]
+      exact a0
+    have a1 := Nat.mod_eq_of_lt a0
+    rw [a1] at h
+    have := h2.ne
+    contradiction
+  else
+    have a0 : 2 ^ FloatFormat.exponentBits = 2 * (FloatFormat.max_exp + 1) := by
+      unfold FloatFormat.exponentBits
+      have := FloatFormat.valid_exp
+      rw [pow_add, pow_one]
+      rify
+      -- Real.rpow_nat_cast
+
+
+    -- unfold FloatFormat.exponentBits at h
+    -- have a0 : 2 ^ FloatFormat.exponentBits ≤ (FloatFormat.max_exp.toNat + 1) * 2 := by
+    --   unfold FloatFormat.exponentBits
+    --   rw [Nat.log2_eq_log_two]
+    --   rw [← Nat.log_mul_base]
+    --   rw [← Nat.log2_eq_log_two]
+    --   apply Nat.log2_self_le
+    --   have := FloatFormat.max_exp_pos
+    --   omega
+    --   norm_num
+    --   omega
+    -- have a0 :  2 ^ (Nat.log2 (FloatFormat.max_exp.toNat + 1)) * 2 ≤ (FloatFormat.max_exp.toNat + 1) * 2 := by
+    --   simp_arith
+    --   rw [Nat.log2_eq_log_two]
+    --   exact Nat.pow_log_le_self 2 (by omega)
+    -- have a1 : 2 ^ (Nat.log2 (FloatFormat.max_exp.toNat + 1)) * 2 - 2 ≤ FloatFormat.max_exp.toNat + FloatFormat.max_exp.toNat := by omega
+    -- have a2 : 2 ^ (Nat.log2 (FloatFormat.max_exp.toNat + 1)) - 1 ≤ FloatFormat.max_exp.toNat := by omega
+    -- -- have a3 : 2 ^ (Nat.log2 (FloatFormat.max_exp.toNat + 1)) * 2 - 2
+    -- have a5 : 2 ^ (Nat.log2 (FloatFormat.max_exp.toNat + 1)) * 2 - 1 < 2 * FloatFormat.max_exp.toNat + 2 := by omega
+    -- have a6 : 2 ^ (Nat.log2 (FloatFormat.max_exp.toNat + 1)) * 2 - 1 < 2 * FloatFormat.max_exp.toNat + 2 := by omega
+    -- have l' : (e + FloatFormat.max_exp).toNat < 2^FloatFormat.exponentBits := by
+    --   zify
+    --   rw [Nat.mod_eq_of_lt]
+      -- rw [Int.toNat_of_nonneg]
+      -- rw [Nat.mod_eq] at l
+
+      -- apply lt_add_neg_toNat_lt
+      -- omega
+      -- apply lt_of_le_of_lt
+      -- exact vf.right.left
+      -- rw [Nat.cast_pow, Nat.cast_two]
+      -- trivial
+
+      sorry
+    have a7 : FloatFormat.max_exp.toNat + FloatFormat.max_exp.toNat < 2^FloatFormat.exponentBits := by
+      sorry
+
+    generalize_proofs h
+    -- induction e
+    -- case negSucc =>
+    --   rename_i hl
+    --   simp only [not_le, Int.negSucc_not_pos] at hl
+    -- case ofNat =>
+    --   rename_i en _ _
+    --   induction en
+    --   case zero =>
+    --     simp_all only [Nat.ofNat_pos, mul_le_mul_right, tsub_le_iff_right, Int.ofNat_eq_coe, Nat.cast_zero, ge_iff_le,
+    --       zero_add, le_refl, not_true_eq_false]
+    --   case succ =>
+
+
+
+
+theorem finite_isNotNaN (s : Bool) (e : ℤ) (m : ℕ) (vf : IsValidFiniteVal e m) :
+  ¬(finite s e m vf).isNaN := by
+  unfold IsValidFiniteVal at vf
+  unfold FloatBits.isNaN FloatBits.finite
+  lift_lets
+  extract_lets E1 E T sign significand exponent
+  sorry
+  -- simp_all
+  -- if he : e = FloatFormat.min_exp then
+  --   sorry
+  -- else
+  --   simp only [he, ↓reduceIte] at h
+  --   rw [FloatBits.construct_exponent_eq_BitsTriple] at h
+
+
+theorem finite_isNotInfinite (s : Bool) (e : ℤ) (m : ℕ) (vf : IsValidFiniteVal e m) :
+  ¬(finite s e m vf).isInfinite := by
+  sorry
+
+theorem finite_isFinite (s : Bool) (e : ℤ) (m : ℕ) (vf : IsValidFiniteVal e m) :
+  (finite s e m vf).isFinite := by
+  sorry
+  -- apply notNaN_notInfinite
+  -- unfold IsValidFiniteVal at vf
+  -- unfold FloatBits.isNaN FloatBits.finite FloatBits.isExponentAllOnes FloatBits.isTSignificandZero
+  -- lift_lets
+  -- extract_lets E1 E T sign significand exponent
+  -- rw [construct_exponent_eq_BitsTriple, construct_significand_eq_BitsTriple]
+  -- intro h
+  -- if he : e = FloatFormat.min_exp then
+  --   have h1 : exponent = 0 := by
+  --     subst he
+  --     simp_all only [↓reduceIte, Int.toNat_zero, BitVec.ofNat_eq_ofNat, exponent, E, E1, significand, T]
+  --   have h2 := BitVec.allOnes_ne_zero FloatFormat.exponentBits_nz
+  --   have := h.left
+  --   symm at this
+  --   rw [h1] at this
+  --   contradiction
+  -- else
+  --   have h := h.left
+  --   have l := exponent.isLt
+  --   unfold_let exponent E E1 at h l
+  --   simp only [he, ↓reduceIte, BitVec.ofNat_eq_ofNat] at h l
+  --   unfold FloatFormat.exponentBias at h l
+  --   -- rw [BitVec.toNat_ofNat] at h
+  --   have h := (BitVec.toNat_eq _ _).mp h
+  --   rw [BitVec.toNat_ofNat] at h l
+  --   rw [BitVec.toNat_allOnes] at h
+  --   unfold FloatFormat.exponentBits at h
+  --   have j := FloatBits.isFinite_exponent_not_allOnes (FloatBits.finite s e m vf)
 
 -- TODO: trailing to significand, takes E as well
 

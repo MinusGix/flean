@@ -32,3 +32,15 @@ theorem two_pow_pred_lt_two_pow_sub_one {n : ℕ} (hn : n ≥ 2) : (2 : ℚ) ^ (
   norm_num
   norm_num
   omega
+
+theorem lt_add_neg_toNat_lt (a b : ℤ) (c : ℕ) (a_pos : a > 0) : a < c → b ≤ 0 → ↑(a + b).toNat < c := by
+  intro ha hb
+  zify at hb ⊢
+  rw [show (↑c : ℤ) = ↑(↑c : ℤ).toNat by norm_cast]
+  apply Nat.cast_lt.mpr
+  apply (Int.toNat_lt_toNat _).mpr
+  rw [show a +b = b + a by ring]
+  apply add_lt_of_nonpos_of_lt
+  exact hb
+  exact ha
+  omega

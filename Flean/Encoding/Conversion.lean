@@ -15,8 +15,8 @@ def toBits [FloatFormat] (f : Fp) : FpQuotient :=
   match f with
   | .finite f =>
     -- We don't need the valid proof to construct the bit pattern, though for reasoning we will need to know it is valid
-    let ⟨s, e, m, _valid⟩ := f
-    let b := FloatBits.finite s e m
+    let ⟨s, e, m, valid⟩ := f
+    let b := FloatBits.finite s e m valid
     ⟦b⟧
   | .infinite b =>
     ⟦FloatBits.infinite b⟧
@@ -158,7 +158,7 @@ theorem FloatBits.isFinite_validFloatVal [FloatFormat] {b : FloatBits} (st : Flo
       omega
 
 /-! Convert Bits back into a float.-/
-def ofBits [FloatFormat] {st : FloatFormat.isStandardExpRange} (b : FloatBits) : Fp :=
+def ofBits [FloatFormat] (st : FloatFormat.isStandardExpRange) (b : FloatBits) : Fp :=
   if hn : b.isNaN then
     .NaN
   else if hi : b.isInfinite then
@@ -167,6 +167,79 @@ def ofBits [FloatFormat] {st : FloatFormat.isStandardExpRange} (b : FloatBits) :
     let hf : b.isFinite := FloatBits.notNaN_notInfinite b hn hi
 
     .finite ⟨b.toBitsTriple.sign.toNat == 1, b.FpExponent, b.FpSignificand, FloatBits.isFinite_validFloatVal st hf⟩
+
+theorem lift_isNaN [FloatFormat] {f : Fp} (h : f.isNaN) : (toBits f).isNaN := by
+  unfold Fp.isNaN at h
+  unfold toBits FpQuotient.isNaN FloatBits.isNaN
+  subst h
+  simp_all only [ne_eq, BitVec.ofNat_eq_ofNat, Quotient.lift_mk]
+  apply And.intro
+  · unfold FloatBits.NaN FloatBits.isExponentAllOnes
+    norm_num
+    rw [FloatBits.construct_exponent_eq_BitsTriple]
+  · apply Aesop.BuiltinRules.not_intro
+    intro a
+    unfold FloatBits.NaN at a
+    rw [FloatBits.construct_significand_eq_BitsTriple] at a
+    have := FloatFormat.significandBits_pos
+    have a := (BitVec.toNat_eq _ _).mp a
+    rw [BitVec.toNat_ofNat, BitVec.toNat_ofNat, Nat.one_mod_of_ne_one, Nat.zero_mod] at a
+    contradiction
+    simp_all only [gt_iff_lt, tsub_pos_iff_lt, Nat.one_mod_two_pow, Nat.zero_mod, one_ne_zero]
+
+theorem lift_isInfinite [FloatFormat] {f : Fp} (h : f.isInfinite) : (toBits f).isInfinite := by
+  unfold Fp.isInfinite at h
+  unfold toBits FpQuotient.isInfinite FloatBits.isInfinite
+  cases h
+  all_goals {
+    rename_i h;
+    subst h
+    simp only [Quotient.lift_mk]
+    unfold FloatBits.infinite FloatBits.isExponentAllOnes FloatBits.isTSignificandZero
+    rw [FloatBits.construct_exponent_eq_BitsTriple, FloatBits.construct_significand_eq_BitsTriple]
+    trivial
+  }
+
+theorem lift_isFinite [FloatFormat] {f : Fp} (h : f.isFinite) : (toBits f).isFinite := by
+  unfold Fp.isFinite at h
+  -- unfold toBits FpQuotient.isFinite FloatBits.isFinite
+  simp_all only [Bool.false_eq_true]
+  split at h
+  -- simp [FloatBits.finite_isFinite]
+  sorry
+  sorry
+  sorry
+
+theorem ofBits_zero [FloatFormat] {st : FloatFormat.isStandardExpRange} : @ofBits _ st 0 = 0 := by
+  unfold ofBits
+  split_ifs with h1 h2
+  · unfold FloatBits.isNaN FloatBits.isExponentAllOnes at h1
+    rw [FloatBits.zero_def', FloatBits.construct_exponent_eq_BitsTriple] at h1
+    have := FloatFormat.exponentBits_pos
+    have := BitVec.zero_ne_allOnes (by omega) h1.left
+    contradiction
+  · unfold FloatBits.isInfinite FloatBits.isExponentAllOnes at h2
+    rw [FloatBits.zero_def', FloatBits.construct_exponent_eq_BitsTriple] at h2
+    have := FloatFormat.exponentBits_pos
+    have := BitVec.zero_ne_allOnes (by omega) h2.left
+    contradiction
+  · norm_num
+    unfold FloatBits.FpExponent FloatBits.FpSignificand
+    simp_rw [Fp.zero_def, FloatBits.zero_def', FloatBits.construct_sign_eq_BitsTriple, FloatBits.construct_significand_eq_BitsTriple, FloatBits.construct_exponent_eq_BitsTriple]
+    simp_all only [BitVec.ofNat_eq_ofNat, BitVec.toNat_ofNat, pow_one, Nat.zero_mod, Nat.reduceBEq, ↓reduceIte,
+      finite.injEq]
+    rfl
+
+-- TODO: uniqueness of ±0
+
+theorem toBits_ofBits [FloatFormat] {st : FloatFormat.isStandardExpRange} (f : Fp) : ofBits st (toBits f).representative = f := by
+  if hn : f.isNaN then
+    sorry
+  else if hi : f.isInfinite then
+    sorry
+  else
+    sorry
+
 
 
 end Fp
@@ -177,3 +250,5 @@ def f' := @Fp.toBits FloatFormat.Binary32
 def v := f' (0 : @Fp FloatFormat.Binary32)
 -- #eval! @Fp.FpQuotient.representative FloatFormat.Binary32 v FloatFormat.binary32_standard_exp_range
 -- #eval! (@toBits FloatFormat.Binary32 (0 : @Fp FloatFormat.Binary32) FloatFormat.binary32_standard_exp_range).representative
+
+#eval (@Fp.toRat? FloatFormat.Binary16) (@Fp.ofBits FloatFormat.Binary16 FloatFormat.binary16_standard_exp_range (0 : @Fp.FloatBits FloatFormat.Binary16))

@@ -79,12 +79,32 @@ namespace Fp
 
 instance : Zero Fp := ⟨.finite 0⟩
 
+instance : Inhabited Fp := ⟨0⟩
+
+theorem zero_def : (0 : Fp) = .finite 0 := rfl
+
 /-- The sign of the number. The sign of NaN is left defined as 0 but that may not result in the same sign as the bit repr -/
 def sign (x : Fp) : ℤ :=
   match x with
   | .finite x => x.sign
   | .infinite b => if b then 1 else -1
   | .NaN => 0
+
+def isNaN (x : Fp) : Prop := x = .NaN
+
+def isInfinite (x : Fp) : Prop := x = .infinite true ∨ x = .infinite false
+
+-- Is there a better way to write these Matches are kinda weird for a Prop...
+def isFinite (x : Fp) : Prop := match x with
+  | .finite _ => true
+  | .infinite _ => false
+  | .NaN => false
+
+def toRat? (x : Fp) : Option ℚ :=
+  match x with
+  | .finite x => some (FiniteFp.toRat x)
+  | .infinite _ => none
+  | .NaN => none
 
 -- TODO: to EReal
 

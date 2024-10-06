@@ -78,6 +78,17 @@ theorem ne_allOnes_lt { n : Nat} (E : BitVec n) (hE : E ≠ BitVec.allOnes n) :
   have h : E.toNat ≠ (BitVec.allOnes n).toNat := (BitVec.toNat_ne _ _).mp hE
   omega
 
+theorem ofNat_allOnes_eq_allOnes {n : Nat} : BitVec.ofNat n (2^n - 1) = BitVec.allOnes n := by
+  unfold BitVec.allOnes
+  apply BitVec.eq_of_toNat_eq
+  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt, BitVec.toNat_ofNatLt]
+  have nz : 2 ^ n ≠ 0 := by
+    intro h
+    have := (Nat.pow_eq_zero.mp h).left
+    contradiction
+  have : ∀ (a : ℕ), a ≠ 0 → a - 1 < a := by omega
+  apply this _ nz
+
 -- Has to use cast, which I wish we could replace with a better mechanism, since I don't really think the information about the sizes being equivalent should be in the proposition statement itself.
 /-! BitVec.append is associative -/
 theorem append_assoc {n m r : Nat} {a : BitVec n} {b : BitVec m} {c : BitVec r} : (a ++ b) ++ c = (a ++ (b ++ c)).cast (add_assoc n m r).symm := by

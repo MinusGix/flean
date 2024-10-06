@@ -40,17 +40,6 @@ def FloatFormat.exponentRange [FloatFormat] : ℤ :=
 def FloatFormat.exponentBits [FloatFormat] : ℕ :=
   Nat.log2 (FloatFormat.max_exp.toNat + 1) + 1
 
--- /-- Simpler definition of the number of exponent bits than if one were to just unfold -/
--- theorem FloatFormat.exponentBits_def [FloatFormat] : FloatFormat.exponentBits = Nat.log2 (FloatFormat.max_exp - FloatFormat.min_exp).toNat + 1 := by
---   unfold FloatFormat.exponentBits FloatFormat.exponentRange
---   have := FloatFormat.valid_exp
---   apply Nat.add_right_cancel_iff.mpr
---   congr
---   rw [Int.toNat_add, Int.toNat_one, Nat.add_sub_cancel]
---   omega
---   norm_num
-
-
 @[simp]
 theorem FloatFormat.exponentRange_nonneg [FloatFormat] :
   FloatFormat.exponentRange ≥ 0 := by
@@ -71,6 +60,11 @@ theorem FloatFormat.exponentBits_pos [FloatFormat] :
   unfold FloatFormat.exponentBits
   have := FloatFormat.valid_exp
   omega
+
+theorem FloatFormat.exponentBits_nz [FloatFormat] :
+  FloatFormat.exponentBits ≠ 0 := by
+  have := FloatFormat.exponentBits_pos
+  exact Nat.not_eq_zero_of_lt this
 
 @[reducible]
 def FloatFormat.bitSize [FloatFormat] : ℕ :=
