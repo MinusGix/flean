@@ -441,56 +441,26 @@ theorem validFiniteVal_biasedExponent_notAllOnes (vf : IsValidFiniteVal e m) (st
   have h := (BitVec.toNat_eq _ _).mp h
   rw [BitVec.toNat_ofNat] at h l
   rw [BitVec.toNat_allOnes] at h
-  have := FloatFormat.max_exp_pos
-  have a0 : FloatFormat.max_exp.toNat + 1 ≤ 2^FloatFormat.exponentBits2 := by
-    unfold FloatFormat.exponentBits2
-    apply Nat.le_pow_clog
-    norm_num
-  have a0 : FloatFormat.max_exp.toNat < 2^FloatFormat.exponentBits2 := by omega
-  have a1 : 2 * FloatFormat.max_exp.toNat < 2^FloatFormat.exponentBits := FloatFormat.lt_pow_exponentBits2_imp_double_lt_exponentBits a0
-  have a1' : 2 * FloatFormat.max_exp < 2^FloatFormat.exponentBits := by
-    zify at a1
-    rw [Int.toNat_of_nonneg] at a1
-    exact a1
-    omega
+  have a0 : FloatFormat.max_exp.toNat + 1 ≤ 2^FloatFormat.exponentBits2 := Nat.le_pow_clog one_lt_two (FloatFormat.max_exp.toNat + 1)
   have ae_pos : e + FloatFormat.max_exp ≥ 0 := by
-    have h0 := vf.left
-    rw [st] at h0
+    -- TODO(minor): Not sure we actually need isStandardExpRange here
+    rw [st] at vf
     omega
-  have ae_le : e + FloatFormat.max_exp ≤ 2 * FloatFormat.max_exp := by omega
-  have a2 : (e + FloatFormat.max_exp).toNat < 2^FloatFormat.exponentBits := by
-    zify
-    rw [Int.toNat_of_nonneg]
-    apply lt_of_le_of_lt
-    trivial
-    omega
-    trivial
-  rw [Nat.mod_eq_of_lt a2] at h l
-  have a3 : 2 * (FloatFormat.max_exp + 1).toNat ≤ 2^FloatFormat.exponentBits := by
-    apply FloatFormat.le_pow_exponentBits2_imp_double_le_exponentBits
-    rw [Int.toNat_add, Int.toNat_one]
-    trivial
-    omega
-    trivial
   have a4 : 2 * FloatFormat.max_exp.toNat + 2 ≤ 2^FloatFormat.exponentBits := by
-    rw [Int.toNat_add, Int.toNat_one, mul_add, mul_one] at a3
-    exact a3
-    omega
-    norm_num
+    conv => lhs; rhs; rw [← mul_one 2]
+    rw [← mul_add]
+    apply FloatFormat.le_pow_exponentBits2_imp_double_le_exponentBits
+    trivial
   have a6 : (e + FloatFormat.max_exp).toNat < 2 * FloatFormat.max_exp.toNat + 1 := by
     zify
     rw [Int.toNat_of_nonneg, Int.toNat_of_nonneg]
     <;> omega
-  have ae_le' : (e + FloatFormat.max_exp).toNat ≤ 2 * FloatFormat.max_exp.toNat := by
+  have ae_le : (e + FloatFormat.max_exp).toNat ≤ 2 * FloatFormat.max_exp.toNat := by
     zify
-    rw [Int.toNat_of_nonneg, Int.toNat_of_nonneg]
+    rw [Int.toNat_of_nonneg ae_pos, Int.toNat_of_nonneg FloatFormat.max_exp_pos.le]
     omega
-    omega
-    omega
-  have a7 : (e + FloatFormat.max_exp).toNat < 2^FloatFormat.exponentBits - 1 := by
-    apply lt_of_le_of_lt
-    exact ae_le'
-    omega
+  have a7 : (e + FloatFormat.max_exp).toNat < 2^FloatFormat.exponentBits - 1 := lt_of_le_of_lt ae_le (by omega)
+  rw [Nat.mod_eq_of_lt (by omega)] at h
   rw [h] at a7
   exact (lt_self_iff_false _).mp a7
 
