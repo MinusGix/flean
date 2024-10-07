@@ -5,6 +5,7 @@ import Mathlib.Tactic.Linarith
 import Mathlib.Data.Real.Basic
 import Mathlib.Tactic.LiftLets
 import Mathlib.Tactic.Ring
+import Mathlib.Data.Nat.Log
 
 import Flean.Basic
 import Flean.BitVecUtil
@@ -38,7 +39,8 @@ def FloatFormat.exponentRange [FloatFormat] : ℤ :=
 
 @[reducible]
 def FloatFormat.exponentBits [FloatFormat] : ℕ :=
-  Nat.log2 (FloatFormat.max_exp.toNat + 1) + 1
+  Nat.clog 2 (FloatFormat.max_exp.toNat + 1) + 1
+  -- Nat.log2 (FloatFormat.max_exp.toNat + 1) + 1
 
 @[simp]
 theorem FloatFormat.exponentRange_nonneg [FloatFormat] :
@@ -65,6 +67,46 @@ theorem FloatFormat.exponentBits_nz [FloatFormat] :
   FloatFormat.exponentBits ≠ 0 := by
   have := FloatFormat.exponentBits_pos
   exact Nat.not_eq_zero_of_lt this
+
+/-- Exponent bits without the the + 1, which is common when using 2^FloatFormat.exponentBits in lower bounds -/
+@[reducible]
+def FloatFormat.exponentBits2 [FloatFormat] : ℕ :=
+  Nat.clog 2 (FloatFormat.max_exp.toNat + 1)
+
+theorem FloatFormat.pow_exponentBits2_eq_exponentBits [FloatFormat] :
+  2^FloatFormat.exponentBits2 * 2 = 2^FloatFormat.exponentBits := by
+  unfold FloatFormat.exponentBits2 FloatFormat.exponentBits
+  omega
+
+theorem FloatFormat.exponentBits2_lt_exponentBits [FloatFormat] :
+  FloatFormat.exponentBits2 < FloatFormat.exponentBits := by
+  unfold FloatFormat.exponentBits2 FloatFormat.exponentBits
+  omega
+
+theorem FloatFormat.pow_exponentBits2_lt_exponentBits [FloatFormat] :
+  2^FloatFormat.exponentBits2 < 2^FloatFormat.exponentBits := by
+  apply Nat.pow_lt_pow_of_lt
+  norm_num
+  exact FloatFormat.exponentBits2_lt_exponentBits
+
+theorem FloatFormat.le_pow_exponentBits2_imp_double_le_exponentBits [FloatFormat] {n : ℕ} (h : n ≤ 2^FloatFormat.exponentBits2) :
+  2 * n ≤ 2^FloatFormat.exponentBits := by
+  apply Nat.le_trans
+  apply Nat.mul_le_mul_left
+  exact h
+  rw [mul_comm, FloatFormat.pow_exponentBits2_eq_exponentBits]
+
+theorem FloatFormat.lt_pow_exponentBits2_imp_double_le_exponentBits [FloatFormat] {n : ℕ} (h : n < 2^FloatFormat.exponentBits2) :
+  2 * n ≤ 2^FloatFormat.exponentBits := by
+  apply Nat.le_trans
+  apply Nat.mul_le_mul_left
+  exact h.le
+  rw [mul_comm, FloatFormat.pow_exponentBits2_eq_exponentBits]
+
+theorem FloatFormat.lt_pow_exponentBits2_imp_double_lt_exponentBits [FloatFormat] {n : ℕ} (h : n < 2^FloatFormat.exponentBits2) :
+  2 * n < 2^FloatFormat.exponentBits := by
+  unfold FloatFormat.exponentBits FloatFormat.exponentBits2 at *
+  omega
 
 @[reducible]
 def FloatFormat.bitSize [FloatFormat] : ℕ :=

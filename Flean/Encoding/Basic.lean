@@ -432,121 +432,67 @@ def finite (s : Bool) (e : ℤ) (m : ℕ) (vf : IsValidFiniteVal e m) : FloatBit
   FloatBits.mk' sign exponent significand
 
 
-theorem validFiniteVal_biasedExponent_notAllOnes (vf : IsValidFiniteVal e m) :
+theorem validFiniteVal_biasedExponent_notAllOnes (vf : IsValidFiniteVal e m) (st : FloatFormat.isStandardExpRange) :
   ¬(BitVec.ofNat FloatFormat.exponentBits (e + FloatFormat.exponentBias).toNat = BitVec.allOnes _) := by
   unfold IsValidFiniteVal at vf
   intro h
   have l := (BitVec.ofNat FloatFormat.exponentBits (e + FloatFormat.exponentBias).toNat).isLt
   unfold FloatFormat.exponentBias at h l
-  -- unfold FloatFormat.exponentBits at h l
   have h := (BitVec.toNat_eq _ _).mp h
   rw [BitVec.toNat_ofNat] at h l
   rw [BitVec.toNat_allOnes] at h
-  have h1 : FloatFormat.max_exp.toNat + 1 < 2^FloatFormat.exponentBits := Nat.lt_log2_self
-  have h1 : FloatFormat.max_exp.toNat < 2^FloatFormat.exponentBits - 1 := by omega
-  have h1' : FloatFormat.max_exp < 2^FloatFormat.exponentBits - 1 := by
-    zify at h1
-    norm_cast at h1
-    zify at h1
-    rw [Nat.cast_sub, Nat.cast_one, Nat.cast_pow, Nat.cast_two] at h1
-    rw [Int.toNat_of_nonneg] at h1
+  have := FloatFormat.max_exp_pos
+  have a0 : FloatFormat.max_exp.toNat + 1 ≤ 2^FloatFormat.exponentBits2 := by
+    unfold FloatFormat.exponentBits2
+    apply Nat.le_pow_clog
+    norm_num
+  have a0 : FloatFormat.max_exp.toNat < 2^FloatFormat.exponentBits2 := by omega
+  have a1 : 2 * FloatFormat.max_exp.toNat < 2^FloatFormat.exponentBits := FloatFormat.lt_pow_exponentBits2_imp_double_lt_exponentBits a0
+  have a1' : 2 * FloatFormat.max_exp < 2^FloatFormat.exponentBits := by
+    zify at a1
+    rw [Int.toNat_of_nonneg] at a1
+    exact a1
     omega
-    have := FloatFormat.max_exp_pos
+  have ae_pos : e + FloatFormat.max_exp ≥ 0 := by
+    have h0 := vf.left
+    rw [st] at h0
+    omega
+  have ae_le : e + FloatFormat.max_exp ≤ 2 * FloatFormat.max_exp := by omega
+  have a2 : (e + FloatFormat.max_exp).toNat < 2^FloatFormat.exponentBits := by
+    zify
+    rw [Int.toNat_of_nonneg]
+    apply lt_of_le_of_lt
+    trivial
+    omega
+    trivial
+  rw [Nat.mod_eq_of_lt a2] at h l
+  have a3 : 2 * (FloatFormat.max_exp + 1).toNat ≤ 2^FloatFormat.exponentBits := by
+    apply FloatFormat.le_pow_exponentBits2_imp_double_le_exponentBits
+    rw [Int.toNat_add, Int.toNat_one]
+    trivial
+    omega
+    trivial
+  have a4 : 2 * FloatFormat.max_exp.toNat + 2 ≤ 2^FloatFormat.exponentBits := by
+    rw [Int.toNat_add, Int.toNat_one, mul_add, mul_one] at a3
+    exact a3
+    omega
+    norm_num
+  have a6 : (e + FloatFormat.max_exp).toNat < 2 * FloatFormat.max_exp.toNat + 1 := by
+    zify
+    rw [Int.toNat_of_nonneg, Int.toNat_of_nonneg]
+    <;> omega
+  have ae_le' : (e + FloatFormat.max_exp).toNat ≤ 2 * FloatFormat.max_exp.toNat := by
+    zify
+    rw [Int.toNat_of_nonneg, Int.toNat_of_nonneg]
     omega
     omega
-  have h1'' : FloatFormat.max_exp < 2^FloatFormat.exponentBits := by
-    zify at h1
-    norm_cast at h1
-    zify at h1
-    rw [Nat.cast_sub, Nat.cast_one, Nat.cast_pow, Nat.cast_two] at h1
-    rw [Int.toNat_of_nonneg] at h1
     omega
-    have := FloatFormat.max_exp_pos
+  have a7 : (e + FloatFormat.max_exp).toNat < 2^FloatFormat.exponentBits - 1 := by
+    apply lt_of_le_of_lt
+    exact ae_le'
     omega
-    omega
-  have h10 : FloatFormat.max_exp.toNat < 2^FloatFormat.exponentBits := by omega
-
-  if e ≤ 0 then
-    have a1 : ∀ (a b c : ℕ), a < c → b ≤ 0 → a + b < c := by omega
-    have h2 : (e + FloatFormat.max_exp).toNat < 2^FloatFormat.exponentBits - 1:= by
-      rw [add_comm]
-      apply lt_add_neg_toNat_lt
-      exact FloatFormat.max_exp_pos
-      rw [Nat.cast_sub, Nat.cast_pow, Nat.cast_one, Nat.cast_two]
-      exact h1'
-      omega
-      omega
-    have a0 : (FloatFormat.max_exp + e).toNat < 2^FloatFormat.exponentBits := by
-      rw [add_comm]
-      omega
-    have a0 : (e + FloatFormat.max_exp).toNat < 2^FloatFormat.exponentBits := by
-      rw [add_comm]
-      exact a0
-    have a1 := Nat.mod_eq_of_lt a0
-    rw [a1] at h
-    have := h2.ne
-    contradiction
-  else
-    have a0 : 2 ^ FloatFormat.exponentBits = 2 * (FloatFormat.max_exp + 1) := by
-      unfold FloatFormat.exponentBits
-      have := FloatFormat.valid_exp
-      rw [pow_add, pow_one]
-      rify
-      -- Real.rpow_nat_cast
-
-
-    -- unfold FloatFormat.exponentBits at h
-    -- have a0 : 2 ^ FloatFormat.exponentBits ≤ (FloatFormat.max_exp.toNat + 1) * 2 := by
-    --   unfold FloatFormat.exponentBits
-    --   rw [Nat.log2_eq_log_two]
-    --   rw [← Nat.log_mul_base]
-    --   rw [← Nat.log2_eq_log_two]
-    --   apply Nat.log2_self_le
-    --   have := FloatFormat.max_exp_pos
-    --   omega
-    --   norm_num
-    --   omega
-    -- have a0 :  2 ^ (Nat.log2 (FloatFormat.max_exp.toNat + 1)) * 2 ≤ (FloatFormat.max_exp.toNat + 1) * 2 := by
-    --   simp_arith
-    --   rw [Nat.log2_eq_log_two]
-    --   exact Nat.pow_log_le_self 2 (by omega)
-    -- have a1 : 2 ^ (Nat.log2 (FloatFormat.max_exp.toNat + 1)) * 2 - 2 ≤ FloatFormat.max_exp.toNat + FloatFormat.max_exp.toNat := by omega
-    -- have a2 : 2 ^ (Nat.log2 (FloatFormat.max_exp.toNat + 1)) - 1 ≤ FloatFormat.max_exp.toNat := by omega
-    -- -- have a3 : 2 ^ (Nat.log2 (FloatFormat.max_exp.toNat + 1)) * 2 - 2
-    -- have a5 : 2 ^ (Nat.log2 (FloatFormat.max_exp.toNat + 1)) * 2 - 1 < 2 * FloatFormat.max_exp.toNat + 2 := by omega
-    -- have a6 : 2 ^ (Nat.log2 (FloatFormat.max_exp.toNat + 1)) * 2 - 1 < 2 * FloatFormat.max_exp.toNat + 2 := by omega
-    -- have l' : (e + FloatFormat.max_exp).toNat < 2^FloatFormat.exponentBits := by
-    --   zify
-    --   rw [Nat.mod_eq_of_lt]
-      -- rw [Int.toNat_of_nonneg]
-      -- rw [Nat.mod_eq] at l
-
-      -- apply lt_add_neg_toNat_lt
-      -- omega
-      -- apply lt_of_le_of_lt
-      -- exact vf.right.left
-      -- rw [Nat.cast_pow, Nat.cast_two]
-      -- trivial
-
-      sorry
-    have a7 : FloatFormat.max_exp.toNat + FloatFormat.max_exp.toNat < 2^FloatFormat.exponentBits := by
-      sorry
-
-    generalize_proofs h
-    -- induction e
-    -- case negSucc =>
-    --   rename_i hl
-    --   simp only [not_le, Int.negSucc_not_pos] at hl
-    -- case ofNat =>
-    --   rename_i en _ _
-    --   induction en
-    --   case zero =>
-    --     simp_all only [Nat.ofNat_pos, mul_le_mul_right, tsub_le_iff_right, Int.ofNat_eq_coe, Nat.cast_zero, ge_iff_le,
-    --       zero_add, le_refl, not_true_eq_false]
-    --   case succ =>
-
-
-
+  rw [h] at a7
+  exact (lt_self_iff_false _).mp a7
 
 theorem finite_isNotNaN (s : Bool) (e : ℤ) (m : ℕ) (vf : IsValidFiniteVal e m) :
   ¬(finite s e m vf).isNaN := by
