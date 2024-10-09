@@ -214,15 +214,15 @@ theorem lift_isInfinite [FloatFormat] {f : Fp} (h : f.isInfinite) : (toBits f).i
     trivial
   }
 
-theorem lift_isFinite [FloatFormat] {f : Fp} (h : f.isFinite) : (toBits f).isFinite := by
+theorem lift_isFinite [FloatFormat] {f : Fp} (st : FloatFormat.isStandardExpRange) (h : f.isFinite) : (toBits f).isFinite := by
   unfold Fp.isFinite at h
-  -- unfold toBits FpQuotient.isFinite FloatBits.isFinite
-  simp_all only [Bool.false_eq_true]
+  rw [Bool.false_eq_true] at h
   split at h
-  -- simp [FloatBits.finite_isFinite]
-  sorry
-  sorry
-  sorry
+  rename_i x
+  unfold toBits FpQuotient.isFinite FloatBits.isFinite
+  rw [@Quotient.liftOn_mk]
+  exact FloatBits.finite_isFinite x.s x.e x.m st x.valid
+  all_goals contradiction
 
 theorem ofBits_zero [StdFloatFormat] : @ofBits _ 0 = 0 := by
   unfold ofBits
