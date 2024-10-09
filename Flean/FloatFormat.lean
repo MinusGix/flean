@@ -198,7 +198,17 @@ def TF32 : StdFloatFormat := {
 
 -- Unfortunately simp doesn't seem to understand it can turn < into ≤?? so I have to have this def
 @[simp]
-def exp_order_le [FloatFormat] : min_exp ≤ max_exp := FloatFormat.exp_order.le
+theorem exp_order_le [FloatFormat] : min_exp ≤ max_exp := FloatFormat.exp_order.le
+
+@[simp]
+theorem prec_pow_le [FloatFormat] : 4 ≤ 2^FloatFormat.prec := by
+  rw [show 4 = 2^2 by norm_num]
+  apply pow_le_pow_right (by norm_num) FloatFormat.valid_prec
+
+theorem prec_pred_pow_le [FloatFormat] : 2 ≤ 2^(FloatFormat.prec - 1) := by
+  rw [show 2 = 2^1 by norm_num]
+  have := FloatFormat.valid_prec
+  apply pow_le_pow_right (by norm_num) (by omega)
 
 -- def Decimal32 : FloatFormat := {
 --   radix := Radix.Decimal,

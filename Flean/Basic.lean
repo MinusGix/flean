@@ -13,9 +13,16 @@ import Flean.FloatFormat
 
 variable [F : FloatFormat]
 
+
 -- We want to constraint `m`'s bitsize to be less than `FloatFormat.prec`
 -- but we also need to constraint the values, as `m` should be less than `1.0`, of which our current comparison is essentially just asking if it is less than 2^prec
 --
+
+@[reducible]
+def isNormal [FloatFormat] (m : ℕ) : Prop := (2^(FloatFormat.prec - 1) ≤ m ∧ m < 2^FloatFormat.prec)
+@[reducible]
+def isSubnormal [FloatFormat] (e : ℤ) (m : ℕ) : Prop := (e = FloatFormat.min_exp ∧ m ≤ 2^(FloatFormat.prec - 1) - 1)
+
 /-- Whether the (e, M)-pair of the exponent and integral significand is valid for a finite floating point number  -/
 @[reducible]
 def IsValidFiniteVal [FloatFormat] (e : ℤ) (m : ℕ) : Prop :=
@@ -24,14 +31,9 @@ def IsValidFiniteVal [FloatFormat] (e : ℤ) (m : ℕ) : Prop :=
   -- The exponent is above the minimum
   e ≥ FloatFormat.min_exp ∧ e ≤ FloatFormat.max_exp ∧
   -- We can represent the integral significand with prec bits
-  m ≤ 2^FloatFormat.prec - 1 ∧
+  m < 2^FloatFormat.prec ∧
   -- Normal/subnormal; as well as ensuring that (s, M, e) is a unique repr for some number
-  (
-    -- normal number
-    (2^(FloatFormat.prec - 1) ≤ m ∧ m < 2^FloatFormat.prec) ∨
-    -- subnormal number
-    (e = FloatFormat.min_exp ∧ m ≤ 2^(FloatFormat.prec - 1) - 1)
-  )
+  (isNormal m ∨ isSubnormal e m)
 
 @[ext]
 structure FiniteFp where
@@ -51,8 +53,8 @@ instance : Zero FiniteFp :=
     m := 0,
     e := FloatFormat.min_exp,
     valid := by
-      unfold IsValidFiniteVal
-      simp only [ge_iff_le, le_refl, FloatFormat.exp_order_le, zero_le, nonpos_iff_eq_zero,
+      unfold IsValidFiniteVal isNormal isSubnormal
+      simp [ge_iff_le, le_refl, FloatFormat.exp_order_le, zero_le, nonpos_iff_eq_zero,
         pow_eq_zero_iff', OfNat.ofNat_ne_zero, ne_eq, false_and, Nat.ofNat_pos, pow_pos, and_true,
         and_self, or_true]
   }⟩
@@ -62,6 +64,83 @@ def sign (x : FiniteFp) : ℤ :=
 
 def toRat (x : FiniteFp) : ℚ :=
   x.sign * x.m * (FloatFormat.radix.val : ℚ)^(x.e - FloatFormat.prec + 1)
+
+def isNormal (x : FiniteFp) : Prop := _root_.isNormal x.m
+
+def isSubnormal (x : FiniteFp) : Prop := _root_.isSubnormal x.e x.m
+
+def smallestPosSubnormal : FiniteFp := ⟨
+  false,
+  FloatFormat.min_exp,
+  1,
+  by
+    unfold IsValidFiniteVal
+    have := FloatFormat.valid_prec
+    have := FloatFormat.prec_pow_le
+    have := FloatFormat.prec_pred_pow_le
+    split_ands
+    · trivial
+    · exact FloatFormat.exp_order_le
+    · omega
+    · right
+      split_ands <;> omega
+⟩
+
+theorem smallestPosSubnormal_isSubnormal : smallestPosSubnormal.isSubnormal := by
+  have := FloatFormat.prec_pred_pow_le
+  apply And.intro
+  · rfl
+  · unfold smallestPosSubnormal
+    norm_num
+    omega
+
+def smallestPosNormal : FiniteFp := ⟨
+  false,
+  FloatFormat.min_exp,
+  2^(FloatFormat.prec - 1),
+  by
+    unfold IsValidFiniteVal
+    have := FloatFormat.valid_prec
+    split_ands
+    · trivial
+    · exact FloatFormat.exp_order_le
+    · apply pow_lt_pow_right (by norm_num) (by omega)
+    · left
+      split_ands
+      · apply pow_le_pow_right (by norm_num) (by omega)
+      · apply pow_lt_pow_right (by norm_num) (by omega)
+ ⟩
+
+theorem smallestPosNormal_isNormal : smallestPosNormal.isNormal := by
+  have := FloatFormat.valid_prec
+  apply And.intro
+  · apply pow_le_pow_right (by norm_num) (by omega)
+  · apply pow_lt_pow_right (by norm_num) (by omega)
+
+def largestFiniteFloat : FiniteFp := ⟨
+  false,
+  FloatFormat.max_exp,
+  2^(FloatFormat.prec) - 1,
+  by
+    unfold IsValidFiniteVal
+    have := FloatFormat.valid_prec
+    have := FloatFormat.prec_pow_le
+    have := FloatFormat.prec_pred_pow_le
+    split_ands
+    · exact FloatFormat.exp_order_le
+    · rfl
+    · omega
+    · left
+      split_ands
+      · apply Nat.le_pred_of_lt
+        norm_num
+        apply pow_lt_pow_right (by norm_num) (by omega)
+      · omega
+⟩
+
+-- TODO: prove that the smallest positive normal, smallest positive subnormal, and largest finite float are all truely their namesakes
+
+
 
 noncomputable
 def toReal (x : FiniteFp) : ℝ :=
