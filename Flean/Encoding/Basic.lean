@@ -432,7 +432,7 @@ def finite (s : Bool) (e : ℤ) (m : ℕ) (vf : IsValidFiniteVal e m) : FloatBit
   FloatBits.mk' sign exponent significand
 
 
-theorem validFiniteVal_biasedExponent_notAllOnes (vf : IsValidFiniteVal e m) (st : FloatFormat.isStandardExpRange) :
+theorem validFiniteVal_biasedExponent_notAllOnes (st : FloatFormat.isStandardExpRange) (vf : IsValidFiniteVal e m) :
   ¬(BitVec.ofNat FloatFormat.exponentBits (e + FloatFormat.exponentBias).toNat = BitVec.allOnes _) := by
   unfold IsValidFiniteVal at vf
   intro h
@@ -464,56 +464,40 @@ theorem validFiniteVal_biasedExponent_notAllOnes (vf : IsValidFiniteVal e m) (st
   rw [h] at a7
   exact (lt_self_iff_false _).mp a7
 
-theorem finite_isNotNaN (s : Bool) (e : ℤ) (m : ℕ) (vf : IsValidFiniteVal e m) :
+theorem finite_isNotNaN (s : Bool) (e : ℤ) (m : ℕ) (st : FloatFormat.isStandardExpRange) (vf : IsValidFiniteVal e m) :
   ¬(finite s e m vf).isNaN := by
-  unfold IsValidFiniteVal at vf
-  unfold FloatBits.isNaN FloatBits.finite
+  unfold FloatBits.isNaN FloatBits.finite FloatBits.isExponentAllOnes FloatBits.isTSignificandZero
   lift_lets
-  extract_lets E1 E T sign significand exponent
-  sorry
-  -- simp_all
-  -- if he : e = FloatFormat.min_exp then
-  --   sorry
-  -- else
-  --   simp only [he, ↓reduceIte] at h
-  --   rw [FloatBits.construct_exponent_eq_BitsTriple] at h
+  extract_lets E1 E _ sign significand exponent
+  rw [construct_exponent_eq_BitsTriple, construct_significand_eq_BitsTriple]
+  unfold_let exponent E E1
+  intro ⟨he, _⟩
+  split_ifs at he
+  · rw [Int.toNat_zero] at he
+    have := BitVec.allOnes_ne_zero FloatFormat.exponentBits_nz
+    symm at he
+    contradiction
+  · have := validFiniteVal_biasedExponent_notAllOnes st vf
+    contradiction
 
-
-theorem finite_isNotInfinite (s : Bool) (e : ℤ) (m : ℕ) (vf : IsValidFiniteVal e m) :
+theorem finite_isNotInfinite (s : Bool) (e : ℤ) (m : ℕ) (st : FloatFormat.isStandardExpRange) (vf : IsValidFiniteVal e m) :
   ¬(finite s e m vf).isInfinite := by
-  sorry
+  unfold FloatBits.finite FloatBits.isInfinite FloatBits.isExponentAllOnes FloatBits.isTSignificandZero
+  lift_lets
+  extract_lets E1 E _ sign significand exponent
+  rw [construct_exponent_eq_BitsTriple, construct_significand_eq_BitsTriple]
+  unfold_let exponent E E1
+  intro ⟨he, _⟩
+  split_ifs at he
+  · rw [Int.toNat_zero] at he
+    have := BitVec.allOnes_ne_zero FloatFormat.exponentBits_nz
+    symm at he
+    contradiction
+  · have := validFiniteVal_biasedExponent_notAllOnes st vf
+    contradiction
 
-theorem finite_isFinite (s : Bool) (e : ℤ) (m : ℕ) (vf : IsValidFiniteVal e m) :
-  (finite s e m vf).isFinite := by
-  sorry
-  -- apply notNaN_notInfinite
-  -- unfold IsValidFiniteVal at vf
-  -- unfold FloatBits.isNaN FloatBits.finite FloatBits.isExponentAllOnes FloatBits.isTSignificandZero
-  -- lift_lets
-  -- extract_lets E1 E T sign significand exponent
-  -- rw [construct_exponent_eq_BitsTriple, construct_significand_eq_BitsTriple]
-  -- intro h
-  -- if he : e = FloatFormat.min_exp then
-  --   have h1 : exponent = 0 := by
-  --     subst he
-  --     simp_all only [↓reduceIte, Int.toNat_zero, BitVec.ofNat_eq_ofNat, exponent, E, E1, significand, T]
-  --   have h2 := BitVec.allOnes_ne_zero FloatFormat.exponentBits_nz
-  --   have := h.left
-  --   symm at this
-  --   rw [h1] at this
-  --   contradiction
-  -- else
-  --   have h := h.left
-  --   have l := exponent.isLt
-  --   unfold_let exponent E E1 at h l
-  --   simp only [he, ↓reduceIte, BitVec.ofNat_eq_ofNat] at h l
-  --   unfold FloatFormat.exponentBias at h l
-  --   -- rw [BitVec.toNat_ofNat] at h
-  --   have h := (BitVec.toNat_eq _ _).mp h
-  --   rw [BitVec.toNat_ofNat] at h l
-  --   rw [BitVec.toNat_allOnes] at h
-  --   unfold FloatFormat.exponentBits at h
-  --   have j := FloatBits.isFinite_exponent_not_allOnes (FloatBits.finite s e m vf)
+theorem finite_isFinite (s : Bool) (e : ℤ) (m : ℕ) (st : FloatFormat.isStandardExpRange) (vf : IsValidFiniteVal e m) :
+  (finite s e m vf).isFinite := ⟨(finite_isNotNaN s e m st vf), (finite_isNotInfinite s e m st vf)⟩
 
 -- TODO: trailing to significand, takes E as well
 

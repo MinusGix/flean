@@ -46,13 +46,13 @@ def FloatFormat.exponentBits [FloatFormat] : ℕ :=
 theorem FloatFormat.exponentRange_nonneg [FloatFormat] :
   FloatFormat.exponentRange ≥ 0 := by
   simp only [exponentRange, ge_iff_le]
-  have h := FloatFormat.valid_exp
+  have := FloatFormat.exp_order
   omega
 
 theorem FloatFormat.exponentRange_pos [FloatFormat] :
   FloatFormat.exponentRange > 0 := by
   simp only [exponentRange, gt_iff_lt]
-  have h := FloatFormat.valid_exp
+  have := FloatFormat.exp_order
   omega
 
 
@@ -60,7 +60,7 @@ theorem FloatFormat.exponentRange_pos [FloatFormat] :
 theorem FloatFormat.exponentBits_pos [FloatFormat] :
   FloatFormat.exponentBits > 0 := by
   unfold FloatFormat.exponentBits
-  have := FloatFormat.valid_exp
+  have := FloatFormat.exp_order
   omega
 
 theorem FloatFormat.exponentBits_nz [FloatFormat] :
@@ -68,10 +68,36 @@ theorem FloatFormat.exponentBits_nz [FloatFormat] :
   have := FloatFormat.exponentBits_pos
   exact Nat.not_eq_zero_of_lt this
 
+theorem StdFloatFormat.exponentBits_def [StdFloatFormat] :
+  FloatFormat.exponentBits = StdFloatFormat.exp_pow + 1 := by
+  unfold FloatFormat.exponentBits
+  rw [StdFloatFormat.max_exp_def]
+  have := StdFloatFormat.exp_pow_pos
+  have a1 : ((2 : ℤ) ^ StdFloatFormat.exp_pow - 1).toNat = ((2 : ℤ) ^ StdFloatFormat.exp_pow).toNat - 1 := by simp_all only [Int.pred_toNat]
+  have a2 : ((2 : ℤ) ^ StdFloatFormat.exp_pow - 1).toNat + 1 = ((2 : ℤ) ^ StdFloatFormat.exp_pow).toNat := by
+    rw [a1, ← Nat.cast_two, ← Nat.cast_pow, Int.toNat_natCast, Nat.sub_one_add_one]
+    norm_num
+  have a3 : ((2 : ℤ) ^ StdFloatFormat.exp_pow).toNat = (2 : ℕ) ^ StdFloatFormat.exp_pow := by
+    rw [← Nat.cast_two, ← Nat.cast_pow, Int.toNat_natCast]
+  rw [a2, a3, Nat.clog_pow 2 _ (by norm_num)]
+
+
 /-- Exponent bits without the the + 1, which is common when using 2^FloatFormat.exponentBits in lower bounds -/
 @[reducible]
 def FloatFormat.exponentBits2 [FloatFormat] : ℕ :=
   Nat.clog 2 (FloatFormat.max_exp.toNat + 1)
+
+theorem StdFloatFormat.exponentBits2_def [StdFloatFormat] : FloatFormat.exponentBits2 = StdFloatFormat.exp_pow := by
+  unfold FloatFormat.exponentBits2
+  rw [StdFloatFormat.max_exp_def]
+  have := StdFloatFormat.exp_pow_pos
+  have a1 : ((2 : ℤ) ^ StdFloatFormat.exp_pow - 1).toNat = ((2 : ℤ) ^ StdFloatFormat.exp_pow).toNat - 1 := by simp_all only [Int.pred_toNat]
+  have a2 : ((2 : ℤ) ^ StdFloatFormat.exp_pow - 1).toNat + 1 = ((2 : ℤ) ^ StdFloatFormat.exp_pow).toNat := by
+    rw [a1, ← Nat.cast_two, ← Nat.cast_pow, Int.toNat_natCast, Nat.sub_one_add_one]
+    norm_num
+  have a3 : ((2 : ℤ) ^ StdFloatFormat.exp_pow).toNat = (2 : ℕ) ^ StdFloatFormat.exp_pow := by
+    rw [← Nat.cast_two, ← Nat.cast_pow, Int.toNat_natCast]
+  rw [a2, a3, Nat.clog_pow 2 _ (by norm_num)]
 
 theorem FloatFormat.pow_exponentBits2_eq_exponentBits [FloatFormat] :
   2^FloatFormat.exponentBits2 * 2 = 2^FloatFormat.exponentBits := by
@@ -142,27 +168,27 @@ theorem FloatFormat.exponentBias_add_standard_toNat [FloatFormat] (e : ℤ) (e_r
 
 -- TODO: RFL can solve these, but the speed is very slow.
 theorem FloatFormat.Binary16.bitSize_eq :
-  @FloatFormat.bitSize FloatFormat.Binary16 = 16 := by
+  @FloatFormat.bitSize FloatFormat.Binary16.toFloatFormat = 16 := by
   native_decide
 
 theorem FloatFormat.Binary32.bitSize_eq :
-  @FloatFormat.bitSize FloatFormat.Binary32 = 32 := by
+  @FloatFormat.bitSize FloatFormat.Binary32.toFloatFormat = 32 := by
   native_decide
 
 theorem FloatFormat.Binary64.bitSize_eq :
-  @FloatFormat.bitSize FloatFormat.Binary64 = 64 := by
+  @FloatFormat.bitSize FloatFormat.Binary64.toFloatFormat = 64 := by
   native_decide
 
 theorem FloatFormat.Binary128.bitSize_eq :
-  @FloatFormat.bitSize FloatFormat.Binary128 = 128 := by
+  @FloatFormat.bitSize FloatFormat.Binary128.toFloatFormat = 128 := by
   native_decide
 
 theorem FloatFormat.BF16.bitSize_eq :
-  @FloatFormat.bitSize FloatFormat.BF16 = 16 := by
+  @FloatFormat.bitSize FloatFormat.BF16.toFloatFormat = 16 := by
   native_decide
 
 theorem FloatFormat.TF32.bitSize_eq :
-  @FloatFormat.bitSize FloatFormat.TF32 = 19 := by
+  @FloatFormat.bitSize FloatFormat.TF32.toFloatFormat = 19 := by
   native_decide
 
 end BitSize

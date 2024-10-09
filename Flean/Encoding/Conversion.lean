@@ -44,25 +44,26 @@ def FloatBits.FpSignificand [FloatFormat] (b : FloatBits) : ℕ := if b.toBitsTr
 
 def FloatBits.FpSignificand_def [FloatFormat] (b : FloatBits) : b.FpSignificand = if b.toBitsTriple.exponent = 0 then b.toBitsTriple.significand.toNat else ((BitVec.ofBool true) ++ b.toBitsTriple.significand).toNat := rfl
 
-theorem FloatBits.isFinite_validFloatVal [FloatFormat] {b : FloatBits} (st : FloatFormat.isStandardExpRange) (hf : b.isFinite) : IsValidFiniteVal b.FpExponent b.FpSignificand := by
+theorem FloatBits.isFinite_validFloatVal [StdFloatFormat] {b : FloatBits} (hf : b.isFinite) : IsValidFiniteVal b.FpExponent b.FpSignificand := by
   let exponent := b.toBitsTriple.exponent
   let significand := b.toBitsTriple.significand
 
   let is_subnormal := exponent = 0
   let e := b.FpExponent
   let m := b.FpSignificand
+  have st := StdFloatFormat.st
   unfold FloatFormat.isStandardExpRange at st
   unfold IsValidFiniteVal
-  have := FloatFormat.valid_exp'_le
+  have := FloatFormat.exp_order_le
 
   -- == EXPONENT ==
   have e_ne_allOnes: exponent ≠ BitVec.allOnes _ := FloatBits.isFinite_exponent_not_allOnes b hf
 
   have exLt := exponent.isLt
   unfold FloatFormat.exponentBits at exLt
-  have exLe : ¬is_subnormal → exponent.toNat ≤ 2 ^ (FloatFormat.max_exp.toNat + 1).log2 * 2 - 2 := by
+  have exLe : ¬is_subnormal → exponent.toNat ≤ 2 ^ (Nat.clog 2 (FloatFormat.max_exp.toNat + 1)) * 2 - 2 := by
     intro _
-    have : exponent.toNat < 2 ^ (FloatFormat.max_exp.toNat + 1).log2 * 2 - 1 := BitVec.ne_allOnes_lt _ e_ne_allOnes
+    have : exponent.toNat < 2 ^ (Nat.clog 2 (FloatFormat.max_exp.toNat + 1)) * 2 - 1 := BitVec.ne_allOnes_lt _ e_ne_allOnes
     omega
 
   -- For some reason after adding these, rather than using an `e = if ...` definition, split_ifs stopped automatically getting rid of contradicting paths
@@ -88,17 +89,30 @@ theorem FloatBits.isFinite_validFloatVal [FloatFormat] {b : FloatBits} (st : Flo
     simp_all only [tsub_le_iff_right, BitVec.ofNat_eq_ofNat, ↓reduceIte, is_subnormal, e]
   else
     split_ifs; contradiction
-    simp_all only [tsub_le_iff_right, ite_false]
+    rw [tsub_le_iff_right]
     unfold FloatFormat.exponentBias
     specialize exLe (by trivial)
-    have h1 : 2 ^ (Nat.log2 (FloatFormat.max_exp.toNat + 1)) * 2 ≤ (FloatFormat.max_exp.toNat + 1) * 2 := by
-      simp_arith
-      rw [Nat.log2_eq_log_two]
-      exact Nat.pow_log_le_self 2 (by omega)
-    have h3 : 2 ^ (Nat.log2 (FloatFormat.max_exp.toNat + 1)) * 2 - 2 ≤ FloatFormat.max_exp.toNat + FloatFormat.max_exp.toNat := by omega
-    apply le_trans
-    zify at exLe; exact exLe
-    zify at h3; rw [Int.toNat_of_nonneg (by omega)] at h3; exact h3
+    have := (Nat.le_pow_iff_clog_le ?_).mp exLt.le
+    have a0 : FloatFormat.max_exp.toNat + 1 ≤ 2^FloatFormat.exponentBits2 := Nat.le_pow_clog (by norm_num) _
+    have a2 : exponent.toNat + 1 < 2^FloatFormat.exponentBits := by
+      unfold FloatFormat.exponentBits
+      omega
+    have a5 : 2 * FloatFormat.max_exp.toNat + 2 ≤ 2 * 2^FloatFormat.exponentBits2 := by omega
+    simp_rw [StdFloatFormat.exponentBits_def] at a2
+    have a7 : 2 * FloatFormat.max_exp + 2 ≤ 2^FloatFormat.exponentBits := by
+      unfold FloatFormat.exponentBits
+      unfold FloatFormat.exponentBits2 at a5
+      conv at a5 => rhs; rw [mul_comm]; rhs; rw [← pow_one 2]
+      rw [← pow_add] at a5
+      zify at a5
+      rw [Int.toNat_of_nonneg (by omega)] at a5
+      exact a5
+    simp_rw [StdFloatFormat.exponentBits_def] at a7
+    rw [StdFloatFormat.max_exp_def]
+    rw [show (2 : ℤ) ^ StdFloatFormat.exp_pow - 1 + (2 ^ StdFloatFormat.exp_pow - 1) = 2 ^ (StdFloatFormat.exp_pow + 1) - 2 by omega]
+    have : (exponent.toNat : ℤ) < 2 ^ (StdFloatFormat.exp_pow + 1) - 1 := by linarith
+    omega
+    norm_num
 
   have mLt := ((BitVec.ofBool true) ++ significand).isLt
   if is_subnormal then
@@ -158,7 +172,7 @@ theorem FloatBits.isFinite_validFloatVal [FloatFormat] {b : FloatBits} (st : Flo
       omega
 
 /-! Convert Bits back into a float.-/
-def ofBits [FloatFormat] (st : FloatFormat.isStandardExpRange) (b : FloatBits) : Fp :=
+def ofBits [StdFloatFormat] (b : FloatBits) : Fp :=
   if hn : b.isNaN then
     .NaN
   else if hi : b.isInfinite then
@@ -166,7 +180,7 @@ def ofBits [FloatFormat] (st : FloatFormat.isStandardExpRange) (b : FloatBits) :
   else
     let hf : b.isFinite := FloatBits.notNaN_notInfinite b hn hi
 
-    .finite ⟨b.toBitsTriple.sign.toNat == 1, b.FpExponent, b.FpSignificand, FloatBits.isFinite_validFloatVal st hf⟩
+    .finite ⟨b.toBitsTriple.sign.toNat == 1, b.FpExponent, b.FpSignificand, FloatBits.isFinite_validFloatVal hf⟩
 
 theorem lift_isNaN [FloatFormat] {f : Fp} (h : f.isNaN) : (toBits f).isNaN := by
   unfold Fp.isNaN at h
@@ -210,7 +224,7 @@ theorem lift_isFinite [FloatFormat] {f : Fp} (h : f.isFinite) : (toBits f).isFin
   sorry
   sorry
 
-theorem ofBits_zero [FloatFormat] {st : FloatFormat.isStandardExpRange} : @ofBits _ st 0 = 0 := by
+theorem ofBits_zero [StdFloatFormat] : @ofBits _ 0 = 0 := by
   unfold ofBits
   split_ifs with h1 h2
   · unfold FloatBits.isNaN FloatBits.isExponentAllOnes at h1
@@ -232,7 +246,7 @@ theorem ofBits_zero [FloatFormat] {st : FloatFormat.isStandardExpRange} : @ofBit
 
 -- TODO: uniqueness of ±0
 
-theorem toBits_ofBits [FloatFormat] {st : FloatFormat.isStandardExpRange} (f : Fp) : ofBits st (toBits f).representative = f := by
+theorem toBits_ofBits [StdFloatFormat] (f : Fp) : ofBits (toBits f).representative = f := by
   if hn : f.isNaN then
     sorry
   else if hi : f.isInfinite then
@@ -244,11 +258,11 @@ theorem toBits_ofBits [FloatFormat] {st : FloatFormat.isStandardExpRange} (f : F
 
 end Fp
 
-def f := @FiniteFp.toRat FloatFormat.Binary32
-#eval! f (0 : @FiniteFp FloatFormat.Binary32)
-def f' := @Fp.toBits FloatFormat.Binary32
-def v := f' (0 : @Fp FloatFormat.Binary32)
+def f := @FiniteFp.toRat FloatFormat.Binary32.toFloatFormat
+#eval! f (0 : @FiniteFp FloatFormat.Binary32.toFloatFormat)
+def f' := @Fp.toBits FloatFormat.Binary32.toFloatFormat
+def v := f' (0 : @Fp FloatFormat.Binary32.toFloatFormat)
 -- #eval! @Fp.FpQuotient.representative FloatFormat.Binary32 v FloatFormat.binary32_standard_exp_range
 -- #eval! (@toBits FloatFormat.Binary32 (0 : @Fp FloatFormat.Binary32) FloatFormat.binary32_standard_exp_range).representative
 
-#eval (@Fp.toRat? FloatFormat.Binary16) (@Fp.ofBits FloatFormat.Binary16 FloatFormat.binary16_standard_exp_range (0 : @Fp.FloatBits FloatFormat.Binary16))
+#eval (@Fp.toRat? FloatFormat.Binary16.toFloatFormat) (@Fp.ofBits FloatFormat.Binary16 (0 : @Fp.FloatBits FloatFormat.Binary16.toFloatFormat))

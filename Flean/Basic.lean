@@ -52,7 +52,7 @@ instance : Zero FiniteFp :=
     e := FloatFormat.min_exp,
     valid := by
       unfold IsValidFiniteVal
-      simp only [ge_iff_le, le_refl, FloatFormat.valid_exp'_le, zero_le, nonpos_iff_eq_zero,
+      simp only [ge_iff_le, le_refl, FloatFormat.exp_order_le, zero_le, nonpos_iff_eq_zero,
         pow_eq_zero_iff', OfNat.ofNat_ne_zero, ne_eq, false_and, Nat.ofNat_pos, pow_pos, and_true,
         and_self, or_true]
   }⟩
