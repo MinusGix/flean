@@ -58,6 +58,39 @@ theorem one_or (x : BitVec 1) : x = 0#1 ∨ x = 1#1 := by
     rw [toNat_ofNat, Nat.zero_mod, Nat.mod_succ] at *
     omega
 
+theorem ofNat_le_eq_zero_iff {n : Nat} {x : Nat} (h : x < 2^n) : BitVec.ofNat n x = 0 ↔ (x = 0 ∨ n = 0):= by
+  constructor
+  · intro h
+    if hn : n = 0 then
+      right; exact hn
+    else
+      left
+      have := (BitVec.toNat_eq (BitVec.ofNat n x) 0).mp h
+      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt, ofNat_eq_ofNat, BitVec.toNat_ofNat, Nat.zero_mod] at this
+      <;> trivial
+  · intro h
+    cases' h with h1 h1
+    <;> subst h1
+    <;> simp_all only [pow_zero, Nat.lt_one_iff, ofNat_eq_ofNat]
+
+theorem ofBool_beq_one (x : Bool) : (BitVec.ofBool x == 1) = x := by
+  cases x
+  · simp_all only [ofBool_false, ofNat_eq_ofNat, beq_true, beq_eq_false_iff_ne, ne_eq, reduceEq, not_false_eq_true]
+  · simp_all only [ofBool_true, ofNat_eq_ofNat, beq_self_eq_true]
+
+theorem ofBool_beq_zero (x : Bool) : (BitVec.ofBool x == 0) = (x == false) := by
+  cases x
+  · simp_all only [ofBool_false, ofNat_eq_ofNat, beq_self_eq_true]
+  · simp_all only [ofBool_true, ofNat_eq_ofNat, beq_false, Bool.not_true, beq_eq_false_iff_ne, ne_eq, reduceEq,
+    not_false_eq_true]
+
+theorem ofBool_beq_one_n (x : BitVec 1) : BitVec.ofBool (x == 1) = x := by
+  cases one_or x
+  <;> rename_i h
+  <;> subst h
+  <;> simp_all only [ofNat_eq_ofNat, beq_self_eq_true, ofBool_true]
+  rfl
+
 theorem extractLsb'_cast {n m : Nat} (h : n = m) (start : Nat) (len : Nat) (x : BitVec n) : (BitVec.extractLsb' start len (x.cast h)) = BitVec.extractLsb' start len x := by
   unfold BitVec.cast BitVec.extractLsb'
   simp only [toNat_ofNatLt]

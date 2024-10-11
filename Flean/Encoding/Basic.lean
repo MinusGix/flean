@@ -44,6 +44,8 @@ def ext' [FloatFormat] (t c : FloatBitsTriple) : t = c ↔ t.sign = c.sign ∧ t
     · rw [a2]
     · rw [a3]
 
+def sign' [FloatFormat] (t : FloatBitsTriple) : Bool := t.sign == 1
+
 end FloatBitsTriple
 
 namespace FloatBits
@@ -407,6 +409,7 @@ def NaN (sign : Bool) (T : BitVec FloatFormat.significandBits) (_hT : T ≠ 0): 
   FloatBits.mk' sign exponent significand
 
 /-- Constructing a NaN will yield a NaN. -/
+@[simp]
 theorem NaN_isNaN (sign : Bool) (T : BitVec FloatFormat.significandBits) (hT : T ≠ 0):
   (NaN sign T hT).isNaN := by
   unfold FloatBits.isNaN FloatBits.isExponentAllOnes FloatBits.NaN
@@ -431,6 +434,18 @@ def finite (s : Bool) (e : ℤ) (m : ℕ) (vf : IsValidFiniteVal e m) : FloatBit
   let exponent := BitVec.ofNat FloatFormat.exponentBits E
   FloatBits.mk' sign exponent significand
 
+@[simp]
+theorem finite_sign (s : Bool) (e : ℤ) (m : ℕ) (vf : IsValidFiniteVal e m) : (finite s e m vf).sign = s := by
+  unfold finite
+  lift_lets
+  unfold FloatBits.sign
+  simp_rw [construct_sign_eq_BitsTriple]
+  rw [BitVec.ofBool_beq_one]
+
+@[simp]
+theorem infinite_sign (b : Bool) : (infinite b).sign = b := by
+  unfold infinite FloatBits.sign
+  simp_all only [construct_sign_eq_BitsTriple, BitVec.ofBool_beq_one]
 
 theorem validFiniteVal_biasedExponent_notAllOnes (st : FloatFormat.isStandardExpRange) (vf : IsValidFiniteVal e m) :
   ¬(BitVec.ofNat FloatFormat.exponentBits (e + FloatFormat.exponentBias).toNat = BitVec.allOnes _) := by

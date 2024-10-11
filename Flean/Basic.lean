@@ -11,8 +11,6 @@ import Flean.FloatFormat
 -- Some designs of floating point arithmetic talk about floats as a subset of the reals/rationals with some extra properties
 -- This is helpful for nicer integration and extreme generality, but I believe is overkill and obscures the core idea.
 
-variable [F : FloatFormat]
-
 
 -- We want to constraint `m`'s bitsize to be less than `FloatFormat.prec`
 -- but we also need to constraint the values, as `m` should be less than `1.0`, of which our current comparison is essentially just asking if it is less than 2^prec
@@ -36,7 +34,7 @@ def IsValidFiniteVal [FloatFormat] (e : ℤ) (m : ℕ) : Prop :=
   (isNormal m ∨ isSubnormal e m)
 
 @[ext]
-structure FiniteFp where
+structure FiniteFp [FloatFormat] where
   /-- The sign of the number. -/
   s : Bool
   /-- The exponent -/
@@ -46,6 +44,8 @@ structure FiniteFp where
   valid : IsValidFiniteVal e m
 deriving Repr
 namespace FiniteFp
+
+variable [FloatFormat]
 
 instance : Zero FiniteFp :=
   ⟨{
@@ -59,11 +59,13 @@ instance : Zero FiniteFp :=
         and_self, or_true]
   }⟩
 
-def sign (x : FiniteFp) : ℤ :=
+def sign (x : FiniteFp) : Bool := x.s
+
+def sign' (x : FiniteFp) : ℤ :=
   if x.s then -1 else 1
 
 def toRat (x : FiniteFp) : ℚ :=
-  x.sign * x.m * (FloatFormat.radix.val : ℚ)^(x.e - FloatFormat.prec + 1)
+  x.sign' * x.m * (FloatFormat.radix.val : ℚ)^(x.e - FloatFormat.prec + 1)
 
 def isNormal (x : FiniteFp) : Prop := _root_.isNormal x.m
 
@@ -138,6 +140,8 @@ def largestFiniteFloat : FiniteFp := ⟨
       · omega
 ⟩
 
+
+
 -- TODO: prove that the smallest positive normal, smallest positive subnormal, and largest finite float are all truely their namesakes
 
 
@@ -148,7 +152,7 @@ def toReal (x : FiniteFp) : ℝ :=
 
 end FiniteFp
 
-inductive Fp where
+inductive Fp [FloatFormat] where
   | finite : FiniteFp → Fp
   | infinite : Bool → Fp
   /-- Indeterminate NaN value. At this level, the specific bits are not considered. -/
@@ -156,16 +160,24 @@ inductive Fp where
 
 namespace Fp
 
+variable [FloatFormat]
+
 instance : Zero Fp := ⟨.finite 0⟩
 
 instance : Inhabited Fp := ⟨0⟩
 
 theorem zero_def : (0 : Fp) = .finite 0 := rfl
 
-/-- The sign of the number. The sign of NaN is left defined as 0 but that may not result in the same sign as the bit repr -/
-def sign (x : Fp) : ℤ :=
+def sign (x : Fp) : Bool :=
   match x with
   | .finite x => x.sign
+  | .infinite b => b
+  | .NaN => false
+
+/-- The sign of the number. The sign of NaN is left defined as 0 but that may not result in the same sign as the bit repr -/
+def sign' (x : Fp) : ℤ :=
+  match x with
+  | .finite x => x.sign'
   | .infinite b => if b then 1 else -1
   | .NaN => 0
 
@@ -185,11 +197,102 @@ def toRat? (x : Fp) : Option ℚ :=
   | .infinite _ => none
   | .NaN => none
 
+def finite_isFinite (x : FiniteFp) : (Fp.finite x).isFinite := by
+  unfold isFinite
+  simp only
+
+def infinite_isInfinite (x : Bool) : (Fp.infinite x).isInfinite := by
+  unfold isInfinite
+  simp only [infinite.injEq, Bool.eq_true_or_eq_false_self]
+
+def NaN_isNaN : (Fp.NaN).isNaN := by
+  unfold isNaN
+  simp only
+
+def isFinite_notNaN (x : Fp) : x.isFinite → ¬x.isNaN := by
+  intro h
+  unfold isNaN
+  unfold isFinite at h
+  simp_all only [Bool.false_eq_true]
+  apply Aesop.BuiltinRules.not_intro
+  intro a
+  subst a
+  simp_all only
+
+def isFinite_notInfinite (x : Fp) : x.isFinite → ¬x.isInfinite := by
+  intro h
+  unfold isInfinite
+  unfold isFinite at h
+  simp_all only [Bool.false_eq_true, not_or]
+  apply And.intro
+  · apply Aesop.BuiltinRules.not_intro
+    intro a
+    subst a
+    simp_all only
+  · apply Aesop.BuiltinRules.not_intro
+    intro a
+    subst a
+    simp_all only
+
+def isInfinite_notNaN (x : Fp) : x.isInfinite → ¬x.isNaN := by
+  intro h
+  unfold isNaN
+  unfold isInfinite at h
+  apply Aesop.BuiltinRules.not_intro
+  intro a
+  subst a
+  simp_all only [or_self]
+
+def isInfinite_notFinite (x : Fp) : x.isInfinite → ¬x.isFinite := by
+  intro h
+  unfold isFinite
+  unfold isInfinite at h
+  simp_all only [Bool.false_eq_true]
+  apply Aesop.BuiltinRules.not_intro
+  intro a
+  cases h with
+  | inl h_1 =>
+    subst h_1
+    simp_all only
+  | inr h_2 =>
+    subst h_2
+    simp_all only
+
+def isNaN_notFinite (x : Fp) : x.isNaN → ¬x.isFinite := by
+  intro h
+  unfold isFinite
+  unfold isNaN at h
+  subst h
+  simp_all only [Bool.false_eq_true, not_false_eq_true]
+
+def isNaN_notInfinite (x : Fp) : x.isNaN → ¬x.isInfinite := by
+  intro h
+  unfold isInfinite
+  unfold isNaN at h
+  subst h
+  simp_all only [or_self, not_false_eq_true]
+
+def notNaN_notInfinite {x : Fp} : ¬x.isNaN → ¬x.isInfinite → x.isFinite := by
+  intro hn hi
+  unfold isFinite
+  unfold isNaN at hn
+  unfold isInfinite at hi
+  simp_all only [not_or, Bool.false_eq_true]
+  obtain ⟨left, right⟩ := hi
+  split
+  next x x_1 => simp_all only [not_false_eq_true]
+  next x b => simp_all only [not_false_eq_true, infinite.injEq, Bool.not_eq_true, not_true_eq_false]
+  next x => simp_all only [not_true_eq_false]
+
+
 -- TODO: to EReal
 
 -- TODO: convert to typical bit repr
 
 end Fp
 
--- def f := @FiniteFp.toRat FloatFormat.Binary32
--- #eval! f (0 : @FiniteFp FloatFormat.Binary32)
+-- TODO: is there a way to just write `(...).toRat` ? Clearly I need to specify the format somewhere, but currently I have to write it even for toRat.
+-- All correct
+-- #eval! (@FiniteFp.toRat FloatFormat.Binary32.toFloatFormat (@FiniteFp.largestFiniteFloat FloatFormat.Binary32.toFloatFormat))
+-- #eval! (@FiniteFp.toRat FloatFormat.Binary32.toFloatFormat (@FiniteFp.smallestPosNormal FloatFormat.Binary32.toFloatFormat))
+-- #eval! (@FiniteFp.toRat FloatFormat.Binary32.toFloatFormat (@FiniteFp.smallestPosSubnormal FloatFormat.Binary32.toFloatFormat))

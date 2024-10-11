@@ -105,6 +105,7 @@ def FpQuotient.isFinite [FloatFormat] (f : FpQuotient) : Prop :=
   )
 
 -- Normal `sign` can't be equivalent over the quotient because two NaN values can have different signs
+-- Normal `sign` can't be equivalent over the quotient because two NaN values can have different signs
 -- We simply say that an FpQuotient sign is always positive for NaN values, but doing such in FloatBits would be confusing.
 def FpQuotient.fake_sign [FloatFormat] (f : FpQuotient) : Bool :=
   Quotient.liftOn f FloatBits.fake_sign (by
@@ -217,6 +218,153 @@ theorem FpQuotient.mk_isFinite_imp_mk_isFinite [FloatFormat] (f : FloatBits) : (
   intro h
   exact h
 
+theorem FpQuotient.mk_isFinite_imp_isFinite [FloatFormat] (f : FloatBits) : (FpQuotient.mk f).isFinite ↔ f.isFinite := by
+  unfold FpQuotient.mk FpQuotient.isFinite
+  rw [@Quotient.liftOn_mk]
+
+theorem FpQuotient.mk_isInfinite_imp_isInfinite [FloatFormat] (f : FloatBits) : (FpQuotient.mk f).isInfinite ↔ f.isInfinite := by
+  unfold FpQuotient.mk FpQuotient.isInfinite
+  rw [@Quotient.liftOn_mk]
+
+theorem FpQuotient.isFinite_notInfinite [FloatFormat] (f : FpQuotient) : f.isFinite → ¬f.isInfinite := by
+  intro h
+  unfold FpQuotient.isInfinite
+  intro h'
+  rw [← @Quotient.out_eq _ FpSetoid f] at h h'
+  rw [@Quotient.liftOn_mk] at h'
+  exact FloatBits.isFinite_notInfinite _ (FpQuotient.mk_isFinite_imp_mk_isFinite _ h) h'
+
+theorem FpQuotient.isFinite_notNaN [FloatFormat] (f : FpQuotient) : f.isFinite → ¬f.isNaN := by
+  intro h
+  unfold FpQuotient.isNaN
+  intro h'
+  rw [← @Quotient.out_eq _ FpSetoid f] at h h'
+  rw [@Quotient.liftOn_mk] at h'
+  exact FloatBits.isFinite_notNaN _ (FpQuotient.mk_isFinite_imp_mk_isFinite _ h) h'
+
+theorem FpQuotient.isInfinite_notFinite [FloatFormat] (f : FpQuotient) : f.isInfinite → ¬f.isFinite := by
+  intro h
+  unfold FpQuotient.isFinite
+  intro h'
+  rw [← @Quotient.out_eq _ FpSetoid f] at h h'
+  rw [@Quotient.liftOn_mk] at h'
+  exact FloatBits.isInfinite_notFinite _ h h'
+
+theorem FpQuotient.isInfinite_notNaN [FloatFormat] (f : FpQuotient) : f.isInfinite → ¬f.isNaN := by
+  intro h
+  unfold FpQuotient.isNaN
+  intro h'
+  rw [← @Quotient.out_eq _ FpSetoid f] at h h'
+  rw [@Quotient.liftOn_mk] at h'
+  exact FloatBits.isInfinite_notNaN _ h h'
+
+theorem FpQuotient.isNaN_notFinite [FloatFormat] (f : FpQuotient) : f.isNaN → ¬f.isFinite := by
+  intro h
+  unfold FpQuotient.isFinite
+  intro h'
+  have := FpQuotient.isFinite_notNaN _ h'
+  contradiction
+
+theorem FpQuotient.isNaN_notInfinite [FloatFormat] (f : FpQuotient) : f.isNaN → ¬f.isInfinite := by
+  intro h
+  unfold FpQuotient.isInfinite
+  intro h'
+  rw [← @Quotient.out_eq _ FpSetoid f] at h h'
+  rw [@Quotient.liftOn_mk] at h'
+  apply FloatBits.isInfinite_notNaN _ h' h
+
+theorem FpQuotient.notNaN_notInfinite [FloatFormat] {f : FpQuotient} : ¬f.isNaN → ¬f.isInfinite → f.isFinite := by
+  unfold FpQuotient.isFinite FpQuotient.isNaN FpQuotient.isInfinite
+  intro hn hi
+  rw [← @Quotient.out_eq _ FpSetoid f, @Quotient.liftOn_mk] at hn hi ⊢
+  apply FloatBits.notNaN_notInfinite _ hn hi
+
+theorem FpQuotient.cases [FloatFormat] (f : FpQuotient) : f.isNaN ∨ f.isInfinite ∨ f.isFinite := by
+  if hn : f.isNaN then
+    left
+    exact hn
+  else if hi : f.isInfinite then
+    right
+    left
+    exact hi
+  else
+    right
+    right
+    exact FpQuotient.notNaN_notInfinite hn hi
+
+theorem FpQuotient.representative_isNaN_eq [FloatFormat] (f : FpQuotient) : f.isNaN → f.representative = FloatBits.NaN false (BitVec.allOnes FloatFormat.significandBits) (BitVec.allOnes_ne_zero FloatFormat.significandBits_pos.ne.symm) := by
+  intro h
+  unfold FpQuotient.representative
+  split_ifs
+  norm_num
+
+theorem FpQuotient.representative_isInfinite_eq [FloatFormat] (f : FpQuotient) : f.isInfinite → f.representative = FloatBits.infinite f.fake_sign := by
+  intro h
+  unfold FpQuotient.representative
+  split_ifs with h'
+  · norm_num
+    exfalso
+    exact FpQuotient.isInfinite_notNaN _ h h'
+  · rfl
+
+theorem FpQuotient.representative_isInfinite [FloatFormat] (f : FpQuotient) : f.isInfinite → f.representative.isInfinite := by
+  intro h
+  unfold FpQuotient.representative
+  split_ifs with hn
+  · exfalso
+    exact FpQuotient.isInfinite_notNaN _ h hn
+  · apply FloatBits.infinite_isInfinite
+
+theorem FpQuotient.representative_isFinite_eq [FloatFormat] (f : FpQuotient) : f.isFinite → f.representative = f.choose := by
+  intro h
+  unfold FpQuotient.representative
+  split_ifs with hn hi
+  · norm_num
+    exfalso
+    exact FpQuotient.isFinite_notNaN _ h hn
+  · rw [← @Quotient.out_eq _ FpSetoid f] at hi hn
+    have hri := (FpQuotient.mk_isInfinite_imp_mk_isInfinite f.choose).mp hi
+    rw [FloatBits.isInfinite_mk' f.choose hri]
+    unfold FloatBits.infinite FpQuotient.fake_sign FloatBits.fake_sign FloatBits.sign FloatBits.sign'
+    -- norm_num
+    rw [← @Quotient.out_eq _ FpSetoid f, @Quotient.liftOn_mk]
+    split_ifs
+    · contradiction
+    · norm_num
+      cases BitVec.one_or f.choose.toBitsTriple.sign with
+      | inl v =>
+        unfold FpQuotient.choose at v ⊢
+        rw [v, BitVec.ofNat_eq_ofNat, show (BitVec.ofNat 1 0 == BitVec.ofNat 1 1) = false by simp_all, BitVec.ofBool_false, BitVec.ofNat_eq_ofNat, BitVec.ofNat_eq_ofNat]
+      | inr v =>
+        unfold FpQuotient.choose at v ⊢
+        rw [v, BitVec.ofNat_eq_ofNat, show (BitVec.ofNat 1 1 == BitVec.ofNat 1 1) = true by simp_all, BitVec.ofBool_true, BitVec.ofNat_eq_ofNat, BitVec.ofNat_eq_ofNat]
+  · norm_num
+    unfold FpQuotient.fake_toBitsTriple FloatBits.fake_toBitsTriple
+    rw [← @Quotient.out_eq _ FpSetoid f] at hn hi h ⊢
+    rw [@Quotient.liftOn_mk]
+    split_ifs with h1
+    · contradiction
+    · norm_num
+      have := FloatBits.appendToBitsTriple_eq f.choose.toBitsTriple f.choose (by rfl)
+      unfold FpQuotient.choose at this ⊢
+      conv =>
+        rhs
+        rw [this]
+
+theorem FpQuotient.representative_isFinite [FloatFormat] (f : FpQuotient) : f.isFinite → f.representative.isFinite := by
+  intro h
+  by_cases c1 : f.isNaN
+  · exfalso
+    exact FpQuotient.isFinite_notNaN _ h c1
+  · by_cases c2 : f.isInfinite
+    · exfalso
+      exact FpQuotient.isInfinite_notFinite _ c2 h
+    · have k := FpQuotient.representative_isFinite_eq _ h
+      rw [k]
+      rw [← @Quotient.out_eq _ FpSetoid f] at h
+      apply FpQuotient.mk_isFinite_imp_mk_isFinite f.choose h
+
+
 theorem FpQuotient.mk_fake_sign_eq_fake_sign [FloatFormat] (f : FloatBits) : (FpQuotient.mk f).fake_sign = f.fake_sign := by
   unfold FpQuotient.mk FpQuotient.fake_sign
   rw [@Quotient.liftOn_mk]
@@ -255,8 +403,8 @@ theorem FpQuotient.fake_toBitsTriple_eq_toBitsTriple [FloatFormat] :
         · rfl
       · contradiction
   else
-    have hf := FloatBits.cases a
-    simp_rw [hn, hi, false_or] at hf
+    -- have hf := FloatBits.cases a
+    -- simp_rw [hn, hi, false_or] at hf
     split_ifs with c1
     · have := (FpQuotient.representative_NaN_iff _).mpr c1
       contradiction
@@ -349,5 +497,72 @@ theorem FpQuotient.representative_eq [FloatFormat] (f : FpQuotient) : f = ⟦FpQ
       contradiction
     · rw [FloatBits.construct_sign_eq_BitsTriple, FloatBits.construct_exponent_eq_BitsTriple, FloatBits.construct_significand_eq_BitsTriple]
       split_ands <;> rfl
+
+
+
+theorem FpQuotient.representative_isFinite_iff [FloatFormat] (f : FpQuotient) : f.isFinite ↔ f.representative.isFinite := by
+  constructor
+  · exact FpQuotient.representative_isFinite _
+  · intro h
+    have hrf := h
+    unfold FpQuotient.representative at h
+    simp_all only [representative_NaN_iff, FloatBits.isFinite_notNaN, ite_false]
+    split at h
+    · exfalso
+      exact FloatBits.isInfinite_notFinite _ (FloatBits.infinite_isInfinite _) h
+    · rw [FpQuotient.fake_toBitsTriple_eq_toBitsTriple] at h
+      -- rename_i h1
+      rw [FpQuotient.representative_eq f]
+      -- have j := FloatBits.appendToBitsTriple_eq f.representative.fake_toBitsTriple
+      unfold FloatBits.fake_toBitsTriple at h
+      simp_all only [FloatBits.isFinite_notNaN, ↓reduceIte]
+      exact hrf
+
+theorem FpQuotient.representative_isInfinite_iff [FloatFormat] (f : FpQuotient) : f.isInfinite ↔ f.representative.isInfinite := by
+  constructor
+  · exact FpQuotient.representative_isInfinite _
+  · intro h
+    have hrf := h
+    unfold FpQuotient.representative at h
+    simp_all only [representative_NaN_iff, FloatBits.isInfinite_notNaN, ite_false]
+    split at h
+    · trivial
+    · rw [FpQuotient.fake_toBitsTriple_eq_toBitsTriple] at h
+      rw [FpQuotient.representative_eq f]
+      unfold FloatBits.fake_toBitsTriple at h
+      simp_all only [FloatBits.isInfinite_notNaN, ↓reduceIte]
+      exact hrf
+
+theorem FpQuotient.representative_mk_isFinite_eq [FloatFormat] {f : FloatBits} (hf : f.isFinite) : (FpQuotient.mk f).representative = f := by
+  unfold FpQuotient.representative mk
+  split_ifs with hn hi
+  · simp_all only [Quotient.lift_mk, FloatBits.isFinite_notNaN]
+  · simp_all only [Quotient.lift_mk, FloatBits.isFinite_notNaN, not_false_eq_true, FloatBits.isFinite_notInfinite]
+  · norm_num
+    unfold FpQuotient.fake_toBitsTriple FloatBits.fake_toBitsTriple
+    rw [@Quotient.liftOn_mk]
+    split_ifs
+    · simp_all only [FloatBits.isNaN_notFinite]
+    · norm_num
+      conv => rhs; rw [FloatBits.appendToBitsTriple_eq f.toBitsTriple f (by rfl)]
+
+theorem FpQuotient.representative_mk_isInfinite_eq [FloatFormat] {f : FloatBits} (hf : f.isInfinite) : (FpQuotient.mk f).representative = f := by
+  unfold FpQuotient.representative mk
+  split_ifs with hn hi
+  · simp_all only [Quotient.lift_mk, FloatBits.isInfinite_notNaN]
+  · unfold FloatBits.infinite
+    apply (FloatBits.ext_triple' _ _).mpr
+    norm_num
+    rw [FloatBits.construct_sign_eq_BitsTriple, FloatBits.construct_exponent_eq_BitsTriple, FloatBits.construct_significand_eq_BitsTriple]
+    unfold FloatBits.isInfinite FloatBits.isExponentAllOnes FloatBits.isTSignificandZero at hf
+    unfold FpQuotient.fake_sign FloatBits.fake_sign FloatBits.sign
+    rw [@Quotient.liftOn_mk]
+    split_ands
+    · simp_all only [BitVec.ofNat_eq_ofNat, Quotient.lift_mk, FloatBits.isInfinite_notNaN,
+      ite_false, not_false_eq_true]
+      rw [← BitVec.ofNat_eq_ofNat, BitVec.ofBool_beq_one_n]
+    · simp_all only [BitVec.ofNat_eq_ofNat, Quotient.lift_mk]
+    · simp_all only [BitVec.ofNat_eq_ofNat, Quotient.lift_mk]
+  · simp_all only [Quotient.lift_mk, FloatBits.isInfinite_notNaN, not_false_eq_true, not_true_eq_false]
 
 end Fp
