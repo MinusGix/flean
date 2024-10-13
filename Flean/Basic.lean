@@ -16,6 +16,7 @@ import Flean.FloatFormat
 -- but we also need to constraint the values, as `m` should be less than `1.0`, of which our current comparison is essentially just asking if it is less than 2^prec
 --
 
+-- TODO: these should be defined in a namespace, possibly under a different name
 @[reducible]
 def isNormal [FloatFormat] (m : ℕ) : Prop := (2^(FloatFormat.prec - 1) ≤ m ∧ m < 2^FloatFormat.prec)
 @[reducible]
@@ -57,6 +58,28 @@ instance : Zero FiniteFp :=
       simp [ge_iff_le, le_refl, FloatFormat.exp_order_le, zero_le, nonpos_iff_eq_zero,
         pow_eq_zero_iff', OfNat.ofNat_ne_zero, ne_eq, false_and, Nat.ofNat_pos, pow_pos, and_true,
         and_self, or_true]
+  }⟩
+
+instance : One FiniteFp :=
+  ⟨{
+    s := false,
+    m := 2^(FloatFormat.prec - 1),
+    e := 0,
+    valid := by
+      unfold IsValidFiniteVal isNormal isSubnormal
+      have := FloatFormat.valid_prec
+      have := FloatFormat.prec_pred_pow_le
+      have := FloatFormat.exp_order_le
+      have := FloatFormat.max_exp_pos
+      have := FloatFormat.min_exp_nonpos
+      split_ands
+      · omega
+      · omega
+      · apply pow_lt_pow_right (by norm_num) (by omega)
+      · left
+        split_ands
+        · rfl
+        · apply pow_lt_pow_right (by norm_num) (by omega)
   }⟩
 
 def sign (x : FiniteFp) : Bool := x.s

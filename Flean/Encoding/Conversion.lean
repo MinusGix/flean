@@ -341,46 +341,23 @@ theorem lift_repr_toBitsTriple_exponent [StdFloatFormat] {f : FiniteFp} : (Fp.fi
   lift_lets
   extract_lets E E' _ sign significand exponent
   rw [FloatBits.construct_exponent_eq_BitsTriple]
-  if he : f.e = FloatFormat.min_exp then
-    unfold_let exponent E' E
-    rw [he]
-    simp only [StdFloatFormat.std_exp_range_def, StdFloatFormat.max_exp_def, ↓reduceIte,
-      Int.toNat_zero]
-  else
-    unfold_let exponent E' E
-    simp_all only [StdFloatFormat.std_exp_range_def, StdFloatFormat.max_exp_def, ite_false,
-      BitVec.toNat_ofNat, Int.ofNat_emod, Nat.cast_pow, Nat.cast_ofNat]
-    have vf : IsValidFiniteVal f.e f.m := f.valid
-    have := FloatFormat.exponentBias_add_standard_pos f.e (by omega) StdFloatFormat.st
-    unfold FloatFormat.exponentBias at this
-    rw [StdFloatFormat.max_exp_def] at this
-    split_ifs with ho
-    · exfalso
-      have a1 : (f.e + (2 ^ StdFloatFormat.exp_pow - 1)).toNat < 2^FloatFormat.exponentBits := by
-        rw [StdFloatFormat.exponentBits_def]
-        zify
-        rw [Int.toNat_of_nonneg (by omega), add_sub_left_comm, add_comm, pow_add, pow_one, mul_two]
-        apply Int.add_lt_add_right
-        unfold IsValidFiniteVal at vf
-        have := vf.right.left
-        rw [StdFloatFormat.max_exp_def] at this
-        omega
-      cases' (BitVec.ofNat_le_eq_zero_iff a1).mp ho with h
-      · zify at h
-        rw [Int.toNat_of_nonneg (by omega)] at h
-        omega
-      · simp_all only [gt_iff_lt, AddLeftCancelMonoid.add_eq_zero, StdFloatFormat.max_exp_def, Int.pred_toNat, one_ne_zero, and_false]
-    · rw [Int.toNat_of_nonneg (by omega)]
-      rw [Int.emod_eq_of_lt (by omega)]
-      ring
-      rw [StdFloatFormat.exponentBits_def]
-      rw [pow_add]
-      have := StdFloatFormat.exp_pow_pos
-      rw [pow_one, mul_two, add_sub_left_comm, add_comm]
-      apply Int.add_lt_add_right
-      unfold IsValidFiniteVal at vf
-      rw [StdFloatFormat.max_exp_def] at vf
-      omega
+  unfold_let exponent E' E
+  have vf := f.valid
+  unfold IsValidFiniteVal isSubnormal at vf
+
+  split_ifs with hs he hl
+  · simp_all only [Int.toNat_zero, StdFloatFormat.std_exp_range_def, StdFloatFormat.max_exp_def]
+  · simp_all only [Int.toNat_zero, not_true_eq_false]
+  · cases' (BitVec.ofNat_le_eq_zero_iff (StdFloatFormat.exponentBias_add_toNat_lt_exponentBits _ (by omega))).mp hl with h1
+    · zify at h1
+      rw [FloatFormat.exponentBias_add_standard_toNat _ (by omega) StdFloatFormat.st] at h1
+      simp_all only [neg_sub, sub_right_inj, not_and, not_le, StdFloatFormat.max_exp_def, sub_add_sub_cancel, sub_self,
+        Int.toNat_zero, StdFloatFormat.std_exp_range_def, ge_iff_le, tsub_le_iff_right, Int.reduceLE, false_and]
+    · have := FloatFormat.exponentBits_pos
+      contradiction
+  · have := FloatFormat.exponentBits_pos
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (StdFloatFormat.exponentBias_add_toNat_lt_exponentBits _ (by omega)), FloatFormat.exponentBias_add_standard_toNat _ (by omega) StdFloatFormat.st, StdFloatFormat.exponentBias_def]
+    omega
 
 theorem lift_repr_toBitsTriple_significand [StdFloatFormat] {f : FiniteFp} : (Fp.finite f).toBits.representative.FpSignificand = f.m := by
   unfold FloatBits.FpSignificand
@@ -396,21 +373,56 @@ theorem lift_repr_toBitsTriple_significand [StdFloatFormat] {f : FiniteFp} : (Fp
 
   have vf := f.valid
   unfold IsValidFiniteVal isNormal isSubnormal at vf
-  -- cases' vf.right.right.right with h1 h2
-  -- · unfold isNormal at h1
-  --   aesop
 
-  if he : f.e = FloatFormat.min_exp then
-    simp only [he, StdFloatFormat.std_exp_range_def, StdFloatFormat.max_exp_def, ↓reduceIte,
-      Int.toNat_zero, BitVec.ofNat_eq_ofNat, Nat.and_pow_two_is_mod, BitVec.toNat_ofNat, dvd_refl,
-      Nat.mod_mod_of_dvd]
+  split_ifs with hs h2 h3
+  · rw [BitVec.toNat_ofNat]
     unfold FloatFormat.significandBits
-    rw [Nat.mod_eq_of_lt]
-    cases' vf.right.right.right with h1 h2
-    · sorry
-    · sorry
-  else
-    sorry
+    rw [Nat.and_pow_two_is_mod, Nat.mod_mod_of_dvd _ (by aesop), Nat.mod_eq_of_lt]
+    apply Nat.lt_of_le_pred
+    apply pow_pos (by norm_num)
+    exact hs.right
+  · simp_all only [StdFloatFormat.std_exp_range_def, StdFloatFormat.max_exp_def, ge_iff_le, le_refl, tsub_le_iff_right,
+    and_self, or_true, and_true, true_and, Int.toNat_zero, BitVec.ofNat_eq_ofNat, not_true_eq_false]
+  · have hlt := StdFloatFormat.exponentBias_add_toNat_lt_exponentBits f.e (by omega)
+    cases' (BitVec.ofNat_le_eq_zero_iff hlt).mp h3 with hb
+    · rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt]
+      unfold FloatFormat.significandBits
+      unfold isSubnormal at hs
+      have h2 := vf.right.right.right.resolve_right hs
+      zify at hb; rw [Int.toNat_of_nonneg (FloatFormat.exponentBias_add_standard_pos f.e (by omega) StdFloatFormat.st).le] at hb
+      simp_all only [StdFloatFormat.std_exp_range_def, StdFloatFormat.max_exp_def, ge_iff_le, tsub_le_iff_right,
+        and_self, true_or, and_true, not_and, not_le, BitVec.ofNat_eq_ofNat, gt_iff_lt, Int.reduceLE, false_and]
+    · simp_all only [StdFloatFormat.std_exp_range_def, StdFloatFormat.max_exp_def, ge_iff_le, tsub_le_iff_right,
+      not_and, not_le, BitVec.ofNat_eq_ofNat, pow_zero, Nat.lt_one_iff, Int.toNat_eq_zero,
+      AddLeftCancelMonoid.add_eq_zero, Int.pred_toNat, one_ne_zero, and_false]
+  · norm_num
+    rw [show BitVec.toNat 1 = 1 by simp]
+    have hs' := vf.right.right.right.resolve_right hs
+    unfold FloatFormat.significandBits
+    apply Nat.eq_of_testBit_eq
+    intro i
+    rw [Nat.testBit_or, Nat.testBit_shiftLeft, Nat.testBit_mod_two_pow]
+    by_cases ilt : i < FloatFormat.prec - 1
+    · rw [decide_eq_false_iff_not.mpr (by omega), Bool.false_and, Bool.false_or, decide_eq_true ilt, Bool.true_and]
+    · rw [decide_eq_true (by omega), decide_eq_false (by omega), Bool.true_and, Bool.false_and, Bool.or_false]
+      by_cases ieq : i = FloatFormat.prec - 1
+      · rw [ieq]
+        simp_arith
+        by_cases hbit : f.m.testBit (FloatFormat.prec - 1) = true
+        · trivial
+        · rw [Bool.not_eq_true] at hbit
+          have p : ∀ j, j ≥ FloatFormat.prec - 1 → f.m.testBit j = false := by
+            intro j jge
+            by_cases jeq : j = FloatFormat.prec - 1
+            · rw [jeq]
+              exact hbit
+            · exact Nat.testBit_lt_two_pow'.mp hs'.right j (by omega)
+          have := Nat.lt_pow_two_of_testBit f.m p
+          omega
+      · rw [Nat.testBit_lt_two_pow'.mp hs'.right i (by omega)]
+        have := (not_congr Nat.testBit_one_eq_true_iff_self_eq_zero).mpr (by omega : ¬i - (FloatFormat.prec - 1) = 0)
+        norm_num at this
+        rw [this]
 
 theorem toBits_ofBits [StdFloatFormat] (f : Fp) : ofBits (toBits f).representative = f := by
   if hn : f.isNaN then
@@ -427,7 +439,6 @@ theorem toBits_ofBits [StdFloatFormat] (f : Fp) : ofBits (toBits f).representati
     have hi' := lift_isInfinite hi
     have hir' := FpQuotient.representative_isInfinite _ hi'
     unfold ofBits
-    -- have hri := FloatBits.infinite_isInfinite
     split_ifs with hz
     · have := FpQuotient.representative_NaN_imp_NaN _ hz
       have := FpQuotient.isInfinite_notNaN _ hi'
@@ -458,11 +469,12 @@ theorem toBits_ofBits [StdFloatFormat] (f : Fp) : ofBits (toBits f).representati
     · have := (FpQuotient.representative_isInfinite_iff f.toBits).mpr hz
       contradiction
     · norm_num
-      -- unfold FloatBits.FpExponent FloatBits.FpSignificand
       unfold Fp.isFinite at hf
       cases' f with vf
-      · simp_rw [lift_repr_toBitsTriple_sign, lift_repr_toBitsTriple_exponent]
-        sorry
+      · simp_rw [lift_repr_toBitsTriple_sign, lift_repr_toBitsTriple_exponent, lift_repr_toBitsTriple_significand]
+        congr
+        norm_num
+        convert Bool.toNat_beq_one vf.s
       · simp_all only [Bool.false_eq_true]
       · simp_all only [Bool.false_eq_true]
 
@@ -483,6 +495,8 @@ end Fp
 def l := @FiniteFp.largestFiniteFloat FloatFormat.Binary32.toFloatFormat
 def sn := @FiniteFp.smallestPosNormal FloatFormat.Binary32.toFloatFormat
 def ss := @FiniteFp.smallestPosSubnormal FloatFormat.Binary32.toFloatFormat
+def o := (@FiniteFp.instOne FloatFormat.Binary32.toFloatFormat).one
+def z := (@FiniteFp.instZero FloatFormat.Binary32.toFloatFormat).zero
 
 def ftr := λ f => @FiniteFp.toRat FloatFormat.Binary32.toFloatFormat f
 def tr := λ f => @Fp.toRat? FloatFormat.Binary32.toFloatFormat f
@@ -494,8 +508,15 @@ def toOfB := λ f => ofB (@Fp.FpQuotient.representative FloatFormat.Binary32.toF
 #eval! (ftr l)
 #eval! (tr (toOfB (off l)))
 
-#eval! (ftr sn)
-#eval! (tr (toOfB (off sn)))
+#eval! (ftr sn) -- (1 : Rat)/85070591730234615865843651857942052864 correct
+#eval! (tr (toOfB (off sn))) -- 0??
+#eval! (@Fp.FpQuotient.representative FloatFormat.Binary32.toFloatFormat (toB (off sn))) -- 0??
 
 #eval! (ftr ss)
 #eval! (tr (toOfB (off ss)))
+
+#eval! (ftr o)
+#eval! (tr (toOfB (off o)))
+
+#eval! (ftr z)
+#eval! (tr (toOfB (off z)))

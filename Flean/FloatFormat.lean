@@ -65,6 +65,7 @@ class FloatFormat where
   valid_prec : prec ≥ 2
   exp_order : min_exp < max_exp
   max_exp_pos : 0 < max_exp
+  min_exp_nonpos : min_exp ≤ 0
 
 namespace FloatFormat
 
@@ -91,8 +92,9 @@ def Binary16 : StdFloatFormat := {
   min_exp := -14,
   max_exp := 15,
   valid_prec := by norm_num,
-  exp_order := by norm_num
-  max_exp_pos := by norm_num
+  exp_order := by norm_num,
+  max_exp_pos := by norm_num,
+  min_exp_nonpos := by norm_num,
 
   exp_pow := 4
   exp_pow_pos := by norm_num
@@ -109,8 +111,9 @@ def Binary32 : StdFloatFormat := {
   min_exp := -126,
   max_exp := 127,
   valid_prec := by norm_num,
-  exp_order := by norm_num
-  max_exp_pos := by norm_num
+  exp_order := by norm_num,
+  max_exp_pos := by norm_num,
+  min_exp_nonpos := by norm_num,
 
   exp_pow := 7
   exp_pow_pos := by norm_num
@@ -129,6 +132,7 @@ def Binary64 : StdFloatFormat := {
   valid_prec := by norm_num,
   exp_order := by norm_num,
   max_exp_pos := by norm_num,
+  min_exp_nonpos := by norm_num,
 
   exp_pow := 10
   exp_pow_pos := by norm_num
@@ -145,7 +149,8 @@ def Binary128 : StdFloatFormat := {
   max_exp := 16383,
   valid_prec := by norm_num,
   exp_order := by norm_num
-  max_exp_pos := by norm_num
+  max_exp_pos := by norm_num,
+  min_exp_nonpos := by norm_num,
 
   exp_pow := 14
   exp_pow_pos := by norm_num
@@ -164,8 +169,9 @@ def BF16 : StdFloatFormat := {
   min_exp := -126,
   max_exp := 127,
   valid_prec := by norm_num,
-  exp_order := by norm_num
-  max_exp_pos := by norm_num
+  exp_order := by norm_num,
+  max_exp_pos := by norm_num,
+  min_exp_nonpos := by norm_num,
 
   exp_pow := 7
   exp_pow_pos := by norm_num
@@ -183,8 +189,9 @@ def TF32 : StdFloatFormat := {
   min_exp := -126,
   max_exp := 127,
   valid_prec := by norm_num,
-  exp_order := by norm_num
-  max_exp_pos := by norm_num
+  exp_order := by norm_num,
+  max_exp_pos := by norm_num,
+  min_exp_nonpos := by norm_num,
 
   exp_pow := 7
   exp_pow_pos := by norm_num

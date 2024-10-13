@@ -166,6 +166,24 @@ theorem FloatFormat.exponentBias_add_standard_toNat [FloatFormat] (e : ℤ) (e_r
   apply Int.toNat_of_nonneg
   exact FloatFormat.exponentBias_add_standard_nonneg e e_range standard
 
+theorem StdFloatFormat.exponentBias_add_lt_exponentBits [StdFloatFormat] (e : ℤ) (e_range : FloatFormat.min_exp ≤ e ∧ e ≤ FloatFormat.max_exp):
+  e + FloatFormat.exponentBias < 2^FloatFormat.exponentBits := by
+  unfold FloatFormat.exponentBias
+  rw [StdFloatFormat.exponentBits_def, StdFloatFormat.max_exp_def]
+  rw [StdFloatFormat.st, StdFloatFormat.max_exp_def] at e_range
+  omega
+
+-- TODO: I think this can be done without the StdFloatFormat assumption
+theorem StdFloatFormat.exponentBias_add_toNat_lt_exponentBits [StdFloatFormat] (e : ℤ) (e_range : FloatFormat.min_exp ≤ e ∧ e ≤ FloatFormat.max_exp):
+  (e + FloatFormat.exponentBias).toNat < 2^FloatFormat.exponentBits := by
+  zify; rw [FloatFormat.exponentBias_add_standard_toNat e e_range StdFloatFormat.st]
+  exact StdFloatFormat.exponentBias_add_lt_exponentBits e e_range
+
+theorem StdFloatFormat.exponentBias_def [StdFloatFormat] :
+  FloatFormat.exponentBias = 2 ^ StdFloatFormat.exp_pow - 1 := by
+  unfold FloatFormat.exponentBias
+  rw [StdFloatFormat.max_exp_def]
+
 -- TODO: RFL can solve these, but the speed is very slow.
 theorem FloatFormat.Binary16.bitSize_eq :
   @FloatFormat.bitSize FloatFormat.Binary16.toFloatFormat = 16 := by
