@@ -424,6 +424,7 @@ theorem lift_repr_toBitsTriple_significand [StdFloatFormat] {f : FiniteFp} : (Fp
         norm_num at this
         rw [this]
 
+/-- Converting from Fp to Bits and back yields the same value. -/
 theorem toBits_ofBits [StdFloatFormat] (f : Fp) : ofBits (toBits f).representative = f := by
   if hn : f.isNaN then
     have hn' := lift_isNaN hn
@@ -482,15 +483,6 @@ theorem toBits_ofBits [StdFloatFormat] (f : Fp) : ofBits (toBits f).representati
 
 
 end Fp
-
--- def f := @FiniteFp.toRat FloatFormat.Binary32.toFloatFormat
--- #eval! f (0 : @FiniteFp FloatFormat.Binary32.toFloatFormat)
--- def f' := @Fp.toBits FloatFormat.Binary32.toFloatFormat
--- def v := f' (0 : @Fp FloatFormat.Binary32.toFloatFormat)
--- #eval! @Fp.FpQuotient.representative FloatFormat.Binary32 v FloatFormat.binary32_standard_exp_range
--- #eval! (@toBits FloatFormat.Binary32 (0 : @Fp FloatFormat.Binary32) FloatFormat.binary32_standard_exp_range).representative
-
--- #eval (@Fp.toRat? FloatFormat.Binary16.toFloatFormat) (@Fp.ofBits FloatFormat.Binary16 (0 : @Fp.FloatBits FloatFormat.Binary16.toFloatFormat))
 
 def l := @FiniteFp.largestFiniteFloat FloatFormat.Binary32.toFloatFormat
 def sn := @FiniteFp.smallestPosNormal FloatFormat.Binary32.toFloatFormat

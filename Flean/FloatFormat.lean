@@ -67,6 +67,11 @@ class FloatFormat where
   max_exp_pos : 0 < max_exp
   min_exp_nonpos : min_exp ≤ 0
 
+attribute [simp] FloatFormat.valid_prec
+attribute [simp] FloatFormat.exp_order
+attribute [simp] FloatFormat.max_exp_pos
+attribute [simp] FloatFormat.min_exp_nonpos
+
 namespace FloatFormat
 
 def isStandardExpRange [FloatFormat] : Prop :=
@@ -82,6 +87,11 @@ class StdFloatFormat extends FloatFormat where
   exp_pow_pos : exp_pow > 0
   max_exp_pow : max_exp = 2 ^ exp_pow - 1
   st : FloatFormat.isStandardExpRange
+
+attribute [simp] StdFloatFormat.exp_pow_pos
+attribute [simp] StdFloatFormat.max_exp_pow
+attribute [simp] StdFloatFormat.st
+
 namespace FloatFormat
 
 def radix [FloatFormat] : Radix := Radix.Binary
