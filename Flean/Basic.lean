@@ -84,11 +84,12 @@ instance : One FiniteFp :=
 
 def sign (x : FiniteFp) : Bool := x.s
 
-def sign' (x : FiniteFp) : ℤ :=
+def sign'  {R : Type*} [Neg R] [One R] (x : FiniteFp) : R :=
   if x.s then -1 else 1
 
-def toRat (x : FiniteFp) : ℚ :=
-  x.sign' * x.m * (FloatFormat.radix.val : ℚ)^(x.e - FloatFormat.prec + 1)
+-- TODO: is there a way to make this default to ℚ? That's the most natural type to represent any floating point number.
+def toVal {R : Type*} [LinearOrderedField R] (x : FiniteFp) : R :=
+  x.sign' * x.m * (FloatFormat.radix.val : R)^(x.e - FloatFormat.prec + 1)
 
 def isNormal (x : FiniteFp) : Prop := _root_.isNormal x.m
 
@@ -167,11 +168,10 @@ def largestFiniteFloat : FiniteFp := ⟨
 
 -- TODO: prove that the smallest positive normal, smallest positive subnormal, and largest finite float are all truely their namesakes
 
-
+def toRat (x : FiniteFp) : ℚ := x.toVal
 
 noncomputable
-def toReal (x : FiniteFp) : ℝ :=
-  x.toRat
+def toReal (x : FiniteFp) : ℝ := x.toVal
 
 end FiniteFp
 
@@ -197,12 +197,12 @@ def sign (x : Fp) : Bool :=
   | .infinite b => b
   | .NaN => false
 
-/-- The sign of the number. The sign of NaN is left defined as 0 but that may not result in the same sign as the bit repr -/
-def sign' (x : Fp) : ℤ :=
+/-- The sign of the number. The sign of NaN is left defined as 1 but that may not result in the same sign as the bit repr -/
+def sign' {R : Type*} [Neg R] [One R] (x : Fp) : R :=
   match x with
   | .finite x => x.sign'
   | .infinite b => if b then 1 else -1
-  | .NaN => 0
+  | .NaN => 1
 
 def isNaN (x : Fp) : Prop := x = .NaN
 
@@ -214,11 +214,16 @@ def isFinite (x : Fp) : Prop := match x with
   | .infinite _ => false
   | .NaN => false
 
-def toRat? (x : Fp) : Option ℚ :=
+def toVal? {R : Type*} [LinearOrderedField R] (x : Fp) : Option R :=
   match x with
-  | .finite x => some (FiniteFp.toRat x)
+  | .finite x => some (FiniteFp.toVal x)
   | .infinite _ => none
   | .NaN => none
+
+def toRat? (x : Fp) : Option ℚ := toVal? x
+
+noncomputable
+def toReal? (x : Fp) : Option ℝ := toVal? x
 
 def finite_isFinite (x : FiniteFp) : (Fp.finite x).isFinite := by
   unfold isFinite
@@ -310,12 +315,4 @@ def notNaN_notInfinite {x : Fp} : ¬x.isNaN → ¬x.isInfinite → x.isFinite :=
 
 -- TODO: to EReal
 
--- TODO: convert to typical bit repr
-
 end Fp
-
--- TODO: is there a way to just write `(...).toRat` ? Clearly I need to specify the format somewhere, but currently I have to write it even for toRat.
--- All correct
--- #eval! (@FiniteFp.toRat FloatFormat.Binary32.toFloatFormat (@FiniteFp.largestFiniteFloat FloatFormat.Binary32.toFloatFormat))
--- #eval! (@FiniteFp.toRat FloatFormat.Binary32.toFloatFormat (@FiniteFp.smallestPosNormal FloatFormat.Binary32.toFloatFormat))
--- #eval! (@FiniteFp.toRat FloatFormat.Binary32.toFloatFormat (@FiniteFp.smallestPosSubnormal FloatFormat.Binary32.toFloatFormat))

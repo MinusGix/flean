@@ -490,7 +490,7 @@ def ss := @FiniteFp.smallestPosSubnormal FloatFormat.Binary32.toFloatFormat
 def o := (@FiniteFp.instOne FloatFormat.Binary32.toFloatFormat).one
 def z := (@FiniteFp.instZero FloatFormat.Binary32.toFloatFormat).zero
 
-def ftr := λ f => @FiniteFp.toRat FloatFormat.Binary32.toFloatFormat f
+def ftr := λ f => @FiniteFp.toVal FloatFormat.Binary32.toFloatFormat ℚ _ f
 def tr := λ f => @Fp.toRat? FloatFormat.Binary32.toFloatFormat f
 def off := λ f => @Fp.finite FloatFormat.Binary32.toFloatFormat f
 def toB := λ f => @Fp.toBits FloatFormat.Binary32.toFloatFormat f
