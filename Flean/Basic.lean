@@ -60,6 +60,14 @@ instance : Zero FiniteFp :=
         and_self, or_true]
   }⟩
 
+theorem zero_def : (0 : FiniteFp) = {
+  s := false,
+  m := 0,
+  e := FloatFormat.min_exp,
+  -- TODO: is there a better way to do this?
+  valid := (0 : FiniteFp).valid
+} := rfl
+
 instance : One FiniteFp :=
   ⟨{
     s := false,
@@ -82,14 +90,83 @@ instance : One FiniteFp :=
         · apply pow_lt_pow_right (by norm_num) (by omega)
   }⟩
 
+theorem one_def : (1 : FiniteFp) = {
+  s := false,
+  e := 0,
+  m := 2^(FloatFormat.prec - 1),
+  valid := (1 : FiniteFp).valid
+} := rfl
+
+instance : Neg FiniteFp := ⟨fun x => {
+  s := !x.s,
+  e := x.e,
+  m := x.m,
+  valid := x.valid
+}⟩
+
+theorem neg_def (x : FiniteFp) : -x = {
+  s := !x.s,
+  e := x.e,
+  m := x.m,
+  valid := x.valid
+} := rfl
+
 def sign (x : FiniteFp) : Bool := x.s
 
 def sign'  {R : Type*} [Neg R] [One R] (x : FiniteFp) : R :=
   if x.s then -1 else 1
 
+section toVal
+
+variable {R : Type*} [LinearOrderedField R]
+
 -- TODO: is there a way to make this default to ℚ? That's the most natural type to represent any floating point number.
-def toVal {R : Type*} [LinearOrderedField R] (x : FiniteFp) : R :=
+def toVal (x : FiniteFp) : R :=
   x.sign' * x.m * (FloatFormat.radix.val : R)^(x.e - FloatFormat.prec + 1)
+
+@[simp]
+theorem toVal_zero : toVal (0 : FiniteFp) = (0 : R) := by
+  delta toVal sign'
+  norm_num
+  left
+  rfl
+
+@[simp]
+theorem toVal_one : toVal (1 : FiniteFp) = (1 : R) := by
+  rw [one_def]
+  delta toVal sign'
+  unfold FloatFormat.radix Radix.Binary
+  norm_num
+  have : (2 : R)^(FloatFormat.prec - 1) = (2 : R)^((FloatFormat.prec : ℤ) - 1) := by
+    conv => rhs; rw [← Nat.cast_one]
+    rw [← Nat.cast_sub]
+    rw [zpow_natCast]
+    have := FloatFormat.valid_prec
+    omega
+  rw [this]
+  rw [← @zpow_add' R _ 2]
+  · simp_all only [sub_add_add_cancel, add_neg_cancel, zpow_zero]
+  · simp_all only [ne_eq, OfNat.ofNat_ne_zero, not_false_eq_true, sub_add_add_cancel, add_neg_cancel,
+    not_true_eq_false, false_or, true_or]
+
+@[simp]
+theorem toVal_neg_eq_neg (x : FiniteFp) : @toVal _ R _ (-x) = -toVal x := by
+  rw [neg_def]
+  delta toVal sign'
+  norm_num
+  split
+  next h => simp_all only [Bool.false_eq_true, ↓reduceIte]
+  next h => simp_all only [Bool.not_eq_false, ↓reduceIte, neg_neg]
+
+@[simp]
+theorem toVal_neg_one : toVal (-1 : FiniteFp) = (-1 : R) := by
+  rw [toVal_neg_eq_neg, toVal_one]
+
+@[simp]
+theorem toVal_neg_zero : toVal (-(0 : FiniteFp)) = (0 : R) := by
+  rw [toVal_neg_eq_neg, toVal_zero, neg_zero]
+
+end toVal
 
 def isNormal (x : FiniteFp) : Prop := _root_.isNormal x.m
 
