@@ -23,53 +23,52 @@ def ulp_har [FloatFormat] (f : FiniteFp) : ℚ := sorry
 
 -- theorem ulp_har_def [FloatFormat] (f : FiniteFp) : sorry := sorry
 
--- TODO: is there any good way to have a computable version of this using rationals? (or even a version that does it up to some finite precision)
-def ulp_goldberg [FloatFormat] (v : R) : R :=
+def ulp [FloatFormat] (v : R) : R :=
   -- Get the e for the power of two interval containing v |v| ∈ [2^e, 2^(e+1))
-  let e := Int.log 2 (|v|)
+  let e : ℤ := Int.log 2 (|v|)
   let e := max e FloatFormat.min_exp
   2 ^ (e - FloatFormat.prec + 1)
 
-theorem ulp_goldberg_ne_zero [FloatFormat] (v : R)  : ulp_goldberg v ≠ 0 := by
+theorem ulp_ne_zero [FloatFormat] (v : R)  : ulp v ≠ 0 := by
   apply zpow_ne_zero
   norm_num
 
-theorem ulp_goldberg_pos [FloatFormat] (v : R) : ulp_goldberg v > 0 := by
+theorem ulp_pos [FloatFormat] (v : R) : ulp v > 0 := by
   apply zpow_pos
   norm_num
 
 /-- Distance between 1 and its floating-point successor. Sometimes called the 'machine epsilon'. This is the value of MATLAB's `eps`. -/
-theorem ulp_goldberg_one [FloatFormat] : ulp_goldberg (1 : R) = 2^(1 - (FloatFormat.prec : ℤ)) := by
-  delta ulp_goldberg
+theorem ulp_one [FloatFormat] : ulp (1 : R) = 2^(1 - (FloatFormat.prec : ℤ)) := by
+  delta ulp
   norm_num
   ring
 
-def machineEpsilon [FloatFormat] : R := ulp_goldberg (1 : R)
+def machineEpsilon [FloatFormat] : R := ulp (1 : R)
 
-theorem ulp_goldberg_zero [FloatFormat] : ulp_goldberg (0 : R) = 2 ^ (-(FloatFormat.prec : ℤ) + 1) := by simp [ulp_goldberg]
+theorem ulp_zero [FloatFormat] : ulp (0 : R) = 2 ^ (-(FloatFormat.prec : ℤ) + 1) := by simp [ulp]
 
 /-- Symmetric about 0. Which makes sense because floating point formats are symmetric about 0. -/
-theorem ulp_goldberg_eq_neg [FloatFormat] (v : R) : ulp_goldberg (-v) = ulp_goldberg v := by simp [ulp_goldberg]
+theorem ulp_eq_neg [FloatFormat] (v : R) : ulp (-v) = ulp v := by simp [ulp]
 
-theorem ulp_goldberg_ge [FloatFormat] : ∀ (v : R), 2^(FloatFormat.min_exp - FloatFormat.prec + 1) ≤ ulp_goldberg v := by
+theorem ulp_ge [FloatFormat] : ∀ (v : R), 2^(FloatFormat.min_exp - FloatFormat.prec + 1) ≤ ulp v := by
   intro v
-  delta ulp_goldberg
+  delta ulp
   norm_num
 
 /-- Being in the same power of two interval means the ULP is the same. -/
-theorem ulp_goldberg_step_log [FloatFormat] (v x : R) : Int.log 2 (|v|) = Int.log 2 (|x|) → ulp_goldberg v = ulp_goldberg x := by
-  delta ulp_goldberg
+theorem ulp_step_log [FloatFormat] (v x : R) : Int.log 2 (|v|) = Int.log 2 (|x|) → ulp v = ulp x := by
+  delta ulp
   intro h
   rw [h]
 
 -- TODO: Can we clean this up, making it more clear about which parts are disjoint?
-theorem ulp_goldberg_step_log' [FloatFormat] (v x : R) : ulp_goldberg v = ulp_goldberg x →
+theorem ulp_step_log' [FloatFormat] (v x : R) : ulp v = ulp x →
   Int.log 2 (|v|) = Int.log 2 (|x|) ∨
   Int.log 2 (|v|) = FloatFormat.min_exp ∨
   Int.log 2 (|x|) = FloatFormat.min_exp ∨
   (Int.log 2 (|v|) < FloatFormat.min_exp ∧ Int.log 2 (|x|) < FloatFormat.min_exp) := by
 
-  delta ulp_goldberg
+  delta ulp
   norm_num
   intro hv
   cases' max_cases (Int.log 2 (|v|)) FloatFormat.min_exp with h h
@@ -79,8 +78,8 @@ theorem ulp_goldberg_step_log' [FloatFormat] (v x : R) : ulp_goldberg v = ulp_go
   <;> simp [hv, h, h']
 
 
--- theorem ulp_goldberg_pow_mul [FloatFormat] (v : ℝ) (k : ℤ) : ulp_goldberg (2^k * v) = 2^k * ulp_goldberg v := by
---   delta ulp_goldberg
+-- theorem ulp_pow_mul [FloatFormat] (v : ℝ) (k : ℤ) : ulp (2^k * v) = 2^k * ulp v := by
+--   delta ulp
 --   norm_num
 --   cases' abs_cases (2 ^ k * v) with h1 h2
 --   · rw [h1.left]
@@ -102,9 +101,9 @@ theorem ulp_goldberg_step_log' [FloatFormat] (v x : R) : ulp_goldberg v = ulp_go
 
 -- TODO: There's multiple definitions of ULP, prove equivalence conditions if they're useful.
 
--- theorem diff_lt_half_ulp_goldberg_imp_rn [FloatFormat] (f : FiniteFp) (x : ℝ) : |f.toRat - x| < 1/2 * ulp_goldberg x → Fp.finite f = round_nearest x := by
+-- theorem diff_lt_half_ulp_imp_rn [FloatFormat] (f : FiniteFp) (x : ℝ) : |f.toRat - x| < 1/2 * ulp x → Fp.finite f = round_nearest x := by
 --   sorry
 
 end Fp
 
--- #eval @Fp.ulp_goldberg ℚ _ _ FloatFormat.Binary32.toFloatFormat 0
+-- #eval @Fp.ulp ℚ _ _ FloatFormat.Binary32.toFloatFormat 0
