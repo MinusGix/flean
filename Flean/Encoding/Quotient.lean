@@ -429,8 +429,7 @@ theorem FpQuotient.isNaN_eq [FloatFormat] (f g : FpQuotient) (hf : f.isNaN) (hg 
   have hof := @Quotient.out_eq _ FpSetoid f
   have hog := @Quotient.out_eq _ FpSetoid g
   rw [← hof, ← hog]
-  apply Quotient.eq_rel.mpr
-  unfold Setoid.Rel Setoid.r FpSetoid FpEquiv
+  apply Quotient.eq'.mpr
   whnf
   right
 
@@ -447,8 +446,7 @@ theorem FpQuotient.representative_eq [FloatFormat] (f : FpQuotient) : f = ⟦FpQ
   unfold FpQuotient.representative
   rw [← @Quotient.out_eq _ FpSetoid f]
   split_ifs with c1 c2
-  · apply Quotient.eq_rel.mpr
-    unfold Setoid.Rel Setoid.r FpSetoid FpEquiv
+  · apply Quotient.eq'.mpr
     whnf
     right
     constructor
@@ -456,8 +454,7 @@ theorem FpQuotient.representative_eq [FloatFormat] (f : FpQuotient) : f = ⟦FpQ
       unfold FpQuotient.mk
       exact c1
     · apply FloatBits.NaN_isNaN
-  · apply Quotient.eq_rel.mpr
-    unfold Setoid.Rel Setoid.r FpSetoid FpEquiv
+  · apply Quotient.eq'.mpr
     whnf
     left
     unfold FpQuotient.isInfinite at c2
@@ -483,8 +480,7 @@ theorem FpQuotient.representative_eq [FloatFormat] (f : FpQuotient) : f = ⟦FpQ
     · rw [FloatBits.construct_significand_eq_BitsTriple]
       unfold FloatBits.isInfinite at c2
       simp_all only [Quotient.out_eq, representative_NaN_iff, BitVec.ofNat_eq_ofNat]
-  · apply Quotient.eq_rel.mpr
-    unfold Setoid.Rel Setoid.r FpSetoid FpEquiv
+  · apply Quotient.eq'.mpr
     whnf
     left
     unfold fake_toBitsTriple FloatBits.fake_toBitsTriple

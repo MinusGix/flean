@@ -27,7 +27,7 @@ def toBits [FloatFormat] (f : Fp) : FpQuotient :=
 
       intro h
       rw [BitVec.ofNat_eq_ofNat] at h
-      have h := (BitVec.toNat_eq _ _).mp h
+      have h := BitVec.toNat_eq.mp h
       repeat rw [BitVec.toNat_ofNat] at h
       rw [Nat.zero_mod, Nat.one_mod_two_pow] at h
       <;> omega
@@ -81,7 +81,7 @@ theorem FloatBits.isFinite_validFloatVal [StdFloatFormat] {b : FloatBits} (hf : 
       Nat.one_le_cast, is_subnormal, e]
     rename_i h
     have h1 : exponent.toNat ≠ 0 := by
-      apply (BitVec.toNat_ne _ 0).mp
+      apply (@BitVec.toNat_ne _ _ 0).mp
       apply h
     omega
 
@@ -155,11 +155,11 @@ theorem FloatBits.isFinite_validFloatVal [StdFloatFormat] {b : FloatBits} (hf : 
     split_ands
     · split_ifs; contradiction
       have k : ((BitVec.ofBool true) ++ significand).msb = true := by
-        unfold BitVec.msb BitVec.getMsb
-        simp only [add_pos_iff, zero_lt_one, tsub_pos_iff_lt, true_or, decide_True,
+        unfold BitVec.msb BitVec.getMsbD
+        simp only [add_pos_iff, zero_lt_one, tsub_pos_iff_lt, true_or, decide_true,
           BitVec.ofBool_true, BitVec.ofNat_eq_ofNat, add_tsub_cancel_left, tsub_zero,
-          BitVec.getLsb_append, lt_self_iff_false, decide_False, le_refl, BitVec.getLsb_ge,
-          tsub_eq_zero_of_le, BitVec.getLsb_one, Bool.and_self, cond_false]
+          BitVec.getLsbD_append, lt_self_iff_false, decide_false, le_refl, BitVec.getLsbD_ge,
+          tsub_eq_zero_of_le, BitVec.getLsbD_one, Bool.and_self, cond_false]
       have j := BitVec.toNat_ge_of_msb_true k
       simp_all only [tsub_le_iff_right, BitVec.ofNat_eq_ofNat, ne_eq, BitVec.ofBool_true, BitVec.toNat_append,
         BitVec.toNat_ofNat, pow_one, Nat.mod_succ, add_tsub_cancel_left, ge_iff_le, e, is_subnormal, exponent, m,
@@ -196,8 +196,8 @@ theorem lift_isNaN [FloatFormat] {f : Fp} (h : f.isNaN) : (toBits f).isNaN := by
     unfold FloatBits.NaN at a
     rw [FloatBits.construct_significand_eq_BitsTriple] at a
     have := FloatFormat.significandBits_pos
-    have a := (BitVec.toNat_eq _ _).mp a
-    rw [BitVec.toNat_ofNat, BitVec.toNat_ofNat, Nat.one_mod_of_ne_one, Nat.zero_mod] at a
+    have a := BitVec.toNat_eq.mp a
+    rw [BitVec.toNat_ofNat, BitVec.toNat_ofNat, Nat.one_mod_eq_one.mpr, Nat.zero_mod] at a
     contradiction
     simp_all only [gt_iff_lt, tsub_pos_iff_lt, Nat.one_mod_two_pow, Nat.zero_mod, one_ne_zero]
 
@@ -341,7 +341,7 @@ theorem lift_repr_toBitsTriple_exponent [StdFloatFormat] {f : FiniteFp} : (Fp.fi
   lift_lets
   extract_lets E E' _ sign significand exponent
   rw [FloatBits.construct_exponent_eq_BitsTriple]
-  unfold_let exponent E' E
+  unfold exponent E' E
   have vf := f.valid
   unfold IsValidFiniteVal isSubnormal at vf
 
@@ -368,7 +368,7 @@ theorem lift_repr_toBitsTriple_significand [StdFloatFormat] {f : FiniteFp} : (Fp
   lift_lets
   extract_lets E E' T sign significand exponent
   rw [FloatBits.construct_significand_eq_BitsTriple, FloatBits.construct_exponent_eq_BitsTriple]
-  unfold_let exponent E' E significand T
+  unfold exponent E' E significand T
   unfold FloatBits.sigToTrailing
 
   have vf := f.valid
@@ -377,7 +377,7 @@ theorem lift_repr_toBitsTriple_significand [StdFloatFormat] {f : FiniteFp} : (Fp
   split_ifs with hs h2 h3
   · rw [BitVec.toNat_ofNat]
     unfold FloatFormat.significandBits
-    rw [Nat.and_pow_two_is_mod, Nat.mod_mod_of_dvd _ (by aesop), Nat.mod_eq_of_lt]
+    rw [Nat.and_pow_two_sub_one_eq_mod, Nat.mod_mod_of_dvd _ (by aesop), Nat.mod_eq_of_lt]
     apply Nat.lt_of_le_pred
     apply pow_pos (by norm_num)
     exact hs.right
@@ -451,7 +451,7 @@ theorem toBits_ofBits [StdFloatFormat] (f : Fp) : ofBits (toBits f).representati
       extract_lets sign significand exponent
       unfold FloatBits.sign
       rw [FloatBits.construct_sign_eq_BitsTriple]
-      unfold_let sign
+      unfold sign
       rw [BitVec.ofBool_beq_one]
       rw [lift_sign StdFloatFormat.st]
       unfold Fp.isInfinite at hi
@@ -472,10 +472,9 @@ theorem toBits_ofBits [StdFloatFormat] (f : Fp) : ofBits (toBits f).representati
     · norm_num
       unfold Fp.isFinite at hf
       cases' f with vf
-      · simp_rw [lift_repr_toBitsTriple_sign, lift_repr_toBitsTriple_exponent, lift_repr_toBitsTriple_significand]
+      · simp_rw [lift_repr_toBitsTriple_sign, lift_repr_toBitsTriple_exponent, lift_repr_toBitsTriple_significand, Fp.sign, FiniteFp.sign]
         congr
         norm_num
-        convert Bool.toNat_beq_one vf.s
       · simp_all only [Bool.false_eq_true]
       · simp_all only [Bool.false_eq_true]
 

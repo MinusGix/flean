@@ -1,3 +1,4 @@
+import Mathlib.Data.Int.Log
 import Mathlib.Data.Nat.Log
 import Mathlib.Data.Rat.Defs
 import Mathlib.Data.Int.Notation
@@ -11,12 +12,12 @@ import Mathlib.Tactic.LiftLets
 import Mathlib.Tactic.Qify
 
 -- From more recent mathlib
-lemma Nat.log2_eq_log_two {n : ℕ} : Nat.log2 n = Nat.log 2 n := by
-  rcases eq_or_ne n 0 with rfl | hn
-  · rw [log2_zero, log_zero_right]
-  apply eq_of_forall_le_iff
-  intro m
-  rw [Nat.le_log2 hn, ← Nat.pow_le_iff_le_log Nat.one_lt_two hn]
+-- lemma Nat.log2_eq_log_two {n : ℕ} : Nat.log2 n = Nat.log 2 n := by
+--   rcases eq_or_ne n 0 with rfl | hn
+--   · rw [log2_zero, log_zero_right]
+--   apply eq_of_forall_le_iff
+--   intro m
+--   rw [Nat.le_log2 hn, ← Nat.pow_le_iff_le_log Nat.one_lt_two hn]
 
 theorem two_pow_pred_lt_two_pow_sub_one {n : ℕ} (hn : n ≥ 2) : (2 : ℚ) ^ (n - 1) < (2 : ℚ) ^ n - 1 := by
   have : (2 : ℚ) ^ n / 2 ≤ (2 : ℚ) ^ n := half_le_self (by simp_all only [Nat.ofNat_nonneg, pow_nonneg])
@@ -89,6 +90,24 @@ theorem Nat.clog_ne {b x y : ℕ} : Nat.clog b x ≠ Nat.clog b y → x ≠ y :=
   intro a
   subst a
   simp_all only [not_true_eq_false]
+
+-- theorem Int.log_nonneg {R : Type*} [LinearOrderedField R] [FloorSemiring R] (x : R) (hx : 1 ≤ (|x|)) : 0 ≤ Int.log 2 x := by
+--   unfold Int.log
+--   split_ifs with h1
+--   <;> norm_cast
+--   · omega
+--   · norm_num at h1
+--     cases' abs_cases x with ha ha
+--     · rw [ha.left] at hx
+--       linarith
+--     · rw [ha.left] at hx
+--       have : x ≤ -1 := by linarith
+--       have : x < 1 := by linarith
+--       have : x⁻¹ ≤ -1 := by
+--         -- apply inv_le_of_inv_le
+--         apply (inv_le_of_neg _ _).mp
+--         rw [inv_neg, inv_one]
+
 
 -- theorem Nat.clog_ne_iff {b x y : ℕ} (hb : 1 < b) (hy : 1 < y) : Nat.clog b x ≠ Nat.clog b y ↔ x ≠ y := by
 --   simp_all only [ne_eq]

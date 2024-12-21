@@ -35,8 +35,18 @@ theorem ulp_goldberg_ne_zero [FloatFormat] (v : R)  : ulp_goldberg v ≠ 0 := by
   norm_num
 
 theorem ulp_goldberg_pos [FloatFormat] (v : R) : ulp_goldberg v > 0 := by
-  apply zpow_pos_of_pos
+  apply zpow_pos
   norm_num
+
+/-- Distance between 1 and its floating-point successor. Sometimes called the 'machine epsilon'. This is the value of MATLAB's `eps`. -/
+theorem ulp_goldberg_one [FloatFormat] : ulp_goldberg (1 : R) = 2^(1 - (FloatFormat.prec : ℤ)) := by
+  delta ulp_goldberg
+  norm_num
+  ring
+
+def machineEpsilon [FloatFormat] : R := ulp_goldberg (1 : R)
+
+theorem ulp_goldberg_zero [FloatFormat] : ulp_goldberg (0 : R) = 2 ^ (-(FloatFormat.prec : ℤ) + 1) := by simp [ulp_goldberg]
 
 /-- Symmetric about 0. Which makes sense because floating point formats are symmetric about 0. -/
 theorem ulp_goldberg_eq_neg [FloatFormat] (v : R) : ulp_goldberg (-v) = ulp_goldberg v := by simp [ulp_goldberg]

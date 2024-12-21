@@ -128,6 +128,7 @@ def toVal (x : FiniteFp) : R :=
 theorem toVal_zero : toVal (0 : FiniteFp) = (0 : R) := by
   delta toVal sign'
   norm_num
+  simp_all only [reduceCtorEq, ↓reduceIte, mul_eq_zero, Nat.cast_eq_zero]
   left
   rfl
 
@@ -207,18 +208,18 @@ def smallestPosNormal : FiniteFp := ⟨
     split_ands
     · trivial
     · exact FloatFormat.exp_order_le
-    · apply pow_lt_pow_right (by norm_num) (by omega)
+    · apply pow_lt_pow_right₀ (by norm_num) (by omega)
     · left
       split_ands
-      · apply pow_le_pow_right (by norm_num) (by omega)
-      · apply pow_lt_pow_right (by norm_num) (by omega)
+      · apply pow_le_pow_right₀ (by norm_num) (by omega)
+      · apply pow_lt_pow_right₀ (by norm_num) (by omega)
  ⟩
 
 theorem smallestPosNormal_isNormal : smallestPosNormal.isNormal := by
   have := FloatFormat.valid_prec
   apply And.intro
-  · apply pow_le_pow_right (by norm_num) (by omega)
-  · apply pow_lt_pow_right (by norm_num) (by omega)
+  · apply pow_le_pow_right₀ (by norm_num) (by omega)
+  · apply pow_lt_pow_right₀ (by norm_num) (by omega)
 
 def largestFiniteFloat : FiniteFp := ⟨
   false,
@@ -237,7 +238,7 @@ def largestFiniteFloat : FiniteFp := ⟨
       split_ands
       · apply Nat.le_pred_of_lt
         norm_num
-        apply pow_lt_pow_right (by norm_num) (by omega)
+        apply pow_lt_pow_right₀ (by norm_num) (by omega)
       · omega
 ⟩
 
@@ -346,7 +347,7 @@ def isInfinite_notNaN (x : Fp) : x.isInfinite → ¬x.isNaN := by
   apply Aesop.BuiltinRules.not_intro
   intro a
   subst a
-  simp_all only [or_self]
+  simp_all only [reduceCtorEq, or_self]
 
 def isInfinite_notFinite (x : Fp) : x.isInfinite → ¬x.isFinite := by
   intro h
@@ -375,7 +376,7 @@ def isNaN_notInfinite (x : Fp) : x.isNaN → ¬x.isInfinite := by
   unfold isInfinite
   unfold isNaN at h
   subst h
-  simp_all only [or_self, not_false_eq_true]
+  simp_all only [reduceCtorEq, or_self, not_false_eq_true]
 
 def notNaN_notInfinite {x : Fp} : ¬x.isNaN → ¬x.isInfinite → x.isFinite := by
   intro hn hi

@@ -68,7 +68,7 @@ theorem zero_def' : (0 : FloatBits) = FloatBits.mk' (0 : BitVec FloatFormat.sign
   norm_num
   rw [BitVec.ofNat_eq_ofNat]
   ext1 i
-  simp_all only [BitVec.getLsb_zero, BitVec.ofNat_eq_ofNat, BitVec.getLsb_append, Bool.cond_self]
+  simp_all only [BitVec.getLsbD_zero, BitVec.ofNat_eq_ofNat, BitVec.getLsbD_append, Bool.cond_self]
 
 
 
@@ -108,7 +108,7 @@ theorem appendToBitsTriple_eq (t : FloatBitsTriple) : (b : FloatBits) → b.toBi
   rw [add_comm FloatFormat.exponentBits] at bz
 
   rw [BitVec.cast_eq_swap (FloatFormat.bitSize_eq)]
-  unfold_let bb' at bz
+  unfold bb' at bz
   -- We run into the issue that it will just nest the cast inside the cast when we apply it again, is there a better way?
   rw [← BitVec.extractLsb'_cast (FloatFormat.bitSize_eq)]
   conv =>
@@ -170,7 +170,7 @@ def isExponentAllOnes_eq_ofNat (b : FloatBits) : b.isExponentAllOnes ↔ b.toBit
     simp only [BitVec.val_toFin, BitVec.toNat_ofNatLt]
   · ext
     rw [BitVec.val_toFin] at h
-    simp only [BitVec.getLsb, h, Nat.testBit_two_pow_sub_one, Fin.is_lt, decide_True,
+    simp only [BitVec.getLsbD, h, Nat.testBit_two_pow_sub_one, Fin.is_lt, decide_true,
       BitVec.toNat_ofNatLt]
 
 -- TODO: probably get rid of this. We should justh have a `.significand` method that does the conversion to bitstriple inside it
@@ -453,7 +453,7 @@ theorem validFiniteVal_biasedExponent_notAllOnes (st : FloatFormat.isStandardExp
   intro h
   have l := (BitVec.ofNat FloatFormat.exponentBits (e + FloatFormat.exponentBias).toNat).isLt
   unfold FloatFormat.exponentBias at h l
-  have h := (BitVec.toNat_eq _ _).mp h
+  have h := BitVec.toNat_eq.mp h
   rw [BitVec.toNat_ofNat] at h l
   rw [BitVec.toNat_allOnes] at h
   have a0 : FloatFormat.max_exp.toNat + 1 ≤ 2^FloatFormat.exponentBits2 := Nat.le_pow_clog one_lt_two (FloatFormat.max_exp.toNat + 1)
@@ -485,7 +485,7 @@ theorem finite_isNotNaN (s : Bool) (e : ℤ) (m : ℕ) (st : FloatFormat.isStand
   lift_lets
   extract_lets E1 E _ sign significand exponent
   rw [construct_exponent_eq_BitsTriple, construct_significand_eq_BitsTriple]
-  unfold_let exponent E E1
+  unfold exponent E E1
   intro ⟨he, _⟩
   split_ifs at he
   · rw [Int.toNat_zero] at he
@@ -501,7 +501,7 @@ theorem finite_isNotInfinite (s : Bool) (e : ℤ) (m : ℕ) (st : FloatFormat.is
   lift_lets
   extract_lets E1 E _ sign significand exponent
   rw [construct_exponent_eq_BitsTriple, construct_significand_eq_BitsTriple]
-  unfold_let exponent E E1
+  unfold exponent E E1
   intro ⟨he, _⟩
   split_ifs at he
   · rw [Int.toNat_zero] at he
@@ -518,13 +518,13 @@ theorem finite_isFinite (s : Bool) (e : ℤ) (m : ℕ) (st : FloatFormat.isStand
 
 theorem sigToTrailing_le (m : ℕ) : sigToTrailing m < 2^FloatFormat.significandBits := by
   unfold sigToTrailing
-  rw [Nat.and_pow_two_is_mod]
+  rw [Nat.and_pow_two_sub_one_eq_mod]
   omega
 
 /-- Converting to bitvec and back will yield the same number as the significandToTrailing function. Showing that we don't lose anything. -/
 theorem sigToTrailing_eq_bits (m : ℕ) :
   (BitVec.ofNat FloatFormat.significandBits (sigToTrailing m)).toNat = sigToTrailing m := by
-  apply (BitVec.toNat_eq_nat (BitVec.ofNat FloatFormat.significandBits (sigToTrailing m)) _).mpr
+  apply (@BitVec.toNat_eq_nat _ (BitVec.ofNat FloatFormat.significandBits (sigToTrailing m)) _).mpr
   constructor
   · exact sigToTrailing_le m
   · rfl
