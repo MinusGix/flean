@@ -96,6 +96,46 @@ namespace FloatFormat
 
 def radix [FloatFormat] : Radix := Radix.Binary
 
+-- TODO: does e4m3 not have infinities?
+-- See: https://arxiv.org/pdf/2209.05433
+-- But we don't currently support that.
+-- TODO: Support floating point numbers that don't have infinities
+-- I fear that there's no consistent general way to do this. That it might be better to treat them as a separate wrapper type that considers the infinities as non-actual values.
+
+-- def E4M3Binary8 : StdFloatFormat := {
+--   prec := 4,
+--   min_exp := -6,
+--   max_exp := 7,
+--   valid_prec := by norm_num,
+--   exp_order := by norm_num,
+--   max_exp_pos := by norm_num,
+--   min_exp_nonpos := by norm_num,
+
+--   exp_pow := 3
+--   exp_pow_pos := by norm_num
+--   max_exp_pow := by norm_num
+--   st := by
+--     unfold isStandardExpRange
+--     norm_num
+-- }
+
+-- def E5M2Binary8 : StdFloatFormat := {
+--   prec := 3,
+--   min_exp := -14,
+--   max_exp := 15,
+--   valid_prec := by norm_num,
+--   exp_order := by norm_num,
+--   max_exp_pos := by norm_num,
+--   min_exp_nonpos := by norm_num,
+
+--   exp_pow := 4
+--   exp_pow_pos := by norm_num
+--   max_exp_pow := by norm_num
+--   st := by
+--     unfold isStandardExpRange
+--     norm_num
+-- }
+
 def Binary16 : StdFloatFormat := {
   -- radix := Radix.Binary,
   prec := 11,
