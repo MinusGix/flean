@@ -159,7 +159,7 @@ theorem relativeError_ulp_eq [FloatFormat] (x : R) (y : FiniteFp) (α : R) (xge 
   · obtain ⟨h1, h2⟩ := h
     rw [h1] at hdiff
     rw [hdiff] at h2 ⊢
-    rw [abs_div]
+    -- rw [abs_div]
 
 
     have hα : 0 ≤ α := by
@@ -176,20 +176,64 @@ theorem relativeError_ulp_eq [FloatFormat] (x : R) (y : FiniteFp) (α : R) (xge 
       have hα : 0 < α := hα.lt_of_ne (Ne.symm hαz)
       apply (mul_le_mul_left hα).mpr
       rw [sub_add, zpow_sub₀]
-      have hn : (2 : R) ^ (Int.log 2 |x| ⊔ FloatFormat.min_exp) / (2 : R) ^ ((FloatFormat.prec : ℤ) - 1) / |x| = ((2 : R) ^ Int.log 2 x / |x|) * (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) := by
-        rw [div_eq_mul_inv, div_eq_mul_inv, mul_comm, ← mul_assoc, mul_comm |x|⁻¹, ← div_eq_mul_inv _ |x|, ← inv_zpow, inv_zpow', neg_sub]
-      rw [← one_mul ((2 : R) ^ (1 - (FloatFormat.prec : ℤ)))]
-      rw [hn]
-      -- have ha : 2 ^ (Int.log 2 |x|) ≤ |x| := Int.zpow_log_le_self (by norm_num) (abs_pos.mpr xnz)
 
-      cases' abs_cases x with hx hx
-      · apply mul_le_mul
+      rw [div_eq_mul_inv, div_eq_mul_inv, mul_comm, ← mul_assoc, mul_comm x⁻¹, ← div_eq_mul_inv _ x, ← inv_zpow, inv_zpow', neg_sub]
+      rw [max_eq_left]
+
+      rw [← one_mul ((2 : R) ^ (1 - (FloatFormat.prec : ℤ)))]
+      apply mul_le_mul
+      · cases' abs_cases x with hx hx
         · rw [hx.left]
           apply (div_le_one _).mpr
           apply Int.zpow_log_le_self (by norm_num) (by linarith)
           linarith
-        · rfl
-      · rw [Int.log_of_right_le_zero, zpow_zero, one_mul]
+        · apply @le_trans _ _ _ 0
+          apply div_nonpos_iff.mpr
+          left; split_ands
+          · apply zpow_nonneg (by norm_num)
+          · linarith
+          norm_num
+      · rw [one_mul]
+      · rw [one_mul]; apply zpow_nonneg; norm_num
+      · norm_num
+      · apply (Int.zpow_le_iff_le_log _ _).mp
+        simp_all only [abs_pos, ne_eq, not_false_eq_true, abs_eq_self, mul_nonneg_iff_of_pos_left, Nat.cast_ofNat]
+        norm_num
+        linarith
+      · norm_num
+
+
+
+
+      -- cases' abs_cases x with hx hx
+      -- · rw [hx.left]
+      --   apply mul_le_mul
+      --   · apply (div_le_one _).mpr
+      --     apply Int.zpow_log_le_self (by norm_num) (by linarith)
+      --     linarith
+      --   · rw [one_mul]
+      -- · rw [Int.log_of_right_le_zero, zpow_zero]
+
+
+
+      -- have hn : (2 : R) ^ (Int.log 2 x ⊔ FloatFormat.min_exp) / (2 : R) ^ ((FloatFormat.prec : ℤ) - 1) / x = ((2 : R) ^ Int.log 2 x / x) * (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) := by
+      --   rw [div_eq_mul_inv, div_eq_mul_inv, mul_comm, ← mul_assoc, mul_comm x⁻¹, ← div_eq_mul_inv _ x, ← inv_zpow, inv_zpow', neg_sub]
+      --   rw [max_eq_left]
+      --   have := FloatFormat.min_exp_nonpos
+
+
+      -- rw [← one_mul ((2 : R) ^ (1 - (FloatFormat.prec : ℤ)))]
+      -- rw [hn]
+      -- -- have ha : 2 ^ (Int.log 2 |x|) ≤ |x| := Int.zpow_log_le_self (by norm_num) (abs_pos.mpr xnz)
+
+      -- cases' abs_cases x with hx hx
+      -- · apply mul_le_mul
+      --   · rw [hx.left]
+      --     apply (div_le_one _).mpr
+      --     apply Int.zpow_log_le_self (by norm_num) (by linarith)
+      --     linarith
+      --   · rfl
+      -- · rw [Int.log_of_right_le_zero, zpow_zero, one_mul]
 
 
       -- apply mul_le_mul
