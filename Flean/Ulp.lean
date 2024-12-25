@@ -150,251 +150,67 @@ theorem relativeError_ulp_eq [FloatFormat] (x : R) (y : FiniteFp) (α : R) (xge 
   norm_num at hdiff
   have xabspos : 0 < |x| := by
     apply lt_of_le_of_lt'
-    -- apply zpow_nonneg (by norm_num : (0 : R) ≤ 2)
     exact xge
     apply zpow_pos (by norm_num : (0 : R) < 2)
   have xnz : x ≠ 0 := by simp_all only [abs_pos, ne_eq, not_false_eq_true]
+  have xge' : FloatFormat.min_exp ≤ Int.log 2 |x| := by
+    apply (Int.zpow_le_iff_le_log _ _).mp
+    norm_cast
+    norm_num
+    apply abs_pos.mpr xnz
 
-  -- rw [abs_div, hdiff]
+  rw [abs_div, hdiff]
 
-  -- if hαz : α = 0 then
-  --   rw [hαz, zero_mul, zero_mul, zero_div]
-  -- else
-  cases' abs_cases (x - y.toVal) with h h
-  · obtain ⟨h1, h2⟩ := h
-    rw [h1] at hdiff
-    rw [hdiff] at h2 ⊢
-    -- rw [abs_div]
+  if hαz : α = 0 then
+    -- Trivial case
+    rw [hαz, zero_mul, zero_mul, zero_div]
+  else
+  have hα : 0 < α := by
+    apply lt_of_le_of_ne
+    apply le_of_mul_le_mul_right
+    rw [zero_mul]
+    rw [← hdiff]
+    apply abs_nonneg
+    apply zpow_pos (by norm_num)
+    exact (Ne.symm hαz)
 
+  rw [← mul_div, max_eq_left xge']
 
-    have hα : 0 ≤ α := by
-      apply le_of_mul_le_mul_right
-      rw [zero_mul]
-      exact h2
-      apply zpow_pos
-      norm_num
-    -- rw [abs_of_nonneg]
-    rw [← mul_div]
-    if hαz : α = 0 then
-      rw [hαz, zero_mul, zero_mul, abs_zero]
-    else
-      have hα : 0 < α := hα.lt_of_ne (Ne.symm hαz)
-      have xge' : FloatFormat.min_exp ≤ Int.log 2 |x| := by
-        apply (Int.zpow_le_iff_le_log _ _).mp
-        norm_cast
-        norm_num
-        apply abs_pos.mpr xnz
+  cases' abs_cases x with hx hx
 
-      cases' abs_cases x with hx hx
-      rw [abs_of_nonneg]
-      pick_goal 3; rw [abs_of_neg]; rw [← neg_mul, neg_mul_comm]
+  -- Get rid of abs
+  rw [abs_of_nonneg hx.right]
+  pick_goal 2; rw [abs_of_neg (by linarith)];
 
-      pick_goal 2
-      · apply mul_neg_iff.mpr
-        left; split_ands
-        trivial
-        apply div_neg_iff.mpr
-        left; split_ands
-        apply zpow_pos (by norm_num)
-        exact hx.right
-      pick_goal 3
-      · apply mul_nonneg
-        linarith
-        apply div_nonneg
-        apply zpow_nonneg (by norm_num)
-        exact hx.right
+  -- Better form for the neg
+  rw [show (2 ^ (Int.log 2 (-x) - ↑FloatFormat.prec + 1) / -x) = -(2 ^ (Int.log 2 (-x) - ↑FloatFormat.prec + 1) / x) by ring]
 
-      -- Now we have the two simple branches where one is positive and the other is negative.
-      all_goals apply (mul_le_mul_left hα).mpr -- get rid of the α
-      all_goals rw [sub_add, zpow_sub₀ (by norm_num)]
+  -- Now we have the two simple branches where one is positive and the other is negative.
+  all_goals apply (mul_le_mul_left hα).mpr -- get rid of the α
+  all_goals rw [sub_add, zpow_sub₀ (by norm_num)]
 
-      all_goals rw [div_eq_mul_inv, div_eq_mul_inv, mul_comm, ← mul_assoc, mul_comm x⁻¹, ← div_eq_mul_inv _ x, ← inv_zpow, inv_zpow', neg_sub]
-      all_goals rw [max_eq_left xge']
+  all_goals rw [div_eq_mul_inv, div_eq_mul_inv, mul_comm, ← mul_assoc, mul_comm x⁻¹, ← div_eq_mul_inv _ x, ← inv_zpow, inv_zpow', neg_sub]
 
-      all_goals rw [← one_mul ((2 : R) ^ (1 - (FloatFormat.prec : ℤ)))]
+  all_goals rw [← one_mul ((2 : R) ^ (1 - (FloatFormat.prec : ℤ)))]
 
-      rw [← neg_mul]
+  rw [← neg_mul]
 
-      all_goals apply mul_le_mul
+  all_goals apply mul_le_mul
 
-      pick_goal 2; rw [one_mul]
-      pick_goal 2; rw [one_mul]; apply zpow_nonneg; norm_num
-      pick_goal 2; norm_num
+  pick_goal 2; rw [one_mul]
+  pick_goal 2; rw [one_mul]; apply zpow_nonneg; norm_num
+  pick_goal 2; norm_num
 
-      pick_goal 3; rw [one_mul];
-      pick_goal 3; rw [one_mul]; apply zpow_nonneg; norm_num
-      pick_goal 3; norm_num
+  pick_goal 3; rw [one_mul];
+  pick_goal 3; rw [one_mul]; apply zpow_nonneg; norm_num
+  pick_goal 3; norm_num
 
-      rw [neg_div']
+  rw [neg_div']
 
-      rw [show -2 ^ Int.log 2 |x| / x = 2 ^ Int.log 2 |x| / -x by ring]
+  rw [show -2 ^ Int.log 2 (-x) / x = 2 ^ Int.log 2 (-x) / -x by ring]
 
-      all_goals rw [hx.left]
-      all_goals apply (div_le_one (by linarith)).mpr
-      all_goals apply Int.zpow_log_le_self (by norm_num) (by linarith)
-  · sorry
-
-      -- apply (Int.zpow_le_iff_le_log _ _).mp
-
-
-
-
-      -- apply (mul_le_mul_left hα).mpr
-      -- rw [sub_add, zpow_sub₀]
-
-      -- rw [div_eq_mul_inv, div_eq_mul_inv, mul_comm, ← mul_assoc, mul_comm x⁻¹, ← div_eq_mul_inv _ x, ← inv_zpow, inv_zpow', neg_sub]
-      -- rw [max_eq_left]
-
-      -- rw [← one_mul ((2 : R) ^ (1 - (FloatFormat.prec : ℤ)))]
-      -- apply mul_le_mul
-      -- · cases' abs_cases x with hx hx
-      --   · rw [hx.left]
-      --     apply (div_le_one _).mpr
-      --     apply Int.zpow_log_le_self (by norm_num) (by linarith)
-      --     linarith
-      --   · apply @le_trans _ _ _ 0
-      --     apply div_nonpos_iff.mpr
-      --     left; split_ands
-      --     · apply zpow_nonneg (by norm_num)
-      --     · linarith
-      --     norm_num
-      -- · rw [one_mul]
-      -- · rw [one_mul]; apply zpow_nonneg; norm_num
-      -- · norm_num
-      -- · apply (Int.zpow_le_iff_le_log _ _).mp
-      --   simp_all only [abs_pos, ne_eq, not_false_eq_true, abs_eq_self, mul_nonneg_iff_of_pos_left, Nat.cast_ofNat]
-      --   norm_num
-      --   linarith
-      -- · norm_num
-
-
-
-
-      -- cases' abs_cases x with hx hx
-      -- · rw [hx.left]
-      --   apply mul_le_mul
-      --   · apply (div_le_one _).mpr
-      --     apply Int.zpow_log_le_self (by norm_num) (by linarith)
-      --     linarith
-      --   · rw [one_mul]
-      -- · rw [Int.log_of_right_le_zero, zpow_zero]
-
-
-
-      -- have hn : (2 : R) ^ (Int.log 2 x ⊔ FloatFormat.min_exp) / (2 : R) ^ ((FloatFormat.prec : ℤ) - 1) / x = ((2 : R) ^ Int.log 2 x / x) * (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) := by
-      --   rw [div_eq_mul_inv, div_eq_mul_inv, mul_comm, ← mul_assoc, mul_comm x⁻¹, ← div_eq_mul_inv _ x, ← inv_zpow, inv_zpow', neg_sub]
-      --   rw [max_eq_left]
-      --   have := FloatFormat.min_exp_nonpos
-
-
-      -- rw [← one_mul ((2 : R) ^ (1 - (FloatFormat.prec : ℤ)))]
-      -- rw [hn]
-      -- -- have ha : 2 ^ (Int.log 2 |x|) ≤ |x| := Int.zpow_log_le_self (by norm_num) (abs_pos.mpr xnz)
-
-      -- cases' abs_cases x with hx hx
-      -- · apply mul_le_mul
-      --   · rw [hx.left]
-      --     apply (div_le_one _).mpr
-      --     apply Int.zpow_log_le_self (by norm_num) (by linarith)
-      --     linarith
-      --   · rfl
-      -- · rw [Int.log_of_right_le_zero, zpow_zero, one_mul]
-
-
-      -- apply mul_le_mul
-      -- · cases' abs_cases x with hx hx
-      --   · rw [hx.left]
-      --     apply (div_le_one _).mpr
-      --     exact Int.zpow_log_le_self (by norm_num) (by linarith)
-      --     linarith
-      --   · rw [Int.log_of_right_le_zero, zpow_zero]
-      --     apply (div_le_one _).mpr
-
-      --     sorry
-      --     all_goals linarith
-      -- · rfl
-
-    --   apply zpow_nonneg (by norm_num)
-    --   norm_num
-    --   norm_num
-    -- simp_all only [abs_pos, ne_eq, not_false_eq_true, abs_eq_self]
-
-
-      -- have hn' : (2 : R) ^ (Int.log 2 |x| ⊔ FloatFormat.min_exp) / x ≤ 1 := by
-      --   sorry
-
-      -- have hn' : (2 : R) ^ (Int.log 2 x) / |x| ≤ 1 := by
-      --   apply (div_le_one _).mpr
-
-        -- apply Int.zpow_log_le_abs_self
-        -- norm_num
-        -- trivial
-
-
-
-      -- apply mul_le_mul
-
-
-
-
-
-    -- cases' abs_cases x with hx hx
-    -- · obtain ⟨hx1, hx2⟩ := hx
-    --   rw [hx1] at xge ⊢
-    --   rw [abs_of_nonneg]
-    --   rw [← mul_div]
-    --   have hpos : 0 < x := by simp_all only [ne_eq, abs_eq_self]
-
-    --   have hα : 0 ≤ α := by
-    --     apply le_of_mul_le_mul_right
-    --     rw [zero_mul]
-    --     exact h2
-    --     apply zpow_pos
-    --     norm_num
-    --   if hαz : α = 0 then
-    --     rw [hαz, zero_mul, zero_mul]
-    --   else
-    --     have hα : 0 < α := hα.lt_of_ne (Ne.symm hαz)
-    --     apply (mul_le_mul_left hα).mpr
-    --     cases' max_cases (Int.log 2 x) FloatFormat.min_exp with hr hr
-    --     · rw [hr.left]
-    --       rw [sub_add, zpow_sub₀]
-    --       have hn : (2 : R) ^ Int.log 2 x / (2 : R) ^ ((FloatFormat.prec : ℤ) - 1) / x = ((2 : R) ^ Int.log 2 x / x) * (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) := by
-    --         rw [div_eq_mul_inv, div_eq_mul_inv, mul_comm, ← mul_assoc, mul_comm x⁻¹, ← div_eq_mul_inv _ x, ← inv_zpow, inv_zpow', neg_sub]
-    --       rw [hn]
-    --       have hn' : (2 : R) ^ (Int.log 2 x) / x ≤ 1 := by
-    --         apply (div_le_one _).mpr
-    --         apply Int.zpow_log_le_self
-    --         all_goals trivial
-    --       rw [← one_mul ((2 : R) ^ (1 - (FloatFormat.prec : ℤ)))]
-    --       apply mul_le_mul hn' (by norm_num)
-    --       norm_num
-    --       apply zpow_nonneg (by norm_num)
-    --       norm_num
-    --       norm_num
-    --     · rw [hr.left]
-    --       have hn : x⁻¹ ≤ (2 : R) ^ (-FloatFormat.min_exp) := by
-    --         rw [← inv_zpow', inv_zpow]
-    --         apply le_inv_of_le_inv₀
-    --         apply zpow_pos (by norm_num)
-    --         rw [inv_inv]
-    --         trivial
-    --       have hn' : (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) = (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) * (2 : R) ^ (-FloatFormat.min_exp) := by
-    --         rw [← zpow_add']
-    --         norm_num
-    --         ring
-    --         norm_num
-    --       rw [hn']
-    --       rw [div_eq_inv_mul, mul_comm x⁻¹]
-    --       apply mul_le_mul
-    --       · rfl
-    --       · trivial
-    --       · simp_all only [ne_eq, abs_eq_self, mul_nonneg_iff_of_pos_left, sup_eq_right, zpow_neg, inv_nonneg]
-    --       · apply zpow_nonneg (by norm_num)
-    --   rw [hx1] at h2
-    --   exact h2
-    -- -- neg case
-    -- · sorry
+  all_goals apply (div_le_one (by linarith)).mpr
+  all_goals apply Int.zpow_log_le_self (by norm_num) (by linarith)
 
 end Fp
 
