@@ -144,7 +144,11 @@ theorem Int.zpow_log_le_abs_self {b : ℕ} {r : R} (hb : 1 < b) (rnz : r ≠ 0) 
       norm_num
       simp_all only [abs_eq_neg_self, inv_nonpos]
 
-theorem relativeError_ulp_eq [FloatFormat] (x : R) (y : FiniteFp) (α : R) (xge : 2^FloatFormat.min_exp ≤ |x|) (hdiff : |x - y.toVal| = α * ulp x) : relativeError x y ≤ α * 2^(1 - (FloatFormat.prec : ℤ)) := by
+/-- Given a floating point number `y` and a real number `x` in the normal range (≥ 2^min_exp),
+there is a bound on the relative error between them in terms of (multiples of) ULP.
+Specifically, if the absolute error is `α * ulp x`, then the relative error is at most
+`α * 2^(1-prec)`. -/
+theorem relativeError_ulp_upper_bound [FloatFormat] (x : R) (y : FiniteFp) (α : R) (xge : 2^FloatFormat.min_exp ≤ |x|) (hdiff : |x - y.toVal| = α * ulp x) : relativeError x y ≤ α * 2^(1 - (FloatFormat.prec : ℤ)) := by
   delta relativeError
   delta ulp at hdiff
   norm_num at hdiff
@@ -211,6 +215,40 @@ theorem relativeError_ulp_eq [FloatFormat] (x : R) (y : FiniteFp) (α : R) (xge 
 
   all_goals apply (div_le_one (by linarith)).mpr
   all_goals apply Int.zpow_log_le_self (by norm_num) (by linarith)
+
+/-- Given a floating point number `y` and a real number `x` in the normal range (≥ 2^min_exp),
+there is a bound on the absolute error between them in terms of relative error and ULP.
+Specifically, the absolute error is at most `relativeError * 2^prec * ulp x`.
+This is the companion theorem to `relativeError_ulp_upper_bound`, showing the reverse relationship
+between relative error and ULP. -/
+theorem abs_error_relativeError_ulp_upper_bound [FloatFormat] (x : R) (y : FiniteFp) (xge : 2^FloatFormat.min_exp ≤ |x|) : |x - y.toVal| ≤ (relativeError x y) * 2^(FloatFormat.prec : ℤ) * ulp x := by
+  delta relativeError ulp
+  -- norm_num
+  -- TODO: Do we have to assume that x is in normal range?
+  have xabspos : 0 < |x| := by
+    apply lt_of_le_of_lt'
+    exact xge
+    apply zpow_pos (by norm_num : (0 : R) < 2)
+  have xnz : x ≠ 0 := by simp_all only [abs_pos, ne_eq, not_false_eq_true]
+  have xge' : FloatFormat.min_exp ≤ Int.log 2 |x| := by
+    apply (Int.zpow_le_iff_le_log _ _).mp
+    norm_cast
+    norm_num
+    apply abs_pos.mpr xnz
+  rw [abs_div]
+  rw [show |x - y.toVal| / |x| = |x - y.toVal| * |x|⁻¹ by ring]
+  rw [show |x - y.toVal| * |x|⁻¹ * 2 ^ (FloatFormat.prec : ℤ) * 2 ^ (Int.log 2 |x| ⊔ FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) = |x - y.toVal| * (|x|⁻¹ * (2 ^ (FloatFormat.prec : ℤ) * 2 ^ (Int.log 2 |x| ⊔ FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1))) by ring]
+
+  by_cases h : |x - y.toVal| = 0
+  · rw [h]
+    rw [zero_mul]
+  · apply (le_mul_iff_one_le_right (by positivity)).mpr
+    apply (one_le_inv_mul₀ (by positivity)).mpr
+    rw [← zpow_add₀ (by norm_num)]
+    ring_nf
+    rw [max_eq_left xge', add_comm]
+    apply le_of_lt
+    apply Int.lt_zpow_succ_log_self (by norm_num)
 
 end Fp
 
