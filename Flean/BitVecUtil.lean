@@ -2,21 +2,26 @@ import Init.Data.BitVec.Basic
 import Mathlib.Tactic.Linarith
 import Mathlib.Data.Nat.Bits
 import Mathlib.Data.Nat.Bitwise
+import Mathlib.Tactic.Ring
 
 -- TODO: test how much these can be simplified using the SAT solver.
 
-theorem Nat.testBit_lt_two_pow' {x : Nat} {i : Nat} : x < 2^i ↔ ∀ j, j ≥ i → Nat.testBit x j = false := by
-  constructor
-  · intro h
-    intro j hj
-    apply Nat.testBit_eq_false_of_lt
-    apply lt_of_lt_of_le
-    exact h
-    apply pow_le_pow_right₀
-    norm_num
-    exact hj
-  · intro h
-    exact Nat.lt_pow_two_of_testBit x h
+theorem Nat.testBit_lt_two_pow_forward' {x : Nat} {i : Nat} : x < 2^i → ∀ j, j ≥ i → Nat.testBit x j = false := by
+  intro h
+  intro j hj
+  apply Nat.testBit_eq_false_of_lt
+  apply lt_of_lt_of_le
+  exact h
+  apply pow_le_pow_right₀
+  norm_num
+  exact hj
+
+theorem Nat.testBit_lt_two_pow_backward' {x : Nat} {i : Nat} : (∀ j, j ≥ i → Nat.testBit x j = false) → x < 2^i := by
+  intro h
+  exact Nat.lt_pow_two_of_testBit x h
+
+
+theorem Nat.testBit_lt_two_pow' {x : Nat} {i : Nat} : x < 2^i ↔ ∀ j, j ≥ i → Nat.testBit x j = false := ⟨Nat.testBit_lt_two_pow_forward', Nat.testBit_lt_two_pow_backward'⟩
 
 -- These two are from mathlib, but I don't think they're in the current version that I'm using
 -- @[simp] theorem Nat.one_mod_two_pow_eq_one : 1 % 2 ^ n = 1 ↔ 0 < n := by
