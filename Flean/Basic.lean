@@ -2,6 +2,7 @@ import Mathlib.Data.Int.Notation
 import Mathlib.Data.Rat.Defs
 import Mathlib.Data.Rat.Cast.Defs
 import Mathlib.Tactic.Linarith
+import Mathlib.Tactic.FieldSimp
 import Mathlib.Data.Real.Basic
 import Mathlib.Data.Nat.Bits
 
@@ -138,13 +139,6 @@ theorem toVal_one : toVal (1 : FiniteFp) = (1 : R) := by
   delta toVal sign'
   unfold FloatFormat.radix Radix.Binary
   norm_num
-  have : (2 : R)^(FloatFormat.prec - 1) = (2 : R)^((FloatFormat.prec : ℤ) - 1) := by
-    conv => rhs; rw [← Nat.cast_one]
-    rw [← Nat.cast_sub]
-    rw [zpow_natCast]
-    have := FloatFormat.valid_prec
-    omega
-  rw [this]
   rw [← @zpow_add' R _ 2]
   · simp_all only [sub_add_add_cancel, add_neg_cancel, zpow_zero]
   · simp_all only [ne_eq, OfNat.ofNat_ne_zero, not_false_eq_true, sub_add_add_cancel, add_neg_cancel,
@@ -190,6 +184,11 @@ def smallestPosSubnormal : FiniteFp := ⟨
       split_ands <;> omega
 ⟩
 
+theorem smallestPosSubnormal_toVal {R : Type*} [LinearOrderedField R] : smallestPosSubnormal.toVal = (2 : R)^(FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by
+  unfold smallestPosSubnormal toVal sign'
+  rw [FloatFormat.radix_val_eq_two]
+  norm_num
+
 theorem smallestPosSubnormal_isSubnormal : smallestPosSubnormal.isSubnormal := by
   have := FloatFormat.prec_pred_pow_le
   apply And.intro
@@ -214,6 +213,14 @@ def smallestPosNormal : FiniteFp := ⟨
       · apply pow_le_pow_right₀ (by norm_num) (by omega)
       · apply pow_lt_pow_right₀ (by norm_num) (by omega)
  ⟩
+
+theorem smallestPosNormal_toVal {R : Type*} [LinearOrderedField R] : smallestPosNormal.toVal = (2 : R)^(FloatFormat.min_exp) := by
+  unfold smallestPosNormal FiniteFp.toVal FiniteFp.sign'
+  rw [FloatFormat.radix_val_eq_two]
+  norm_num
+  rw [← zpow_add₀]
+  simp only [sub_add_add_cancel, add_sub_cancel]
+  norm_num
 
 theorem smallestPosNormal_isNormal : smallestPosNormal.isNormal := by
   have := FloatFormat.valid_prec
@@ -242,6 +249,50 @@ def largestFiniteFloat : FiniteFp := ⟨
       · omega
 ⟩
 
+theorem largestFiniteFloat_toVal {R : Type*} [LinearOrderedField R] : largestFiniteFloat.toVal = (2 : R)^(FloatFormat.max_exp) * ((2 : R) - (2 : R)^(-(FloatFormat.prec : ℤ) + 1)) := by
+  unfold largestFiniteFloat FiniteFp.toVal FiniteFp.sign'
+  have := FloatFormat.valid_prec
+  rw [FloatFormat.radix_val_eq_two]
+  norm_num
+  rw [mul_comm, mul_sub, mul_one]
+  rw [FloatFormat.pow_prec_nat_int]
+  rw [sub_add, zpow_sub₀, zpow_sub₀]
+
+  ring_nf
+  rw [mul_comm _ 2, mul_assoc]
+  rw [mul_inv_cancel₀, mul_one]
+  have : (2 : R) ^ FloatFormat.max_exp * (2 ^ (FloatFormat.prec : ℤ))⁻¹ = 2 ^ FloatFormat.max_exp / (2 ^ (FloatFormat.prec : ℤ)) := by
+    field_simp
+  rw [this]
+  rw [mul_comm _ 2, ← mul_sub]
+  have : (2 : R) ^ FloatFormat.max_exp - (2 : R) ^ FloatFormat.max_exp / (2 : R) ^ (FloatFormat.prec : ℤ) = 2 ^ FloatFormat.max_exp * (1 - (2 ^ (FloatFormat.prec : ℤ))⁻¹) := by
+    rw [division_def]
+    have : ∀ (x y : R), x - x * y = x * (1 - y) := by
+      intro x y
+      ring_nf
+    rw [this]
+  rw [this]
+  rw [← inv_zpow, inv_zpow']
+  rw [← mul_assoc]
+  rw [mul_comm 2 _, mul_assoc, mul_sub, mul_one]
+  rw [show (2 : R) * (2 : R) ^ (-(FloatFormat.prec : ℤ)) = (2 : R)^(1 : ℤ) * (2 : R) ^ (-(FloatFormat.prec : ℤ)) by ring]
+  rw [← zpow_add₀, ← sub_eq_add_neg]
+  rw [← mul_sub]
+  all_goals norm_num
+
+theorem largestFiniteFloat_toVal_pos {R : Type*} [LinearOrderedField R] : largestFiniteFloat.toVal > (0 : R) := by
+  rw [largestFiniteFloat_toVal]
+  have a1 := FloatFormat.max_exp_pos
+  have a2 := FloatFormat.valid_prec
+  have a3 := FloatFormat.prec_pred_pow_le
+  have a4 := FloatFormat.exp_order_le
+  have a5 := FloatFormat.min_exp_nonpos
+  apply mul_pos
+  · apply zpow_pos (by norm_num)
+  · norm_num
+    apply lt_trans
+    apply zpow_lt_one_of_neg₀ (by norm_num) (by linarith)
+    norm_num
 
 
 -- TODO: prove that the smallest positive normal, smallest positive subnormal, and largest finite float are all truely their namesakes
@@ -261,13 +312,22 @@ inductive Fp [FloatFormat] where
 
 namespace Fp
 
+
 variable [FloatFormat]
 
 instance : Zero Fp := ⟨.finite 0⟩
 
 instance : Inhabited Fp := ⟨0⟩
 
-theorem zero_def : (0 : Fp) = .finite 0 := rfl
+theorem zero_def : (0 : Fp) = .finite (
+  {
+  s := false,
+  m := 0,
+  e := FloatFormat.min_exp,
+  -- TODO: is there a better way to do this?
+  valid := (0 : FiniteFp).valid
+}
+) := rfl
 
 def sign (x : Fp) : Bool :=
   match x with

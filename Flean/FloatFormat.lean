@@ -96,6 +96,8 @@ namespace FloatFormat
 
 def radix [FloatFormat] : Radix := Radix.Binary
 
+theorem radix_val_eq_two [FloatFormat] : FloatFormat.radix.val = 2 := rfl
+
 -- TODO: does e4m3 not have infinities?
 -- See: https://arxiv.org/pdf/2209.05433
 -- But we don't currently support that.
@@ -266,6 +268,23 @@ theorem prec_pred_pow_le [FloatFormat] : 2 ≤ 2^(FloatFormat.prec - 1) := by
   rw [show 2 = 2^1 by norm_num]
   have := FloatFormat.valid_prec
   apply pow_le_pow_right₀ (by norm_num) (by omega)
+
+/-- 2^(prec - 1) where the power is nat is equivalent to 2^(prec - 1) as integers
+This is somehow annoying to work with otherwise, Lean's existing casting facilities are too simplistic.
+This being simp makes it somehow used by norm_num? -/
+@[simp]
+theorem pow_prec_sub_one_nat_int [FloatFormat] {R : Type*} [LinearOrderedField R]
+  : (2 : R)^(FloatFormat.prec - 1) = (2 : R)^((FloatFormat.prec : ℤ) - 1) := by
+  conv => rhs; rw [← Nat.cast_one]
+  rw [← Nat.cast_sub]
+  rw [zpow_natCast]
+  have := FloatFormat.valid_prec
+  omega
+
+-- @[simp high]
+theorem pow_prec_nat_int [FloatFormat] {R : Type*} [LinearOrderedField R]
+  : (2 : R)^(FloatFormat.prec) = (2 : R)^((FloatFormat.prec : ℤ)) := by
+  rw [zpow_natCast]
 
 -- def Decimal32 : FloatFormat := {
 --   radix := Radix.Decimal,
