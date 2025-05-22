@@ -68,7 +68,7 @@ end QFiniteFp
 --     (z1, z2)
 
 -- Based off of "An Implementation Guide to a Proposed Standard for Floating-Point Arithmetic" by Jerome T. Coonen
-def bracketingPair [FloatFormat] (x : R) : (QFiniteFp × QFiniteFp) :=
+def bracket [FloatFormat] (x : R) : (QFiniteFp × QFiniteFp) :=
   if x = 0 then (0, 0)
   else
   let sign: Bool := x < 0
@@ -97,7 +97,7 @@ def bracketingPair [FloatFormat] (x : R) : (QFiniteFp × QFiniteFp) :=
   let z2 := QFiniteFp.mk sign e2_final m2_final guard sticky is_exact
   (z1, z2)
 
-def bracketingPair₁ [FloatFormat] (x : R) : QFiniteFp :=
+def lowerBracket [FloatFormat] (x : R) : QFiniteFp :=
   if x = 0 then 0
   else
   let sign: Bool := x < 0
@@ -121,7 +121,7 @@ def bracketingPair₁ [FloatFormat] (x : R) : QFiniteFp :=
 
   QFiniteFp.mk sign e1_final m1_final guard sticky is_exact
 
-def bracketingPair₂ [FloatFormat] (x : R) : QFiniteFp :=
+def upperBracket [FloatFormat] (x : R) : QFiniteFp :=
   if x = 0 then 0
   else
   let sign: Bool := x < 0
@@ -146,8 +146,8 @@ def bracketingPair₂ [FloatFormat] (x : R) : QFiniteFp :=
 
   QFiniteFp.mk sign e2_final m2_final guard sticky is_exact
 
-theorem bracketingPair_eq_bracketingPair₁ [FloatFormat] (x : R) : (bracketingPair x).1 = bracketingPair₁ x := by
-  unfold bracketingPair bracketingPair₁
+theorem bracket_eq_lower [FloatFormat] (x : R) : (bracket x).1 = lowerBracket x := by
+  unfold bracket lowerBracket
   simp_all only [Prod.mk_zero_zero, beq_iff_eq, ge_iff_le, Bool.if_false_left, zpow_natCast]
   split
   next h =>
@@ -155,8 +155,8 @@ theorem bracketingPair_eq_bracketingPair₁ [FloatFormat] (x : R) : (bracketingP
     simp_all only [Prod.fst_zero]
   next h => simp_all only
 
-theorem bracketingPair_eq_bracketingPair₂ [FloatFormat] (x : R) : (bracketingPair x).2 = bracketingPair₂ x := by
-  unfold bracketingPair bracketingPair₂
+theorem bracket_eq_upper [FloatFormat] (x : R) : (bracket x).2 = upperBracket x := by
+  unfold bracket upperBracket
   simp_all only [Prod.mk_zero_zero, beq_iff_eq, ge_iff_le, Bool.if_false_left, zpow_natCast]
   split
   next h =>
@@ -165,8 +165,8 @@ theorem bracketingPair_eq_bracketingPair₂ [FloatFormat] (x : R) : (bracketingP
   next h => simp_all only
 
 @[simp]
-theorem bracketingPair₁_neg_iff [FloatFormat] (x : R) : (bracketingPair₁ x).s = true ↔ x < 0 := by
-  unfold bracketingPair₁
+theorem lowerBracket_neg_iff [FloatFormat] (x : R) : (lowerBracket x).s = true ↔ x < 0 := by
+  unfold lowerBracket
   constructor
   · intro h
     split_ifs at h with h_1
@@ -180,8 +180,8 @@ theorem bracketingPair₁_neg_iff [FloatFormat] (x : R) : (bracketingPair₁ x).
     next h_1 => simp_all only
 
 @[simp]
-theorem bracketingPair₂_neg_iff [FloatFormat] (x : R) : (bracketingPair₂ x).s = true ↔ x < 0 := by
-  unfold bracketingPair₂
+theorem upperBracket_neg_iff [FloatFormat] (x : R) : (upperBracket x).s = true ↔ x < 0 := by
+  unfold upperBracket
   constructor
   · intro h
     split_ifs at h with h_1
@@ -220,7 +220,7 @@ structure RoundResult [FloatFormat] where
 /-- Round toward negative infinity -/
 @[reducible]
 def roundDownᵣ [FloatFormat] (x : R) : RoundResult :=
-  let z := bracketingPair₁ x
+  let z := lowerBracket x
   let overflow : Bool := z.e > FloatFormat.max_exp
   let inexactResult : Bool := !z.is_exact || overflow
   let value : Fp := if overflow then
@@ -244,7 +244,7 @@ def roundDownᵣ [FloatFormat] (x : R) : RoundResult :=
 
 @[reducible]
 def roundDownᵣ' [FloatFormat] (x : R) : Option Fp :=
-  let z := bracketingPair₁ x
+  let z := lowerBracket x
   let overflow := z.e > FloatFormat.max_exp
   let inexactResult := !z.is_exact || overflow
   if overflow then
@@ -260,7 +260,7 @@ def roundDownᵣ' [FloatFormat] (x : R) : Option Fp :=
 
 theorem roundDownᵣ_eq' [FloatFormat] (x : R) : (roundDownᵣ x).value = roundDownᵣ' x := by
   unfold roundDownᵣ roundDownᵣ'
-  simp_all only [gt_iff_lt, decide_eq_true_eq, bracketingPair₁_neg_iff]
+  simp_all only [gt_iff_lt, decide_eq_true_eq, lowerBracket_neg_iff]
   split
   next h =>
     split
@@ -274,7 +274,7 @@ def roundDownₓ [FloatFormat] (x : R) : Fp :=
   (roundDownᵣ x).value.getD Fp.NaN
 
 /-- Round down only results in negative infinity if the number is negative and too large to represent -/
-theorem roundDownᵣ_infinite_iff [FloatFormat] (x : R) : (roundDownᵣ x).value = some (Fp.infinite true) ↔ (x < 0 ∧ (bracketingPair₁ x).e > FloatFormat.max_exp) := by
+theorem roundDownᵣ_infinite_iff [FloatFormat] (x : R) : (roundDownᵣ x).value = some (Fp.infinite true) ↔ (x < 0 ∧ (lowerBracket x).e > FloatFormat.max_exp) := by
   constructor
   unfold roundDownᵣ
   · intro h
@@ -294,12 +294,12 @@ theorem roundDownᵣ_infinite_iff [FloatFormat] (x : R) : (roundDownᵣ x).value
         next h_2 => simp_all only [not_lt, reduceCtorEq]
       next h_1 => simp_all only [not_lt, reduceCtorEq]
   · intro h
-    simp_all only [gt_iff_lt, decide_true, ↓reduceIte, bracketingPair₁_neg_iff]
+    simp_all only [gt_iff_lt, decide_true, ↓reduceIte, lowerBracket_neg_iff]
 
 /-- Round down never results in positive infinity -/
 theorem roundDownₓ_neq_pos_inf [FloatFormat] (x : R) : roundDownₓ x ≠ Fp.infinite false := by
   unfold roundDownₓ roundDownᵣ
-  simp_all only [gt_iff_lt, bracketingPair₁_neg_iff, Option.getD_some, ne_eq]
+  simp_all only [gt_iff_lt, lowerBracket_neg_iff, Option.getD_some, ne_eq]
   apply Aesop.BuiltinRules.not_intro
   intro a
   split at a
@@ -311,14 +311,14 @@ theorem roundDownₓ_neq_pos_inf [FloatFormat] (x : R) : roundDownₓ x ≠ Fp.i
 
 theorem roundDown_le_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < FiniteFp.smallestPosSubnormal.toVal):
   roundDownₓ x = 0 := by
-  unfold roundDownₓ roundDownᵣ bracketingPair₁
+  unfold roundDownₓ roundDownᵣ lowerBracket
   have hp := FloatFormat.valid_prec
   if h : x = 0 then
     subst h
     simp_all only [ge_iff_le, FloatFormat.valid_prec, lt_self_iff_false]
   else
     lift_lets
-    have hsign := ((not_iff_not.mpr (bracketingPair₁_neg_iff x)).mpr hn.not_lt)
+    have hsign := ((not_iff_not.mpr (lowerBracket_neg_iff x)).mpr hn.not_lt)
     rw [Bool.not_eq_true] at hsign
 
     rw [FiniteFp.smallestPosSubnormal_toVal] at hs
@@ -349,7 +349,7 @@ theorem roundDown_le_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs
       · sorry -- not too hard
 
 theorem roundDown_zero [FloatFormat] : roundDownₓ (0 : R) = 0 := by
-  unfold roundDownₓ roundDownᵣ bracketingPair₁
+  unfold roundDownₓ roundDownᵣ lowerBracket
   simp_all only [↓reduceIte, QFiniteFp.zero_def, gt_iff_lt, decide_eq_true_eq, Bool.false_eq_true, Option.getD_some]
   split
   next h =>
@@ -363,7 +363,7 @@ theorem roundDown_zero [FloatFormat] : roundDownₓ (0 : R) = 0 := by
 
 theorem roundDown_le_neg_largestFiniteFloat [FloatFormat] (x : R) (hs : x < -FiniteFp.largestFiniteFloat.toVal) :
   roundDownₓ x = Fp.infinite true := by
-  unfold roundDownₓ roundDownᵣ bracketingPair₁
+  unfold roundDownₓ roundDownᵣ lowerBracket
   lift_lets
   extract_lets sign e e_eff M_real m_floor is_exact midpoint guard sticky m1_final e1_final z overflow inexactResult validFinite value
   simp only [Option.getD_some, value]
