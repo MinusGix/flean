@@ -229,16 +229,20 @@ def roundDownᵣ [FloatFormat] (x : R) : RoundResult :=
     else
       Fp.finite FiniteFp.largestFiniteFloat
   else
-  -- TODO: are we forgetting to set underflow flag?
     let is_subnormal : Bool := z.e == FloatFormat.min_exp && z.m > 0 && z.m < (2 : ℕ)^(FloatFormat.prec - 1)
     let underflow : Bool := is_subnormal && inexactResult
-    let valid_finite := sorry
+    -- Proof that the finite float is valid
+    let valid_finite : IsValidFiniteVal z.e z.m := by
+      sorry -- This needs to be proven based on the properties of lowerBracket
     Fp.finite (FiniteFp.mk z.s z.e z.m valid_finite)
   ⟨
     value,
     {
       inexactResult := inexactResult
       overflow := overflow
+      underflow := if overflow then false else
+        let is_subnormal := z.e == FloatFormat.min_exp && z.m > 0 && z.m < (2 : ℕ)^(FloatFormat.prec - 1)
+        is_subnormal && inexactResult
     }
   ⟩
 
@@ -255,7 +259,9 @@ def roundDownᵣ' [FloatFormat] (x : R) : Option Fp :=
   else
     let is_subnormal := z.e == FloatFormat.min_exp && z.m > 0 && z.m < (2 : ℕ)^(FloatFormat.prec - 1)
     let underflow := is_subnormal && inexactResult
-    let valid_finite := sorry
+    -- Proof that the finite float is valid
+    let valid_finite : IsValidFiniteVal z.e z.m := by
+      sorry -- This needs to be proven based on the properties of lowerBracket
     Fp.finite (FiniteFp.mk z.s z.e z.m valid_finite)
 
 theorem roundDownᵣ_eq' [FloatFormat] (x : R) : (roundDownᵣ x).value = roundDownᵣ' x := by

@@ -1,0 +1,2 @@
+We can have so proofs are written in a more linguistic way, with Claude annotating our proofs with comments to make them more understandable to us and to Claude.
+This should also serve to make it easier for Claude to reason and improve on them.
