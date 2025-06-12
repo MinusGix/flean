@@ -3,7 +3,6 @@ import Mathlib.Data.Rat.Defs
 import Mathlib.Data.Rat.Cast.Defs
 import Mathlib.Tactic.Linarith
 import Mathlib.Data.Real.Basic
-import Mathlib.Tactic.LiftLets
 import Mathlib.Analysis.SpecialFunctions.Log.Base
 
 import Flean.Basic
@@ -14,7 +13,7 @@ namespace Fp
 
 -- We need LinearOrderedField instead of LinearOrderedSemifield because we need to take absolute values.
 -- (I mean, technically, if your R was purely positive then you don't need neg! So this limits the expressivity for our definition of ulp. But that's fine for now.)
-variable {R : Type*} [LinearOrderedField R] [FloorSemiring R]
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorSemiring R]
 
 /-- The gap between the two floating-point numbers nearest to a given number, including the number itself.
 **Harrison's ulp**: The distance between the closest fp-numbers `x`,`y` (`x ≤ f ≤ y` with `x ≠ y`), assuming that the exponent range is not upper bounded.
@@ -135,7 +134,7 @@ theorem Int.zpow_log_le_abs_self {b : ℕ} {r : R} (hb : 1 < b) (rnz : r ≠ 0) 
     · rw [h1.left] at h ⊢
       exact h
     · rw [h1.left] at h ⊢
-      rw [(@Nat.ceil_eq_zero _ _ _ r⁻¹).mpr, Nat.clog_zero_right, pow_zero]
+      rw [(@Nat.ceil_eq_zero R _ _ _ r⁻¹).mpr, Nat.clog_zero_right, pow_zero]
       rw [h1.left] at hra
       rw [show (1 : R) = (1 : R)⁻¹ by ring]
       apply (inv_le_inv₀ _ _).mpr hra

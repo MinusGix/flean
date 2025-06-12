@@ -12,7 +12,7 @@ import Flean.BitVecUtil
 
 namespace Fp
 
-variable {R : Type*} [LinearOrderedField R] [FloatFormat]
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloatFormat]
 
 def relativeError (x : R) (y : FiniteFp) : R := |(x - y.toVal) / x|
 

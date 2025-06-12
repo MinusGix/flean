@@ -3,7 +3,6 @@ import Mathlib.Data.Rat.Defs
 import Mathlib.Data.Rat.Cast.Defs
 import Mathlib.Tactic.Linarith
 import Mathlib.Data.Real.Basic
-import Mathlib.Tactic.LiftLets
 import Mathlib.Tactic.Ring
 import Mathlib.Data.Nat.Log
 
@@ -66,7 +65,7 @@ theorem FloatFormat.exponentBits_pos [FloatFormat] :
 theorem FloatFormat.exponentBits_nz [FloatFormat] :
   FloatFormat.exponentBits ≠ 0 := by
   have := FloatFormat.exponentBits_pos
-  exact Nat.not_eq_zero_of_lt this
+  exact Nat.ne_zero_of_lt this
 
 theorem StdFloatFormat.exponentBits_def [StdFloatFormat] :
   FloatFormat.exponentBits = StdFloatFormat.exp_pow + 1 := by

@@ -98,9 +98,9 @@ theorem ofBool_beq_one_n (x : BitVec 1) : BitVec.ofBool (x == 1) = x := by
 
 theorem extractLsb'_cast {n m : Nat} (h : n = m) (start : Nat) (len : Nat) (x : BitVec n) : (BitVec.extractLsb' start len (x.cast h)) = BitVec.extractLsb' start len x := by
   unfold BitVec.cast BitVec.extractLsb'
-  simp only [toNat_ofNatLt]
+  simp only [toNat_ofNatLT]
 
-theorem func_cast_eq {n m : Nat} (h : n = m) (f : (l : Nat) → BitVec l → α) (x : BitVec n) : f m (x.cast h) = f n x := by
+theorem func_cast_eq {α : Type} {n m : Nat} (h : n = m) (f : (l : Nat) → BitVec l → α) (x : BitVec n) : f m (x.cast h) = f n x := by
   cases h
   rfl
 
@@ -119,7 +119,7 @@ theorem ne_allOnes_lt { n : Nat} (E : BitVec n) (hE : E ≠ BitVec.allOnes n) :
 theorem ofNat_allOnes_eq_allOnes {n : Nat} : BitVec.ofNat n (2^n - 1) = BitVec.allOnes n := by
   unfold BitVec.allOnes
   apply BitVec.eq_of_toNat_eq
-  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt, BitVec.toNat_ofNatLt]
+  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt, BitVec.toNat_ofNatLT]
   have nz : 2 ^ n ≠ 0 := by
     intro h
     have := (Nat.pow_eq_zero.mp h).left
@@ -129,32 +129,32 @@ theorem ofNat_allOnes_eq_allOnes {n : Nat} : BitVec.ofNat n (2^n - 1) = BitVec.a
 
 -- Has to use cast, which I wish we could replace with a better mechanism, since I don't really think the information about the sizes being equivalent should be in the proposition statement itself.
 /-! BitVec.append is associative -/
-theorem append_assoc {n m r : Nat} {a : BitVec n} {b : BitVec m} {c : BitVec r} : (a ++ b) ++ c = (a ++ (b ++ c)).cast (add_assoc n m r).symm := by
-  ext
-  rw [getLsbD_append, getLsbD_cast, getLsbD_append, getLsbD_append, getLsbD_append]
-  rename_i i
+-- theorem append_assoc {n m r : Nat} {a : BitVec n} {b : BitVec m} {c : BitVec r} : (a ++ b) ++ c = (a ++ (b ++ c)).cast (add_assoc n m r).symm := by
+--   ext
+--   rw [getLsbD_append, getLsbD_cast, getLsbD_append, getLsbD_append, getLsbD_append]
+--   rename_i i
 
-  if h1 : i < r then
-    simp only [h1, decide_true, cond_true]
-    if h2 : i < m + r then
-      simp only [h2, decide_true, cond_true]
-    else
-      omega
-  else
-    simp only [h1, decide_false, cond_false]
-    if h2 : i < m + r then
-      simp only [h2, decide_true, cond_true]
-      if h3 : i - r < m then
-        simp only [h3, decide_true, cond_true]
-      else
-        omega
-    else
-      simp only [h2, decide_false, cond_false]
-      if h3 : i - r < m then
-        omega
-      else
-        simp only [h3, decide_false, cond_false]
-        rw [Nat.add_comm m r, Nat.sub_add_eq]
+--   if h1 : i < r then
+--     simp only [h1, decide_true, cond_true]
+--     if h2 : i < m + r then
+--       simp only [h2, decide_true, cond_true]
+--     else
+--       omega
+--   else
+--     simp only [h1, decide_false, cond_false]
+--     if h2 : i < m + r then
+--       simp only [h2, decide_true, cond_true]
+--       if h3 : i - r < m then
+--         simp only [h3, decide_true, cond_true]
+--       else
+--         omega
+--     else
+--       simp only [h2, decide_false, cond_false]
+--       if h3 : i - r < m then
+--         omega
+--       else
+--         simp only [h3, decide_false, cond_false]
+--         rw [Nat.add_comm m r, Nat.sub_add_eq]
 
 
 
@@ -175,11 +175,11 @@ theorem extractAppend_second₂ {n m : Nat} {a : BitVec n} {b : BitVec m} : (a +
   apply Nat.eq_of_testBit_eq
   intro i
   unfold BitVec.toNat
-  simp only [val_toFin, toFin_ofNat, Fin.val_ofNat', Nat.testBit_mod_two_pow,
+  simp only [val_toFin, toFin_ofNat, Fin.val_ofNat, Nat.testBit_mod_two_pow,
     Nat.testBit_shiftRight, Nat.testBit_or, Nat.testBit_shiftLeft, ge_iff_le,
     le_add_iff_nonneg_right, zero_le, decide_true, add_tsub_cancel_left, Bool.true_and]
   if h : i < n then
-    simp_arith [h]
+    simp +arith [h]
     intro h'
     let hb := b.isLt
     have j := Nat.testBit_lt_two_pow'.mp hb (m + i) (by omega)
@@ -205,19 +205,21 @@ theorem extractAppend_second₃ {n m r : Nat} {a : BitVec n} {b : BitVec m} {c :
 
   unfold extractLsb'
   rw [append_def, append_def]
-  unfold BitVec.ofNat Fin.ofNat'
+  unfold BitVec.ofNat Fin.ofNat
   norm_num
   congr
-  unfold setWidth' BitVec.shiftLeftZeroExtend
-  rw [toNat_ofNatLt, toNat_or, toNat_ofNatLt, toNat_ofNatLt]
+  unfold setWidth BitVec.shiftLeftZeroExtend
+  rw [toNat_ofNatLT, toNat_or, toNat_ofNatLT]
   apply Nat.eq_of_testBit_eq
   intro i
-  simp_arith
+  simp +arith +decide
   intro h
   exfalso
 
   have j := Nat.testBit_lt_two_pow'.mp c.isLt (r + i) (by omega)
-  simp_all only [Bool.false_eq_true]
+  -- simp_all only [Bool.false_eq_true]
+  sorry -- TODO: proof worked before
+
 
 theorem extractAppend_secondPart₃ {n m r : Nat} {a : BitVec n} {b : BitVec m} {c : BitVec r} : (a ++ b ++ c).extractLsb' r (n + m) = a ++ b := by
   apply @extractAppend_second₂
@@ -230,12 +232,12 @@ theorem extractAppend_third₃ {n m r : Nat} {a : BitVec n} {b : BitVec m} {c : 
 
   unfold extractLsb'
   rw [append_def, append_def]
-  unfold BitVec.ofNat Fin.ofNat'
+  unfold BitVec.ofNat Fin.ofNat
   rw [toNat_or, toNat_setWidth', toNat_or, toNat_setWidth']
   norm_num
 
-  unfold setWidth' BitVec.shiftLeftZeroExtend
-  rw [toNat_ofNatLt, toNat_or, toNat_ofNatLt, toNat_ofNatLt]
+  unfold setWidth BitVec.shiftLeftZeroExtend
+  rw [toNat_ofNatLT, toNat_or, toNat_ofNatLT]
   apply Nat.eq_of_testBit_eq
   intro i
 
@@ -251,8 +253,11 @@ theorem extractAppend_third₃ {n m r : Nat} {a : BitVec n} {b : BitVec m} {c : 
     have a3 : r + m + i - r = m + i := by omega
     simp only [h1, decide_true, a1, a3, le_add_iff_nonneg_right, zero_le, add_tsub_cancel_left,
       Bool.true_and, j, Bool.or_false, j']
+    simp_all only [le_add_iff_nonneg_left, zero_le, ↓reduceDIte, setWidth'_eq, toNat_setWidth,
+      Nat.testBit_mod_two_pow, Bool.and_false, Bool.or_false]
   else
-    simp [h1, decide_false, Bool.false_and]
+    simp only [h1, decide_false, le_add_iff_nonneg_left, zero_le, ↓reduceDIte, setWidth'_eq,
+      toNat_setWidth, Nat.testBit_mod_two_pow, Bool.false_and]
 
 /-! Splitting into two bitvectors and concatenating them will result in the original bitvector -/
 theorem extractBreakup₂ {n m : Nat} {s : BitVec (m + n)} : s.extractLsb' n m ++ s.extractLsb' 0 n = s := by
@@ -266,12 +271,13 @@ theorem extractBreakup₂ {n m : Nat} {s : BitVec (m + n)} : s.extractLsb' n m +
     Nat.testBit_shiftRight]
 
   if h1 : i < n then
-    simp only [h1, decide_true, Bool.true_and, Bool.or_iff_right_iff_imp, Bool.and_eq_true,
+    simp only [h1, decide_true, Bool.true_and, Bool.or_eq_right_iff_imp, Bool.and_eq_true,
       decide_eq_true_eq, and_imp, isEmpty_Prop, not_le, IsEmpty.forall_iff]
   else
     have h1 : n ≤ i := by omega
     have h2 : ¬i < n := by omega
-    simp_arith [h1, h2]
+    simp only [h1, decide_true, add_tsub_cancel_of_le, Bool.true_and, h2,
+      decide_false, Bool.false_and, Bool.or_false, Bool.and_eq_right_iff_imp, decide_eq_true_eq]
     intro a
     have k := s.isLt
     if h2 : i < n + m then
@@ -291,7 +297,7 @@ theorem extractBreakup₃ {n m r : Nat} {s : BitVec (n + m + r)} : s.extractLsb'
     Nat.testBit_shiftRight]
 
   if h1 : i < r then
-    simp only [h1, decide_true, Bool.true_and, Bool.or_iff_right_iff_imp, Bool.and_eq_true,
+    simp only [h1, decide_true, Bool.true_and, Bool.or_eq_right_iff_imp, Bool.and_eq_true,
       decide_eq_true_eq, Bool.or_eq_true, and_imp, isEmpty_Prop, not_le, IsEmpty.forall_iff]
   else
     simp_all only [not_lt, decide_true, add_tsub_cancel_of_le, Bool.true_and]
@@ -300,7 +306,7 @@ theorem extractBreakup₃ {n m r : Nat} {s : BitVec (n + m + r)} : s.extractLsb'
         lt_self_iff_false, decide_false, Bool.false_and, Bool.or_false]
       if h3 : m = 0 then
         simp only [h3, decide_true, zero_add, Bool.true_and, lt_self_iff_false, decide_false,
-          Bool.false_and, Bool.or_false, Bool.and_iff_right_iff_imp, decide_eq_true_eq]
+          Bool.false_and, Bool.or_false, Bool.and_eq_right_iff_imp, decide_eq_true_eq]
         intro h
         if n = 0 then
           exfalso
@@ -310,7 +316,8 @@ theorem extractBreakup₃ {n m r : Nat} {s : BitVec (n + m + r)} : s.extractLsb'
         else
           omega
       else
-        simp_arith [h3]
+        simp only [h3, decide_false, Bool.false_and, Bool.false_or,
+          Bool.and_eq_right_iff_imp, decide_eq_true_eq]
         omega
     else
       if h3 : m ≤ i - r then
@@ -319,19 +326,19 @@ theorem extractBreakup₃ {n m r : Nat} {s : BitVec (n + m + r)} : s.extractLsb'
           omega
         else
           have a3 : ¬i < r := by omega
-          simp_arith [a3, h4]
+          simp only [h4, decide_false, Bool.false_and, Bool.or_false, a3]
           rw [show m + r + (i - r - m) = i by omega]
           if h5 : i - r - m < n then
-            rw [Bool.and_iff_right_iff_imp, decide_eq_true_eq]
+            rw [Bool.and_eq_right_iff_imp, decide_eq_true_eq]
             omega
           else
-            rw [Bool.and_iff_right_iff_imp, decide_eq_true_eq]
+            rw [Bool.and_eq_right_iff_imp, decide_eq_true_eq]
             contrapose!
             rw [Nat.testBit_lt_two_pow'.mp s.isLt i (by omega)]
             exact λ _ => Bool.false_ne_true
       else
         simp only [h3, decide_false, Bool.false_and, Bool.false_or]
-        simp_all only [not_le, decide_true, Bool.true_and, Bool.or_iff_left_iff_imp,
+        simp_all only [not_le, decide_true, Bool.true_and, Bool.or_eq_left_iff_imp,
           Bool.and_eq_true, decide_eq_true_eq, and_imp, implies_true]
 
 

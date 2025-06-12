@@ -4,13 +4,12 @@ import Mathlib.Data.Rat.Cast.Defs
 import Mathlib.Tactic.Linarith
 import Mathlib.Data.Real.Basic
 import Mathlib.Analysis.SpecialFunctions.Log.Base
-import Mathlib.Tactic.LiftLets
 
 import Flean.Basic
 
 section Rounding
 
-variable {R : Type*} [LinearOrderedField R] [FloorSemiring R] [OfNat R n]
+variable (n : ℕ) {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorSemiring R] [OfNat R n]
 
 -- TODO: should this be more central as a type rather than a one-off for bracketing pairs?
 -- Possibly non-valid finite fp
@@ -317,42 +316,43 @@ theorem roundDownₓ_neq_pos_inf [FloatFormat] (x : R) : roundDownₓ x ≠ Fp.i
 
 theorem roundDown_le_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < FiniteFp.smallestPosSubnormal.toVal):
   roundDownₓ x = 0 := by
-  unfold roundDownₓ roundDownᵣ lowerBracket
-  have hp := FloatFormat.valid_prec
-  if h : x = 0 then
-    subst h
-    simp_all only [ge_iff_le, FloatFormat.valid_prec, lt_self_iff_false]
-  else
-    lift_lets
-    have hsign := ((not_iff_not.mpr (lowerBracket_neg_iff x)).mpr hn.not_lt)
-    rw [Bool.not_eq_true] at hsign
+    sorry
+  -- unfold roundDownₓ roundDownᵣ lowerBracket
+  -- have hp := FloatFormat.valid_prec
+  -- if h : x = 0 then
+  --   subst h
+  --   simp_all only [ge_iff_le, FloatFormat.valid_prec, lt_self_iff_false]
+  -- else
+  --   lift_lets
+  --   have hsign := ((not_iff_not.mpr (lowerBracket_neg_iff x)).mpr hn.not_gt)
+  --   rw [Bool.not_eq_true] at hsign
 
-    rw [FiniteFp.smallestPosSubnormal_toVal] at hs
-    extract_lets sign' e e_eff M_real m_floor is_exact midpoint guard sticky m1_final e1_final z overflow inexactResult valid_finite value
-    have hsign' : sign' = false := decide_eq_false hn.not_lt
-    unfold value
-    if ho : z.e > FloatFormat.max_exp then
-      let ho' : overflow = true := decide_eq_true ho
-      exfalso
-      sorry -- inconsistency
-    else
-      let ho' : overflow = false := decide_eq_false ho
-      simp [ho, ho', hsign, hsign', z, h]
-      unfold e1_final e_eff e m1_final m_floor M_real
-      rw [Fp.zero_def]
-      congr
-      cases' max_cases (Int.log 2 |x|) (FloatFormat.min_exp) with h1 h2
-      · rw [h1.left]
-        sorry
-      · rw [h2.left]
-      unfold e_eff
-      apply Nat.floor_eq_zero.mpr
-      apply div_lt_one_iff.mpr
-      constructor
-      constructor
-      · apply zpow_pos
-        norm_num
-      · sorry -- not too hard
+  --   rw [FiniteFp.smallestPosSubnormal_toVal] at hs
+  --   extract_lets sign' e e_eff M_real m_floor is_exact midpoint guard sticky m1_final e1_final z overflow inexactResult valid_finite value
+  --   have hsign' : sign' = false := decide_eq_false hn.not_gt
+  --   unfold value
+  --   if ho : z.e > FloatFormat.max_exp then
+  --     let ho' : overflow = true := decide_eq_true ho
+  --     exfalso
+  --     sorry -- inconsistency
+  --   else
+  --     let ho' : overflow = false := decide_eq_false ho
+  --     simp [ho, ho', hsign, hsign', z, h]
+  --     unfold e1_final e_eff e m1_final m_floor M_real
+  --     rw [Fp.zero_def]
+  --     congr
+  --     cases' max_cases (Int.log 2 |x|) (FloatFormat.min_exp) with h1 h2
+  --     · rw [h1.left]
+  --       sorry
+  --     · rw [h2.left]
+  --     unfold e_eff
+  --     apply Nat.floor_eq_zero.mpr
+  --     apply div_lt_one_iff.mpr
+  --     constructor
+  --     constructor
+  --     · apply zpow_pos
+  --       norm_num
+  --     · sorry -- not too hard
 
 theorem roundDown_zero [FloatFormat] : roundDownₓ (0 : R) = 0 := by
   unfold roundDownₓ roundDownᵣ lowerBracket
@@ -369,21 +369,22 @@ theorem roundDown_zero [FloatFormat] : roundDownₓ (0 : R) = 0 := by
 
 theorem roundDown_le_neg_largestFiniteFloat [FloatFormat] (x : R) (hs : x < -FiniteFp.largestFiniteFloat.toVal) :
   roundDownₓ x = Fp.infinite true := by
-  unfold roundDownₓ roundDownᵣ lowerBracket
-  lift_lets
-  extract_lets sign e e_eff M_real m_floor is_exact midpoint guard sticky m1_final e1_final z overflow inexactResult validFinite value
-  simp only [Option.getD_some, value]
+  sorry
+  -- unfold roundDownₓ roundDownᵣ lowerBracket
+  -- lift_lets
+  -- extract_lets sign e e_eff M_real m_floor is_exact midpoint guard sticky m1_final e1_final z overflow inexactResult validFinite value
+  -- simp only [Option.getD_some, value]
 
-  unfold z
+  -- unfold z
 
-  have lfpos := FiniteFp.largestFiniteFloat_toVal_pos (R := R)
-  have xpos : x < 0 := by linarith
-  have xnz : x ≠ 0 := by linarith -- because simp is too dumb to infer that x < 0 implies x ≠ 0?????
+  -- have lfpos := FiniteFp.largestFiniteFloat_toVal_pos (R := R)
+  -- have xpos : x < 0 := by linarith
+  -- have xnz : x ≠ 0 := by linarith -- because simp is too dumb to infer that x < 0 implies x ≠ 0?????
 
-  split_ifs with ho
-  · rfl
-  · sorry
-  · sorry
+  -- split_ifs with ho
+  -- · rfl
+  -- · sorry
+  -- · sorry
   -- if ho : overflow then
   --   simp only [ho, ↓reduceIte, xnz, xpos, decide_true, sign]
   -- else

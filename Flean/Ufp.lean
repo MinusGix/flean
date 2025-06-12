@@ -13,7 +13,7 @@ import Flean.Ulp
 
 namespace Fp
 
-variable {R : Type*} [LinearOrderedField R] [FloorSemiring R]
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorSemiring R]
 
 /-- Unit in the First Place. `2^floor(log2(|x|))`. -/
 def ufp (x : R) : R := if x = 0 then 0 else 2^(Int.log 2 (|x|))

@@ -7,7 +7,6 @@ import Mathlib.Data.Rat.Cast.Defs
 import Mathlib.Tactic.Linarith
 import Mathlib.Data.Real.Basic
 import Mathlib.Tactic.Ring
-import Mathlib.Tactic.LiftLets
 
 import Mathlib.Tactic.Qify
 
@@ -29,7 +28,7 @@ theorem two_pow_pred_lt_two_pow_sub_one {n : ℕ} (hn : n ≥ 2) : (2 : ℚ) ^ (
   rw [a1, mul_two]
   rw [add_sub_assoc]
   apply (lt_add_iff_pos_right _).mpr
-  simp_arith
+  simp only [sub_pos]
   apply (one_lt_pow_iff_of_nonneg _ _).mpr
   norm_num
   norm_num
@@ -65,7 +64,7 @@ theorem Nat.clog_eq_zero_iff {b x : ℕ} (hb : 1 < b) : Nat.clog b x = 0 ↔ x �
     else
       have h := h.lt_of_ne (by trivial)
       have h' := h.nat_succ_le
-      simp_arith at h'
+      simp only [succ_eq_add_one, add_le_iff_nonpos_left, nonpos_iff_eq_zero] at h'
       contradiction
 
 theorem Nat.clog_ne_zero_iff {b x : ℕ} (hb : 1 < b) : Nat.clog b x ≠ 0 ↔ 2 ≤ x := by

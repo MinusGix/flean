@@ -273,7 +273,7 @@ theorem prec_pred_pow_le [FloatFormat] : 2 ≤ 2^(FloatFormat.prec - 1) := by
 This is somehow annoying to work with otherwise, Lean's existing casting facilities are too simplistic.
 This being simp makes it somehow used by norm_num? -/
 @[simp]
-theorem pow_prec_sub_one_nat_int [FloatFormat] {R : Type*} [LinearOrderedField R]
+theorem pow_prec_sub_one_nat_int [FloatFormat] {R : Type*} [Field R]
   : (2 : R)^(FloatFormat.prec - 1) = (2 : R)^((FloatFormat.prec : ℤ) - 1) := by
   conv => rhs; rw [← Nat.cast_one]
   rw [← Nat.cast_sub]
@@ -282,7 +282,7 @@ theorem pow_prec_sub_one_nat_int [FloatFormat] {R : Type*} [LinearOrderedField R
   omega
 
 -- @[simp high]
-theorem pow_prec_nat_int [FloatFormat] {R : Type*} [LinearOrderedField R]
+theorem pow_prec_nat_int [FloatFormat] {R : Type*} [Field R]
   : (2 : R)^(FloatFormat.prec) = (2 : R)^((FloatFormat.prec : ℤ)) := by
   rw [zpow_natCast]
 

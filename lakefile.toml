@@ -1,0 +1,19 @@
+name = "Flean"
+version = "0.1.0"
+keywords = ["math"]
+defaultTargets = ["Flean"]
+
+[leanOptions]
+pp.unicode.fun = true
+autoImplicit = false
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+
+[[require]]
+name = "aesop"
+scope = "leanprover-community"
+
+[[lean_lib]]
+name = "Flean"

@@ -84,11 +84,11 @@ instance : One FiniteFp :=
       split_ands
       · omega
       · omega
-      · apply pow_lt_pow_right (by norm_num) (by omega)
+      · apply pow_lt_pow_right₀ (by norm_num) (by omega)
       · left
         split_ands
         · rfl
-        · apply pow_lt_pow_right (by norm_num) (by omega)
+        · apply pow_lt_pow_right₀ (by norm_num) (by omega)
   }⟩
 
 theorem one_def : (1 : FiniteFp) = {
@@ -119,7 +119,7 @@ def sign'  {R : Type*} [Neg R] [One R] (x : FiniteFp) : R :=
 
 section toVal
 
-variable {R : Type*} [LinearOrderedField R]
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
 
 -- TODO: is there a way to make this default to ℚ? That's the most natural type to represent any floating point number.
 def toVal (x : FiniteFp) : R :=
@@ -184,7 +184,7 @@ def smallestPosSubnormal : FiniteFp := ⟨
       split_ands <;> omega
 ⟩
 
-theorem smallestPosSubnormal_toVal {R : Type*} [LinearOrderedField R] : smallestPosSubnormal.toVal = (2 : R)^(FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by
+theorem smallestPosSubnormal_toVal {R : Type*} [Field R] : smallestPosSubnormal.toVal = (2 : R)^(FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by
   unfold smallestPosSubnormal toVal sign'
   rw [FloatFormat.radix_val_eq_two]
   norm_num
@@ -214,7 +214,7 @@ def smallestPosNormal : FiniteFp := ⟨
       · apply pow_lt_pow_right₀ (by norm_num) (by omega)
  ⟩
 
-theorem smallestPosNormal_toVal {R : Type*} [LinearOrderedField R] : smallestPosNormal.toVal = (2 : R)^(FloatFormat.min_exp) := by
+theorem smallestPosNormal_toVal {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : smallestPosNormal.toVal = (2 : R)^(FloatFormat.min_exp) := by
   unfold smallestPosNormal FiniteFp.toVal FiniteFp.sign'
   rw [FloatFormat.radix_val_eq_two]
   norm_num
@@ -249,7 +249,7 @@ def largestFiniteFloat : FiniteFp := ⟨
       · omega
 ⟩
 
-theorem largestFiniteFloat_toVal {R : Type*} [LinearOrderedField R] : largestFiniteFloat.toVal = (2 : R)^(FloatFormat.max_exp) * ((2 : R) - (2 : R)^(-(FloatFormat.prec : ℤ) + 1)) := by
+theorem largestFiniteFloat_toVal {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : largestFiniteFloat.toVal = (2 : R)^(FloatFormat.max_exp) * ((2 : R) - (2 : R)^(-(FloatFormat.prec : ℤ) + 1)) := by
   unfold largestFiniteFloat FiniteFp.toVal FiniteFp.sign'
   have := FloatFormat.valid_prec
   rw [FloatFormat.radix_val_eq_two]
@@ -280,7 +280,7 @@ theorem largestFiniteFloat_toVal {R : Type*} [LinearOrderedField R] : largestFin
   rw [← mul_sub]
   all_goals norm_num
 
-theorem largestFiniteFloat_toVal_pos {R : Type*} [LinearOrderedField R] : largestFiniteFloat.toVal > (0 : R) := by
+theorem largestFiniteFloat_toVal_pos {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : largestFiniteFloat.toVal > (0 : R) := by
   rw [largestFiniteFloat_toVal]
   have a1 := FloatFormat.max_exp_pos
   have a2 := FloatFormat.valid_prec
@@ -352,7 +352,7 @@ def isFinite (x : Fp) : Prop := match x with
   | .infinite _ => false
   | .NaN => false
 
-def toVal? {R : Type*} [LinearOrderedField R] (x : Fp) : Option R :=
+def toVal? {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] (x : Fp) : Option R :=
   match x with
   | .finite x => some (FiniteFp.toVal x)
   | .infinite _ => none

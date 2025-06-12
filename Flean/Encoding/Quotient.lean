@@ -3,7 +3,6 @@ import Mathlib.Data.Rat.Defs
 import Mathlib.Data.Rat.Cast.Defs
 import Mathlib.Tactic.Linarith
 import Mathlib.Data.Real.Basic
-import Mathlib.Tactic.LiftLets
 
 import Flean.Basic
 import Flean.BitVecUtil
