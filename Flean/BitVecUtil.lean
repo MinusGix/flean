@@ -212,13 +212,17 @@ theorem extractAppend_second₃ {n m r : Nat} {a : BitVec n} {b : BitVec m} {c :
   rw [toNat_ofNatLT, toNat_or, toNat_ofNatLT]
   apply Nat.eq_of_testBit_eq
   intro i
-  simp +arith +decide
-  intro h
+  simp only [le_add_iff_nonneg_left, zero_le, ↓reduceDIte, setWidth'_eq,
+    toNat_setWidth, Nat.testBit_shiftRight, Nat.testBit_or, Nat.testBit_shiftLeft, ge_iff_le,
+    le_add_iff_nonneg_right, decide_true, add_tsub_cancel_left, Nat.testBit_mod_two_pow,
+    Bool.true_and, Bool.or_eq_left_iff_imp, Bool.and_eq_true, decide_eq_true_eq, Bool.or_eq_true,
+    and_imp]
+  intro h₀ h₁
   exfalso
 
   have j := Nat.testBit_lt_two_pow'.mp c.isLt (r + i) (by omega)
-  -- simp_all only [Bool.false_eq_true]
-  sorry -- TODO: proof worked before
+
+  simp_all only [Bool.false_eq_true]
 
 
 theorem extractAppend_secondPart₃ {n m r : Nat} {a : BitVec n} {b : BitVec m} {c : BitVec r} : (a ++ b ++ c).extractLsb' r (n + m) = a ++ b := by

@@ -9,7 +9,7 @@ import Flean.Basic
 
 section Rounding
 
-variable (n : ℕ) {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorSemiring R] [OfNat R n]
+variable {n : ℕ} {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorSemiring R] [OfNat R n]
 
 -- TODO: should this be more central as a type rather than a one-off for bracketing pairs?
 -- Possibly non-valid finite fp

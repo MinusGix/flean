@@ -119,22 +119,22 @@ def sign'  {R : Type*} [Neg R] [One R] (x : FiniteFp) : R :=
 
 section toVal
 
-variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+variable {R : Type*}
 
 -- TODO: is there a way to make this default to ℚ? That's the most natural type to represent any floating point number.
-def toVal (x : FiniteFp) : R :=
+def toVal [Field R] (x : FiniteFp) : R :=
   x.sign' * x.m * (FloatFormat.radix.val : R)^(x.e - FloatFormat.prec + 1)
 
 @[simp]
-theorem toVal_zero : toVal (0 : FiniteFp) = (0 : R) := by
+theorem toVal_zero [Field R] : toVal (0 : FiniteFp) = (0 : R) := by
   delta toVal sign'
   norm_num
-  simp_all only [reduceCtorEq, ↓reduceIte, mul_eq_zero, Nat.cast_eq_zero]
-  left
-  rfl
+  simp_all only [reduceCtorEq, ↓reduceIte, mul_eq_zero]
+  unfold_projs
+  norm_num
 
 @[simp]
-theorem toVal_one : toVal (1 : FiniteFp) = (1 : R) := by
+theorem toVal_one [Field R] [LinearOrder R] [IsStrictOrderedRing R] : toVal (1 : FiniteFp) = (1 : R) := by
   rw [one_def]
   delta toVal sign'
   unfold FloatFormat.radix Radix.Binary
@@ -145,7 +145,7 @@ theorem toVal_one : toVal (1 : FiniteFp) = (1 : R) := by
     not_true_eq_false, false_or, true_or]
 
 @[simp]
-theorem toVal_neg_eq_neg (x : FiniteFp) : @toVal _ R _ (-x) = -toVal x := by
+theorem toVal_neg_eq_neg [Field R] (x : FiniteFp) : @toVal _ R _ (-x) = -toVal x := by
   rw [neg_def]
   delta toVal sign'
   norm_num
@@ -154,11 +154,11 @@ theorem toVal_neg_eq_neg (x : FiniteFp) : @toVal _ R _ (-x) = -toVal x := by
   next h => simp_all only [Bool.not_eq_false, ↓reduceIte, neg_neg]
 
 @[simp]
-theorem toVal_neg_one : toVal (-1 : FiniteFp) = (-1 : R) := by
+theorem toVal_neg_one [Field R] [LinearOrder R] [IsStrictOrderedRing R] : toVal (-1 : FiniteFp) = (-1 : R) := by
   rw [toVal_neg_eq_neg, toVal_one]
 
 @[simp]
-theorem toVal_neg_zero : toVal (-(0 : FiniteFp)) = (0 : R) := by
+theorem toVal_neg_zero [Field R] : toVal (-(0 : FiniteFp)) = (0 : R) := by
   rw [toVal_neg_eq_neg, toVal_zero, neg_zero]
 
 end toVal
