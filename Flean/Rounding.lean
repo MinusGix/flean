@@ -187,6 +187,10 @@ theorem roundDown_ne_pos_inf [FloatFormat] (x : R) : roundDown x ≠ Fp.infinite
         simp_all
       | NaN => simp_all
 
+theorem roundDown_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < FiniteFp.smallestPosSubnormal.toVal):
+  roundDown x = Fp.finite 0 := by
+  sorry
+
 end RoundDown
 
 -- Round toward positive infinity (ceiling)
@@ -237,12 +241,38 @@ theorem roundUp_ne_neg_inf [FloatFormat] (x : R) : roundUp x ≠ Fp.infinite tru
       | NaN => simp_all
 
 theorem roundUp_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < FiniteFp.smallestPosSubnormal.toVal):
-  roundUp x = Fp.finite 0 := by
-  sorry
+  roundUp x = Fp.finite FiniteFp.smallestPosSubnormal := by
+  unfold roundUp findSuccessor
+  simp [ne_of_gt hn, hn]
+  unfold findSuccessorPos
+  -- We need to show x < 2^min_exp to enter the subnormal case
+  -- smallestPosSubnormal = 2^(min_exp - prec + 1) < 2^min_exp
+  have h_sub : x < (2 : R) ^ FloatFormat.min_exp := by
+    have : FiniteFp.smallestPosSubnormal.toVal < (2 : R) ^ FloatFormat.min_exp := by
+      sorry -- Need lemma about smallestPosSubnormal < 2^min_exp
+    exact lt_trans hs this
+  simp [h_sub]
+  unfold roundSubnormalUp
+  sorry -- Need to prove the ceiling calculation gives smallestPosSubnormal
 
 theorem roundUp_gt_largestFiniteFloat [FloatFormat] (x : R) (hn : 0 < x) (hs : x > FiniteFp.largestFiniteFloat.toVal):
   roundUp x = Fp.infinite false := by
-  sorry
+  unfold roundUp findSuccessor
+  simp [ne_of_gt hn, hn]
+  unfold findSuccessorPos
+  -- x > largestFiniteFloat, and largestFiniteFloat is close to 2^(max_exp + 1)
+  -- so we're in the overflow case  
+  have h_overflow : ¬x < (2 : R) ^ (FloatFormat.max_exp + 1) := by
+    have : (2 : R) ^ (FloatFormat.max_exp + 1) ≤ FiniteFp.largestFiniteFloat.toVal := by
+      sorry -- Need lemma about 2^(max_exp + 1) ≤ largestFiniteFloat (or close to it)
+    exact not_lt.mpr (le_trans this (le_of_lt hs))
+  have h_not_sub : ¬x < (2 : R) ^ FloatFormat.min_exp := by
+    have : (2 : R) ^ FloatFormat.min_exp ≤ (2 : R) ^ (FloatFormat.max_exp + 1) := by
+      apply zpow_le_zpow_right₀ (by norm_num)
+      have : FloatFormat.min_exp ≤ FloatFormat.max_exp := FloatFormat.exp_order_le
+      omega
+    exact not_lt.mpr (le_trans this (le_of_not_gt h_overflow))
+  simp [h_not_sub, h_overflow]
 
 end RoundUp
 
