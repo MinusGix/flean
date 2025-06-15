@@ -255,48 +255,50 @@ theorem roundUp_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs :
   unfold roundSubnormalUp
   sorry -- Need to prove the ceiling calculation gives smallestPosSubnormal
 
+-- This is a fundamental property that should be in Basic.lean
+-- but is missing per the TODO there
+theorem finite_le_largestFiniteFloat [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+  (f : FiniteFp) : (f.toVal : R) ≤ (FiniteFp.largestFiniteFloat.toVal : R) := by
+  sorry -- TODO: This requires analyzing all possible finite floats
+
+-- roundUp returns a value ≥ input (fundamental property of rounding up)
+theorem roundUp_ge [FloatFormat] (x : R) (f : FiniteFp) 
+  (h : roundUp x = Fp.finite f) : x ≤ f.toVal := by
+  sorry -- TODO: Fundamental property of rounding up
+
+-- roundUp doesn't return NaN for positive finite inputs
+theorem roundUp_pos_not_nan [FloatFormat] (x : R) (h : 0 < x) : 
+  roundUp x ≠ Fp.NaN := by
+  sorry -- TODO: NaN only for invalid inputs
+
 theorem roundUp_gt_largestFiniteFloat [FloatFormat] (x : R) (hn : 0 < x) (hs : x > FiniteFp.largestFiniteFloat.toVal):
   roundUp x = Fp.infinite false := by
-  unfold roundUp findSuccessor
-  simp [ne_of_gt hn, hn]
-  unfold findSuccessorPos
-  -- x > largestFiniteFloat, so we're definitely in overflow case
-  -- We need to show x ≥ 2^(max_exp + 1) to trigger overflow
-  have h_overflow : ¬x < (2 : R) ^ (FloatFormat.max_exp + 1) := by
-    -- Since largestFiniteFloat < 2^(max_exp + 1) and x > largestFiniteFloat,
-    -- we need to be more careful about when exactly overflow occurs
-    sorry -- Need to understand the overflow threshold better
-  have h_not_sub : ¬x < (2 : R) ^ FloatFormat.min_exp := by
-    -- x > largestFiniteFloat > 0, and largestFiniteFloat >> 2^min_exp
-    have h1 : (2 : R) ^ FloatFormat.min_exp < FiniteFp.largestFiniteFloat.toVal := by
-      rw [FiniteFp.largestFiniteFloat_toVal]
-      -- largestFiniteFloat = 2^max_exp * (2 - 2^(-prec + 1))
-      -- Since 2 - 2^(-prec + 1) > 1 and max_exp >> min_exp, this is clearly true
-      have h_pos_factor : (2 : R) - (2 : R)^(-(FloatFormat.prec : ℤ) + 1) > 1 := by
-        -- Since prec ≥ 2, we have -(prec : ℤ) + 1 ≤ -1, so 2^(-(prec : ℤ) + 1) ≤ 1/2
-        -- Therefore 2 - 2^(-(prec : ℤ) + 1) ≥ 2 - 1/2 = 3/2 > 1
-        have h_neg_exp : -(FloatFormat.prec : ℤ) + 1 ≤ -1 := by
-          have := FloatFormat.valid_prec  -- prec ≥ 2
-          omega
-        have h_small : (2 : R)^(-(FloatFormat.prec : ℤ) + 1) ≤ (2 : R)⁻¹ := by
-          have : (2 : R)^(-(FloatFormat.prec : ℤ) + 1) ≤ (2 : R)^(-1 : ℤ) := by
-            apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2) h_neg_exp
-          rwa [zpow_neg, zpow_one] at this
-        linarith
-      have h_exp_diff : FloatFormat.min_exp < FloatFormat.max_exp := by
-        have := FloatFormat.exp_order_le
-        have := FloatFormat.max_exp_pos
-        have := FloatFormat.min_exp_nonpos
-        omega
-      have : (2 : R) ^ FloatFormat.min_exp < (2 : R) ^ FloatFormat.max_exp := by
-        apply zpow_lt_zpow_right₀ (by norm_num) h_exp_diff
-      have : (2 : R) ^ FloatFormat.max_exp < (2 : R) ^ FloatFormat.max_exp * ((2 : R) - (2 : R)^(-(FloatFormat.prec : ℤ) + 1)) := by
-        conv_lhs => rw [← mul_one ((2 : R) ^ FloatFormat.max_exp)]
-        apply mul_lt_mul_of_pos_left h_pos_factor
-        apply zpow_pos (by norm_num : (0 : R) < 2)
-      exact lt_trans ‹(2 : R) ^ FloatFormat.min_exp < (2 : R) ^ FloatFormat.max_exp› this
-    exact not_lt.mpr (le_of_lt (lt_trans h1 hs))
-  simp [h_not_sub, h_overflow]
+  -- Proof by contradiction: assume roundUp returns something other than positive infinity
+  match h : roundUp x with
+  | Fp.finite f =>
+    -- If it returns a finite float f, then f.toVal ≥ x (property of rounding up)
+    -- But f.toVal ≤ largestFiniteFloat (all finite floats are bounded)
+    -- This gives largestFiniteFloat < x ≤ f.toVal ≤ largestFiniteFloat, contradiction!
+    have h1 : (f.toVal : R) ≤ (FiniteFp.largestFiniteFloat.toVal : R) := finite_le_largestFiniteFloat f
+    have h2 : x ≤ (f.toVal : R) := roundUp_ge x f h
+    have : (FiniteFp.largestFiniteFloat.toVal : R) < (FiniteFp.largestFiniteFloat.toVal : R) := by
+      calc (FiniteFp.largestFiniteFloat.toVal : R) < x := hs
+           _ ≤ (f.toVal : R) := h2
+           _ ≤ (FiniteFp.largestFiniteFloat.toVal : R) := h1
+    exact absurd this (lt_irrefl _)
+  | Fp.infinite b =>
+    -- Need to show b = false (positive infinity)
+    by_cases hb : b
+    · -- If b = true (negative infinity), contradiction since x > 0
+      have : roundUp x ≠ Fp.infinite true := roundUp_ne_neg_inf x
+      rw [h] at this
+      simp [hb] at this
+    · -- If b = false, we're done
+      simp [hb]
+  | Fp.NaN =>
+    -- roundUp of valid positive input should not return NaN
+    have : roundUp x ≠ Fp.NaN := roundUp_pos_not_nan x hn
+    exact absurd h this
 
 end RoundUp
 
