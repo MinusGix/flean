@@ -32,22 +32,72 @@ def isMidpoint [FloatFormat] (x : R) : Prop :=
 def isEvenSignificand [FloatFormat] (f : FiniteFp) : Bool :=
   f.m % 2 = 0
 
+-- Basic properties of rounding with zero
+section ZeroProperties
+
+/-- findPredecessor returns 0 when input is 0 -/
+theorem findPredecessor_zero [FloatFormat] : findPredecessor (0 : R) = Fp.finite 0 := by
+  -- This follows from the definition in RoundingImpl
+  unfold findPredecessor
+  simp only [ite_true]
+  rfl
+
+/-- findSuccessor returns 0 when input is 0 -/
+theorem findSuccessor_zero [FloatFormat] : findSuccessor (0 : R) = Fp.finite 0 := by
+  -- This follows from the definition in RoundingImpl
+  unfold findSuccessor
+  simp only [ite_true]
+  rfl
+
+end ZeroProperties
+
+
+-- Round toward negative infinity (floor)
+section RoundDown
 
 /-- Round toward negative infinity -/
 def roundDown [FloatFormat] (x : R) : Fp :=
   findPredecessor x
 
+/-- roundDown returns 0 when input is 0 -/
+theorem roundDown_zero [FloatFormat] : roundDown (0 : R) = Fp.finite 0 := by
+  unfold roundDown
+  exact findPredecessor_zero
+
+/-- roundDown never produces positive infinity -/
+theorem roundDown_ne_pos_inf [FloatFormat] (x : R) : roundDown x ≠ Fp.infinite false := by
+  sorry
+
+end RoundDown
+
+-- Round toward positive infinity (ceiling)
+section RoundUp
+
 /-- Round toward positive infinity -/
 def roundUp [FloatFormat] (x : R) : Fp :=
   findSuccessor x
 
+/-- roundUp returns 0 when input is 0 -/
+theorem roundUp_zero [FloatFormat] : roundUp (0 : R) = Fp.finite 0 := by
+  unfold roundUp
+  exact findSuccessor_zero
+
+/-- roundUp never produces negative infinity -/
+theorem roundUp_ne_neg_inf [FloatFormat] (x : R) : roundUp x ≠ Fp.infinite true := by
+  sorry
+
 theorem roundUp_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < FiniteFp.smallestPosSubnormal.toVal):
-  roundUp x = 0 := by
+  roundUp x = Fp.finite 0 := by
   sorry
 
 theorem roundUp_gt_largestFiniteFloat [FloatFormat] (x : R) (hn : 0 < x) (hs : x > FiniteFp.largestFiniteFloat.toVal):
   roundUp x = Fp.infinite false := by
   sorry
+
+end RoundUp
+
+-- Round toward zero (truncation)
+section RoundTowardZero
 
 /-- Round toward zero -/
 def roundTowardZero [FloatFormat] (x : R) : Fp :=
@@ -58,6 +108,26 @@ def roundTowardZero [FloatFormat] (x : R) : Fp :=
   else
     -- For negative x, round up (toward zero)
     roundUp x
+
+/-- roundTowardZero returns 0 when input is 0 -/
+theorem roundTowardZero_zero [FloatFormat] : roundTowardZero (0 : R) = Fp.finite 0 := by
+  unfold roundTowardZero
+  simp
+
+/-- roundTowardZero never increases magnitude -/
+theorem roundTowardZero_magnitude_le [FloatFormat] (x : R) (f : FiniteFp) :
+  roundTowardZero x = Fp.finite f → |f.toVal| ≤ |x| := by
+  sorry
+
+/-- roundTowardZero preserves sign for non-zero finite results -/
+theorem roundTowardZero_sign_preservation [FloatFormat] (x : R) (f : FiniteFp) :
+  roundTowardZero x = Fp.finite f → f.toVal ≠ (0 : R) → (x > 0 ↔ f.toVal > (0 : R)) := by
+  sorry
+
+end RoundTowardZero
+
+-- Round to nearest, ties to even (default IEEE 754 rounding)
+section RoundNearestTiesToEven
 
 /-- Round to nearest, ties to even -/
 def roundNearestTiesToEven [FloatFormat] (x : R) : Fp :=
@@ -76,8 +146,13 @@ def roundNearestTiesToEven [FloatFormat] (x : R) : Fp :=
         if isEvenSignificand p then pred else succ
     | _, _ => Fp.NaN  -- Should not happen in normal range
 
+/-- roundNearestTiesToEven returns 0 when input is 0 -/
+theorem roundNearestTiesToEven_zero [FloatFormat] : roundNearestTiesToEven (0 : R) = Fp.finite 0 := by
+  unfold roundNearestTiesToEven
+  simp
+
 theorem rnEven_le_half_subnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < FiniteFp.smallestPosSubnormal.toVal / 2) :
-  roundNearestTiesToEven x = 0 := by
+  roundNearestTiesToEven x = Fp.finite 0 := by
   sorry
 
 -- TODO: negative values?
@@ -86,6 +161,11 @@ theorem rnEven_le_half_subnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < Fi
 theorem rnEven_ge_inf [FloatFormat] (x : R) (hx : x ≥ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp) :
   roundNearestTiesToEven x = Fp.infinite false := by
   sorry
+
+end RoundNearestTiesToEven
+
+-- Round to nearest, ties away from zero
+section RoundNearestTiesAwayFromZero
 
 /-- Round to nearest, ties away from zero -/
 def roundNearestTiesAwayFromZero [FloatFormat] (x : R) : Fp :=
@@ -104,14 +184,24 @@ def roundNearestTiesAwayFromZero [FloatFormat] (x : R) : Fp :=
         if x > 0 then succ else pred
     | _, _ => Fp.NaN  -- Should not happen in normal range
 
+/-- roundNearestTiesAwayFromZero returns 0 when input is 0 -/
+theorem roundNearestTiesAwayFromZero_zero [FloatFormat] : roundNearestTiesAwayFromZero (0 : R) = Fp.finite 0 := by
+  unfold roundNearestTiesAwayFromZero
+  simp
+
 theorem rnAway_lt_half_subnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < FiniteFp.smallestPosSubnormal.toVal / 2) :
-  roundNearestTiesAwayFromZero x = 0 := by
+  roundNearestTiesAwayFromZero x = Fp.finite 0 := by
   sorry
 
 theorem rnAway_ge_inf [FloatFormat] (x : R) (hx : x ≥ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp) :
   roundNearestTiesAwayFromZero x = Fp.infinite false := by
   sorry
 
+end RoundNearestTiesAwayFromZero
+
+
+-- Rounding mode enumeration and general interface
+section RoundingModes
 
 inductive RoundingMode
   | Down
@@ -130,5 +220,24 @@ def RoundingMode.toRoundingFunction [FloatFormat] (mode : RoundingMode) : R → 
 
 def RoundingMode.round [FloatFormat] (mode : RoundingMode) (x : R) : Fp :=
   mode.toRoundingFunction x
+
+/-- General property: all rounding modes preserve exact zero -/
+theorem all_rounding_modes_preserve_zero [FloatFormat] (mode : RoundingMode) :
+  mode.round (0 : R) = Fp.finite 0 := by
+  cases mode with
+  | Down => exact roundDown_zero
+  | Up => exact roundUp_zero
+  | TowardZero => exact roundTowardZero_zero
+  | NearestTiesToEven => exact roundNearestTiesToEven_zero
+  | NearestTiesAwayFromZero => exact roundNearestTiesAwayFromZero_zero
+
+/-- All rounding functions are well-defined (always return a valid Fp) -/
+theorem rounding_mode_total [FloatFormat] (mode : RoundingMode) (x : R) :
+  ∃ y : Fp, mode.round x = y := ⟨mode.round x, rfl⟩
+
+-- TODO: Add monotonicity properties once we define an ordering on Fp
+-- This would be useful for proving that rounding preserves order relations
+
+end RoundingModes
 
 end Rounding
