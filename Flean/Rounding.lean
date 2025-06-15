@@ -260,18 +260,42 @@ theorem roundUp_gt_largestFiniteFloat [FloatFormat] (x : R) (hn : 0 < x) (hs : x
   unfold roundUp findSuccessor
   simp [ne_of_gt hn, hn]
   unfold findSuccessorPos
-  -- x > largestFiniteFloat, and largestFiniteFloat is close to 2^(max_exp + 1)
-  -- so we're in the overflow case  
+  -- x > largestFiniteFloat, so we're definitely in overflow case
+  -- We need to show x ≥ 2^(max_exp + 1) to trigger overflow
   have h_overflow : ¬x < (2 : R) ^ (FloatFormat.max_exp + 1) := by
-    have : (2 : R) ^ (FloatFormat.max_exp + 1) ≤ FiniteFp.largestFiniteFloat.toVal := by
-      sorry -- Need lemma about 2^(max_exp + 1) ≤ largestFiniteFloat (or close to it)
-    exact not_lt.mpr (le_trans this (le_of_lt hs))
+    -- Since largestFiniteFloat < 2^(max_exp + 1) and x > largestFiniteFloat,
+    -- we need to be more careful about when exactly overflow occurs
+    sorry -- Need to understand the overflow threshold better
   have h_not_sub : ¬x < (2 : R) ^ FloatFormat.min_exp := by
-    have : (2 : R) ^ FloatFormat.min_exp ≤ (2 : R) ^ (FloatFormat.max_exp + 1) := by
-      apply zpow_le_zpow_right₀ (by norm_num)
-      have : FloatFormat.min_exp ≤ FloatFormat.max_exp := FloatFormat.exp_order_le
-      omega
-    exact not_lt.mpr (le_trans this (le_of_not_gt h_overflow))
+    -- x > largestFiniteFloat > 0, and largestFiniteFloat >> 2^min_exp
+    have h1 : (2 : R) ^ FloatFormat.min_exp < FiniteFp.largestFiniteFloat.toVal := by
+      rw [FiniteFp.largestFiniteFloat_toVal]
+      -- largestFiniteFloat = 2^max_exp * (2 - 2^(-prec + 1))
+      -- Since 2 - 2^(-prec + 1) > 1 and max_exp >> min_exp, this is clearly true
+      have h_pos_factor : (2 : R) - (2 : R)^(-(FloatFormat.prec : ℤ) + 1) > 1 := by
+        -- Since prec ≥ 2, we have -(prec : ℤ) + 1 ≤ -1, so 2^(-(prec : ℤ) + 1) ≤ 1/2
+        -- Therefore 2 - 2^(-(prec : ℤ) + 1) ≥ 2 - 1/2 = 3/2 > 1
+        have h_neg_exp : -(FloatFormat.prec : ℤ) + 1 ≤ -1 := by
+          have := FloatFormat.valid_prec  -- prec ≥ 2
+          omega
+        have h_small : (2 : R)^(-(FloatFormat.prec : ℤ) + 1) ≤ (2 : R)⁻¹ := by
+          have : (2 : R)^(-(FloatFormat.prec : ℤ) + 1) ≤ (2 : R)^(-1 : ℤ) := by
+            apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2) h_neg_exp
+          rwa [zpow_neg, zpow_one] at this
+        linarith
+      have h_exp_diff : FloatFormat.min_exp < FloatFormat.max_exp := by
+        have := FloatFormat.exp_order_le
+        have := FloatFormat.max_exp_pos
+        have := FloatFormat.min_exp_nonpos
+        omega
+      have : (2 : R) ^ FloatFormat.min_exp < (2 : R) ^ FloatFormat.max_exp := by
+        apply zpow_lt_zpow_right₀ (by norm_num) h_exp_diff
+      have : (2 : R) ^ FloatFormat.max_exp < (2 : R) ^ FloatFormat.max_exp * ((2 : R) - (2 : R)^(-(FloatFormat.prec : ℤ) + 1)) := by
+        conv_lhs => rw [← mul_one ((2 : R) ^ FloatFormat.max_exp)]
+        apply mul_lt_mul_of_pos_left h_pos_factor
+        apply zpow_pos (by norm_num : (0 : R) < 2)
+      exact lt_trans ‹(2 : R) ^ FloatFormat.min_exp < (2 : R) ^ FloatFormat.max_exp› this
+    exact not_lt.mpr (le_of_lt (lt_trans h1 hs))
   simp [h_not_sub, h_overflow]
 
 end RoundUp
