@@ -25,6 +25,7 @@ variable {n : ℕ} {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
 variable [FloatFormat]
 
 /-- Construct a finite floating-point number with validation -/
+@[reducible]
 def mkFiniteFp (s : Bool) (e : ℤ) (m : ℕ) : Option FiniteFp :=
   if h : IsValidFiniteVal e m then
     some ⟨s, e, m, h⟩

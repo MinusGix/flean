@@ -37,20 +37,108 @@ section ZeroProperties
 
 /-- findPredecessor returns 0 when input is 0 -/
 theorem findPredecessor_zero [FloatFormat] : findPredecessor (0 : R) = Fp.finite 0 := by
-  -- This follows from the definition in RoundingImpl
+  -- By definition, findPredecessor checks if x = 0 first
   unfold findPredecessor
-  simp only [ite_true]
-  rfl
+  -- The condition (0 : R) = 0 is true, so we take the first branch
+  simp
 
 /-- findSuccessor returns 0 when input is 0 -/
 theorem findSuccessor_zero [FloatFormat] : findSuccessor (0 : R) = Fp.finite 0 := by
-  -- This follows from the definition in RoundingImpl
+  -- By definition, findSuccessor also checks if x = 0 first
   unfold findSuccessor
-  simp only [ite_true]
-  rfl
+  -- The condition (0 : R) = 0 is true, so we take the first branch
+  simp
 
 end ZeroProperties
 
+
+-- Helper lemmas about internal rounding functions
+section HelperLemmas
+
+/-- roundSubnormalDown never returns positive infinity -/
+theorem roundSubnormalDown_ne_pos_inf [FloatFormat] (x : R) (h : isSubnormalRange x) :
+  roundSubnormalDown x h ≠ Fp.infinite false := by
+  unfold roundSubnormalDown
+  -- By definition, it returns either Fp.finite _ or Fp.NaN, never Fp.infinite false
+  simp only [ite_ne_right_iff]
+  -- intro k_eq_zero -- this would introduce the whole if and make the goal be to prove false from it
+  split_ifs
+  · simp -- zero branch
+  · simp_all only [Int.floor_eq_zero_iff, Set.mem_Ico, not_and, not_lt, ne_eq]
+    intro a -- intro so that it is not a ¬(match ....)
+    split at a <;> simp_all only [reduceCtorEq]
+
+
+/-- roundNormalDown never returns positive infinity -/
+theorem roundNormalDown_ne_pos_inf [FloatFormat] (x : R) (h : isNormalRange x) :
+  roundNormalDown x h ≠ Fp.infinite false := by
+  unfold roundNormalDown
+  -- By definition, it returns either Fp.finite _ or Fp.NaN, never Fp.infinite false
+  norm_num
+  intro a
+  split at a <;> simp_all only [reduceCtorEq]
+
+/-- findPredecessorPos never returns positive infinity -/
+theorem findPredecessorPos_ne_pos_inf [FloatFormat] (x : R) (hpos : 0 < x) :
+  findPredecessorPos x hpos ≠ Fp.infinite false := by
+  unfold findPredecessorPos
+  split_ifs with h1 h2
+  · -- Subnormal case
+    exact roundSubnormalDown_ne_pos_inf x ⟨hpos, h1⟩
+  · -- Normal case
+    exact roundNormalDown_ne_pos_inf x ⟨le_of_not_gt h1, h2⟩
+  · -- Too large case: returns largest finite float
+    simp
+
+/-- roundSubnormalUp never returns negative infinity -/
+theorem roundSubnormalUp_ne_neg_inf [FloatFormat] (x : R) (h : isSubnormalRange x) :
+  roundSubnormalUp x h ≠ Fp.infinite true := by
+  -- unfold roundSubnormalUp
+  -- norm_num -- simplify variables into if statements and such, generally messier but easier to throw tactics at
+  -- unfold mkFiniteFp -- need to unfold to talk about the actual values it creates
+  -- intro a -- get out of the ne
+  -- split at a -- I believe this is getting the domain you're in
+  -- <;> split at a -- we need to do a double split on both the branches
+  -- all_goals simp_all -- get rid of easy branches
+  -- -- the remaining need another split and cleanup
+  -- <;> split at a <;> simp_all
+  -- But. We can also replace it with the experimental grind tactic!
+  grind [roundSubnormalUp]
+
+/-- roundNormalUp never returns negative infinity -/
+theorem roundNormalUp_ne_neg_inf [FloatFormat] (x : R) (h : isNormalRange x) :
+  roundNormalUp x h ≠ Fp.infinite true := by
+  -- Unfold the definition to see the actual if-then-else structure
+  unfold roundNormalUp
+  -- Simplify numerical expressions and convert to simpler if-then-else chains
+  norm_num
+  -- Convert ¬(expr = Fp.infinite true) to (expr = Fp.infinite true → False)
+  -- Now 'a' is the hypothesis that the expression equals Fp.infinite true
+  intro a
+  -- Split on the first if-then-else condition in hypothesis 'a'
+  -- This handles: if m ≥ 2^FloatFormat.prec then ...
+  split at a
+  -- For each goal, split again on nested if-then-else conditions
+  -- This handles: if e + 1 > FloatFormat.max_exp then ... and match expressions
+  all_goals split at a
+  -- Try to close simple goals where the branches clearly don't return Fp.infinite true
+  all_goals simp_all
+  -- Handle any remaining goals with one more split (for deeply nested matches) and cleanup
+  split at a <;> simp_all
+
+/-- findSuccessorPos never returns negative infinity -/
+theorem findSuccessorPos_ne_neg_inf [FloatFormat] (x : R) (hpos : 0 < x) :
+  findSuccessorPos x hpos ≠ Fp.infinite true := by
+  unfold findSuccessorPos
+  split_ifs with h1 h2
+  · -- Subnormal case
+    exact roundSubnormalUp_ne_neg_inf x ⟨hpos, h1⟩
+  · -- Normal case
+    exact roundNormalUp_ne_neg_inf x ⟨le_of_not_gt h1, h2⟩
+  · -- Overflow case: returns Fp.infinite false, not true
+    simp
+
+end HelperLemmas
 
 -- Round toward negative infinity (floor)
 section RoundDown
@@ -66,7 +154,38 @@ theorem roundDown_zero [FloatFormat] : roundDown (0 : R) = Fp.finite 0 := by
 
 /-- roundDown never produces positive infinity -/
 theorem roundDown_ne_pos_inf [FloatFormat] (x : R) : roundDown x ≠ Fp.infinite false := by
-  sorry
+  unfold roundDown findPredecessor
+  intro a
+  split at a
+  · -- Case: x = 0, returns Fp.finite 0 ≠ Fp.infinite false
+    simp_all
+  · split at a
+    · -- Case: x ≠ 0 and x > 0, uses findPredecessorPos which never returns positive infinity
+      have : findPredecessorPos x (by assumption) ≠ Fp.infinite false := findPredecessorPos_ne_pos_inf x (by assumption)
+      contradiction
+    · -- Case: x ≠ 0 and x ≤ 0, so x < 0 by trichotomy
+      -- The result is match findSuccessorPos (-x) with | Fp.infinite b => Fp.infinite (!b) | ..
+      -- For result to be Fp.infinite false, we need findSuccessorPos (-x) = Fp.infinite true
+      -- But findSuccessorPos never returns Fp.infinite true
+      have h_lt : x < 0 := by
+        -- We have ¬x = 0 and ¬0 < x, so by trichotomy x < 0
+        cases' lt_trichotomy x 0 with h h
+        · exact h
+        · cases' h with h h
+          · simp_all
+          · simp_all
+      have h_neg_pos : 0 < -x := neg_pos.mpr h_lt
+      have : findSuccessorPos (-x) h_neg_pos ≠ Fp.infinite true := findSuccessorPos_ne_neg_inf (-x) h_neg_pos
+      -- Now split on the match expression
+      generalize heq : findSuccessorPos (-x) h_neg_pos = result
+      simp only [heq] at a
+      cases result with
+      | finite f => simp_all
+      | infinite b =>
+        simp_all only [Bool.not_eq_false]
+        rw [← heq] at this
+        simp_all
+      | NaN => simp_all
 
 end RoundDown
 
@@ -84,7 +203,38 @@ theorem roundUp_zero [FloatFormat] : roundUp (0 : R) = Fp.finite 0 := by
 
 /-- roundUp never produces negative infinity -/
 theorem roundUp_ne_neg_inf [FloatFormat] (x : R) : roundUp x ≠ Fp.infinite true := by
-  sorry
+  unfold roundUp findSuccessor
+  intro a
+  split at a
+  · -- Case: x = 0, returns Fp.finite 0 ≠ Fp.infinite true
+    simp_all
+  · split at a
+    · -- Case: x ≠ 0 and x > 0, uses findSuccessorPos which never returns negative infinity
+      have : findSuccessorPos x (by assumption) ≠ Fp.infinite true := findSuccessorPos_ne_neg_inf x (by assumption)
+      contradiction
+    · -- Case: x ≠ 0 and x ≤ 0, so x < 0 by trichotomy
+      -- The result is match findPredecessorPos (-x) with | Fp.infinite b => Fp.infinite (!b) | ..
+      -- For result to be Fp.infinite true, we need findPredecessorPos (-x) = Fp.infinite false
+      -- But findPredecessorPos never returns Fp.infinite false
+      have h_lt : x < 0 := by
+        -- We have ¬x = 0 and ¬0 < x, so by trichotomy x < 0
+        cases' lt_trichotomy x 0 with h h
+        · exact h
+        · cases' h with h h
+          · simp_all
+          · simp_all
+      have h_neg_pos : 0 < -x := neg_pos.mpr h_lt
+      have : findPredecessorPos (-x) h_neg_pos ≠ Fp.infinite false := findPredecessorPos_ne_pos_inf (-x) h_neg_pos
+      -- Now split on the match expression
+      generalize heq : findPredecessorPos (-x) h_neg_pos = result
+      simp only [heq] at a
+      cases result with
+      | finite f => simp_all
+      | infinite b =>
+        simp_all only [Bool.not_eq_true]
+        rw [← heq] at this
+        simp_all
+      | NaN => simp_all
 
 theorem roundUp_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < FiniteFp.smallestPosSubnormal.toVal):
   roundUp x = Fp.finite 0 := by
