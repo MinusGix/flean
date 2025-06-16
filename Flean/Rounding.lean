@@ -189,7 +189,35 @@ theorem roundDown_ne_pos_inf [FloatFormat] (x : R) : roundDown x ≠ Fp.infinite
 
 theorem roundDown_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < FiniteFp.smallestPosSubnormal.toVal):
   roundDown x = Fp.finite 0 := by
-  sorry
+  unfold roundDown findPredecessor
+  simp [ne_of_gt hn, hn]
+  unfold findPredecessorPos
+  -- Since x < smallestPosSubnormal, x is in subnormal range
+  have h_sub : x < (2 : R) ^ FloatFormat.min_exp := by
+    -- smallestPosSubnormal = 2^(min_exp - prec + 1) < 2^min_exp
+    have : FiniteFp.smallestPosSubnormal.toVal < (2 : R) ^ FloatFormat.min_exp := by
+      rw [FiniteFp.smallestPosSubnormal_toVal]
+      apply zpow_lt_zpow_right₀ (by norm_num : (1 : R) < 2)
+      have := FloatFormat.valid_prec
+      omega
+    exact lt_trans hs this
+  simp [h_sub]
+  unfold roundSubnormalDown
+  -- The ULP in subnormal range is 2^(min_exp - prec + 1) = smallestPosSubnormal
+  -- So ⌊x / smallestPosSubnormal⌋ = 0 since x < smallestPosSubnormal
+  have h_floor : ⌊x / FiniteFp.smallestPosSubnormal.toVal⌋ = 0 := by
+    rw [Int.floor_eq_zero_iff]
+    constructor
+    · apply div_nonneg (le_of_lt hn)
+      rw [FiniteFp.smallestPosSubnormal_toVal]
+      exact le_of_lt (zpow_pos (by norm_num) _)
+    · rw [div_lt_one_iff]
+      left
+      constructor
+      · linarith
+      · trivial
+  rw [FiniteFp.smallestPosSubnormal_toVal] at h_floor
+  simp [h_floor]
 
 end RoundDown
 
@@ -248,26 +276,52 @@ theorem roundUp_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs :
   -- We need to show x < 2^min_exp to enter the subnormal case
   -- smallestPosSubnormal = 2^(min_exp - prec + 1) < 2^min_exp
   have h_sub : x < (2 : R) ^ FloatFormat.min_exp := by
-    have : FiniteFp.smallestPosSubnormal.toVal < (2 : R) ^ FloatFormat.min_exp := by
-      sorry -- Need lemma about smallestPosSubnormal < 2^min_exp
-    exact lt_trans hs this
+    exact lt_trans hs FiniteFp.smallestPosSubnormal_lt_minExp
   simp [h_sub]
   unfold roundSubnormalUp
-  sorry -- Need to prove the ceiling calculation gives smallestPosSubnormal
+  -- The ULP in subnormal range is 2^(min_exp - prec + 1) = smallestPosSubnormal
+  -- So ⌈x / smallestPosSubnormal⌉ = 1 since 0 < x < smallestPosSubnormal
+  have h_ceil : ⌈x / FiniteFp.smallestPosSubnormal.toVal⌉ = 1 := by
+    rw [Int.ceil_eq_iff]
+    constructor
+    · norm_num
+      rw [div_pos_iff]
+      left
+      constructor
+      · exact hn
+      · rw [FiniteFp.smallestPosSubnormal_toVal]
+        exact zpow_pos (by norm_num) _
+    · norm_cast
+      exact div_le_one_of_le₀ (le_of_lt hs) (by
+        rw [FiniteFp.smallestPosSubnormal_toVal]
+        exact le_of_lt (zpow_pos (by norm_num) _))
+  rw [FiniteFp.smallestPosSubnormal_toVal] at h_ceil
+  simp [h_ceil]
+  -- Show k = 1 and 1 < 2^(prec-1), so go to else branch
+  have h_k_lt : 1 < (2 : ℤ)^(FloatFormat.prec - 1) := by
+    have := FloatFormat.prec_pred_pow_le
+    linarith
+  have h_k_n := h_k_lt.not_ge -- for some reason need the opposite to recognize it
+  simp only [h_k_n, ↓reduceIte]
+  -- Show mkFiniteFp false min_exp 1 = some smallestPosSubnormal
+  unfold mkFiniteFp
+  -- get rid of the if branch
+  have v := FiniteFp.smallestPosSubnormal.valid
+  unfold FiniteFp.smallestPosSubnormal at v
+  norm_num at v
+  rw [dite_cond_eq_true (eq_true v)]
+  -- simplify it down to obvious equality
+  norm_num
+  simp only [FiniteFp.smallestPosSubnormal]
 
--- This is a fundamental property that should be in Basic.lean
--- but is missing per the TODO there
-theorem finite_le_largestFiniteFloat [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
-  (f : FiniteFp) : (f.toVal : R) ≤ (FiniteFp.largestFiniteFloat.toVal : R) := by
-  sorry -- TODO: This requires analyzing all possible finite floats
 
 -- roundUp returns a value ≥ input (fundamental property of rounding up)
-theorem roundUp_ge [FloatFormat] (x : R) (f : FiniteFp) 
+theorem roundUp_ge [FloatFormat] (x : R) (f : FiniteFp)
   (h : roundUp x = Fp.finite f) : x ≤ f.toVal := by
   sorry -- TODO: Fundamental property of rounding up
 
 -- roundUp doesn't return NaN for positive finite inputs
-theorem roundUp_pos_not_nan [FloatFormat] (x : R) (h : 0 < x) : 
+theorem roundUp_pos_not_nan [FloatFormat] (x : R) (h : 0 < x) :
   roundUp x ≠ Fp.NaN := by
   sorry -- TODO: NaN only for invalid inputs
 
@@ -279,7 +333,7 @@ theorem roundUp_gt_largestFiniteFloat [FloatFormat] (x : R) (hn : 0 < x) (hs : x
     -- If it returns a finite float f, then f.toVal ≥ x (property of rounding up)
     -- But f.toVal ≤ largestFiniteFloat (all finite floats are bounded)
     -- This gives largestFiniteFloat < x ≤ f.toVal ≤ largestFiniteFloat, contradiction!
-    have h1 : (f.toVal : R) ≤ (FiniteFp.largestFiniteFloat.toVal : R) := finite_le_largestFiniteFloat f
+    have h1 : (f.toVal : R) ≤ (FiniteFp.largestFiniteFloat.toVal : R) := FiniteFp.finite_le_largestFiniteFloat f
     have h2 : x ≤ (f.toVal : R) := roundUp_ge x f h
     have : (FiniteFp.largestFiniteFloat.toVal : R) < (FiniteFp.largestFiniteFloat.toVal : R) := by
       calc (FiniteFp.largestFiniteFloat.toVal : R) < x := hs

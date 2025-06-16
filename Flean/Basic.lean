@@ -174,7 +174,7 @@ def smallestPosSubnormal : FiniteFp := ⟨
   by
     unfold IsValidFiniteVal
     have := FloatFormat.valid_prec
-    have := FloatFormat.prec_pow_le
+    have := FloatFormat.prec_pow_le (R := ℕ)
     have := FloatFormat.prec_pred_pow_le
     split_ands
     · trivial
@@ -196,6 +196,13 @@ theorem smallestPosSubnormal_isSubnormal : smallestPosSubnormal.isSubnormal := b
   · unfold smallestPosSubnormal
     norm_num
     omega
+
+theorem smallestPosSubnormal_lt_minExp {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] :
+  smallestPosSubnormal.toVal < (2 : R) ^ FloatFormat.min_exp := by
+  rw [smallestPosSubnormal_toVal]
+  apply zpow_lt_zpow_right₀ (by norm_num : (1 : R) < 2)
+  have := FloatFormat.valid_prec
+  omega
 
 def smallestPosNormal : FiniteFp := ⟨
   false,
@@ -235,7 +242,7 @@ def largestFiniteFloat : FiniteFp := ⟨
   by
     unfold IsValidFiniteVal
     have := FloatFormat.valid_prec
-    have := FloatFormat.prec_pow_le
+    have := FloatFormat.prec_pow_le (R := ℕ)
     have := FloatFormat.prec_pred_pow_le
     split_ands
     · exact FloatFormat.exp_order_le
@@ -296,6 +303,73 @@ theorem largestFiniteFloat_toVal_pos {R : Type*} [Field R] [LinearOrder R] [IsSt
 
 
 -- TODO: prove that the smallest positive normal, smallest positive subnormal, and largest finite float are all truely their namesakes
+
+-- Helper lemmas for the main theorem
+
+theorem finite_neg_le_largest {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+  (f : FiniteFp) (h : f.s = true) : (f.toVal : R) ≤ (largestFiniteFloat.toVal : R) := by
+  -- Negative float ≤ 0 ≤ positive largestFiniteFloat
+  have h_neg : (f.toVal : R) ≤ 0 := by
+    unfold toVal sign'
+    simp [h, FloatFormat.radix_val_eq_two]
+    apply mul_nonneg
+    · apply Nat.cast_nonneg
+    · apply zpow_nonneg (by norm_num : (0 : R) ≤ 2)
+  exact le_trans h_neg (le_of_lt largestFiniteFloat_toVal_pos)
+
+theorem finite_pos_le_largest {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+  (f : FiniteFp) (h_pos : f.s = false) :
+  (f.toVal : R) ≤ (largestFiniteFloat.toVal : R) := by
+  unfold toVal sign' largestFiniteFloat
+  simp [h_pos]
+  rw [FloatFormat.radix_val_eq_two]
+  -- Goal: f.m * 2^(f.e - prec + 1) ≤ (2^prec - 1) * 2^(max_exp - prec + 1)
+
+  have h_valid := f.valid
+  unfold IsValidFiniteVal at h_valid
+  have h_e_bound : f.e ≤ FloatFormat.max_exp := h_valid.2.1
+  have h_m_bound : f.m < 2^FloatFormat.prec := h_valid.2.2.1
+
+  by_cases h_e : f.e = FloatFormat.max_exp
+  · -- Case: f.e = max_exp, need f.m ≤ 2^prec - 1
+    rw [h_e]
+    apply mul_le_mul_of_nonneg_right
+    · -- f.m ≤ 2^prec - 1
+      rw [FloatFormat.natCast_pow_prec_pred]
+      norm_cast
+      omega
+    · exact zpow_nonneg (by norm_num) _
+  · -- Case: f.e < max_exp
+    have h_lt : f.e < FloatFormat.max_exp := lt_of_le_of_ne h_e_bound h_e
+    have h_pow_le : ((2 : R) ^ (f.e - (FloatFormat.prec : ℤ) + 1) : R) ≤
+                     ((2 : R) ^ (FloatFormat.max_exp - (FloatFormat.prec : ℤ) + 1) : R) := by
+      apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+      omega
+    have h_m_le : (f.m : R) ≤ (2 : R) ^ FloatFormat.prec - 1 := by
+      rw [FloatFormat.natCast_pow_prec_pred]
+      norm_cast
+      omega
+
+    rw [Int.cast_two]
+    calc (f.m : R) * ((2 : R) ^ (f.e - (FloatFormat.prec : ℤ) + 1) : R)
+       ≤ ((2 : R) ^ FloatFormat.prec - 1) * ((2 : R) ^ (f.e - (FloatFormat.prec : ℤ) + 1) : R) := by {
+         apply mul_le_mul_of_nonneg_right h_m_le
+         exact zpow_nonneg (by norm_num) _ }
+     _ ≤ ((2 : R) ^ FloatFormat.prec - 1) * ((2 : R) ^ (FloatFormat.max_exp - (FloatFormat.prec : ℤ) + 1) : R) := by {
+         apply mul_le_mul_of_nonneg_left h_pow_le
+         simp only [sub_nonneg]
+         apply le_trans (by norm_num : (1 : R) ≤ 4)
+         exact FloatFormat.prec_pow_le }
+
+-- Main theorem: largestFiniteFloat is indeed the largest
+theorem finite_le_largestFiniteFloat {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+  (f : FiniteFp) : (f.toVal : R) ≤ (largestFiniteFloat.toVal : R) := by
+  by_cases h : f.s
+  · -- Negative case
+    exact finite_neg_le_largest f h
+  · -- Positive case (works for both normal and subnormal)
+    have h_pos : f.s = false := by simp at h; exact h
+    exact finite_pos_le_largest f h_pos
 
 def toRat (x : FiniteFp) : ℚ := x.toVal
 
