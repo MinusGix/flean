@@ -139,8 +139,35 @@ theorem findExponentDown_overflow (x : R) (h : isOverflow x) : findExponentDown 
       linarith
   · apply zpow_pos (by norm_num)
 
+theorem findExponentDown_IsValidFiniteVal (x : R) (m : ℕ) (h : isNormal m ∨ isSubnormal (findExponentDown x) m) : IsValidFiniteVal (findExponentDown x) m := by
+  unfold IsValidFiniteVal
+  split_ands
+  · apply findExponentDown_min
+  · apply findExponentDown_max
+  · cases h with
+    | inl h =>
+      unfold isNormal at h
+      exact h.right
+    | inr h =>
+      unfold isSubnormal at h
+      have h := h.right
+      apply lt_of_le_of_lt
+      exact h
+      have := FloatFormat.prec_pred_pow_le
+      apply lt_trans
+
+      have : 2 ^ (FloatFormat.prec - 1) - 1 < 2 ^ (FloatFormat.prec - 1) := by norm_num
+      exact this
+
+      norm_num
+  · exact h
+
+theorem findExponentDown_IsValidFiniteVal_normal (x : R) (m : ℕ) (h : isNormal m) : IsValidFiniteVal (findExponentDown x) m := findExponentDown_IsValidFiniteVal x m (Or.inl h)
+
+theorem findExponentDown_IsValidFiniteVal_subnormal (x : R) (m : ℕ) (h : isSubnormal (findExponentDown x) m) : IsValidFiniteVal (findExponentDown x) m := findExponentDown_IsValidFiniteVal x m (Or.inr h)
+
 /-- A value in the normal range will have a binade within `1 ≤ e < 2` -/
-theorem findExponentDown_div_binade_normal (x : R) (h : isNormalRange x) :
+theorem findExponentDown_div_binade_normal {x : R} (h : isNormalRange x) :
   (1 : R) ≤ x / ((2 : R)^(findExponentDown x)) ∧
   x / ((2 : R)^(findExponentDown x)) < (2 : R) := by
   have xpos := isNormalRange_pos x h
@@ -156,7 +183,7 @@ theorem findExponentDown_div_binade_normal (x : R) (h : isNormalRange x) :
     trivial
     apply zpow_pos (by norm_num)
 
-theorem findExponentDown_div_binade_subnormal (x : R) (h : isSubnormalRange x) :
+theorem findExponentDown_div_binade_subnormal {x : R} (h : isSubnormalRange x) :
   0 < x / ((2 : R)^(findExponentDown x)) ∧
   x / ((2 : R)^(findExponentDown x)) < 1 := by
   rw [findExponentDown_subnormal x h]
@@ -167,7 +194,7 @@ theorem findExponentDown_div_binade_subnormal (x : R) (h : isSubnormalRange x) :
     · exact h.right
     · apply zpow_pos (by norm_num)
 
-theorem findExponentDown_div_binade_overflow (x : R) (h : isOverflow x) :
+theorem findExponentDown_div_binade_overflow {x : R} (h : isOverflow x) :
   2 ≤ x / ((2 : R)^(findExponentDown x)) := by
   rw [findExponentDown_overflow x h]
   unfold isOverflow at h
@@ -187,9 +214,36 @@ def roundNormalDown (x : R) (h : isNormalRange x) : Fp :=
   -- scaled is now in [1, 2)
   let m_scaled := scaled * (2 : R) ^ (FloatFormat.prec - 1)
   let m := ⌊m_scaled⌋
-  match mkFiniteFp false e m.natAbs with
-  | some f => Fp.finite f
-  | none => Fp.NaN  -- Should not happen
+  have mpos : m > 0 := by
+    have hb := findExponentDown_div_binade_normal h
+    apply Int.floor_pos.mpr
+    apply le_trans
+    apply hb.left
+    conv_lhs => rw [← mul_one (x / 2 ^ (findExponentDown x))]
+    rw [mul_le_mul_left (by linarith)]
+    simp only [FloatFormat.pow_prec_sub_one_nat_int, Nat.one_lt_ofNat, one_le_zpow_iff_right₀,
+      Int.sub_nonneg, Nat.one_le_cast]
+    have := FloatFormat.valid_prec
+    omega
+  have vf : IsValidFiniteVal e m.natAbs := by
+    have hb := findExponentDown_div_binade_normal h
+    apply findExponentDown_IsValidFiniteVal_normal
+    split_ands
+    <;> zify
+    <;> rw [abs_of_pos mpos]
+    · apply Int.le_floor.mpr
+      zify
+      conv_lhs => rw [← one_mul (2 ^ (FloatFormat.prec - 1))]
+      rw [mul_le_mul_right]
+      · exact hb.left
+      · apply pow_pos (by norm_num)
+    · apply Int.floor_lt.mpr
+      unfold m_scaled scaled binade_base e
+      rw [FloatFormat.natCast_pow_prec_msb, mul_comm, mul_assoc]
+      norm_num
+      rw [← lt_div_iff₀' (by norm_num)]
+      linarith
+  Fp.finite (FiniteFp.mk false e m.natAbs vf)
 
 /-- Round a positive normal value up -/
 def roundNormalUp (x : R) (h : isNormalRange x) : Fp :=
@@ -211,84 +265,56 @@ def roundNormalUp (x : R) (h : isNormalRange x) : Fp :=
     apply zpow_pos (by norm_num)
 
   -- Handle overflow within the binade
-  if m ≥ 2^FloatFormat.prec then
+  if hm : 2^FloatFormat.prec ≤ m then
     -- Need to move to next binade
-    if e + 1 > FloatFormat.max_exp then
+    if he : e + 1 > FloatFormat.max_exp then
       -- Overflow to infinity
       Fp.infinite false
     else
-      -- TODO: we could make a proof in this function that we never produce a NaN so that we don't need an outside proof to be as complicated?
-      match mkFiniteFp false (e + 1) (2^(FloatFormat.prec - 1)) with
-      | some f => Fp.finite f
-      | none => Fp.NaN
+      have vf : IsValidFiniteVal (e + 1) (2^(FloatFormat.prec - 1)) := by
+        norm_num at he
+        unfold e at ⊢ he
+        split_ands
+        · have := findExponentDown_min x
+          linarith
+        · exact he
+        · simp only [FloatFormat.pow_prec_pred_lt]
+        · left
+          split_ands
+          · rfl
+          · simp only [FloatFormat.pow_prec_pred_lt]
+      Fp.finite (FiniteFp.mk false (e + 1) (2^(FloatFormat.prec - 1)) vf)
   else
-    match mkFiniteFp false e m.natAbs with
-    | some f => Fp.finite f
-    | none => Fp.NaN
+    have vf : IsValidFiniteVal e m.natAbs := by
+      norm_num at hm
+      apply findExponentDown_IsValidFiniteVal_normal
+      unfold isNormal
+      zify
+      rw [abs_of_pos mpos]
+      unfold m m_scaled scaled binade_base at ⊢ hm
+      have hx := findExponentDown_div_binade_normal h
+      split_ands
+      · apply Int.le_ceil_iff.mpr
+        -- TODO: it'd be cool to have a tactic to say a simple "replace this value with the worst case lower bound from this other hypothesis"
+        have j : 2^(FloatFormat.prec - 1) ≤ x / 2^e * 2^(FloatFormat.prec - 1) := by
+          unfold e
+          conv_lhs => rw [← one_mul (2^(FloatFormat.prec - 1))]
+          rw [mul_le_mul_right] -- why is linarith not smart enough to use this
+          linarith
+          apply pow_pos (by norm_num)
+        apply lt_of_le_of_lt' j
+        norm_num
+      · exact hm
+    Fp.finite (FiniteFp.mk false e m.natAbs vf)
 
 theorem roundNormalDown_ne_nan (x : R) (h : isNormalRange x) : roundNormalDown x h ≠ Fp.NaN := by
-  unfold roundNormalDown
-  extract_lets e binade_base scaled m_scaled m
-  unfold mkFiniteFp
-  have hb := findExponentDown_div_binade_normal x h
-  have vp := FloatFormat.valid_prec
-  have : IsValidFiniteVal e m.natAbs := by
-    have mpos : m > 0 := by
-      unfold m m_scaled scaled binade_base
-      norm_num
-      apply Int.floor_pos.mpr
-
-      apply le_trans
-
-      apply hb.left
-      unfold e
-      conv_lhs => rw [← mul_one (x / 2 ^ (findExponentDown x))]
-      rw [mul_le_mul_left (by linarith)]
-
-      simp only [Nat.one_lt_ofNat, one_le_zpow_iff_right₀, Int.sub_nonneg, Nat.one_le_cast]
-      linarith
-
-    unfold IsValidFiniteVal
-    have a1 : x / 2 ^ findExponentDown x * 2 ^ (FloatFormat.prec - 1) < ↑((2 : ℤ) ^ FloatFormat.prec) := by
-      rw [FloatFormat.natCast_pow_prec_msb]
-      rw [mul_comm, mul_assoc]
-      norm_num
-      rw [← lt_div_iff₀' (by norm_num)]
-      linarith
-
-    split_ands
-    · apply findExponentDown_min
-    · apply findExponentDown_max
-    · zify
-      rw [abs_of_pos mpos]
-      unfold m m_scaled scaled binade_base e
-      apply Int.floor_lt.mpr
-      exact a1
-    · left
-      unfold isNormal
-      split_ands
-      <;> zify
-      <;> rw [abs_of_pos mpos]
-      <;> unfold m m_scaled scaled binade_base e
-      · apply Int.le_floor.mpr
-        zify
-        -- TODO: having to do this manually is a SHAME
-        conv_lhs => rw [← one_mul (2 ^ (FloatFormat.prec - 1))]
-        rw [mul_le_mul_right]
-        · exact hb.left
-        · apply pow_pos (by norm_num)
-      · apply Int.floor_lt.mpr
-        exact a1
-  rw [dite_cond_eq_true (eq_true this)]
-  split
-  · simp only [ne_eq, reduceCtorEq, not_false_eq_true]
-  · trivial
+  simp only [roundNormalDown, FloatFormat.pow_prec_sub_one_nat_int, ne_eq, reduceCtorEq,
+    not_false_eq_true]
 
 theorem roundNormalUp_ne_nan (x : R) (h : isNormalRange x) : roundNormalUp x h ≠ Fp.NaN := by
   unfold roundNormalUp
-  extract_lets e binade_base scaled m_scaled m mpos
-  unfold mkFiniteFp
-  sorry
+  norm_num
+  split_ifs <;> simp only [not_false_eq_true]
 
 /-- Find the predecessor of a positive number -/
 def findPredecessorPos (x : R) (hpos : 0 < x) : Fp :=
