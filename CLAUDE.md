@@ -42,6 +42,8 @@ This is a mathematical library focused on floating-point arithmetic formalizatio
 - Unicode pretty-printing is enabled
 - No separate test files - correctness is verified through Lean's proof checker
 - When modifying proofs, consider adding linguistic comments as suggested in idea.md to improve readability
+- When using `.toVal`, you need to specify the type. Usually this will be `(f.toVal : R)`
+- We use `R` to be generic over the numbers that we are talking about, most usually Reals and Rationals
 
 **Key Mathematical Functions:**
 - `Int.log b x`: Returns the greatest power of `b` such that `b^(Int.log b x) ≤ x`. Essential for floating-point exponent calculations without noncomputability issues

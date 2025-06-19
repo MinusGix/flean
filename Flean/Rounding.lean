@@ -219,6 +219,27 @@ theorem roundDown_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs
   rw [FiniteFp.smallestPosSubnormal_toVal] at h_floor
   simp [h_floor]
 
+theorem roundDown_gt_largestFiniteFloat [FloatFormat] (x : R) (hn : 0 < x) (hs : x ≥ (2 : R) ^ (FloatFormat.max_exp + 1)):
+  roundDown x = Fp.finite FiniteFp.largestFiniteFloat := by
+  unfold roundDown findPredecessor
+  simp [ne_of_gt hn, hn]
+  unfold findPredecessorPos
+  -- Since x ≥ 2^(max_exp + 1), we're beyond the normal range
+  have h_sub : ¬(x < (2 : R) ^ FloatFormat.min_exp) := by
+    have h1 : (0 : R) < (2 : R) ^ FloatFormat.min_exp := zpow_pos (by norm_num) _
+    have h2 : (2 : R) ^ FloatFormat.min_exp ≤ (2 : R) ^ (FloatFormat.max_exp + 1) := by
+      apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+      have := FloatFormat.exp_order_le
+      have := FloatFormat.max_exp_pos
+      have := FloatFormat.min_exp_nonpos
+      omega
+    linarith
+  simp [h_sub]
+  -- The second condition is also false since x ≥ 2^(max_exp + 1)
+  have h_overflow : ¬(x < (2 : R) ^ (FloatFormat.max_exp + 1)) := by
+    exact not_lt.mpr hs
+  simp [h_overflow]
+
 end RoundDown
 
 -- Round toward positive infinity (ceiling)
@@ -318,12 +339,135 @@ theorem roundUp_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs :
 -- roundUp returns a value ≥ input (fundamental property of rounding up)
 theorem roundUp_ge [FloatFormat] (x : R) (f : FiniteFp)
   (h : roundUp x = Fp.finite f) : x ≤ f.toVal := by
-  sorry -- TODO: Fundamental property of rounding up
+  unfold roundUp findSuccessor at h
+  split_ifs at h with h_zero h_pos
+  · -- Case: x = 0
+    simp at h
+    rw [h.symm, h_zero, FiniteFp.toVal_zero]
+  · -- Case: x > 0
+    unfold findSuccessorPos at h
+    split_ifs at h with h_sub h_normal
+    · -- Subnormal case
+      unfold roundSubnormalUp at h
+      sorry -- Need to prove ceiling property for subnormal case
+    · -- Normal case
+      unfold roundNormalUp at h
+      sorry -- Need to prove ceiling property for normal case
+    -- x ≥ 2^(max_exp + 1), automatically discharged
+  · -- Case: x < 0
+    -- Use symmetry with findPredecessorPos
+    have h_neg : 0 < -x := neg_pos.mpr (lt_of_le_of_ne (le_of_not_gt h_pos) h_zero)
+    sorry -- Need to handle negative case
 
 -- roundUp doesn't return NaN for positive finite inputs
 theorem roundUp_pos_not_nan [FloatFormat] (x : R) (h : 0 < x) :
   roundUp x ≠ Fp.NaN := by
-  sorry -- TODO: NaN only for invalid inputs
+  unfold roundUp findSuccessor
+  intro a
+  simp [ne_of_gt h, h] at a
+  unfold findSuccessorPos at a
+  split_ifs at a with h1 h2
+  · -- Subnormal case: roundSubnormalUp
+    unfold roundSubnormalUp at a
+    extract_lets ulp k at a
+
+    split_ifs at a with hk hk'
+    <;> split at a
+    · trivial
+    · rename_i heq
+      unfold mkFiniteFp at heq
+      simp [IsValidFiniteVal.smallestPosSubnormal] at heq
+      have := FloatFormat.valid_prec
+      omega
+    · trivial
+    · rename_i heq
+      unfold mkFiniteFp at heq
+      simp [IsValidFiniteVal.smallestPosNormal] at heq
+    · trivial
+    · rename_i heq
+      unfold mkFiniteFp at heq
+      norm_num at hk'
+      have hkpos : k > 0 := by
+        unfold k
+        norm_num
+        apply div_pos h
+        · unfold ulp
+          apply zpow_pos (by norm_num)
+      have : IsValidFiniteVal FloatFormat.min_exp k.natAbs := by
+        unfold IsValidFiniteVal
+        split_ands
+        · rfl
+        · exact FloatFormat.exp_order_le
+        · zify
+          rw [abs_of_pos hkpos]
+          apply lt_trans hk'
+          have := FloatFormat.pow_prec_pred_lt
+          zify at this
+          apply this
+        · right
+          split_ands
+          · rfl
+          · zify
+            rw [abs_of_pos hkpos]
+            norm_num
+            omega
+      rw [dite_cond_eq_true (eq_true this)] at heq
+      trivial
+  · -- Normal case: roundNormalUp
+    unfold roundNormalUp at a
+    extract_lets e binade_base scaled m_scaled m at a
+    split_ifs at a with m1 m2
+    <;> split at a
+    · trivial
+    · rename_i heq
+      unfold mkFiniteFp at heq
+      unfold e at heq
+      have : IsValidFiniteVal (findExponentDown x + 1) (2^(FloatFormat.prec - 1)) := by
+        split_ands
+        · have := findExponentDown_min x
+          omega
+        · have := findExponentDown_max x
+          omega
+        · exact FloatFormat.pow_prec_pred_lt
+        · left
+          exact isNormal.sig_msb
+      rw [dite_cond_eq_true (eq_true this)] at heq
+      trivial
+    · trivial
+    · rename_i heq
+      unfold mkFiniteFp at heq
+      have mpos : 0 < m := by
+        unfold m m_scaled scaled binade_base
+        norm_num
+        apply mul_pos
+        · apply div_pos h
+          apply zpow_pos (by norm_num)
+        · apply zpow_pos (by norm_num)
+      have : IsValidFiniteVal e m.natAbs := by
+        unfold e
+        split_ands
+        · have := findExponentDown_min x
+          omega
+        · have := findExponentDown_max x
+          omega
+        · zify
+          norm_num at m1
+          rw [abs_of_pos mpos]
+          trivial
+        · left
+          split_ands
+          <;> zify
+          <;> rw [abs_of_pos mpos]
+          <;> unfold m m_scaled scaled binade_base
+          · apply Int.le_ceil_iff.mpr
+            norm_num
+
+
+
+
+
+
+  · -- Overflow case: discharged automatically
 
 theorem roundUp_gt_largestFiniteFloat [FloatFormat] (x : R) (hn : 0 < x) (hs : x > FiniteFp.largestFiniteFloat.toVal):
   roundUp x = Fp.infinite false := by

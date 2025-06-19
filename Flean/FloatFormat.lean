@@ -269,6 +269,11 @@ theorem prec_pred_pow_le [FloatFormat] : 2 ≤ 2^(FloatFormat.prec - 1) := by
   have := FloatFormat.valid_prec
   apply pow_le_pow_right₀ (by norm_num) (by omega)
 
+@[simp]
+theorem pow_prec_pred_lt [FloatFormat] : 2^(FloatFormat.prec - 1) < 2^FloatFormat.prec := by
+  have := FloatFormat.valid_prec
+  apply pow_lt_pow_right₀ (by norm_num) (by omega)
+
 /-- 2^(prec - 1) where the power is nat is equivalent to 2^(prec - 1) as integers
 This is somehow annoying to work with otherwise, Lean's existing casting facilities are too simplistic.
 This being simp makes it somehow used by norm_num? -/
@@ -294,6 +299,17 @@ theorem natCast_pow_prec_pred [FloatFormat] {R : Type*} [Field R]
   rw [Nat.cast_sub]
   norm_cast
   apply one_le_pow₀ (by norm_num)
+
+theorem natCast_pow_prec_msb [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+  : (2 : R)^(FloatFormat.prec - 1) = ↑((2 : ℕ)^FloatFormat.prec) * 2⁻¹ := by
+  -- zify
+  rw [← zpow_natCast, Int.natCast_sub, Int.natCast_one]
+  rw [zpow_natCast_sub_one₀]
+  rw [div_eq_mul_inv]
+  norm_num
+  norm_num
+  have := FloatFormat.valid_prec
+  omega
 
 -- def Decimal32 : FloatFormat := {
 --   radix := Radix.Decimal,

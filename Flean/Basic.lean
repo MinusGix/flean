@@ -23,6 +23,21 @@ def isNormal [FloatFormat] (m : ℕ) : Prop := (2^(FloatFormat.prec - 1) ≤ m �
 @[reducible]
 def isSubnormal [FloatFormat] (e : ℤ) (m : ℕ) : Prop := (e = FloatFormat.min_exp ∧ m ≤ 2^(FloatFormat.prec - 1) - 1)
 
+/-- sig_msb stands for significand most significant bit, because `2^(prec - 1)` means that only the topmost bit is set-/
+theorem isNormal.sig_msb [FloatFormat] : isNormal (2^(FloatFormat.prec - 1)) := by
+  have := FloatFormat.valid_prec
+  exact ⟨by linarith, by apply pow_lt_pow_right₀ (by norm_num) (by omega)⟩
+
+/-- sig_max stands for significand max, where all bits are set -/
+theorem isNormal.sig_max [FloatFormat] : isNormal (2^(FloatFormat.prec) - 1) := by
+  exact ⟨by apply Nat.le_pred_of_lt; norm_num, by norm_num⟩
+
+theorem isSubnormal.min_exp_one [FloatFormat] : isSubnormal FloatFormat.min_exp 1 := by
+  have := FloatFormat.prec_pred_pow_le
+  exact ⟨by rfl, by omega⟩
+
+theorem isSubnormal.zero [FloatFormat] : isSubnormal FloatFormat.min_exp 0 := by exact ⟨by rfl, by omega⟩
+
 /-- Whether the (e, M)-pair of the exponent and integral significand is valid for a finite floating point number  -/
 @[reducible]
 def IsValidFiniteVal [FloatFormat] (e : ℤ) (m : ℕ) : Prop :=
@@ -34,6 +49,31 @@ def IsValidFiniteVal [FloatFormat] (e : ℤ) (m : ℕ) : Prop :=
   m < 2^FloatFormat.prec ∧
   -- Normal/subnormal; as well as ensuring that (s, M, e) is a unique repr for some number
   (isNormal m ∨ isSubnormal e m)
+
+theorem IsValidFiniteVal.zero [FloatFormat] : IsValidFiniteVal FloatFormat.min_exp 0 := by
+  have := FloatFormat.prec_pow_le (R := ℕ)
+  exact ⟨by rfl, FloatFormat.exp_order_le, by omega, Or.inr isSubnormal.zero⟩
+
+theorem IsValidFiniteVal.one [FloatFormat] : IsValidFiniteVal 0 (2^(FloatFormat.prec - 1)) := by
+  have := FloatFormat.valid_prec
+  have := FloatFormat.prec_pred_pow_le
+  have := FloatFormat.exp_order_le
+  have := FloatFormat.max_exp_pos
+  have := FloatFormat.min_exp_nonpos
+  exact ⟨by omega, by omega, by apply pow_lt_pow_right₀ (by norm_num) (by omega), Or.inl isNormal.sig_msb⟩
+
+theorem IsValidFiniteVal.smallestPosSubnormal [FloatFormat] : IsValidFiniteVal FloatFormat.min_exp 1 := by
+  have := FloatFormat.prec_pow_le (R := ℕ)
+  exact ⟨by trivial, FloatFormat.exp_order_le, by omega, Or.inr isSubnormal.min_exp_one⟩
+
+theorem IsValidFiniteVal.smallestPosNormal [FloatFormat] : IsValidFiniteVal FloatFormat.min_exp (2^(FloatFormat.prec - 1)) :=
+  ⟨by trivial, FloatFormat.exp_order_le, FloatFormat.pow_prec_pred_lt, Or.inl isNormal.sig_msb⟩
+
+theorem IsValidFiniteVal.largestFiniteFloat [FloatFormat] : IsValidFiniteVal FloatFormat.max_exp (2^(FloatFormat.prec) - 1) := by
+  have := FloatFormat.valid_prec
+  have := FloatFormat.prec_pow_le (R := ℕ)
+  have := FloatFormat.prec_pred_pow_le
+  exact ⟨FloatFormat.exp_order_le, by rfl, by omega, Or.inl isNormal.sig_max⟩
 
 @[ext]
 structure FiniteFp [FloatFormat] where
@@ -54,11 +94,7 @@ instance : Zero FiniteFp :=
     s := false,
     m := 0,
     e := FloatFormat.min_exp,
-    valid := by
-      unfold IsValidFiniteVal isNormal isSubnormal
-      simp [ge_iff_le, le_refl, FloatFormat.exp_order_le, zero_le, nonpos_iff_eq_zero,
-        pow_eq_zero_iff', OfNat.ofNat_ne_zero, ne_eq, false_and, Nat.ofNat_pos, pow_pos, and_true,
-        and_self, or_true]
+    valid := IsValidFiniteVal.zero
   }⟩
 
 theorem zero_def : (0 : FiniteFp) = {
@@ -66,7 +102,7 @@ theorem zero_def : (0 : FiniteFp) = {
   m := 0,
   e := FloatFormat.min_exp,
   -- TODO: is there a better way to do this?
-  valid := (0 : FiniteFp).valid
+  valid := IsValidFiniteVal.zero
 } := rfl
 
 instance : One FiniteFp :=
@@ -74,28 +110,14 @@ instance : One FiniteFp :=
     s := false,
     m := 2^(FloatFormat.prec - 1),
     e := 0,
-    valid := by
-      unfold IsValidFiniteVal isNormal isSubnormal
-      have := FloatFormat.valid_prec
-      have := FloatFormat.prec_pred_pow_le
-      have := FloatFormat.exp_order_le
-      have := FloatFormat.max_exp_pos
-      have := FloatFormat.min_exp_nonpos
-      split_ands
-      · omega
-      · omega
-      · apply pow_lt_pow_right₀ (by norm_num) (by omega)
-      · left
-        split_ands
-        · rfl
-        · apply pow_lt_pow_right₀ (by norm_num) (by omega)
+    valid := IsValidFiniteVal.one
   }⟩
 
 theorem one_def : (1 : FiniteFp) = {
   s := false,
   e := 0,
   m := 2^(FloatFormat.prec - 1),
-  valid := (1 : FiniteFp).valid
+  valid := IsValidFiniteVal.one
 } := rfl
 
 instance : Neg FiniteFp := ⟨fun x => {
@@ -171,17 +193,7 @@ def smallestPosSubnormal : FiniteFp := ⟨
   false,
   FloatFormat.min_exp,
   1,
-  by
-    unfold IsValidFiniteVal
-    have := FloatFormat.valid_prec
-    have := FloatFormat.prec_pow_le (R := ℕ)
-    have := FloatFormat.prec_pred_pow_le
-    split_ands
-    · trivial
-    · exact FloatFormat.exp_order_le
-    · omega
-    · right
-      split_ands <;> omega
+  IsValidFiniteVal.smallestPosSubnormal
 ⟩
 
 theorem smallestPosSubnormal_toVal {R : Type*} [Field R] : smallestPosSubnormal.toVal = (2 : R)^(FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by
@@ -208,17 +220,7 @@ def smallestPosNormal : FiniteFp := ⟨
   false,
   FloatFormat.min_exp,
   2^(FloatFormat.prec - 1),
-  by
-    unfold IsValidFiniteVal
-    have := FloatFormat.valid_prec
-    split_ands
-    · trivial
-    · exact FloatFormat.exp_order_le
-    · apply pow_lt_pow_right₀ (by norm_num) (by omega)
-    · left
-      split_ands
-      · apply pow_le_pow_right₀ (by norm_num) (by omega)
-      · apply pow_lt_pow_right₀ (by norm_num) (by omega)
+  IsValidFiniteVal.smallestPosNormal
  ⟩
 
 theorem smallestPosNormal_toVal {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : smallestPosNormal.toVal = (2 : R)^(FloatFormat.min_exp) := by
@@ -239,21 +241,7 @@ def largestFiniteFloat : FiniteFp := ⟨
   false,
   FloatFormat.max_exp,
   2^(FloatFormat.prec) - 1,
-  by
-    unfold IsValidFiniteVal
-    have := FloatFormat.valid_prec
-    have := FloatFormat.prec_pow_le (R := ℕ)
-    have := FloatFormat.prec_pred_pow_le
-    split_ands
-    · exact FloatFormat.exp_order_le
-    · rfl
-    · omega
-    · left
-      split_ands
-      · apply Nat.le_pred_of_lt
-        norm_num
-        apply pow_lt_pow_right₀ (by norm_num) (by omega)
-      · omega
+  IsValidFiniteVal.largestFiniteFloat
 ⟩
 
 theorem largestFiniteFloat_toVal {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : largestFiniteFloat.toVal = (2 : R)^(FloatFormat.max_exp) * ((2 : R) - (2 : R)^(-(FloatFormat.prec : ℤ) + 1)) := by
@@ -300,6 +288,26 @@ theorem largestFiniteFloat_toVal_pos {R : Type*} [Field R] [LinearOrder R] [IsSt
     apply lt_trans
     apply zpow_lt_one_of_neg₀ (by norm_num) (by linarith)
     norm_num
+
+theorem largestFiniteFloat_lt_maxExp_succ {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] :
+  largestFiniteFloat.toVal < (2 : R) ^ (FloatFormat.max_exp + 1) := by
+  rw [largestFiniteFloat_toVal]
+  -- largestFiniteFloat = 2^max_exp * (2 - 2^(-prec+1))
+  -- We need to show: 2^max_exp * (2 - 2^(-prec+1)) < 2^(max_exp + 1) = 2 * 2^max_exp
+  -- This simplifies to: 2 - 2^(-prec+1) < 2
+  -- Which is equivalent to: 0 < 2^(-prec+1)
+  have h_pos : (0 : R) < (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) := by
+    apply zpow_pos (by norm_num)
+  have h_lt : (2 : R) - (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) < 2 := by
+    linarith
+  calc (2 : R) ^ FloatFormat.max_exp * ((2 : R) - (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1))
+    < (2 : R) ^ FloatFormat.max_exp * 2 := by {
+      apply mul_lt_mul_of_pos_left h_lt
+      apply zpow_pos (by norm_num) }
+  _ = 2 * (2 : R) ^ FloatFormat.max_exp := by ring
+  _ = (2 : R) ^ (FloatFormat.max_exp + 1) := by {
+      rw [← zpow_one_add₀ (by norm_num : (2 : R) ≠ 0)]
+      ring_nf }
 
 
 -- TODO: prove that the smallest positive normal, smallest positive subnormal, and largest finite float are all truely their namesakes
@@ -399,7 +407,7 @@ theorem zero_def : (0 : Fp) = .finite (
   m := 0,
   e := FloatFormat.min_exp,
   -- TODO: is there a better way to do this?
-  valid := (0 : FiniteFp).valid
+  valid := IsValidFiniteVal.zero
 }
 ) := rfl
 
