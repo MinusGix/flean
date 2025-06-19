@@ -2,6 +2,7 @@ import Mathlib.Data.Int.Notation
 import Mathlib.Data.Rat.Defs
 import Mathlib.Data.Rat.Cast.Defs
 import Mathlib.Tactic.Linarith
+import Mathlib.Tactic.FieldSimp
 import Mathlib.Data.Real.Basic
 import Mathlib.Tactic.Ring
 
@@ -273,6 +274,15 @@ theorem prec_pred_pow_le [FloatFormat] : 2 ≤ 2^(FloatFormat.prec - 1) := by
 theorem pow_prec_pred_lt [FloatFormat] : 2^(FloatFormat.prec - 1) < 2^FloatFormat.prec := by
   have := FloatFormat.valid_prec
   apply pow_lt_pow_right₀ (by norm_num) (by omega)
+
+theorem pow_prec_pred_lt' [FloatFormat] {R : Type*} [Semiring R] [LinearOrder R] [IsStrictOrderedRing R] : (2 : R)^(FloatFormat.prec - 1) < (2 : R)^FloatFormat.prec := by
+  have := FloatFormat.valid_prec
+  apply pow_lt_pow_right₀ (by norm_num) (by omega)
+
+theorem zpow_prec_pred_lt' [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : (2 : R)^((FloatFormat.prec : ℤ) - 1) < (2 : R)^(FloatFormat.prec) := by
+  have := FloatFormat.valid_prec
+  rw [zpow_sub_one₀ (by norm_num)]
+  norm_num
 
 /-- 2^(prec - 1) where the power is nat is equivalent to 2^(prec - 1) as integers
 This is somehow annoying to work with otherwise, Lean's existing casting facilities are too simplistic.

@@ -40,6 +40,7 @@ def isSubnormalRange (x : R) : Prop :=
 def isNormalRange (x : R) : Prop :=
   (2 : R) ^ FloatFormat.min_exp ≤ x ∧ x < (2 : R) ^ (FloatFormat.max_exp + 1)
 
+@[simp]
 theorem isNormalRange_pos {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] (x : R) : isNormalRange x → 0 < x := by
   intro h
   have : (0 :R) < (2 : R) ^(FloatFormat.min_exp : ℤ) := by
@@ -52,37 +53,91 @@ theorem isNormalRange_pos {R : Type*} [Field R] [LinearOrder R] [IsStrictOrdered
 def isOverflow (x : R) : Prop :=
   (2 : R) ^ (FloatFormat.max_exp + 1) ≤ x
 
+theorem isSubnormalRange_div_binade_upper {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+  {x : R} (h : isSubnormalRange x) :
+    x / (2 : R)^(FloatFormat.min_exp - FloatFormat.prec + 1) < (2 : R)^((FloatFormat.prec : ℤ) - 1) := by
+  unfold isSubnormalRange at h
+  rw [div_lt_iff₀, ← zpow_add₀ (by norm_num)]
+  norm_num
+  exact h.right
+  apply zpow_pos (by norm_num)
+
 /-- Round a positive subnormal value down -/
-def roundSubnormalDown (x : R) (_ : isSubnormalRange x) : Fp :=
+def roundSubnormalDown (x : R) (h : isSubnormalRange x) : Fp :=
   -- In subnormal range, spacing is uniform: 2^(min_exp - prec + 1)
   let ulp := (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)
   let k := ⌊x / ulp⌋
-  if k = 0 then
+  if knz : k = 0 then
     Fp.finite 0
   else
-    match mkFiniteFp false FloatFormat.min_exp k.natAbs with
-    | some f => Fp.finite f
-    | none => Fp.NaN  -- Should not happen
+    have vf : IsValidFiniteVal FloatFormat.min_exp k.natAbs := by
+      unfold isSubnormalRange at h
+      have kpos : 0 < k := by
+        apply lt_of_le_of_ne
+        apply Int.floor_nonneg.mpr
+        apply div_nonneg
+        linarith
+        apply zpow_nonneg (by norm_num)
+        omega
+
+      apply IsValidFiniteVal_subnormal
+      zify
+      rw [abs_of_pos kpos]
+      unfold k ulp
+      apply Int.floor_le_iff.mpr
+      norm_num
+      exact isSubnormalRange_div_binade_upper h
+    Fp.finite (FiniteFp.mk false FloatFormat.min_exp k.natAbs vf)
 
 /-- Round a positive subnormal value up -/
-def roundSubnormalUp (x : R) (_ : isSubnormalRange x) : Fp :=
+def roundSubnormalUp (x : R) (h : isSubnormalRange x) : Fp :=
   -- In subnormal range, spacing is uniform: 2^(min_exp - prec + 1)
-  let ulp := (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)
-  let k := ⌈x / ulp⌉
-  if k = 0 then
-    -- This shouldn't happen since x > 0, but handle it
-    match mkFiniteFp false FloatFormat.min_exp 1 with
-    | some f => Fp.finite f
-    | none => Fp.NaN
-  else if k ≥ 2^(FloatFormat.prec - 1) then
+  let k := ⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉
+  if hk : k ≥ 2^(FloatFormat.prec - 1) then
     -- Transition to normal range
-    match mkFiniteFp false FloatFormat.min_exp (2^(FloatFormat.prec - 1)) with
-    | some f => Fp.finite f
-    | none => Fp.NaN
+    Fp.finite FiniteFp.smallestPosNormal
   else
-    match mkFiniteFp false FloatFormat.min_exp k.natAbs with
-    | some f => Fp.finite f
-    | none => Fp.NaN
+    have vf : IsValidFiniteVal FloatFormat.min_exp k.natAbs := by
+      norm_num at hk
+      have hu := isSubnormalRange_div_binade_upper h
+      unfold isSubnormalRange at h
+      have kpos : k > 0 := by
+        apply Int.ceil_pos.mpr
+        apply div_pos h.left
+        apply zpow_pos (by norm_num)
+      apply IsValidFiniteVal_subnormal
+      zify
+      rw [abs_of_pos kpos]
+      apply Int.ceil_le.mpr
+      have hk' := Int.ceil_lt_iff.mp hk
+      norm_num at ⊢ hk'
+      exact hk'
+
+    Fp.finite (FiniteFp.mk false FloatFormat.min_exp k.natAbs vf)
+
+@[simp]
+theorem roundSubnormalDown_ne_nan (x : R) (h : isSubnormalRange x) : roundSubnormalDown x h ≠ Fp.NaN := by
+  unfold roundSubnormalDown
+  norm_num
+  split_ifs <;> trivial
+
+@[simp]
+theorem roundSubnormalDown_ne_infinite (x : R) (h : isSubnormalRange x) (sign : Bool) : roundSubnormalDown x h ≠ Fp.infinite sign := by
+  unfold roundSubnormalDown
+  norm_num
+  split_ifs <;> trivial
+
+@[simp]
+theorem roundSubnormalUp_ne_nan (x : R) (h : isSubnormalRange x) : roundSubnormalUp x h ≠ Fp.NaN := by
+  unfold roundSubnormalUp
+  norm_num
+  split_ifs <;> trivial
+
+@[simp]
+theorem roundSubnormalUp_ne_infinite (x : R) (h : isSubnormalRange x) (sign : Bool): roundSubnormalUp x h ≠ Fp.infinite sign := by
+  unfold roundSubnormalUp
+  norm_num
+  split_ifs <;> trivial
 
 /-- Find the exponent for rounding down (largest e such that 2^e <= x) -/
 def findExponentDown (x : R) : ℤ :=
@@ -307,14 +362,28 @@ def roundNormalUp (x : R) (h : isNormalRange x) : Fp :=
       · exact hm
     Fp.finite (FiniteFp.mk false e m.natAbs vf)
 
+@[simp]
 theorem roundNormalDown_ne_nan (x : R) (h : isNormalRange x) : roundNormalDown x h ≠ Fp.NaN := by
   simp only [roundNormalDown, FloatFormat.pow_prec_sub_one_nat_int, ne_eq, reduceCtorEq,
     not_false_eq_true]
 
+@[simp]
+theorem roundNormalDown_ne_infinite (x : R) (h : isNormalRange x) (sign : Bool) : roundNormalDown x h ≠ Fp.infinite sign := by
+  simp only [roundNormalDown, FloatFormat.pow_prec_sub_one_nat_int, ne_eq, reduceCtorEq,
+    not_false_eq_true]
+
+@[simp]
 theorem roundNormalUp_ne_nan (x : R) (h : isNormalRange x) : roundNormalUp x h ≠ Fp.NaN := by
   unfold roundNormalUp
   norm_num
   split_ifs <;> simp only [not_false_eq_true]
+
+@[simp]
+theorem roundNormalUp_ne_neg_infinite (x : R) (h : isNormalRange x) : roundNormalUp x h ≠ Fp.infinite true := by
+  unfold roundNormalUp
+  norm_num
+  split_ifs
+  <;> simp
 
 /-- Find the predecessor of a positive number -/
 def findPredecessorPos (x : R) (hpos : 0 < x) : Fp :=
@@ -341,6 +410,30 @@ def findSuccessorPos (x : R) (hpos : 0 < x) : Fp :=
   else
     -- Overflow
     Fp.infinite false
+
+@[simp]
+theorem findPredecessorPos_ne_nan (x : R) (hpos : 0 < x) : findPredecessorPos x hpos ≠ Fp.NaN := by
+  unfold findPredecessorPos
+  split_ifs
+  <;> simp
+
+@[simp]
+theorem findPredecessorPos_ne_inf (x : R) (hpos : 0 < x) (sign : Bool): findPredecessorPos x hpos ≠ Fp.infinite sign := by
+  unfold findPredecessorPos
+  split_ifs
+  <;> simp
+
+@[simp]
+theorem findSuccessorPos_ne_nan (x : R) (hpos : 0 < x) : findSuccessorPos x hpos ≠ Fp.NaN := by
+  unfold findSuccessorPos
+  split_ifs
+  <;> simp
+
+@[simp]
+theorem findSuccessorPos_ne_neg_inf (x : R) (hpos : 0 < x) : findSuccessorPos x hpos ≠ Fp.infinite true := by
+  unfold findSuccessorPos
+  split_ifs
+  <;> simp
 
 /-- Find the largest floating-point value less than or equal to x (predecessor) -/
 def findPredecessor (x : R) : Fp :=

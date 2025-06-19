@@ -75,6 +75,21 @@ theorem IsValidFiniteVal.largestFiniteFloat [FloatFormat] : IsValidFiniteVal Flo
   have := FloatFormat.prec_pred_pow_le
   exact ⟨FloatFormat.exp_order_le, by rfl, by omega, Or.inl isNormal.sig_max⟩
 
+/-- Minor helper theorem to remove some verbosity from proving a subnormal valid finite float -/
+theorem IsValidFiniteVal_subnormal [FloatFormat] (m : ℕ) : m ≤ 2^(FloatFormat.prec - 1) - 1 → IsValidFiniteVal FloatFormat.min_exp m := by
+  intro hm
+  split_ands
+  · rfl
+  · exact FloatFormat.exp_order_le
+  · apply lt_of_le_of_lt hm
+    have := FloatFormat.valid_prec
+    have := FloatFormat.pow_prec_pred_lt
+    apply lt_trans
+    exact (by norm_num : 2 ^ (FloatFormat.prec - 1) - 1 < 2 ^ (FloatFormat.prec - 1)) -- for some reason can't pick up on this obvious fact and no clear lemma to use??
+    simp only [FloatFormat.pow_prec_pred_lt]
+  · right
+    trivial
+
 @[ext]
 structure FiniteFp [FloatFormat] where
   /-- The sign of the number. -/
