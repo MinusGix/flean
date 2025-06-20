@@ -149,6 +149,13 @@ theorem neg_def (x : FiniteFp) : -x = {
   valid := x.valid
 } := rfl
 
+instance : InvolutiveNeg FiniteFp := ⟨
+  by
+    intro x
+    rw [neg_def, neg_def]
+    norm_num
+⟩
+
 def sign (x : FiniteFp) : Bool := x.s
 
 def sign'  {R : Type*} [Neg R] [One R] (x : FiniteFp) : R :=

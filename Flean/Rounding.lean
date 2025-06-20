@@ -237,7 +237,174 @@ theorem roundUp_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs :
   rw [dite_false, FiniteFp.smallestPosSubnormal]
 
 
--- roundUp returns a value ≥ input (fundamental property of rounding up)
+-- Helper lemmas for roundUp_ge proof
+
+-- Fundamental ceiling property for subnormal range
+lemma roundSubnormalUp_ge [FloatFormat] (x : R) (hsr : isSubnormalRange x) (f : FiniteFp)
+  (h : roundSubnormalUp x hsr = Fp.finite f) : x ≤ f.toVal := by
+  unfold roundSubnormalUp at h
+  let k := ⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉
+  by_cases hk : k ≥ 2^(FloatFormat.prec - 1)
+  · -- Case: k ≥ 2^(prec-1), transition to normal range
+    unfold k at hk
+    simp only [ge_iff_le, hk, ↓reduceDIte, Fp.finite.injEq] at h
+    -- h now shows: f = FiniteFp.smallestPosNormal
+    rw [← h, FiniteFp.smallestPosNormal_toVal]
+    exact le_of_lt (hsr.right)
+  · -- Case: k < 2^(prec-1), stays in subnormal range
+    unfold k at hk
+    simp only [ge_iff_le, hk, ↓reduceDIte, Fp.finite.injEq] at h
+    rw [← h]
+    unfold FiniteFp.toVal FiniteFp.sign'
+    rw [FloatFormat.radix_val_eq_two]
+    simp
+    -- Goal: x ≤ k.natAbs * 2^(min_exp - prec + 1)
+    -- We know k = ⌈x / 2^(min_exp - prec + 1)⌉ and k > 0 in subnormal range
+    -- So k.natAbs = k and k ≥ x / 2^(min_exp - prec + 1)
+    -- Therefore k * 2^(min_exp - prec + 1) ≥ x
+    have k_pos : 0 < k := by
+      unfold k
+      apply Int.ceil_pos.mpr
+      apply div_pos hsr.left
+      apply zpow_pos (by norm_num)
+    have h_natAbs : (k.natAbs : R) = (k : R) := by
+      have : |k| = k := abs_of_pos k_pos
+      convert this.symm
+      constructor
+      · intro h1
+        rw [abs_of_pos k_pos]
+      · intro h1
+        rw [Int.cast_natAbs]
+        rw [abs_of_pos k_pos]
+    rw [h_natAbs]
+    have h_pos : (0 : R) < (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by
+      apply zpow_pos (by norm_num)
+    -- x / 2^(min_exp - prec + 1) ≤ k
+    -- So x ≤ k * 2^(min_exp - prec + 1)
+    calc x = x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) *
+              (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by {
+        rw [div_mul_cancel₀ _ (ne_of_gt h_pos)]
+      }
+      _ ≤ (k : R) * (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by
+        apply mul_le_mul_of_nonneg_right
+        · unfold k
+          exact Int.le_ceil _
+        · exact le_of_lt h_pos
+
+/-- rounding a normal up is bounded above by the float's representation -/
+lemma roundNormalUp_ge [FloatFormat] (x : R) (hnr : isNormalRange x) (f : FiniteFp)
+  (h : roundNormalUp x hnr = Fp.finite f) : x ≤ f.toVal := by
+  unfold roundNormalUp at h
+  let e := findExponentDown x
+  let binade_base := (2 : R) ^ e
+  let scaled := x / binade_base
+  let m_scaled := scaled * (2 : R) ^ (FloatFormat.prec - 1)
+  let m := ⌈m_scaled⌉
+
+  have m_pos : 0 < m := by
+    apply Int.ceil_pos.mpr
+    apply mul_pos
+    apply div_pos (isNormalRange_pos x hnr)
+    apply zpow_pos (by norm_num)
+    apply pow_pos (by norm_num : (0 : R) < 2)
+
+  by_cases hm : 2^FloatFormat.prec ≤ m
+  · -- Case: overflow within binade
+    unfold m m_scaled scaled binade_base e at hm
+    by_cases he : e + 1 > FloatFormat.max_exp
+    · -- Overflow to infinity case - contradiction since h says result is finite
+      unfold e at he
+      simp only [ge_iff_le, hm, he, ↓reduceDIte] at h
+      -- This returns Fp.infinite false, but h says result is Fp.finite f
+      exfalso
+      cases h
+    · -- Move to next exponent case
+      unfold e at he
+      simp only [ge_iff_le, hm, he, ↓reduceDIte, Fp.finite.injEq] at h
+      rw [← h]
+      unfold FiniteFp.toVal FiniteFp.sign'
+      rw [FloatFormat.radix_val_eq_two]
+      simp
+      -- Goal: x ≤ 2^(prec-1) * 2^(e + 1 - prec + 1) = 2^(e + 1)
+      rw [← zpow_add₀ (by norm_num : (2 : R) ≠ 0)]
+      ring_nf
+      -- Goal is x ≤ 2 ^ (e + 1)
+      -- Use that findExponentDown gives us e such that 2^e ≤ x < 2^(e+1) in normal range
+      have hbound := findExponentDown_div_binade_normal hnr
+      have : x < binade_base * 2 := by
+        unfold binade_base
+        have : binade_base * 2 = (2 : R) ^ (e + 1) := by
+          rw [← zpow_add_one₀ (by norm_num : (2 : R) ≠ 0)]
+        rw [this]
+        -- hbound says x / 2^e < 2, so x < 2^(e+1)
+        have h1 : x / (2 : R) ^ e < 2 := hbound.right
+        rw [zpow_add_one₀, mul_comm]
+        exact (div_lt_iff₀ (zpow_pos (by norm_num : (0 : R) < 2) e)).mp h1
+        norm_num
+      unfold binade_base e at this
+      rw [zpow_one_add₀, mul_comm]
+      linarith
+      norm_num
+  · -- Case: no overflow, m < 2^prec
+    unfold m m_scaled scaled binade_base e at hm
+    simp only [ge_iff_le, hm, ↓reduceDIte, Fp.finite.injEq] at h
+    rw [← h]
+    unfold FiniteFp.toVal FiniteFp.sign'
+    rw [FloatFormat.radix_val_eq_two]
+    simp only [Bool.false_eq_true, ↓reduceIte, FloatFormat.pow_prec_sub_one_nat_int, one_mul,
+      Int.cast_ofNat, ge_iff_le]
+    -- Goal: x ≤ m.natAbs * 2^(e - prec + 1)
+    -- First we need to show m > 0 and m.natAbs = m
+    have h_natAbs := natAbs_cast_of_pos (R := R) m_pos
+    unfold m m_scaled scaled binade_base e at h_natAbs m_pos
+    have m_pos' : 0 < x / (2 : R) ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1) := by
+      apply Int.ceil_pos.mp
+      trivial
+    simp_all only [FloatFormat.pow_prec_sub_one_nat_int, Int.ceil_pos, ge_iff_le]
+
+    -- Now x ≤ m * 2^(e - prec + 1)
+    have h_pos : (0 : R) < (2 : R) ^ ((e : ℤ) - (FloatFormat.prec : ℤ) + 1) := by
+      apply zpow_pos (by norm_num)
+    -- Show x ≤ m * 2^(e - prec + 1)
+    calc x = x / (2 : R) ^ e * (2 : R) ^ (FloatFormat.prec - 1) / (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ e := by {
+        rw [FloatFormat.pow_prec_sub_one_nat_int]
+        rw [mul_div_cancel_right₀, div_mul_cancel₀]
+        apply zpow_ne_zero _ (by norm_num)
+        apply zpow_ne_zero _ (by norm_num)
+      }
+      _ ≤ (m : R) / (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ e := by
+        apply mul_le_mul_of_nonneg_right
+        apply div_le_div_of_nonneg_right
+        · unfold m
+          exact Int.le_ceil _
+        · apply pow_nonneg (by norm_num)
+        · apply zpow_nonneg (by norm_num)
+      _ = (m : R) * (2 : R) ^ (e - (FloatFormat.prec : ℤ) + 1) := by
+        rw [div_mul_eq_mul_div]
+        rw [mul_div_assoc]
+        rw [FloatFormat.pow_prec_sub_one_nat_int]
+        rw [← zpow_sub₀ (by norm_num)]
+        ring_nf
+    unfold m m_scaled scaled binade_base e
+    simp only [FloatFormat.pow_prec_sub_one_nat_int, le_refl]
+
+-- findSuccessorPos preserves the ceiling property
+lemma findSuccessorPos_ge [FloatFormat] (x : R) (hpos : 0 < x) (f : FiniteFp)
+  (h : findSuccessorPos x hpos = Fp.finite f) : x ≤ f.toVal := by
+  unfold findSuccessorPos at h
+  split_ifs at h with h_sub h_normal
+  · -- Subnormal case
+    exact roundSubnormalUp_ge x ⟨hpos, h_sub⟩ f h
+  · -- Normal case
+    exact roundNormalUp_ge x ⟨le_of_not_gt h_sub, h_normal⟩ f h
+  -- Overflow case handled automatically
+
+-- findPredecessorPos preserves the floor property
+lemma findPredecessorPos_le [FloatFormat] (x : R) (hpos : 0 < x) (f : FiniteFp)
+  (h : findPredecessorPos x hpos = Fp.finite f) : f.toVal ≤ x := by
+  sorry -- Floor property for predecessor - to be completed
+
+-- Main theorem: roundUp returns a value ≥ input (fundamental property of rounding up)
 theorem roundUp_ge [FloatFormat] (x : R) (f : FiniteFp)
   (h : roundUp x = Fp.finite f) : x ≤ f.toVal := by
   unfold roundUp findSuccessor at h
@@ -246,19 +413,49 @@ theorem roundUp_ge [FloatFormat] (x : R) (f : FiniteFp)
     simp at h
     rw [h.symm, h_zero, FiniteFp.toVal_zero]
   · -- Case: x > 0
-    unfold findSuccessorPos at h
-    split_ifs at h with h_sub h_normal
-    · -- Subnormal case
-      unfold roundSubnormalUp at h
-      sorry -- Need to prove ceiling property for subnormal case
-    · -- Normal case
-      unfold roundNormalUp at h
-      sorry -- Need to prove ceiling property for normal case
-    -- x ≥ 2^(max_exp + 1), automatically discharged
+    exact findSuccessorPos_ge x h_pos f h
   · -- Case: x < 0
-    -- Use symmetry with findPredecessorPos
+    -- Use symmetry: findSuccessor x = -findPredecessor (-x)
     have h_neg : 0 < -x := neg_pos.mpr (lt_of_le_of_ne (le_of_not_gt h_pos) h_zero)
-    sorry -- Need to handle negative case
+    unfold findPredecessorPos at h
+    norm_num at h
+    split at h
+    <;> rename_i heq
+    <;> split at heq
+    · rename_i f' h1
+      have hf : f = -f' := by simp_all only [Left.neg_pos_iff, Fp.finite.injEq]
+      have hf' : f' = -f := by simp [hf]
+      rw [hf'] at heq
+      have a := roundSubnormalDown_le (-x) (by trivial) (-f) heq
+      rw [FiniteFp.toVal_neg_eq_neg] at a
+      linarith
+    · split at heq
+      · injection h with h1
+        rw [neg_eq_iff_eq_neg.mp h1] at heq
+        sorry
+      · injection heq with h₁
+        injection h with h₂
+        rw [neg_eq_iff_eq_neg.mp h₂] at h₁
+        rw [← neg_eq_iff_eq_neg.mpr h₁]
+        rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.largestFiniteFloat_toVal]
+        simp_all only [not_lt, Left.neg_pos_iff, ge_iff_le]
+        have ha : x ≤ -2^(FloatFormat.max_exp + 1) := by linarith
+        apply le_trans
+        exact ha
+        norm_num
+        rw [zpow_add_one₀ (by norm_num)]
+        rw [zpow_add_one₀ (by norm_num)]
+        -- apply (mul_le_mul_iff_left ?_).mp
+        apply mul_le_mul_of_nonneg_left
+        simp only [zpow_neg, zpow_natCast, tsub_le_iff_right, le_add_iff_nonneg_right, inv_pos,
+          Nat.ofNat_pos, pow_pos, mul_nonneg_iff_of_pos_left, Nat.ofNat_nonneg]
+        apply zpow_nonneg (by norm_num)
+    · rename_i b h1
+      have := roundSubnormalDown_ne_infinite (-x) (by trivial) b
+      contradiction
+    · trivial
+    · trivial
+    · trivial
 
 -- roundUp doesn't return NaN for positive finite inputs
 theorem roundUp_pos_not_nan [FloatFormat] (x : R) (xpos : 0 < x) :
@@ -331,7 +528,24 @@ theorem roundTowardZero_zero [FloatFormat] : roundTowardZero (0 : R) = Fp.finite
 /-- roundTowardZero never increases magnitude -/
 theorem roundTowardZero_magnitude_le [FloatFormat] (x : R) (f : FiniteFp) :
   roundTowardZero x = Fp.finite f → |f.toVal| ≤ |x| := by
-  sorry
+  intro h
+  unfold roundTowardZero at h
+  split_ifs at h with h_zero h_pos
+  · -- Case: x = 0
+    simp at h
+    rw [← h]
+    simp [h_zero, FiniteFp.toVal_zero]
+  · -- Case: x > 0, use roundDown
+    have h_eq : roundDown x = Fp.finite f := h
+    -- roundDown gives us the largest float ≤ x, so f.toVal ≤ x
+    -- Since x > 0 and f.toVal ≤ x, we have |f.toVal| ≤ |x|
+    sorry -- Need roundDown_le property
+  · -- Case: x < 0, use roundUp
+    have h_eq : roundUp x = Fp.finite f := h
+    -- roundUp gives us the smallest float ≥ x, so x ≤ f.toVal
+    -- Since x < 0 and x ≤ f.toVal, we need to show |f.toVal| ≤ |x|
+    -- This requires analyzing if f.toVal is negative or positive
+    sorry -- Need roundUp_ge and analysis of sign
 
 /-- roundTowardZero preserves sign for non-zero finite results -/
 theorem roundTowardZero_sign_preservation [FloatFormat] (x : R) (f : FiniteFp) :
@@ -367,7 +581,14 @@ theorem roundNearestTiesToEven_zero [FloatFormat] : roundNearestTiesToEven (0 : 
 
 theorem rnEven_le_half_subnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < FiniteFp.smallestPosSubnormal.toVal / 2) :
   roundNearestTiesToEven x = Fp.finite 0 := by
-  sorry
+  unfold roundNearestTiesToEven
+  -- Check the conditions
+  simp [ne_of_gt hn]
+  -- Need to show |x| < smallestPosSubnormal / 2
+  have h_abs : |x| < FiniteFp.smallestPosSubnormal.toVal / 2 := by
+    rw [abs_of_pos hn]
+    exact hs
+  simp [h_abs]
 
 -- TODO: negative values?
 -- TODO: better name.
@@ -405,7 +626,13 @@ theorem roundNearestTiesAwayFromZero_zero [FloatFormat] : roundNearestTiesAwayFr
 
 theorem rnAway_lt_half_subnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < FiniteFp.smallestPosSubnormal.toVal / 2) :
   roundNearestTiesAwayFromZero x = Fp.finite 0 := by
-  sorry
+  unfold roundNearestTiesAwayFromZero
+  -- Check the conditions - same logic as rnEven
+  simp [ne_of_gt hn]
+  have h_abs : |x| < FiniteFp.smallestPosSubnormal.toVal / 2 := by
+    rw [abs_of_pos hn]
+    exact hs
+  simp [h_abs]
 
 theorem rnAway_ge_inf [FloatFormat] (x : R) (hx : x ≥ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp) :
   roundNearestTiesAwayFromZero x = Fp.infinite false := by

@@ -321,6 +321,10 @@ theorem natCast_pow_prec_msb [FloatFormat] {R : Type*} [Field R] [LinearOrder R]
   have := FloatFormat.valid_prec
   omega
 
+theorem natCast_pow_prec_msb' [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+  : (2 : R)^(FloatFormat.prec - 1) = ↑((2 : ℕ)^(FloatFormat.prec - 1)) := by
+  simp only [pow_prec_sub_one_nat_int, Nat.cast_pow, Nat.cast_ofNat]
+
 -- def Decimal32 : FloatFormat := {
 --   radix := Radix.Decimal,
 --   prec := 7,

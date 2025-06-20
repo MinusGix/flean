@@ -21,6 +21,18 @@ and implements all five standard rounding modes.
 
 section Rounding
 
+@[simp]
+theorem natAbs_cast_of_pos {R : Type*} [Ring R] {m : ℤ} (m_pos : 0 < m) : (m.natAbs : R) = (m : R) := by
+  have : |m| = m := abs_of_pos m_pos
+  convert this.symm
+  constructor
+  · intro h1
+    rw [abs_of_pos m_pos]
+  · intro h1
+    rw [Int.cast_natAbs]
+    rw [abs_of_pos m_pos]
+
+
 variable {n : ℕ} {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] [OfNat R n]
 variable [FloatFormat]
 
@@ -138,6 +150,40 @@ theorem roundSubnormalUp_ne_infinite (x : R) (h : isSubnormalRange x) (sign : Bo
   unfold roundSubnormalUp
   norm_num
   split_ifs <;> trivial
+
+/-- A rounded down x bounds the resulting finite float from above -/
+theorem roundSubnormalDown_le (x : R) (h : isSubnormalRange x) : (f : FiniteFp) → (hs : roundSubnormalDown x h = Fp.finite f) → f.toVal ≤ x := by
+  intro f hs
+  unfold roundSubnormalDown at hs
+  simp at hs
+  unfold isSubnormalRange at h
+  split at hs
+  · simp_all only [Fp.finite.injEq]
+    subst hs
+    rw [FiniteFp.toVal_zero]
+    linarith
+  · rename_i h'
+    rw [not_and_or] at h'
+    norm_num at h'
+    simp_all only [Fp.finite.injEq]
+    subst hs
+    unfold FiniteFp.toVal FiniteFp.sign'
+    norm_num
+    have : ¬(x / 2 ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1) < 0) := by
+      norm_num
+      apply div_nonneg
+      linarith
+      apply zpow_nonneg (by norm_num)
+    simp only [this, false_or] at h'
+
+    rw [natAbs_cast_of_pos (Int.floor_pos.mpr (by trivial))]
+
+    rw[FloatFormat.radix_val_eq_two]
+    apply mul_le_of_le_div₀
+    · linarith
+    · apply zpow_nonneg (by norm_num)
+    · rw [Int.cast_two]
+      apply Int.floor_le
 
 /-- Find the exponent for rounding down (largest e such that 2^e <= x) -/
 def findExponentDown (x : R) : ℤ :=

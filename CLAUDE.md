@@ -44,6 +44,12 @@ This is a mathematical library focused on floating-point arithmetic formalizatio
 - When modifying proofs, consider adding linguistic comments as suggested in idea.md to improve readability
 - When using `.toVal`, you need to specify the type. Usually this will be `(f.toVal : R)`
 - We use `R` to be generic over the numbers that we are talking about, most usually Reals and Rationals
+- When solving theorems, breaking them into important (especially reusable) separate helper theorems is very helpful.
+- `lake build` often! It will give you important insight into whether your proof works.
+  - Prefer `lake build` over the ide get diagnostics tool, because ide diagnostics can be outdated
+- Feel free to ask the user for assistance if a specific sub-part is troublesome, I may be able to help resolve those!
 
 **Key Mathematical Functions:**
-- `Int.log b x`: Returns the greatest power of `b` such that `b^(Int.log b x) ≤ x`. Essential for floating-point exponent calculations without noncomputability issues
+- `Int.log b x`: Returns the greatest power of `b` such that `b^(Int.log b x) ≤ x`. Essential for floating-point exponent calculations without noncomputability issues.
+- When writing powers, there is zpow and pow. zpow is used with R, like `(2 : R)^(FloatFormat.prec : ℕ)`
+- Casting can be a pain but is solvable with effort. Often writing sub-theorems for the conversion can be helpful! There's a distinction between `(2 : R)^(FloatFormat.prec : ℕ)` and `(2 : R)^(FloatFormat.prec : ℤ)`
