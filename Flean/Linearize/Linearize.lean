@@ -1,6 +1,8 @@
 import Mathlib.Data.Int.Log
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.TryThis
+import Lean.Elab.Tactic.Basic
+import Lean.Elab.Term
 
 /-!
 # Linearize Tactic
@@ -50,7 +52,7 @@ def isNatCastZpow (e : Expr) : MetaM (Option (ℕ × Expr × Expr × Expr)) := d
       else
         trace[linearize] "No natural number found"
         return none
-    | _ => 
+    | _ =>
       trace[linearize] "Base is not Nat.cast: {base.getAppFnArgs}"
       return none
   | (``Pow.pow, #[_, _, _, base, exponent]) =>
@@ -74,14 +76,14 @@ def isNatCastZpow (e : Expr) : MetaM (Option (ℕ × Expr × Expr × Expr)) := d
       -- Try to extract the natural number value
       if let some n := natExpr.rawNatLit? then
         trace[linearize] "Found natural number: {n}"
-        -- Convert natural exponent to integer  
+        -- Convert natural exponent to integer
         let instNatCast ← synthInstance (mkApp (mkConst ``NatCast []) (mkConst ``Int))
         let intExp ← mkAppM ``Nat.cast #[mkConst ``Int, instNatCast, exponent]
         return some (n, base, intExp, R)
       else
         trace[linearize] "No natural number found"
         return none
-    | _ => 
+    | _ =>
       trace[linearize] "Base is not Nat.cast: {base.getAppFnArgs}"
       return none
   | _ => return none
@@ -102,7 +104,7 @@ def transformZpowComparison (e : Expr) : MetaM (Option Expr) := do
   match e.getAppFnArgs with
   | (``LT.lt, #[_R, _inst, lhs, rhs]) =>
     -- Case: lhs < rhs
-    if let some (b, base, exp, _) ← isNatCastZpow rhs then
+    if let some (b, _, exp, _) ← isNatCastZpow rhs then
       -- lhs < (b : R)^exp � Int.log b lhs < exp (when 0 < lhs, 1 < b)
       let logExpr ← mkAppM ``Int.log #[mkNatLit b, lhs]
       -- Convert exponent to integer if it's a natural number
@@ -112,7 +114,7 @@ def transformZpowComparison (e : Expr) : MetaM (Option Expr) := do
       else
         pure exp
       mkAppM ``LT.lt #[logExpr, intExp]
-    else if let some (b, base, exp, _) ← isNatCastZpow lhs then
+    else if let some (b, _, exp, _) ← isNatCastZpow lhs then
       -- (b : R)^exp < rhs � exp < Int.log b rhs + 1 (when 0 < rhs, 1 < b)
       let logExpr ← mkAppM ``Int.log #[mkNatLit b, rhs]
       let plusOne ← mkAppM ``HAdd.hAdd #[logExpr, mkIntLit 1]
@@ -127,7 +129,7 @@ def transformZpowComparison (e : Expr) : MetaM (Option Expr) := do
       return none
   | (``LE.le, #[_R, _inst, lhs, rhs]) =>
     -- Similar for d
-    if let some (b, base, exp, _) ← isNatCastZpow rhs then
+    if let some (b, _, exp, _) ← isNatCastZpow rhs then
       -- lhs d (b : R)^exp � Int.log b lhs d exp (when 0 < lhs, 1 < b)
       let logExpr ← mkAppM ``Int.log #[mkNatLit b, lhs]
       -- Convert exponent to integer if it's a natural number
@@ -137,7 +139,7 @@ def transformZpowComparison (e : Expr) : MetaM (Option Expr) := do
       else
         pure exp
       mkAppM ``LE.le #[logExpr, intExp]
-    else if let some (b, base, exp, _) ← isNatCastZpow lhs then
+    else if let some (b, _, exp, _) ← isNatCastZpow lhs then
       -- (b : R)^exp d rhs � exp d Int.log b rhs (when 0 < rhs, 1 < b)
       let logExpr ← mkAppM ``Int.log #[mkNatLit b, rhs]
       -- Convert exponent to integer if it's a natural number
@@ -151,156 +153,204 @@ def transformZpowComparison (e : Expr) : MetaM (Option Expr) := do
       return none
   | _ => return none
 
-/-- Generate a proof that the transformed comparison follows from the original -/
-def proveTransformation (original transformed : Expr) : MetaM (Expr × Array Expr) := do
-  -- Construct proper proofs using Int.log theorems and return side condition metavariables
-  match original.getAppFnArgs, transformed.getAppFnArgs with
-  | (``LT.lt, #[R, _, lhs, rhs]), (``LT.lt, #[_, _, logExpr, intExp]) =>
-    -- Case: lhs < rhs became Int.log b lhs < intExp  
-    -- We need to prove: lhs < b^z → Int.log b lhs < intExp
-    if let some (b, base_expr, exp_expr, _) ← isNatCastZpow rhs then
-      trace[linearize] "Constructing LT proof for base {b}"
-      
-      -- Create fresh metavariables for side conditions
-      let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]
-      let zero ← mkAppOptM ``OfNat.ofNat #[R, mkNatLit 0, none]
-      let hrType ← mkAppM ``LT.lt #[zero, lhs]
-      
-      let hbMVar ← mkFreshExprMVar hbType MetavarKind.syntheticOpaque `h_1_lt_b
-      let hrMVar ← mkFreshExprMVar hrType MetavarKind.syntheticOpaque `h_0_lt_lhs
-      
-      -- The proof should directly produce the linearized result
-      -- We want: given h_orig : lhs < (b:R)^z, produce: Int.log b lhs < z
-      -- This comes from: (Int.lt_zpow_iff_log_lt hb hr).mpr h_orig
-      let proof ← do
-        trace[linearize] "Building linearization proof for: {original} → {transformed}"
-        
-        -- Create the proof term: (Int.lt_zpow_iff_log_lt hbMVar hrMVar).mpr
-        -- Infer the universe level from the type R
-        let lhsType ← inferType lhs
-        let rLevel ← match ← inferType lhsType with
-          | Expr.sort level => pure level
-          | _ => pure levelZero  -- fallback
-        let iff_thm := mkAppN (mkConst ``Int.lt_zpow_iff_log_lt [rLevel]) #[hbMVar, hrMVar]
-        pure (mkAppN (mkConst ``Iff.mpr) #[iff_thm])
-      
-      return (proof, #[hbMVar, hrMVar])
-    else
-      let proof ← mkSorry transformed false
-      return (proof, #[])
-      
-  | (``LE.le, #[R, _, lhs, rhs]), (``LE.le, #[_, _, logExpr, intExp]) =>
-    -- Case: lhs ≤ rhs became Int.log b lhs ≤ intExp
-    if let some (b, base_expr, exp_expr, _) ← isNatCastZpow rhs then
-      trace[linearize] "Constructing LE proof for base {b}"
-      
-      -- Create fresh metavariables for side conditions
-      let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]
-      let zero ← mkAppOptM ``OfNat.ofNat #[R, mkNatLit 0, none]
-      let hrType ← mkAppM ``LT.lt #[zero, lhs]
-      
-      let hbMVar ← mkFreshExprMVar hbType MetavarKind.syntheticOpaque `h_1_lt_b
-      let hrMVar ← mkFreshExprMVar hrType MetavarKind.syntheticOpaque `h_0_lt_lhs
-      
-      -- The proof should directly produce the linearized result  
-      let proof ← do
-        trace[linearize] "Building linearization proof for: {original} → {transformed}"
-        
-        -- Create the proof term: (Int.zpow_le_iff_le_log hbMVar hrMVar).mp
-        -- Infer the universe level from the type R
-        let lhsType ← inferType lhs
-        let rLevel ← match ← inferType lhsType with
-          | Expr.sort level => pure level
-          | _ => pure levelZero  -- fallback
-        let iff_thm := mkAppN (mkConst ``Int.zpow_le_iff_le_log [rLevel]) #[hbMVar, hrMVar]
-        pure (mkAppN (mkConst ``Iff.mp) #[iff_thm])
-      
-      return (proof, #[hbMVar, hrMVar])
-    else
-      let proof ← mkSorry transformed false
-      return (proof, #[])
-      
-  | _, _ =>
-    trace[linearize] "Unknown transformation pattern"
-    let proof ← mkSorry transformed false
-    return (proof, #[])
+def mkNatLit' (ty : Expr) (n : Nat) : MetaM Expr := do
+  let level ← getLevel ty
+  let r := mkRawNatLit n
+  pure (mkApp3 (mkConst ``OfNat.ofNat [level]) ty r (mkApp (mkConst ``instOfNatNat) r))
 
-/-- Apply linearize transformation to a single hypothesis or goal -/
-def linearizeHypothesis (hyp : Expr) : TacticM (Option (Expr × Expr × Array Expr)) := do
-  let hypType ← inferType hyp
-  trace[linearize] "Checking hypothesis type: {hypType}"
-  if let some transformed ← transformZpowComparison hypType then
-    trace[linearize] "Transformed to: {transformed}"
-    let (proof, sideConds) ← proveTransformation hypType transformed
-    return some (transformed, proof, sideConds)
-  else
-    trace[linearize] "No transformation found"
-    return none
+/-- Apply linearization to a single hypothesis using the mathlib pattern -/
+def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
+  g.withContext do
+    let d ← h.getDecl
+    trace[linearize] "Analyzing hypothesis {d.userName} : {d.type}"
 
-/-- Main linearize tactic implementation -/
+    -- Check if this hypothesis can be linearized
+    match ← transformZpowComparison d.type with
+    | some transformed => do
+      trace[linearize] "Can linearize to: {transformed}"
+
+      -- Apply the appropriate theorem based on the comparison type
+      match d.type.getAppFnArgs with
+      | (``LT.lt, #[R, _, lhs, rhs]) =>
+        if let some (b, _, exp, _) ← isNatCastZpow rhs then
+          trace[linearize] "Applying Int.lt_zpow_iff_log_lt for base {b}"
+          -- Create goals for the side conditions
+          let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]
+          trace[linearize] "hbType: {hbType}"
+          let rType ← inferType R -- Type u
+          let level := rType.sortLevel!
+          -- let level ← getLevel R
+          let zero ← Expr.ofNat R 0
+          trace[linearize] "level: {level}"
+          let ltInst ← synthInstance (← mkAppM ``LT #[R])
+          trace[linearize] "ltInst: {ltInst}"
+          let hrType ← mkAppOptM' (mkConst ``LT.lt [levelZero]) #[some R, some ltInst, some zero, some lhs]
+          -- let hrType ← mkAppOptM ``LT.lt #[some R, some ltInst, some zero, some lhs]
+          -- let hrType ← mkAppM ``LT.lt #[zero, lhs]
+          trace[linearize] "hrType: {hrType}"
+
+          let hbGoal ← mkFreshExprMVar hbType MetavarKind.syntheticOpaque (`hb)
+          let hrGoal ← mkFreshExprMVar hrType MetavarKind.syntheticOpaque (`hr)
+          trace[linearize] "hbGoal: {hbGoal}"
+          trace[linearize] "hrGoal: {hrGoal}"
+
+          -- Apply: (Int.lt_zpow_iff_log_lt hb hr).mpr h
+          -- Construct the iff theorem using unification to handle implicits
+          let thmType ← mkAppM ``Iff #[d.type, transformed]
+          let thmMVar ← mkFreshExprMVar thmType MetavarKind.syntheticOpaque `thm
+
+          trace[linearize] "thmType: {thmType}"
+          trace[linearize] "thmMVar: {thmMVar}"
+
+          -- Create the theorem term and unify
+          -- let ltZpowThm ← mkConstWithFreshMVarLevels ``Int.lt_zpow_iff_log_lt
+          -- let ltZpowThm ← mkConstWithLevelParams ``Int.lt_zpow_iff_log_lt
+          -- let thmApp ← mkAppM ``Int.lt_zpow_iff_log_lt #[hbGoal, hrGoal]
+          -- let thmApp ← mkAppM' ltZpowThm #[hbGoal, hrGoal]
+          -- let ltZpowThm ← mkConstWithFreshMVarLevels ``Int.lt_zpow_iff_log_lt
+          -- let ltZpowThm := mkConst ``Int.lt_zpow_iff_log_lt [level]
+          -- [Semifield R] [LinearOrder R] [IsStrictOrderedRing R] [FloorSemiring R]
+          -- let semifieldInst ← synthInstance (← mkAppM ``Semifield #[R])
+          -- let linearOrderInst ← synthInstance (← mkAppM ``LinearOrder #[R])
+          -- let isStrictORingInst ← synthInstance (← mkAppM ``IsStrictOrderedRing #[R])
+          -- let floorSemiringInst ← synthInstance (← mkAppM ``FloorSemiring #[R])
+          -- let thmApp := mkApp2 ltZpowThm hbGoal hrGoal
+          let r ← R.toSyntax
+          let hbs ← hbGoal.toSyntax
+          let hrs ← hrGoal.toSyntax
+          let lhsS ← lhs.toSyntax
+          let expS ← exp.toSyntax
+          let thmProof ← Term.elabTerm (← `(Int.lt_zpow_iff_log_lt (R := $r) (x := $expS) (r := $lhsS) $hbs $hrs)) (some thmType)
+          -- let thmApp ← mkAppM' ltZpowThm #[R, semifieldInst, linearOrderInst, isStrictORingInst, floorSemiringInst]
+          -- trace[linearize] "thmApp: {thmApp}"
+          thmMVar.mvarId!.assign thmProof
+
+          -- trace[linearize] "ltZpowThm: {ltZpowThm}"
+
+          let proof ← mkAppM ``Iff.mp #[thmMVar, d.toExpr]
+          trace[linearize] "proof: {proof}"
+
+          -- Replace the old hypothesis with the linearized version
+          let g ← g.clear h
+          let (_, g) ← g.note d.userName proof
+
+          Term.synthesizeSyntheticMVarsUsingDefault
+
+          -- Return main goal followed by side condition goals
+          return [g, hbGoal.mvarId!, hrGoal.mvarId!]
+        else if let some (_, _, _, _) ← isNatCastZpow lhs then
+          -- For b^x < r, this is harder to handle directly with Int.log
+          -- Let's skip this case for now and focus on the main use case
+          throwError "linearize: b^x < r direction not yet implemented (use r < b^x form instead)"
+        else
+          throwError "linearize: unsupported zpow expression"
+
+      | (``LE.le, #[R, _, lhs, rhs]) =>
+        if let some (b, _, _, _) ← isNatCastZpow rhs then
+          trace[linearize] "Applying Int.zpow_le_iff_le_log for base {b}"
+          -- Create goals for the side conditions
+          let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]
+          let zero ← mkFreshExprMVar R
+          -- let zeroGoal ← mkFreshExprMVar (← mkAppM ``Eq #[zero, mkNatLit 0])
+          let hrType ← mkAppOptM ``LT.lt #[none, none, zero, lhs]
+
+          let hbGoal ← mkFreshExprMVar hbType MetavarKind.syntheticOpaque (`hb)
+          let hrGoal ← mkFreshExprMVar hrType MetavarKind.syntheticOpaque (`hr)
+
+          -- Apply: (Int.zpow_le_iff_le_log hb hr).mp h
+          let thmType ← mkAppM ``Iff #[d.type, transformed]
+          let thmMVar ← mkFreshExprMVar thmType
+
+          let zpowLeThm ← mkConstWithFreshMVarLevels ``Int.zpow_le_iff_le_log
+          let thmApp ← mkAppM' zpowLeThm #[hbGoal, hrGoal]
+          thmMVar.mvarId!.assign thmApp
+
+          let proof ← mkAppM ``Iff.mp #[thmMVar, d.toExpr]
+
+          -- Replace the old hypothesis with the linearized version
+          let g ← g.clear h
+          let (_, g) ← g.note d.userName proof
+
+          return [g, hbGoal.mvarId!, hrGoal.mvarId!]
+        else if let some (b, _, _, _) ← isNatCastZpow lhs then
+          trace[linearize] "Applying Int.zpow_le_iff_le_log for base {b}"
+          -- Case: (b : R)^exp ≤ rhs → exp ≤ Int.log b rhs
+          let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]
+          let zero ← mkFreshExprMVar R
+          let zeroGoal ← mkFreshExprMVar (← mkAppM ``Eq #[zero, mkNatLit 0])
+          let hrType ← mkAppM ``LT.lt #[zero, rhs]
+
+          let hbGoal ← mkFreshExprMVar hbType MetavarKind.syntheticOpaque (`hb)
+          let hrGoal ← mkFreshExprMVar hrType MetavarKind.syntheticOpaque (`hr)
+
+          -- For b^x ≤ r, we can use Int.zpow_le_iff_le_log: b^x ≤ r ↔ x ≤ Int.log b r
+          let thmType ← mkAppM ``Iff #[d.type, transformed]
+          let thmMVar ← mkFreshExprMVar thmType
+
+          let zpowLeThm ← mkConstWithFreshMVarLevels ``Int.zpow_le_iff_le_log
+          let thmApp ← mkAppM' zpowLeThm #[hbGoal, hrGoal]
+          thmMVar.mvarId!.assign thmApp
+
+          let proof ← mkAppM ``Iff.mp #[thmMVar, d.toExpr]
+
+          -- Replace the old hypothesis with the linearized version
+          let g ← g.clear h
+          let (_, g) ← g.note d.userName proof
+
+          return [g, hbGoal.mvarId!, hrGoal.mvarId!]
+        else
+          throwError "linearize: unsupported zpow expression"
+
+      | _ =>
+        throwError "linearize: unexpected comparison type"
+
+    | none =>
+      throwError "linearize: hypothesis {d.userName} cannot be linearized"
+
+/-- Main linearize tactic implementation using mathlib patterns -/
 def linearizeTacticCore (targets : Array Expr) : TacticM Unit := do
-  -- If no targets specified, try to linearize all hypotheses
-  let actualTargets ← if targets.isEmpty then
+  -- Get the main goal
+  let g ← getMainGoal
+
+  -- Get target hypotheses
+  let targetFVars ← if targets.isEmpty then
+    -- If no targets specified, get all suitable hypotheses
     let lctx ← getLCtx
-    lctx.foldlM (fun acc ldecl =>
-      if ldecl.isImplementationDetail then return acc
-      else return acc.push ldecl.toExpr) #[]
+    let mut fvars : Array FVarId := #[]
+    for ldecl in lctx do
+      if !ldecl.isImplementationDetail then
+        -- Check if this hypothesis can be linearized
+        if (← transformZpowComparison ldecl.type).isSome then
+          fvars := fvars.push ldecl.fvarId
+    pure fvars
   else
-    pure targets
+    -- Convert target expressions to FVarIds
+    targets.filterMapM fun target => do
+      match target with
+      | Expr.fvar id => pure (some id)
+      | _ => pure none
 
-  let mut newHyps : Array (Expr × Expr × Expr) := #[]  -- (original, transformed, proof)
-  let mut allSideConds : Array Expr := #[]
+  if targetFVars.isEmpty then
+    throwError "linearize: no suitable hypotheses found"
 
-  -- Try to transform each target
-  for target in actualTargets do
-    if let some (transformed, proof, sideConds) ← linearizeHypothesis target then
-      newHyps := newHyps.push (target, transformed, proof)
-      allSideConds := allSideConds ++ sideConds
+  -- Apply linearization to each target hypothesis
+  let mut currentGoal := g
+  let mut allNewGoals : List MVarId := []
 
-  -- Add the new hypotheses and side condition goals
-  liftMetaTactic fun goal => do
-    let mut currentGoal := goal
-    
-    -- Add linearized hypotheses, replacing the originals
-    for (origTarget, transformed, proof) in newHyps do
-      -- Get the original hypothesis name
-      let lctx ← getLCtx
-      let origName := match origTarget with
-        | Expr.fvar id => 
-          match lctx.find? id with
-          | some ldecl => ldecl.userName
-          | none => `h_linearized
-        | _ => `h_linearized
-      
-      -- Apply the proof to the original hypothesis to get the linearized version
-      -- proof is: Iff.mpr (Int.lt_zpow_iff_log_lt hb hr) : original → transformed
-      -- origTarget is: h : original  
-      -- We want: h_linearized : transformed
-      let linearizedProof := mkApp proof origTarget
-      
-      -- Add the linearized hypothesis and clear the original
-      let goalWithAssertion ← MVarId.assert currentGoal origName transformed linearizedProof
-      -- Introduce the asserted hypothesis into the context
-      let (_, newGoal) ← MVarId.intro goalWithAssertion origName
-      -- Try to clear the original hypothesis if it's an fvar
-      let finalGoal ← match origTarget with
-        | Expr.fvar originalId => 
-          try
-            MVarId.clear newGoal originalId
-          catch _ => 
-            pure newGoal  -- If we can't clear it, just continue
-        | _ => pure newGoal
-      currentGoal := finalGoal
-    
-    -- Add side condition goals
-    let sideCondGoals := allSideConds.map (fun expr => expr.mvarId!)
-    
-    -- Return main goal plus all side condition goals
-    return (#[currentGoal] ++ sideCondGoals).toList
+  for fvar in targetFVars do
+    let newGoals ← linearizeHyp fvar currentGoal
+    match newGoals with
+    | mainGoal :: sideGoals =>
+      currentGoal := mainGoal
+      allNewGoals := allNewGoals ++ sideGoals
+    | [] =>
+      throwError "linearize: internal error - no goals returned"
+
+  -- Set the new goal list: main goal followed by all side condition goals
+  replaceMainGoal (currentGoal :: allNewGoals)
 
   -- Suggest trying linarith
-  if !newHyps.isEmpty then
-    Lean.Meta.Tactic.TryThis.addSuggestion (← getRef) "linarith"
+  Lean.Meta.Tactic.TryThis.addSuggestion (← getRef) "linarith"
 
 /-- The linearize tactic syntax -/
 syntax (name := linearize) "linearize" (ppSpace colGt term)* : tactic
