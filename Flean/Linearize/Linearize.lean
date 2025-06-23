@@ -1,6 +1,5 @@
 import Mathlib.Data.Int.Log
 import Mathlib.Tactic.Linarith
-import Mathlib.Tactic.TryThis
 import Mathlib.Tactic.NormNum
 import Lean.Elab.Tactic.Basic
 import Lean.Elab.Term
@@ -487,10 +486,6 @@ def linearizeTacticCore (targets : Array Expr) : TacticM Unit := do
 
   -- Set the new goal list: main goal followed by remaining side condition goals
   replaceMainGoal (currentGoal :: remainingSideGoals)
-
-  -- Suggest trying linarith if there are no remaining side goals
-  if remainingSideGoals.isEmpty then
-    Lean.Meta.Tactic.TryThis.addSuggestion (← getRef) "linarith"
 
 /-- The linearize tactic syntax -/
 syntax (name := linearize) "linearize" (ppSpace colGt term)* : tactic
