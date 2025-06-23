@@ -174,69 +174,38 @@ def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
       | (``LT.lt, #[R, _, lhs, rhs]) =>
         if let some (b, _, exp, _) ← isNatCastZpow rhs then
           trace[linearize] "Applying Int.lt_zpow_iff_log_lt for base {b}"
-          -- Create goals for the side conditions
           let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]
           trace[linearize] "hbType: {hbType}"
           let rType ← inferType R -- Type u
           let level := rType.sortLevel!
-          -- let level ← getLevel R
+
           let zero ← Expr.ofNat R 0
-          trace[linearize] "level: {level}"
           let ltInst ← synthInstance (← mkAppM ``LT #[R])
-          trace[linearize] "ltInst: {ltInst}"
           let hrType ← mkAppOptM' (mkConst ``LT.lt [levelZero]) #[some R, some ltInst, some zero, some lhs]
-          -- let hrType ← mkAppOptM ``LT.lt #[some R, some ltInst, some zero, some lhs]
-          -- let hrType ← mkAppM ``LT.lt #[zero, lhs]
+
           trace[linearize] "hrType: {hrType}"
 
           let hbGoal ← mkFreshExprMVar hbType MetavarKind.syntheticOpaque (`hb)
           let hrGoal ← mkFreshExprMVar hrType MetavarKind.syntheticOpaque (`hr)
-          trace[linearize] "hbGoal: {hbGoal}"
-          trace[linearize] "hrGoal: {hrGoal}"
 
-          -- Apply: (Int.lt_zpow_iff_log_lt hb hr).mpr h
-          -- Construct the iff theorem using unification to handle implicits
           let thmType ← mkAppM ``Iff #[d.type, transformed]
           let thmMVar ← mkFreshExprMVar thmType MetavarKind.syntheticOpaque `thm
 
-          trace[linearize] "thmType: {thmType}"
-          trace[linearize] "thmMVar: {thmMVar}"
-
-          -- Create the theorem term and unify
-          -- let ltZpowThm ← mkConstWithFreshMVarLevels ``Int.lt_zpow_iff_log_lt
-          -- let ltZpowThm ← mkConstWithLevelParams ``Int.lt_zpow_iff_log_lt
-          -- let thmApp ← mkAppM ``Int.lt_zpow_iff_log_lt #[hbGoal, hrGoal]
-          -- let thmApp ← mkAppM' ltZpowThm #[hbGoal, hrGoal]
-          -- let ltZpowThm ← mkConstWithFreshMVarLevels ``Int.lt_zpow_iff_log_lt
-          -- let ltZpowThm := mkConst ``Int.lt_zpow_iff_log_lt [level]
-          -- [Semifield R] [LinearOrder R] [IsStrictOrderedRing R] [FloorSemiring R]
-          -- let semifieldInst ← synthInstance (← mkAppM ``Semifield #[R])
-          -- let linearOrderInst ← synthInstance (← mkAppM ``LinearOrder #[R])
-          -- let isStrictORingInst ← synthInstance (← mkAppM ``IsStrictOrderedRing #[R])
-          -- let floorSemiringInst ← synthInstance (← mkAppM ``FloorSemiring #[R])
-          -- let thmApp := mkApp2 ltZpowThm hbGoal hrGoal
           let r ← R.toSyntax
           let hbs ← hbGoal.toSyntax
           let hrs ← hrGoal.toSyntax
           let lhsS ← lhs.toSyntax
           let expS ← exp.toSyntax
           let thmProof ← Term.elabTerm (← `(Int.lt_zpow_iff_log_lt (R := $r) (x := $expS) (r := $lhsS) $hbs $hrs)) (some thmType)
-          -- let thmApp ← mkAppM' ltZpowThm #[R, semifieldInst, linearOrderInst, isStrictORingInst, floorSemiringInst]
-          -- trace[linearize] "thmApp: {thmApp}"
           thmMVar.mvarId!.assign thmProof
 
-          -- trace[linearize] "ltZpowThm: {ltZpowThm}"
-
           let proof ← mkAppM ``Iff.mp #[thmMVar, d.toExpr]
-          trace[linearize] "proof: {proof}"
 
-          -- Replace the old hypothesis with the linearized version
           let g ← g.clear h
           let (_, g) ← g.note d.userName proof
 
           Term.synthesizeSyntheticMVarsUsingDefault
 
-          -- Return main goal followed by side condition goals
           return [g, hbGoal.mvarId!, hrGoal.mvarId!]
         else if let some (_, _, _, _) ← isNatCastZpow lhs then
           -- For b^x < r, this is harder to handle directly with Int.log
@@ -246,56 +215,94 @@ def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
           throwError "linearize: unsupported zpow expression"
 
       | (``LE.le, #[R, _, lhs, rhs]) =>
-        if let some (b, _, _, _) ← isNatCastZpow rhs then
-          trace[linearize] "Applying Int.zpow_le_iff_le_log for base {b}"
-          -- Create goals for the side conditions
+        if let some (b, _, exp, _) ← isNatCastZpow rhs then
+          trace[linearize] "Handling r ≤ b^n by case split"
+          -- For r ≤ b^n, we need to split into r < b^n ∨ r = b^n
+          
+          -- Create the case split hypothesis
+          let ltType ← mkAppM ``LT.lt #[lhs, rhs]
+          let eqType ← mkAppM ``Eq #[lhs, rhs]
+          let orType ← mkAppM ``Or #[ltType, eqType]
+          
+          -- Apply le_iff_lt_or_eq.mp to our hypothesis
+          let hSyntax ← d.toExpr.toSyntax
+          let splitProof ← Term.elabTerm (← `(le_iff_lt_or_eq.mp $hSyntax)) (some orType)
+          
+          -- Create metavar for the result of the case split
+          let caseSplitMVar ← mkFreshExprMVar orType MetavarKind.syntheticOpaque (`h_cases)
+          caseSplitMVar.mvarId!.assign splitProof
+          
+          -- Now handle the < case (the = case is left for the user)
+          -- Create goal for the < case
           let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]
-          let zero ← mkFreshExprMVar R
-          -- let zeroGoal ← mkFreshExprMVar (← mkAppM ``Eq #[zero, mkNatLit 0])
-          let hrType ← mkAppOptM ``LT.lt #[none, none, zero, lhs]
+          let rType ← inferType R
+          
+          let zero ← Expr.ofNat R 0
+          let ltInst ← synthInstance (← mkAppM ``LT #[R])
+          let hrType ← mkAppOptM' (mkConst ``LT.lt [levelZero]) #[some R, some ltInst, some zero, some lhs]
+          
+          let hbGoal ← mkFreshExprMVar hbType MetavarKind.syntheticOpaque (`hb)
+          let hrGoal ← mkFreshExprMVar hrType MetavarKind.syntheticOpaque (`hr)
+          
+          -- Apply Int.lt_zpow_iff_log_lt for the < case
+          
+          -- For r ≤ b^n, we use the fact that Int.log b r < n → Int.log b r ≤ n
+          -- So we create a hypothesis h' : r < b^n and apply Int.lt_zpow_iff_log_lt to it
+          -- The user will need to prove r < b^n from r ≤ b^n (or handle the equality case)
+          
+          -- Create a fresh hypothesis for r < b^n
+          let ltHypMVar ← mkFreshExprMVar ltType MetavarKind.syntheticOpaque (`h_lt)
+          
+          -- Apply Int.lt_zpow_iff_log_lt to this hypothesis
+          let r ← R.toSyntax
+          let hbs ← hbGoal.toSyntax
+          let hrs ← hrGoal.toSyntax
+          let lhsS ← lhs.toSyntax
+          let expS ← exp.toSyntax
+          let ltHypS ← ltHypMVar.toSyntax
+          
+          let thmProof ← Term.elabTerm (← `((Int.lt_zpow_iff_log_lt (R := $r) (x := $expS) (r := $lhsS) $hbs $hrs).mp $ltHypS)) none
+          
+          -- Replace the hypothesis with the transformed one
+          let g ← g.clear h
+          let (_, g) ← g.note d.userName thmProof
+          
+          Term.synthesizeSyntheticMVarsUsingDefault
+          
+          -- Return goals: main goal, proof that r < b^n, and the side conditions
+          return [g, ltHypMVar.mvarId!, hbGoal.mvarId!, hrGoal.mvarId!]
+        else if let some (b, _, exp, _) ← isNatCastZpow lhs then
+          trace[linearize] "Applying Int.zpow_le_iff_le_log for base {b} (reverse direction)"
+          let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]
+          trace[linearize] "hbType: {hbType}"
+          let rType ← inferType R -- Type u
+
+          let zero ← Expr.ofNat R 0
+          let ltInst ← synthInstance (← mkAppM ``LT #[R])
+          let hrType ← mkAppOptM' (mkConst ``LT.lt [levelZero]) #[some R, some ltInst, some zero, some rhs]
+
+          trace[linearize] "hrType: {hrType}"
 
           let hbGoal ← mkFreshExprMVar hbType MetavarKind.syntheticOpaque (`hb)
           let hrGoal ← mkFreshExprMVar hrType MetavarKind.syntheticOpaque (`hr)
 
-          -- Apply: (Int.zpow_le_iff_le_log hb hr).mp h
           let thmType ← mkAppM ``Iff #[d.type, transformed]
-          let thmMVar ← mkFreshExprMVar thmType
+          let thmMVar ← mkFreshExprMVar thmType MetavarKind.syntheticOpaque `thm
 
-          let zpowLeThm ← mkConstWithFreshMVarLevels ``Int.zpow_le_iff_le_log
-          let thmApp ← mkAppM' zpowLeThm #[hbGoal, hrGoal]
-          thmMVar.mvarId!.assign thmApp
+          let r ← R.toSyntax
+          let hbs ← hbGoal.toSyntax
+          let hrs ← hrGoal.toSyntax
+          let rhsS ← rhs.toSyntax
+          let expS ← exp.toSyntax
+          let thmProof ← Term.elabTerm (← `(Int.zpow_le_iff_le_log (R := $r) (x := $expS) (r := $rhsS) $hbs $hrs)) (some thmType)
+          thmMVar.mvarId!.assign thmProof
 
           let proof ← mkAppM ``Iff.mp #[thmMVar, d.toExpr]
 
-          -- Replace the old hypothesis with the linearized version
           let g ← g.clear h
           let (_, g) ← g.note d.userName proof
 
-          return [g, hbGoal.mvarId!, hrGoal.mvarId!]
-        else if let some (b, _, _, _) ← isNatCastZpow lhs then
-          trace[linearize] "Applying Int.zpow_le_iff_le_log for base {b}"
-          -- Case: (b : R)^exp ≤ rhs → exp ≤ Int.log b rhs
-          let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]
-          let zero ← mkFreshExprMVar R
-          let zeroGoal ← mkFreshExprMVar (← mkAppM ``Eq #[zero, mkNatLit 0])
-          let hrType ← mkAppM ``LT.lt #[zero, rhs]
-
-          let hbGoal ← mkFreshExprMVar hbType MetavarKind.syntheticOpaque (`hb)
-          let hrGoal ← mkFreshExprMVar hrType MetavarKind.syntheticOpaque (`hr)
-
-          -- For b^x ≤ r, we can use Int.zpow_le_iff_le_log: b^x ≤ r ↔ x ≤ Int.log b r
-          let thmType ← mkAppM ``Iff #[d.type, transformed]
-          let thmMVar ← mkFreshExprMVar thmType
-
-          let zpowLeThm ← mkConstWithFreshMVarLevels ``Int.zpow_le_iff_le_log
-          let thmApp ← mkAppM' zpowLeThm #[hbGoal, hrGoal]
-          thmMVar.mvarId!.assign thmApp
-
-          let proof ← mkAppM ``Iff.mp #[thmMVar, d.toExpr]
-
-          -- Replace the old hypothesis with the linearized version
-          let g ← g.clear h
-          let (_, g) ← g.note d.userName proof
+          Term.synthesizeSyntheticMVarsUsingDefault
 
           return [g, hbGoal.mvarId!, hrGoal.mvarId!]
         else
