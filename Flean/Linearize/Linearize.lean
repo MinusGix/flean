@@ -3,6 +3,7 @@ import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.TryThis
 import Lean.Elab.Tactic.Basic
 import Lean.Elab.Term
+import Flean.Linearize.Lemmas
 
 /-!
 # Linearize Tactic
@@ -216,61 +217,35 @@ def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
 
       | (``LE.le, #[R, _, lhs, rhs]) =>
         if let some (b, _, exp, _) ← isNatCastZpow rhs then
-          trace[linearize] "Handling r ≤ b^n by case split"
-          -- For r ≤ b^n, we need to split into r < b^n ∨ r = b^n
-          
-          -- Create the case split hypothesis
-          let ltType ← mkAppM ``LT.lt #[lhs, rhs]
-          let eqType ← mkAppM ``Eq #[lhs, rhs]
-          let orType ← mkAppM ``Or #[ltType, eqType]
-          
-          -- Apply le_iff_lt_or_eq.mp to our hypothesis
-          let hSyntax ← d.toExpr.toSyntax
-          let splitProof ← Term.elabTerm (← `(le_iff_lt_or_eq.mp $hSyntax)) (some orType)
-          
-          -- Create metavar for the result of the case split
-          let caseSplitMVar ← mkFreshExprMVar orType MetavarKind.syntheticOpaque (`h_cases)
-          caseSplitMVar.mvarId!.assign splitProof
-          
-          -- Now handle the < case (the = case is left for the user)
-          -- Create goal for the < case
+          trace[linearize] "Applying le_zpow_iff_log_le for base {b}"
           let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]
-          let rType ← inferType R
-          
           let zero ← Expr.ofNat R 0
           let ltInst ← synthInstance (← mkAppM ``LT #[R])
           let hrType ← mkAppOptM' (mkConst ``LT.lt [levelZero]) #[some R, some ltInst, some zero, some lhs]
-          
+
           let hbGoal ← mkFreshExprMVar hbType MetavarKind.syntheticOpaque (`hb)
           let hrGoal ← mkFreshExprMVar hrType MetavarKind.syntheticOpaque (`hr)
-          
-          -- Apply Int.lt_zpow_iff_log_lt for the < case
-          
-          -- For r ≤ b^n, we use the fact that Int.log b r < n → Int.log b r ≤ n
-          -- So we create a hypothesis h' : r < b^n and apply Int.lt_zpow_iff_log_lt to it
-          -- The user will need to prove r < b^n from r ≤ b^n (or handle the equality case)
-          
-          -- Create a fresh hypothesis for r < b^n
-          let ltHypMVar ← mkFreshExprMVar ltType MetavarKind.syntheticOpaque (`h_lt)
-          
-          -- Apply Int.lt_zpow_iff_log_lt to this hypothesis
+
+          let thmType ← mkArrow d.type transformed
+          let thmMVar ← mkFreshExprMVar thmType MetavarKind.syntheticOpaque `thm
+
           let r ← R.toSyntax
           let hbs ← hbGoal.toSyntax
           let hrs ← hrGoal.toSyntax
           let lhsS ← lhs.toSyntax
           let expS ← exp.toSyntax
-          let ltHypS ← ltHypMVar.toSyntax
-          
-          let thmProof ← Term.elabTerm (← `((Int.lt_zpow_iff_log_lt (R := $r) (x := $expS) (r := $lhsS) $hbs $hrs).mp $ltHypS)) none
-          
-          -- Replace the hypothesis with the transformed one
+          let bSyntax ← (mkNatLit b).toSyntax
+          let thmProof ← Term.elabTerm (← `(Mathlib.Tactic.Linearize.le_zpow_imp_log_le (R := $r) (b := $bSyntax) (n := $expS) (r := $lhsS) $hbs $hrs)) (some thmType)
+          thmMVar.mvarId!.assign thmProof
+
+          let proof ← mkAppM' thmMVar #[d.toExpr]
+
           let g ← g.clear h
-          let (_, g) ← g.note d.userName thmProof
-          
+          let (_, g) ← g.note d.userName proof
+
           Term.synthesizeSyntheticMVarsUsingDefault
-          
-          -- Return goals: main goal, proof that r < b^n, and the side conditions
-          return [g, ltHypMVar.mvarId!, hbGoal.mvarId!, hrGoal.mvarId!]
+
+          return [g, hbGoal.mvarId!, hrGoal.mvarId!]
         else if let some (b, _, exp, _) ← isNatCastZpow lhs then
           trace[linearize] "Applying Int.zpow_le_iff_le_log for base {b} (reverse direction)"
           let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]

@@ -18,12 +18,13 @@ example (a : ℝ) (ha : 0 < a) (h : a < (2 : ℝ)^100) : Int.log 2 a < 100 := by
   · norm_num  -- 1 < 2
   · exact ha  -- 0 < a
 
+example (a : ℝ) (ha : 0 < a) : Int.log 2 ((2 : ℝ) ^ 100) ≤ Int.ofNat 100 := by
+  sorry
+
 -- Test 2: Basic ≤ transformation (lhs ≤ base^exp)
 example (a : ℝ) (ha : 0 < a) (h : a ≤ (2 : ℝ)^100) : Int.log 2 a ≤ 100 := by
   linearize h
-  · apply le_of_lt
-    exact h
-  · sorry
+  · exact h
   · norm_num
   · trivial
 
