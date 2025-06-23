@@ -21,6 +21,30 @@ example (a : ℝ) (h : 1 < a) (h2 : a < (2 : ℝ)^100) : a < (2 : ℝ)^200 := by
 ```
 -/
 
+/-
+Relevant pieces
+def Int.log{R : Type u_1} [Semifield R] [LinearOrder R] [FloorSemiring R] (b : ℕ) (r : R) :
+ℤ
+The greatest power of b such that b ^ log b r ≤ r.
+
+theorem Int.zpow_log_le_self{R : Type u_1} [Semifield R] [LinearOrder R] [IsStrictOrderedRing R] [FloorSemiring R] {b : ℕ} {r : R} (hb : 1 < b) (hr : 0 < r) :
+↑b ^ log b r ≤ r
+
+theorem Int.lt_zpow_succ_log_self{R : Type u_1} [Semifield R] [LinearOrder R] [IsStrictOrderedRing R] [FloorSemiring R] {b : ℕ} (hb : 1 < b) (r : R) :
+r < ↑b ^ (log b r + 1)
+
+theorem Int.log_zpow{R : Type u_1} [Semifield R] [LinearOrder R] [IsStrictOrderedRing R] [FloorSemiring R] {b : ℕ} (hb : 1 < b) (z : ℤ) :
+log b (↑b ^ z) = z
+
+theorem Int.lt_zpow_iff_log_lt{R : Type u_1} [Semifield R] [LinearOrder R] [IsStrictOrderedRing R] [FloorSemiring R] {b : ℕ} (hb : 1 < b) {x : ℤ} {r : R} (hr : 0 < r) :
+r < ↑b ^ x ↔ log b r < x
+zpow b and Int.log b (almost) form a Galois connection.
+
+theorem Int.zpow_le_iff_le_log{R : Type u_1} [Semifield R] [LinearOrder R] [IsStrictOrderedRing R] [FloorSemiring R] {b : ℕ} (hb : 1 < b) {x : ℤ} {r : R} (hr : 0 < r) :
+↑b ^ x ≤ r ↔ x ≤ log b r
+zpow b and Int.log b (almost) form a Galois connection.
+-/
+
 namespace Mathlib.Tactic.Linearize
 
 open Lean Elab Meta Tactic Qq
@@ -208,10 +232,51 @@ def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
           Term.synthesizeSyntheticMVarsUsingDefault
 
           return [g, hbGoal.mvarId!, hrGoal.mvarId!]
-        else if let some (_, _, _, _) ← isNatCastZpow lhs then
-          -- For b^x < r, this is harder to handle directly with Int.log
-          -- Let's skip this case for now and focus on the main use case
-          throwError "linearize: b^x < r direction not yet implemented (use r < b^x form instead)"
+        else if let some (b, _, exp, _) ← isNatCastZpow lhs then
+          -- (b : R)^exp < rhs ↔ exp < Int.log b rhs + 1 (when 0 < rhs, 1 < b)
+          trace[linearize] "Applying zpow_lt pattern for base {b} (b^x < r direction)"
+          let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]
+          trace[linearize] "hbType: {hbType}"
+
+          let zero ← Expr.ofNat R 0
+          let ltInst ← synthInstance (← mkAppM ``LT #[R])
+          let hrType ← mkAppOptM' (mkConst ``LT.lt [levelZero]) #[some R, some ltInst, some zero, some rhs]
+
+          trace[linearize] "hrType: {hrType}"
+
+          let hbGoal ← mkFreshExprMVar hbType MetavarKind.syntheticOpaque (`hb)
+          let hrGoal ← mkFreshExprMVar hrType MetavarKind.syntheticOpaque (`hr)
+
+          let logExpr ← mkAppM ``Int.log #[mkNatLit b, rhs]
+          let plusOne ← mkAppM ``HAdd.hAdd #[logExpr, mkIntLit 1]
+          -- Convert exponent to integer if it's a natural number
+          let expType ← inferType exp
+          let intExp ← if expType.isConstOf ``Nat then
+            mkAppM ``Int.ofNat #[exp]
+          else
+            pure exp
+          let targetComparison ← mkAppM ``LT.lt #[intExp, plusOne]
+
+          let thmType ← mkArrow d.type targetComparison
+          let thmMVar ← mkFreshExprMVar thmType MetavarKind.syntheticOpaque `thm
+
+          let r ← R.toSyntax
+          let hbs ← hbGoal.toSyntax
+          let hrs ← hrGoal.toSyntax
+          let rhsS ← rhs.toSyntax
+          let expS ← exp.toSyntax
+          let bSyntax ← (mkNatLit b).toSyntax
+          let thmProof ← Term.elabTerm (← `(Mathlib.Tactic.Linearize.zpow_lt_imp_lt_log_succ (R := $r) (b := $bSyntax) (n := $expS) (r := $rhsS) $hbs $hrs)) (some thmType)
+          thmMVar.mvarId!.assign thmProof
+
+          let proof ← mkAppM' thmMVar #[d.toExpr]
+
+          let g ← g.clear h
+          let (_, g) ← g.note d.userName proof
+
+          Term.synthesizeSyntheticMVarsUsingDefault
+
+          return [g, hbGoal.mvarId!, hrGoal.mvarId!]
         else
           throwError "linearize: unsupported zpow expression"
 
@@ -250,7 +315,6 @@ def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
           trace[linearize] "Applying Int.zpow_le_iff_le_log for base {b} (reverse direction)"
           let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]
           trace[linearize] "hbType: {hbType}"
-          let rType ← inferType R -- Type u
 
           let zero ← Expr.ofNat R 0
           let ltInst ← synthInstance (← mkAppM ``LT #[R])

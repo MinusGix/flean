@@ -26,4 +26,16 @@ theorem le_zpow_imp_log_le {b : ℕ} (hb : 1 < b) {n : ℕ} {r : R} (hr : 0 < r)
     rw [← zpow_natCast (↑b : R) n]
     rw [Int.log_zpow hb]
 
+/-- Helper lemma for linearizing `b^n < r` inequalities.
+    This uses the fact that b^n < r implies n < Int.log b r + 1. -/
+theorem zpow_lt_imp_lt_log_succ {b : ℕ} (hb : 1 < b) {n : ℕ} {r : R} (hr : 0 < r) :
+  (b : R) ^ n < r → ↑n < Int.log b r + 1 := by
+  intro h
+  -- Convert to zpow form
+  have h_zpow : (b : R) ^ (↑n : ℤ) < r := by convert h; simp [zpow_natCast]
+  have : ↑n ≤ Int.log b r := by
+    apply (Int.zpow_le_iff_le_log hb hr).mp
+    exact_mod_cast (le_of_lt h_zpow)
+  linarith
+
 end Mathlib.Tactic.Linearize
