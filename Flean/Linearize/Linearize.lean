@@ -1,6 +1,7 @@
 import Mathlib.Data.Int.Log
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.TryThis
+import Mathlib.Tactic.NormNum
 import Lean.Elab.Tactic.Basic
 import Lean.Elab.Term
 import Flean.Linearize.Lemmas
@@ -50,6 +51,88 @@ namespace Mathlib.Tactic.Linearize
 open Lean Elab Meta Tactic Qq
 
 initialize registerTraceClass `linearize
+
+/-- Try to solve a side goal automatically based on its type -/
+def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
+  try
+    -- Check if the goal is already assigned
+    if ← g.isAssigned then
+      trace[linearize] "Goal already solved"
+      return none
+      
+    -- Get the goal type to determine what kind of side condition it is
+    let goalType ← g.getType
+    trace[linearize] "Trying to auto-solve side goal: {goalType}"
+    
+    -- Save the current goal state
+    let savedGoals ← getGoals
+    
+    -- Check if it's a 1 < b type goal (where b is a natural number)
+    match goalType.getAppFnArgs with
+    | (``LT.lt, #[_, _, lhs, rhs]) =>
+      -- Check if lhs is 1
+      let isOne := lhs.isConstOf ``One.one || 
+        (match lhs.getAppFnArgs with
+         | (``OfNat.ofNat, #[_, n, _]) => n.rawNatLit? == some 1
+         | _ => false)
+      
+      if isOne then
+        -- This is a 1 < b goal, try norm_num first
+        trace[linearize] "Detected 1 < b pattern, trying norm_num"
+        try
+          setGoals [g]
+          evalTactic (← `(tactic| norm_num))
+          let remainingGoals ← getGoals
+          setGoals savedGoals
+          if remainingGoals.isEmpty then
+            return none  -- Goal was solved
+          else
+            return some g
+        catch _ =>
+          -- norm_num failed, try linarith
+          trace[linearize] "norm_num failed, trying linarith"
+          try
+            setGoals [g]
+            evalTactic (← `(tactic| linarith))
+            let remainingGoals ← getGoals
+            setGoals savedGoals
+            if remainingGoals.isEmpty then
+              return none  -- Goal was solved
+            else
+              return some g
+          catch _ =>
+            setGoals savedGoals
+            trace[linearize] "linarith also failed, keeping as side goal"
+            return some g
+      else
+        -- This is a 0 < a type goal, try assumption first
+        trace[linearize] "Detected 0 < a pattern, trying assumption"
+        let result ← observing? g.assumption
+        match result with
+        | some _ => return none  -- Goal was solved
+        | none =>
+          -- assumption failed, try linarith
+          trace[linearize] "assumption failed, trying linarith"
+          try
+            setGoals [g]
+            evalTactic (← `(tactic| linarith))
+            let remainingGoals ← getGoals
+            setGoals savedGoals
+            if remainingGoals.isEmpty then
+              return none  -- Goal was solved
+            else
+              return some g
+          catch _ =>
+            setGoals savedGoals
+            trace[linearize] "linarith also failed, keeping as side goal"
+            return some g
+    | _ =>
+      -- Unknown goal type, keep it as is
+      trace[linearize] "Unknown side goal type, keeping as is"
+      return some g
+  catch e =>
+    trace[linearize] "Error in trySolveSideGoal: {e.toMessageData}"
+    return some g
 
 /-- Check if an expression is of the form `(b : R)^z` where `b` is a natural number literal -/
 def isNatCastZpow (e : Expr) : MetaM (Option (ℕ × Expr × Expr × Expr)) := do
@@ -201,8 +284,6 @@ def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
           trace[linearize] "Applying Int.lt_zpow_iff_log_lt for base {b}"
           let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]
           trace[linearize] "hbType: {hbType}"
-          let rType ← inferType R -- Type u
-          let level := rType.sortLevel!
 
           let zero ← Expr.ofNat R 0
           let ltInst ← synthInstance (← mkAppM ``LT #[R])
@@ -392,11 +473,24 @@ def linearizeTacticCore (targets : Array Expr) : TacticM Unit := do
     | [] =>
       throwError "linearize: internal error - no goals returned"
 
-  -- Set the new goal list: main goal followed by all side condition goals
-  replaceMainGoal (currentGoal :: allNewGoals)
+  -- Try to automatically solve side goals
+  trace[linearize] "Attempting to auto-solve {allNewGoals.length} side goals"
+  let mut remainingSideGoals : List MVarId := []
+  for sideGoal in allNewGoals do
+    match ← trySolveSideGoal sideGoal with
+    | none => 
+      trace[linearize] "Successfully auto-solved side goal"
+      -- Goal was solved, don't add it to remaining goals
+    | some g => 
+      trace[linearize] "Could not auto-solve side goal, keeping it"
+      remainingSideGoals := remainingSideGoals.append [g]
 
-  -- Suggest trying linarith
-  Lean.Meta.Tactic.TryThis.addSuggestion (← getRef) "linarith"
+  -- Set the new goal list: main goal followed by remaining side condition goals
+  replaceMainGoal (currentGoal :: remainingSideGoals)
+
+  -- Suggest trying linarith if there are no remaining side goals
+  if remainingSideGoals.isEmpty then
+    Lean.Meta.Tactic.TryThis.addSuggestion (← getRef) "linarith"
 
 /-- The linearize tactic syntax -/
 syntax (name := linearize) "linearize" (ppSpace colGt term)* : tactic
