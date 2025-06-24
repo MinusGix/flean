@@ -6,8 +6,8 @@ open Mathlib.Tactic.Linearize
 
 section BasicTests
 
-set_option trace.linearize true
-set_option diagnostics true
+-- set_option trace.linearize true
+-- set_option diagnostics true
 
 -- Test 1: Basic < transformation (lhs < base^exp)
 example (a : ℝ) (ha : 0 < a) (h : a < (2 : ℝ)^100) : Int.log 2 a < 100 := by
@@ -78,3 +78,25 @@ example (x y : ℝ) (hx : 1 < x) (hy : 1 < y)
   sorry
 
 end RealWorldExample
+
+section ZpowGoalTests
+
+set_option trace.linearize true
+set_option diagnostics true
+-- Test 9: Goal linearization - 2^m < 2^n reduces to m < n
+example (m n : ℤ) (h : m < n) : (2 : ℝ)^m < (2 : ℝ)^n := by
+  linearize
+
+-- Test 10: Goal linearization - 2^m ≤ 2^n reduces to m ≤ n
+example (m n : ℤ) (h : m ≤ n) : (2 : ℝ)^m ≤ (2 : ℝ)^n := by
+  linearize
+
+-- Test 11: Goal linearization with different base
+example (m n : ℤ) (h : m < n) : (3 : ℝ)^m < (3 : ℝ)^n := by
+  linearize
+
+-- Test 12: Goal linearization with more complex expressions
+example (m n k : ℤ) (h : m + k < n + k) : (2 : ℝ)^(m + k) < (2 : ℝ)^(n + k) := by
+  linearize
+
+end ZpowGoalTests
