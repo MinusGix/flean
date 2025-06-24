@@ -444,6 +444,7 @@ def linearizeTacticCore (targets : Array Expr) : TacticM Unit := do
 
   -- Get target hypotheses
   let targetFVars ← if targets.isEmpty then
+    trace[linearize] "targets are empty, trying to get all suitable hypotheses"
     -- If no targets specified, get all suitable hypotheses
     let lctx ← getLCtx
     let mut fvars : Array FVarId := #[]
@@ -455,6 +456,7 @@ def linearizeTacticCore (targets : Array Expr) : TacticM Unit := do
     pure fvars
   else
     -- Convert target expressions to FVarIds
+    trace[linearize] "targets={targets}"
     targets.filterMapM fun target => do
       match target with
       | Expr.fvar id => pure (some id)
@@ -497,7 +499,10 @@ syntax (name := linearize) "linearize" (ppSpace colGt term)* : tactic
 /-- Elaboration rule for linearize tactic -/
 elab_rules : tactic
   | `(tactic| linearize $[$targets]*) => do
-    let targetExprs ← targets.mapM (fun t => elabTerm t none)
+    trace[linearize] "pretargets={targets}"
+    let g ← getMainGoal
+    let targetExprs ← g.withContext do
+      targets.mapM (fun t => elabTerm t none)
     linearizeTacticCore targetExprs
 
 end Mathlib.Tactic.Linearize
