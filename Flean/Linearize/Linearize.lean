@@ -4,6 +4,8 @@ import Mathlib.Tactic.NormNum
 import Lean.Elab.Tactic.Basic
 import Lean.Elab.Term
 import Flean.Linearize.Lemmas
+import Mathlib.Data.Real.Basic
+import Mathlib.Analysis.SpecialFunctions.Pow.Real
 
 /-!
 # Linearize Tactic
@@ -58,23 +60,23 @@ def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
     if ← g.isAssigned then
       trace[linearize] "Goal already solved"
       return none
-      
+
     -- Get the goal type to determine what kind of side condition it is
     let goalType ← g.getType
     trace[linearize] "Trying to auto-solve side goal: {goalType}"
-    
+
     -- Save the current goal state
     let savedGoals ← getGoals
-    
+
     -- Check if it's a 1 < b type goal (where b is a natural number)
     match goalType.getAppFnArgs with
     | (``LT.lt, #[_, _, lhs, rhs]) =>
       -- Check if lhs is 1
-      let isOne := lhs.isConstOf ``One.one || 
+      let isOne := lhs.isConstOf ``One.one ||
         (match lhs.getAppFnArgs with
          | (``OfNat.ofNat, #[_, n, _]) => n.rawNatLit? == some 1
          | _ => false)
-      
+
       if isOne then
         -- This is a 1 < b goal, try norm_num first
         trace[linearize] "Detected 1 < b pattern, trying norm_num"
@@ -265,6 +267,14 @@ def mkNatLit' (ty : Expr) (n : Nat) : MetaM Expr := do
   let r := mkRawNatLit n
   pure (mkApp3 (mkConst ``OfNat.ofNat [level]) ty r (mkApp (mkConst ``instOfNatNat) r))
 
+/-- Helper to convert an Nat | Int to an Int -/
+def asInt (e : Expr) : MetaM Q(ℤ) := do
+  if (← inferType e).constName? == .some ``Nat then
+    have e : Q(ℕ) := e
+    pure q(Int.ofNat $e)
+  else
+    pure e
+
 /-- Apply linearization to a single hypothesis using the mathlib pattern -/
 def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
   g.withContext do
@@ -278,33 +288,40 @@ def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
 
       -- Apply the appropriate theorem based on the comparison type
       match d.type.getAppFnArgs with
-      | (``LT.lt, #[R, _, lhs, rhs]) =>
+      | (``LT.lt, #[_, _, lhs, rhs]) =>
         if let some (b, _, exp, _) ← isNatCastZpow rhs then
           trace[linearize] "Applying Int.lt_zpow_iff_log_lt for base {b}"
-          let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]
-          trace[linearize] "hbType: {hbType}"
 
-          let zero ← Expr.ofNat R 0
-          let ltInst ← synthInstance (← mkAppM ``LT #[R])
-          let hrType ← mkAppOptM' (mkConst ``LT.lt [levelZero]) #[some R, some ltInst, some zero, some lhs]
+          -- Get the type of the LHS, because using the R from LT.lt causes synth instance issues
+          -- like failing to find Semifield ℝ
+          let ⟨_, R, lhs⟩ ← inferTypeQ' lhs
 
-          trace[linearize] "hrType: {hrType}"
+          let exp : Q(ℤ) ← asInt exp -- this could be an int or nat in the expr
+          have b : Q(ℕ) := q($b)
 
-          let hbGoal ← mkFreshExprMVar hbType MetavarKind.syntheticOpaque (`hb)
-          let hrGoal ← mkFreshExprMVar hrType MetavarKind.syntheticOpaque (`hr)
+          -- Necessary instances for the theorem and side goals
+          let _a1 ← synthInstanceQ q(Semifield $R)
+          let _a2 ← synthInstanceQ q(LinearOrder $R)
+          let _a3 ← synthInstanceQ q(IsStrictOrderedRing $R)
+          let _a4 ← synthInstanceQ q(FloorSemiring $R)
 
-          let thmType ← mkAppM ``Iff #[d.type, transformed]
-          let thmMVar ← mkFreshExprMVar thmType MetavarKind.syntheticOpaque `thm
+          assumeInstancesCommute -- undocumented but used everywhere /shrug
 
-          let r ← R.toSyntax
-          let hbs ← hbGoal.toSyntax
-          let hrs ← hrGoal.toSyntax
-          let lhsS ← lhs.toSyntax
-          let expS ← exp.toSyntax
-          let thmProof ← Term.elabTerm (← `(Int.lt_zpow_iff_log_lt (R := $r) (x := $expS) (r := $lhsS) $hbs $hrs)) (some thmType)
+          let hbGoal ← mkFreshExprMVarQ q(1 < $b) MetavarKind.syntheticOpaque (`hb)
+          let hrGoal ← mkFreshExprMVarQ q(0 < $lhs) MetavarKind.syntheticOpaque (`hr)
+
+          have transformed : Q(Prop) := transformed
+          have dType : Q(Prop) := d.type
+          have thmType : Q(Prop) := q($dType ↔ $transformed)
+          let thmMVar ← mkFreshExprMVarQ thmType MetavarKind.syntheticOpaque `thm
+
+          trace[linearize] "lhs: {lhs}; exp: {exp}; b: {b}; R: {R}"
+          have thmProof : Q($lhs < ↑$b ^ $exp ↔ Int.log $b $lhs < $exp) := q(Int.lt_zpow_iff_log_lt (R := $R) (x := $exp) (r := $lhs) $hbGoal $hrGoal)
           thmMVar.mvarId!.assign thmProof
 
-          let proof ← mkAppM ``Iff.mp #[thmMVar, d.toExpr]
+          -- let proof ← mkAppM ``Iff.mp #[thmMVar, d.toExpr]
+          let dExpr: Q($lhs < ↑$b ^ $exp) := d.toExpr
+          have proof := q(Iff.mp $thmProof $dExpr)
 
           let g ← g.clear h
           let (_, g) ← g.note d.userName proof
@@ -315,41 +332,42 @@ def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
         else if let some (b, _, exp, _) ← isNatCastZpow lhs then
           -- (b : R)^exp < rhs ↔ exp < Int.log b rhs + 1 (when 0 < rhs, 1 < b)
           trace[linearize] "Applying zpow_lt pattern for base {b} (b^x < r direction)"
-          let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]
-          trace[linearize] "hbType: {hbType}"
 
-          let zero ← Expr.ofNat R 0
-          let ltInst ← synthInstance (← mkAppM ``LT #[R])
-          let hrType ← mkAppOptM' (mkConst ``LT.lt [levelZero]) #[some R, some ltInst, some zero, some rhs]
+          let ⟨_, R, rhs⟩ ← inferTypeQ' rhs
 
-          trace[linearize] "hrType: {hrType}"
+          let exp : Q(ℤ) ← asInt exp
+          have b : Q(ℕ) := mkNatLit b
 
-          let hbGoal ← mkFreshExprMVar hbType MetavarKind.syntheticOpaque (`hb)
-          let hrGoal ← mkFreshExprMVar hrType MetavarKind.syntheticOpaque (`hr)
+          -- Necessary instances for the theorem and side goals
+          let _a1 ← synthInstanceQ q(Semifield $R)
+          let _a2 ← synthInstanceQ q(LinearOrder $R)
+          let _a3 ← synthInstanceQ q(IsStrictOrderedRing $R)
+          let _a4 ← synthInstanceQ q(FloorSemiring $R)
 
-          let logExpr ← mkAppM ``Int.log #[mkNatLit b, rhs]
-          let plusOne ← mkAppM ``HAdd.hAdd #[logExpr, mkIntLit 1]
+          assumeInstancesCommute
+
+          let hbGoal ← mkFreshExprMVarQ q(1 < $b) MetavarKind.syntheticOpaque (`hb)
+          let hrGoal ← mkFreshExprMVarQ q(0 < $rhs) MetavarKind.syntheticOpaque (`hr)
+
           -- Convert exponent to integer if it's a natural number
-          let expType ← inferType exp
-          let intExp ← if expType.isConstOf ``Nat then
-            mkAppM ``Int.ofNat #[exp]
-          else
-            pure exp
-          let targetComparison ← mkAppM ``LT.lt #[intExp, plusOne]
+          -- have targetComparison : Q(Prop) :=
 
-          let thmType ← mkArrow d.type targetComparison
-          let thmMVar ← mkFreshExprMVar thmType MetavarKind.syntheticOpaque `thm
+          -- let thmType ← mkArrow d.type targetComparison
+          let thmMVar ← mkFreshExprMVar q($exp < Int.log $b $rhs + 1) MetavarKind.syntheticOpaque `thm
 
-          let r ← R.toSyntax
-          let hbs ← hbGoal.toSyntax
-          let hrs ← hrGoal.toSyntax
-          let rhsS ← rhs.toSyntax
-          let expS ← exp.toSyntax
-          let bSyntax ← (mkNatLit b).toSyntax
-          let thmProof ← Term.elabTerm (← `(Mathlib.Tactic.Linearize.zpow_lt_imp_lt_log_succ (R := $r) (b := $bSyntax) (n := $expS) (r := $rhsS) $hbs $hrs)) (some thmType)
+          -- let r ← R.toSyntax
+          -- let hbs ← hbGoal.toSyntax
+          -- let hrs ← hrGoal.toSyntax
+          -- let rhsS ← rhs.toSyntax
+          -- let expS ← exp.toSyntax
+          -- let bSyntax ← b.toSyntax
+          -- let thmProof ← Term.elabTerm (← `(Mathlib.Tactic.Linearize.zpow_lt_imp_lt_log_succ (R := $r) (b := $bSyntax) (n := $expS) (r := $rhsS) $hbs $hrs)) (some thmType)
+          have thmProof : Q(↑$b ^ $exp < $rhs → $exp < Int.log $b $rhs + 1) := q(Mathlib.Tactic.Linearize.zpow_lt_imp_lt_log_succ (R := $R) (b := $b) (n := $exp) (r := $rhs) $hbGoal $hrGoal)
           thmMVar.mvarId!.assign thmProof
 
-          let proof ← mkAppM' thmMVar #[d.toExpr]
+          -- let proof ← mkAppM' thmMVar #[d.toExpr]
+          let dExpr : Q(↑$b ^ $exp < $rhs) := d.toExpr
+          have proof := q($thmProof $dExpr)
 
           let g ← g.clear h
           let (_, g) ← g.note d.userName proof
@@ -360,30 +378,33 @@ def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
         else
           throwError "linearize: unsupported zpow expression"
 
-      | (``LE.le, #[R, _, lhs, rhs]) =>
+      | (``LE.le, #[_, _, lhs, rhs]) =>
         if let some (b, _, exp, _) ← isNatCastZpow rhs then
           trace[linearize] "Applying le_zpow_iff_log_le for base {b}"
-          let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]
-          let zero ← Expr.ofNat R 0
-          let ltInst ← synthInstance (← mkAppM ``LT #[R])
-          let hrType ← mkAppOptM' (mkConst ``LT.lt [levelZero]) #[some R, some ltInst, some zero, some lhs]
+          
+          let ⟨_, R, lhs⟩ ← inferTypeQ' lhs
+          
+          let exp : Q(ℤ) ← asInt exp
+          have b : Q(ℕ) := mkNatLit b
 
-          let hbGoal ← mkFreshExprMVar hbType MetavarKind.syntheticOpaque (`hb)
-          let hrGoal ← mkFreshExprMVar hrType MetavarKind.syntheticOpaque (`hr)
+          -- Necessary instances for the theorem and side goals
+          let _a1 ← synthInstanceQ q(Semifield $R)
+          let _a2 ← synthInstanceQ q(LinearOrder $R)
+          let _a3 ← synthInstanceQ q(IsStrictOrderedRing $R)
+          let _a4 ← synthInstanceQ q(FloorSemiring $R)
 
-          let thmType ← mkArrow d.type transformed
-          let thmMVar ← mkFreshExprMVar thmType MetavarKind.syntheticOpaque `thm
+          assumeInstancesCommute
 
-          let r ← R.toSyntax
-          let hbs ← hbGoal.toSyntax
-          let hrs ← hrGoal.toSyntax
-          let lhsS ← lhs.toSyntax
-          let expS ← exp.toSyntax
-          let bSyntax ← (mkNatLit b).toSyntax
-          let thmProof ← Term.elabTerm (← `(Mathlib.Tactic.Linearize.le_zpow_imp_log_le (R := $r) (b := $bSyntax) (n := $expS) (r := $lhsS) $hbs $hrs)) (some thmType)
+          let hbGoal ← mkFreshExprMVarQ q(1 < $b) MetavarKind.syntheticOpaque (`hb)
+          let hrGoal ← mkFreshExprMVarQ q(0 < $lhs) MetavarKind.syntheticOpaque (`hr)
+
+          let thmMVar ← mkFreshExprMVar q(Int.log $b $lhs ≤ $exp) MetavarKind.syntheticOpaque `thm
+
+          have thmProof : Q($lhs ≤ ↑$b ^ $exp → Int.log $b $lhs ≤ $exp) := q(Mathlib.Tactic.Linearize.le_zpow_imp_log_le (R := $R) (b := $b) (n := $exp) (r := $lhs) $hbGoal $hrGoal)
           thmMVar.mvarId!.assign thmProof
 
-          let proof ← mkAppM' thmMVar #[d.toExpr]
+          let dExpr : Q($lhs ≤ ↑$b ^ $exp) := d.toExpr
+          have proof := q($thmProof $dExpr)
 
           let g ← g.clear h
           let (_, g) ← g.note d.userName proof
@@ -393,30 +414,33 @@ def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
           return [g, hbGoal.mvarId!, hrGoal.mvarId!]
         else if let some (b, _, exp, _) ← isNatCastZpow lhs then
           trace[linearize] "Applying Int.zpow_le_iff_le_log for base {b} (reverse direction)"
-          let hbType ← mkAppM ``LT.lt #[mkNatLit 1, mkNatLit b]
-          trace[linearize] "hbType: {hbType}"
+          
+          let ⟨_, R, rhs⟩ ← inferTypeQ' rhs
+          
+          let exp : Q(ℤ) ← asInt exp
+          have b : Q(ℕ) := mkNatLit b
 
-          let zero ← Expr.ofNat R 0
-          let ltInst ← synthInstance (← mkAppM ``LT #[R])
-          let hrType ← mkAppOptM' (mkConst ``LT.lt [levelZero]) #[some R, some ltInst, some zero, some rhs]
+          -- Necessary instances for the theorem and side goals
+          let _a1 ← synthInstanceQ q(Semifield $R)
+          let _a2 ← synthInstanceQ q(LinearOrder $R)
+          let _a3 ← synthInstanceQ q(IsStrictOrderedRing $R)
+          let _a4 ← synthInstanceQ q(FloorSemiring $R)
 
-          trace[linearize] "hrType: {hrType}"
+          assumeInstancesCommute
 
-          let hbGoal ← mkFreshExprMVar hbType MetavarKind.syntheticOpaque (`hb)
-          let hrGoal ← mkFreshExprMVar hrType MetavarKind.syntheticOpaque (`hr)
+          let hbGoal ← mkFreshExprMVarQ q(1 < $b) MetavarKind.syntheticOpaque (`hb)
+          let hrGoal ← mkFreshExprMVarQ q(0 < $rhs) MetavarKind.syntheticOpaque (`hr)
 
-          let thmType ← mkAppM ``Iff #[d.type, transformed]
-          let thmMVar ← mkFreshExprMVar thmType MetavarKind.syntheticOpaque `thm
+          have transformed : Q(Prop) := transformed
+          have dType : Q(Prop) := d.type
+          have thmType : Q(Prop) := q($dType ↔ $transformed)
+          let thmMVar ← mkFreshExprMVarQ thmType MetavarKind.syntheticOpaque `thm
 
-          let r ← R.toSyntax
-          let hbs ← hbGoal.toSyntax
-          let hrs ← hrGoal.toSyntax
-          let rhsS ← rhs.toSyntax
-          let expS ← exp.toSyntax
-          let thmProof ← Term.elabTerm (← `(Int.zpow_le_iff_le_log (R := $r) (x := $expS) (r := $rhsS) $hbs $hrs)) (some thmType)
+          have thmProof : Q(↑$b ^ $exp ≤ $rhs ↔ $exp ≤ Int.log $b $rhs) := q(Int.zpow_le_iff_le_log (R := $R) (x := $exp) (r := $rhs) $hbGoal $hrGoal)
           thmMVar.mvarId!.assign thmProof
 
-          let proof ← mkAppM ``Iff.mp #[thmMVar, d.toExpr]
+          let dExpr: Q(↑$b ^ $exp ≤ $rhs) := d.toExpr
+          have proof := q(Iff.mp $thmProof $dExpr)
 
           let g ← g.clear h
           let (_, g) ← g.note d.userName proof
@@ -477,10 +501,10 @@ def linearizeTacticCore (targets : Array Expr) : TacticM Unit := do
   let mut remainingSideGoals : List MVarId := []
   for sideGoal in allNewGoals do
     match ← trySolveSideGoal sideGoal with
-    | none => 
+    | none =>
       trace[linearize] "Successfully auto-solved side goal"
       -- Goal was solved, don't add it to remaining goals
-    | some g => 
+    | some g =>
       trace[linearize] "Could not auto-solve side goal, keeping it"
       remainingSideGoals := remainingSideGoals.append [g]
 
