@@ -53,3 +53,15 @@ This is a mathematical library focused on floating-point arithmetic formalizatio
 - `Int.log b x`: Returns the greatest power of `b` such that `b^(Int.log b x) ≤ x`. Essential for floating-point exponent calculations without noncomputability issues.
 - When writing powers, there is zpow and pow. zpow is used with R, like `(2 : R)^(FloatFormat.prec : ℕ)`
 - Casting can be a pain but is solvable with effort. Often writing sub-theorems for the conversion can be helpful! There's a distinction between `(2 : R)^(FloatFormat.prec : ℕ)` and `(2 : R)^(FloatFormat.prec : ℤ)`
+
+## Custom Tactic Development
+
+When designing custom tactics for this project, refer to the comprehensive metaprogramming guide:
+- **[docs/LEAN4_METAPROGRAMMING_REFERENCE.md](docs/LEAN4_METAPROGRAMMING_REFERENCE.md)** - Complete reference for Lean 4 metaprogramming patterns including both standard approaches and Qq (typed quotations)
+
+Key points for tactic development in this project:
+- Use the patterns from the metaprogramming reference as starting points
+- Consider both standard metaprogramming and Qq approaches - Qq provides better type safety
+- Follow the project's existing tactic structure (see `Flean/Linearize/Linearize.lean` for a good example)
+- Always use `lake build` to verify your metaprogramming code works correctly
+- When working with numeric types, be careful about Nat vs Int vs the generic R type
