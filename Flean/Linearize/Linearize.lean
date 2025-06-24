@@ -53,6 +53,14 @@ open Lean Elab Meta Tactic Qq
 
 initialize registerTraceClass `linearize
 
+/-- Helper to convert an Nat | Int to an Int -/
+def asInt (e : Expr) : MetaM Q(ℤ) := do
+  if (← inferType e).constName? == .some ``Nat then
+    have e : Q(ℕ) := e
+    pure q(Int.ofNat $e)
+  else
+    pure e
+
 /-- Try to solve a side goal automatically based on its type -/
 def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
   try
@@ -167,6 +175,7 @@ def isNatCastZpow (e : Expr) : MetaM (Option (ℕ × Expr × Expr × Expr)) := d
   | (``Pow.pow, #[_, _, _, base, exponent]) =>
     trace[linearize] "Found Pow.pow with base: {base}, exponent: {exponent}"
     -- Also handle Pow.pow for natural exponents
+    have exponent : Q(ℕ) := exponent
     match base.getAppFnArgs with
     | (``Nat.cast, #[R, _, natExpr]) =>
       trace[linearize] "Found Nat.cast base with natExpr: {natExpr}"
@@ -174,8 +183,8 @@ def isNatCastZpow (e : Expr) : MetaM (Option (ℕ × Expr × Expr × Expr)) := d
       if let some n := natExpr.rawNatLit? then
         trace[linearize] "Found natural number: {n}"
         -- Convert natural exponent to integer
-        let instNatCast ← synthInstance (mkApp (mkConst ``NatCast []) (mkConst ``Int))
-        let intExp ← mkAppM ``Nat.cast #[mkConst ``Int, instNatCast, exponent]
+        let instNatCast ← synthInstanceQ q(NatCast ℤ)
+        have intExp : Q(ℤ) := q(@Nat.cast ℤ $instNatCast $exponent)
         return some (n, base, intExp, R)
       else
         trace[linearize] "No natural number found"
@@ -186,8 +195,8 @@ def isNatCastZpow (e : Expr) : MetaM (Option (ℕ × Expr × Expr × Expr)) := d
       if let some n := natExpr.rawNatLit? then
         trace[linearize] "Found natural number: {n}"
         -- Convert natural exponent to integer
-        let instNatCast ← synthInstance (mkApp (mkConst ``NatCast []) (mkConst ``Int))
-        let intExp ← mkAppM ``Nat.cast #[mkConst ``Int, instNatCast, exponent]
+        let instNatCast ← synthInstanceQ q(NatCast ℤ)
+        have intExp : Q(ℤ) := q(@Nat.cast ℤ $instNatCast $exponent)
         return some (n, base, intExp, R)
       else
         trace[linearize] "No natural number found"
@@ -208,72 +217,58 @@ def isLinearizableComparison (e : Expr) : MetaM Bool := do
   | _ => return false
 
 /-- Transform a comparison involving zpow to use Int.log -/
-def transformZpowComparison (e : Expr) : MetaM (Option Expr) := do
+def transformZpowComparison (e : Expr) : MetaM (Option Q(Prop)) := do
   trace[linearize] "Transforming comparison: {e}"
+  -- Necessary instances for the theorem and side goals
   match e.getAppFnArgs with
   | (``LT.lt, #[_R, _inst, lhs, rhs]) =>
     -- Case: lhs < rhs
+    let ⟨_, R, lhs⟩ ← inferTypeQ' lhs
+    have rhs : Q($R) := rhs
+
+    let _a1 ← synthInstanceQ q(Semifield $R)
+    let _a2 ← synthInstanceQ q(LinearOrder $R)
+    let _a3 ← synthInstanceQ q(IsStrictOrderedRing $R)
+    let _a4 ← synthInstanceQ q(FloorSemiring $R)
+
     if let some (b, _, exp, _) ← isNatCastZpow rhs then
       -- lhs < (b : R)^exp � Int.log b lhs < exp (when 0 < lhs, 1 < b)
-      let logExpr ← mkAppM ``Int.log #[mkNatLit b, lhs]
-      -- Convert exponent to integer if it's a natural number
-      let expType ← inferType exp
-      let intExp ← if expType.isConstOf ``Nat then
-        mkAppM ``Int.ofNat #[exp]
-      else
-        pure exp
-      mkAppM ``LT.lt #[logExpr, intExp]
+      have b : Q(ℕ) := mkNatLit b
+      have logExpr : Q(ℤ) := q(Int.log $b $lhs)
+      let intExp ← asInt exp
+      pure (some q($logExpr < $intExp))
     else if let some (b, _, exp, _) ← isNatCastZpow lhs then
       -- (b : R)^exp < rhs � exp < Int.log b rhs + 1 (when 0 < rhs, 1 < b)
-      let logExpr ← mkAppM ``Int.log #[mkNatLit b, rhs]
-      let plusOne ← mkAppM ``HAdd.hAdd #[logExpr, mkIntLit 1]
-      -- Convert exponent to integer if it's a natural number
-      let expType ← inferType exp
-      let intExp ← if expType.isConstOf ``Nat then
-        mkAppM ``Int.ofNat #[exp]
-      else
-        pure exp
-      mkAppM ``LT.lt #[intExp, plusOne]
+      have b : Q(ℕ) := mkNatLit b
+      have plusOne : Q(ℤ) := q(Int.log $b $rhs + 1)
+      let intExp ← asInt exp
+      pure (some q($intExp < $plusOne))
     else
       return none
   | (``LE.le, #[_R, _inst, lhs, rhs]) =>
-    -- Similar for d
+    let ⟨_, R, lhs⟩ ← inferTypeQ' lhs
+    have rhs : Q($R) := rhs
+
+    let _a1 ← synthInstanceQ q(Semifield $R)
+    let _a2 ← synthInstanceQ q(LinearOrder $R)
+    let _a3 ← synthInstanceQ q(IsStrictOrderedRing $R)
+    let _a4 ← synthInstanceQ q(FloorSemiring $R)
+
     if let some (b, _, exp, _) ← isNatCastZpow rhs then
       -- lhs d (b : R)^exp � Int.log b lhs d exp (when 0 < lhs, 1 < b)
-      let logExpr ← mkAppM ``Int.log #[mkNatLit b, lhs]
-      -- Convert exponent to integer if it's a natural number
-      let expType ← inferType exp
-      let intExp ← if expType.isConstOf ``Nat then
-        mkAppM ``Int.ofNat #[exp]
-      else
-        pure exp
-      mkAppM ``LE.le #[logExpr, intExp]
+      have b : Q(ℕ) := mkNatLit b
+      let intExp ← asInt exp
+      -- mkAppM ``LE.le #[logExpr, intExp]
+      pure (some q(Int.log $b $lhs ≤ $intExp))
     else if let some (b, _, exp, _) ← isNatCastZpow lhs then
       -- (b : R)^exp d rhs � exp d Int.log b rhs (when 0 < rhs, 1 < b)
-      let logExpr ← mkAppM ``Int.log #[mkNatLit b, rhs]
-      -- Convert exponent to integer if it's a natural number
-      let expType ← inferType exp
-      let intExp ← if expType.isConstOf ``Nat then
-        mkAppM ``Int.ofNat #[exp]
-      else
-        pure exp
-      mkAppM ``LE.le #[intExp, logExpr]
+      have b : Q(ℕ) := mkNatLit b
+      let intExp ← asInt exp
+      pure (some q($intExp ≤ Int.log $b $rhs))
     else
       return none
   | _ => return none
 
-def mkNatLit' (ty : Expr) (n : Nat) : MetaM Expr := do
-  let level ← getLevel ty
-  let r := mkRawNatLit n
-  pure (mkApp3 (mkConst ``OfNat.ofNat [level]) ty r (mkApp (mkConst ``instOfNatNat) r))
-
-/-- Helper to convert an Nat | Int to an Int -/
-def asInt (e : Expr) : MetaM Q(ℤ) := do
-  if (← inferType e).constName? == .some ``Nat then
-    have e : Q(ℕ) := e
-    pure q(Int.ofNat $e)
-  else
-    pure e
 
 /-- Apply linearization to a single hypothesis using the mathlib pattern -/
 def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
@@ -310,7 +305,6 @@ def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
           let hbGoal ← mkFreshExprMVarQ q(1 < $b) MetavarKind.syntheticOpaque (`hb)
           let hrGoal ← mkFreshExprMVarQ q(0 < $lhs) MetavarKind.syntheticOpaque (`hr)
 
-          have transformed : Q(Prop) := transformed
           have dType : Q(Prop) := d.type
           have thmType : Q(Prop) := q($dType ↔ $transformed)
           let thmMVar ← mkFreshExprMVarQ thmType MetavarKind.syntheticOpaque `thm
@@ -349,23 +343,10 @@ def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
           let hbGoal ← mkFreshExprMVarQ q(1 < $b) MetavarKind.syntheticOpaque (`hb)
           let hrGoal ← mkFreshExprMVarQ q(0 < $rhs) MetavarKind.syntheticOpaque (`hr)
 
-          -- Convert exponent to integer if it's a natural number
-          -- have targetComparison : Q(Prop) :=
-
-          -- let thmType ← mkArrow d.type targetComparison
           let thmMVar ← mkFreshExprMVar q($exp < Int.log $b $rhs + 1) MetavarKind.syntheticOpaque `thm
-
-          -- let r ← R.toSyntax
-          -- let hbs ← hbGoal.toSyntax
-          -- let hrs ← hrGoal.toSyntax
-          -- let rhsS ← rhs.toSyntax
-          -- let expS ← exp.toSyntax
-          -- let bSyntax ← b.toSyntax
-          -- let thmProof ← Term.elabTerm (← `(Mathlib.Tactic.Linearize.zpow_lt_imp_lt_log_succ (R := $r) (b := $bSyntax) (n := $expS) (r := $rhsS) $hbs $hrs)) (some thmType)
           have thmProof : Q(↑$b ^ $exp < $rhs → $exp < Int.log $b $rhs + 1) := q(Mathlib.Tactic.Linearize.zpow_lt_imp_lt_log_succ (R := $R) (b := $b) (n := $exp) (r := $rhs) $hbGoal $hrGoal)
           thmMVar.mvarId!.assign thmProof
 
-          -- let proof ← mkAppM' thmMVar #[d.toExpr]
           let dExpr : Q(↑$b ^ $exp < $rhs) := d.toExpr
           have proof := q($thmProof $dExpr)
 
@@ -381,9 +362,9 @@ def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
       | (``LE.le, #[_, _, lhs, rhs]) =>
         if let some (b, _, exp, _) ← isNatCastZpow rhs then
           trace[linearize] "Applying le_zpow_iff_log_le for base {b}"
-          
+
           let ⟨_, R, lhs⟩ ← inferTypeQ' lhs
-          
+
           let exp : Q(ℤ) ← asInt exp
           have b : Q(ℕ) := mkNatLit b
 
@@ -414,9 +395,9 @@ def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
           return [g, hbGoal.mvarId!, hrGoal.mvarId!]
         else if let some (b, _, exp, _) ← isNatCastZpow lhs then
           trace[linearize] "Applying Int.zpow_le_iff_le_log for base {b} (reverse direction)"
-          
+
           let ⟨_, R, rhs⟩ ← inferTypeQ' rhs
-          
+
           let exp : Q(ℤ) ← asInt exp
           have b : Q(ℕ) := mkNatLit b
 
@@ -431,7 +412,6 @@ def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
           let hbGoal ← mkFreshExprMVarQ q(1 < $b) MetavarKind.syntheticOpaque (`hb)
           let hrGoal ← mkFreshExprMVarQ q(0 < $rhs) MetavarKind.syntheticOpaque (`hr)
 
-          have transformed : Q(Prop) := transformed
           have dType : Q(Prop) := d.type
           have thmType : Q(Prop) := q($dType ↔ $transformed)
           let thmMVar ← mkFreshExprMVarQ thmType MetavarKind.syntheticOpaque `thm
