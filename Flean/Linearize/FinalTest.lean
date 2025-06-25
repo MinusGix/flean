@@ -124,3 +124,19 @@ example (a : ℝ) (ha : 0 < a) (h : a < (2 : ℝ)^5) (extra : Int.log 2 a ≥ 2)
   linearize! only [h, extra] at h
 
 end LinearizeBangTests
+
+section ZpowPosTests
+
+-- Test 18: Goal linearization using zpow_pos for 0 < a^n pattern
+example : (0 : ℝ) < (2 : ℝ)^5 := by
+  linearize
+
+-- Test 19: Goal linearization using zpow_pos with integer exponent
+example : (0 : ℝ) < (2 : ℝ)^(-3 : ℤ) := by
+  linearize
+
+-- Test 20: Goal linearization using zpow_pos with variable exponent
+example (n : ℤ) : (0 : ℝ) < (3 : ℝ)^n := by
+  linearize
+
+end ZpowPosTests
