@@ -117,7 +117,7 @@ def isLiteralZero (e : Expr) : Bool :=
 def solveLTSideGoal (g : MVarId) (lhs _rhs : Expr) : TacticM (Option MVarId) := do
   -- Save the current goal state
   let savedGoals ← getGoals
-  
+
   -- Check if lhs is 1
   let isOne := isLiteralOne lhs
   if isOne then
@@ -187,7 +187,7 @@ def solveLTSideGoal (g : MVarId) (lhs _rhs : Expr) : TacticM (Option MVarId) := 
 def solveLESideGoal (g : MVarId) (lhs _rhs : Expr) : TacticM (Option MVarId) := do
   -- Save the current goal state
   let savedGoals ← getGoals
-  
+
   -- Check if lhs is 1 (for patterns like 1 ≤ b)
   let isOne := isLiteralOne lhs
   if isOne then
@@ -496,8 +496,13 @@ def findLinearizableHyps (g : MVarId) : TacticM (Array FVarId) := do
 
 /-- Linearize LT goals of various patterns involving zpow -/
 def linearizeLTGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
+  trace[linearize] "linearizeLTGoal: lhs={lhs}, rhs={rhs}"
+  trace[linearize] "  isLiteralOne(lhs)={isLiteralOne lhs}"
+  trace[linearize] "  isLiteralZero(lhs)={isLiteralZero lhs}"
+
   -- Check for pattern 1 < a^n using one_lt_zpow₀
   if isLiteralOne lhs then
+    trace[linearize] "  Pattern: 1 < a^n"
     if let some (b, _, exp, _) ← isNatCastZpow rhs then
       -- Check the type of the exponent to decide between zpow and pow
       let expType ← inferType exp
@@ -561,6 +566,7 @@ def linearizeLTGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
       throwError "linearize: goal linearization for 1 < ... only supports power expressions with natural base"
   -- Check for pattern 0 < a^n using zpow_pos
   else if isLiteralZero lhs then
+    trace[linearize] "  Pattern: 0 < a^n"
     if let some (b, _, exp, _) ← isNatCastZpow rhs then
       trace[linearize] "Applying zpow_pos for base {b}"
 
@@ -590,6 +596,7 @@ def linearizeLTGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
     else
       throwError "linearize: goal linearization for 0 < ... only supports zpow expressions"
   else if let some (b_rhs, _, exp_rhs, _) ← isNatCastZpow rhs then
+    trace[linearize] "  Pattern: LHS not literal, but RHS is zpow"
     if let some (b_lhs, _, exp_lhs, _) ← isNatCastZpow lhs then
       -- Both sides are zpow with same base: a^m < a^n ↔ m < n (when 1 < a)
       if b_lhs == b_rhs then
@@ -625,6 +632,7 @@ def linearizeLTGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
     else
       throwError "linearize: goal linearization only supports same-base zpow comparisons"
   else
+    trace[linearize] "  Pattern: No pattern matched - final else in linearizeLTGoal"
     throwError "linearize: goal linearization only supports same-base zpow comparisons"
 
 /-- Linearize LE goals of various patterns involving zpow -/
@@ -766,16 +774,94 @@ def linearizeLEGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
 def linearizeGoal (g : MVarId) : TacticM (List MVarId) := do
   g.withContext do
     let goalType ← g.getType
+    trace[linearize] "=== ENTERING linearizeGoal ==="
     trace[linearize] "Analyzing goal: {goalType}"
 
+    let (fn, args) := goalType.getAppFnArgs
+    trace[linearize] "  Goal app function: {fn}"
+    trace[linearize] "  Goal app args count: {args.size}"
+    trace[linearize] "  Goal app args: {args}"
+
+    -- Manual inspection of the goal structure
+    trace[linearize] "  Goal expr kind: {goalType.ctorName}"
+    match goalType with
+    | .app f a =>
+      trace[linearize] "  Goal is app: f={f}, a={a}"
+      let (f2, args2) := f.getAppFnArgs
+      trace[linearize] "    f app function: {f2}, args: {args2}"
+    | .mvar id => trace[linearize] "  Goal is mvar: {id}"
+    | .fvar id => trace[linearize] "  Goal is fvar"
+    | .const name levels => trace[linearize] "  Goal is const: {name}, levels: {levels}"
+    | _ => trace[linearize] "  Goal is other: {goalType.ctorName}"
+
+    -- Try reducing the goal type first
+    let goalTypeReduced ← whnf goalType
+    trace[linearize] "  Reduced goal: {goalTypeReduced}"
+    let (fnReduced, argsReduced) := goalTypeReduced.getAppFnArgs
+    trace[linearize] "  Reduced app function: {fnReduced}"
+    trace[linearize] "  Reduced app args count: {argsReduced.size}"
+
     -- Dispatch to specialized handlers based on comparison type
+    -- First try the original goal type (works for most cases)
     match goalType.getAppFnArgs with
     | (``LT.lt, #[_, _, lhs, rhs]) =>
+      trace[linearize] "  Dispatching to linearizeLTGoal (original 4-arg pattern)"
       linearizeLTGoal g lhs rhs
     | (``LE.le, #[_, _, lhs, rhs]) =>
+      trace[linearize] "  Dispatching to linearizeLEGoal (original 4-arg pattern)"
       linearizeLEGoal g lhs rhs
     | _ =>
-      throwError "linearize: goal linearization only supports < and ≤ comparisons"
+      -- If original doesn't work, try the reduced version (for mvar cases)
+      trace[linearize] "  Original pattern didn't match, trying reduced goal"
+      match goalTypeReduced.getAppFnArgs with
+      | (``LT.lt, #[_, _, lhs, rhs]) =>
+        trace[linearize] "  Dispatching to linearizeLTGoal (reduced 4-arg pattern)"
+        linearizeLTGoal g lhs rhs
+      | (``LE.le, #[_, _, lhs, rhs]) =>
+        trace[linearize] "  Dispatching to linearizeLEGoal (reduced 4-arg pattern)"
+        linearizeLEGoal g lhs rhs
+      | (fn, #[lhs, rhs]) =>
+        -- Check if this is a 2-argument LT or LE pattern
+        trace[linearize] "  Checking reduced 2-arg pattern, fn={fn}"
+        -- Use the reduced goal type expression to check structure
+        if goalTypeReduced.isApp then
+          let actualFn := goalTypeReduced.getAppFn
+          trace[linearize] "  Actual function from reduced goal: {actualFn}, constName: {actualFn.constName?}"
+          trace[linearize] "  Function kind: {actualFn.ctorName}"
+          
+          -- Check if it's a direct LT.lt or LE.le constant
+          if actualFn.constName? == some ``LT.lt then
+            trace[linearize] "  Dispatching to linearizeLTGoal (reduced 2-arg LT pattern)"
+            linearizeLTGoal g lhs rhs
+          else if actualFn.constName? == some ``LE.le then
+            trace[linearize] "  Dispatching to linearizeLEGoal (reduced 2-arg LE pattern)"
+            linearizeLEGoal g lhs rhs
+          else
+            -- Check if it's a projection or field that ultimately refers to LT.lt
+            -- The structure might be something like `instX.toY.toLT.1` where `.1` is the `<` operator
+            match actualFn with
+            | .proj typeName idx _ =>
+              trace[linearize] "  Function is projection: typeName={typeName}, idx={idx}"
+              -- Check if this is a projection from a type that should contain LT
+              if typeName == ``LT || typeName.toString.endsWith "LT" then
+                trace[linearize] "  Dispatching to linearizeLTGoal (LT projection pattern)"
+                linearizeLTGoal g lhs rhs
+              else if typeName == ``LE || typeName.toString.endsWith "LE" then
+                trace[linearize] "  Dispatching to linearizeLEGoal (LE projection pattern)"
+                linearizeLEGoal g lhs rhs
+              else
+                trace[linearize] "  Projection is not LT/LE: {typeName}"
+                throwError "linearize: goal linearization only supports < and ≤ comparisons"
+            | _ =>
+              trace[linearize] "  Function is not LT/LE: {actualFn.constName?}"
+              throwError "linearize: goal linearization only supports < and ≤ comparisons"
+        else
+          trace[linearize] "  Reduced goal is not an app: {goalTypeReduced}"
+          throwError "linearize: goal linearization only supports < and ≤ comparisons"
+      | _ =>
+        trace[linearize] "  Goal pattern not recognized - wrong number of args"
+        trace[linearize] "  Original args count: {args.size}, Reduced args count: {argsReduced.size}"
+        throwError "linearize: goal linearization only supports < and ≤ comparisons"
 
 /-- Linearize LT hypotheses of various patterns involving zpow -/
 def linearizeLTHyp (h : FVarId) (g : MVarId) (d : LocalDecl) (transformed : Q(Prop)) (lhs rhs : Expr) : TacticM (List MVarId) := do
