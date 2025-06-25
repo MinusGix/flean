@@ -96,6 +96,23 @@ def isLiteralOne (e : Expr) : Bool :=
       | _ => false)
    | _ => false)
 
+/-- Check if an expression represents the literal 0, unwrapping various coercion layers -/
+def isLiteralZero (e : Expr) : Bool :=
+  e.isConstOf ``Zero.zero ||
+  (match e.getAppFnArgs with
+   | (``OfNat.ofNat, #[_, n, _]) => n.rawNatLit? == some 0
+   | (``Int.ofNat, #[n]) => 
+     n.rawNatLit? == some 0 || n.isConstOf ``Zero.zero ||
+     (match n.getAppFnArgs with
+      | (``OfNat.ofNat, #[_, m, _]) => m.rawNatLit? == some 0
+      | _ => false)
+   | (``Nat.cast, #[_, _, n]) =>
+     n.rawNatLit? == some 0 || n.isConstOf ``Zero.zero ||
+     (match n.getAppFnArgs with
+      | (``OfNat.ofNat, #[_, m, _]) => m.rawNatLit? == some 0
+      | _ => false)
+   | _ => false)
+
 /-- Try to solve a side goal automatically based on its type -/
 def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
     -- Check if the goal is already assigned
@@ -337,12 +354,18 @@ def transformZpowComparison (e : Expr) : MetaM (Option Q(Prop)) := do
         else
           return none
       else
+        -- Skip linearization if lhs is 0 (since Int.log b 0 doesn't make sense)
+        if isLiteralZero lhs then
+          return none
         -- lhs < (b : R)^exp � Int.log b lhs < exp (when 0 < lhs, 1 < b)
         have b : Q(ℕ) := mkNatLit b_rhs
         have logExpr : Q(ℤ) := q(Int.log $b $lhs)
         let intExp ← asInt exp_rhs
         pure (some q($logExpr < $intExp))
     else if let some (b, _, exp, _) ← isNatCastZpow lhs then
+      -- Skip linearization if rhs is 0 (since Int.log b 0 doesn't make sense)
+      if isLiteralZero rhs then
+        return none
       -- (b : R)^exp < rhs � exp < Int.log b rhs + 1 (when 0 < rhs, 1 < b)
       have b : Q(ℕ) := mkNatLit b
       have plusOne : Q(ℤ) := q(Int.log $b $rhs + 1)
@@ -371,11 +394,17 @@ def transformZpowComparison (e : Expr) : MetaM (Option Q(Prop)) := do
         else
           return none
       else
+        -- Skip linearization if lhs is 0 (since Int.log b 0 doesn't make sense)
+        if isLiteralZero lhs then
+          return none
         -- lhs ≤ (b : R)^exp ↔ Int.log b lhs ≤ exp (when 0 < lhs, 1 < b)
         have b : Q(ℕ) := mkNatLit b_rhs
         let intExp ← asInt exp_rhs
         pure (some q(Int.log $b $lhs ≤ $intExp))
     else if let some (b, _, exp, _) ← isNatCastZpow lhs then
+      -- Skip linearization if rhs is 0 (since Int.log b 0 doesn't make sense)
+      if isLiteralZero rhs then
+        return none
       -- (b : R)^exp ≤ rhs ↔ exp ≤ Int.log b rhs (when 0 < rhs, 1 < b)
       have b : Q(ℕ) := mkNatLit b
       let intExp ← asInt exp
