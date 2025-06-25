@@ -115,4 +115,12 @@ example (m : ℤ) (h : m ≤ 5) : (2 : ℝ)^m ≤ (2 : ℝ)^5 := by
 example (a : ℝ) (ha : 0 < a) (h : a < (2 : ℝ)^3) : (2 : ℝ)^1 < (2 : ℝ)^3 := by
   linearize!
 
+-- Test 16: linearize! with additional lemmas
+example (a : ℝ) (ha : 0 < a) (h : a < (2 : ℝ)^5) (extra : Int.log 2 a ≥ 2) : Int.log 2 a = 4 ∨ Int.log 2 a = 3 ∨ Int.log 2 a = 2 := by
+  linearize! [extra] at h
+
+-- Test 17: linearize! with only modifier and lemmas
+example (a : ℝ) (ha : 0 < a) (h : a < (2 : ℝ)^5) (extra : Int.log 2 a ≥ 2) : Int.log 2 a ≤ 4 := by
+  linearize! only [h, extra] at h
+
 end LinearizeBangTests

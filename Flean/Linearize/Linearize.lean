@@ -22,9 +22,18 @@ example (a : ℝ) (h : 1 < a) (h2 : a < (2 : ℝ)^100) : a < (2 : ℝ)^200 := by
   linearize at h2  -- transforms to: Int.log 2 a < 100
   linarith
 
--- Or use linearize! to automatically apply linarith
+-- Or use linearize! to automatically apply linarith (with omega fallback)
 example (a : ℝ) (h : 1 < a) (h2 : a < (2 : ℝ)^100) : a < (2 : ℝ)^200 := by
   linearize! at h2  -- transforms and applies linarith automatically
+
+-- linearize! also supports passing additional lemmas to linarith
+example (a : ℝ) (h : 1 < a) (h2 : a < (2 : ℝ)^5) (extra : Int.log 2 a ≥ 2) : Int.log 2 a ≤ 4 := by
+  linearize! [extra] at h2  -- passes extra to linarith
+
+-- linearize! will fall back to omega if linarith fails (useful for integer reasoning)
+example (a : ℝ) (ha : 0 < a) (h : a < (2 : ℝ)^5) (extra : Int.log 2 a ≥ 2) :
+    Int.log 2 a = 4 ∨ Int.log 2 a = 3 ∨ Int.log 2 a = 2 := by
+  linearize! [extra] at h  -- uses omega fallback for disjunctive reasoning
 
 -- Goal linearization for same-base exponential comparisons
 example (m n : ℤ) (h : m < n) : (2 : ℝ)^m < (2 : ℝ)^n := by
@@ -75,7 +84,7 @@ def isLiteralOne (e : Expr) : Bool :=
   e.isConstOf ``One.one ||
   (match e.getAppFnArgs with
    | (``OfNat.ofNat, #[_, n, _]) => n.rawNatLit? == some 1
-   | (``Int.ofNat, #[n]) => 
+   | (``Int.ofNat, #[n]) =>
      n.rawNatLit? == some 1 || n.isConstOf ``One.one ||
      (match n.getAppFnArgs with
       | (``OfNat.ofNat, #[_, m, _]) => m.rawNatLit? == some 1
@@ -103,7 +112,7 @@ def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
 
     -- Check if it's a 1 < b type goal (where b is a natural number)
     match goalType.getAppFnArgs with
-    | (``LT.lt, #[_, _, lhs, rhs]) =>
+    | (``LT.lt, #[_, _, lhs, _rhs]) =>
       -- Check if lhs is 1
       let isOne := isLiteralOne lhs
       if isOne then
@@ -156,7 +165,7 @@ def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
             setGoals savedGoals
             trace[linearize] "linarith also failed, keeping as side goal"
             return some g
-    | (``LE.le, #[_, _, lhs, rhs]) =>
+    | (``LE.le, #[_, _, lhs, _rhs]) =>
       -- Check if lhs is 1 (for patterns like 1 ≤ b)
       let isOne := isLiteralOne lhs
       if isOne then
@@ -322,7 +331,6 @@ def transformZpowComparison (e : Expr) : MetaM (Option Q(Prop)) := do
       if let some (b_lhs, _, exp_lhs, _) ← isNatCastZpow lhs then
         -- Check if both sides have the same base: a^m < a^n � m < n (when 1 < a)
         if b_lhs == b_rhs then
-          have a : Q(ℕ) := mkNatLit b_lhs
           let intExpLhs ← asInt exp_lhs
           let intExpRhs ← asInt exp_rhs
           pure (some q($intExpLhs < $intExpRhs))
@@ -502,7 +510,7 @@ def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
       match d.type.getAppFnArgs with
       | (``LT.lt, #[_, _, lhs, rhs]) =>
         if let some (b_rhs, _, exp_rhs, _) ← isNatCastZpow rhs then
-          if let some (b_lhs, _, exp_lhs, _) ← isNatCastZpow lhs then
+          if let some (b_lhs, _, _exp_lhs, _) ← isNatCastZpow lhs then
             -- Both sides are zpow with same base - this should be handled in goal linearization
             if b_lhs == b_rhs then
               throwError "linearize: same-base zpow hypotheses not supported, try applying this to a goal instead"
@@ -819,11 +827,11 @@ elab_rules : tactic
     linearizeAtLocation location
 
 /-- The linearize! tactic that applies linearize then linarith -/
-syntax (name := linearizeBang) "linearize!" (location)? : tactic
+syntax (name := linearizeBang) "linearize!" (&" only")? (" [" term,* "]")? (location)? : tactic
 
 /-- Elaboration rule for linearize! tactic -/
 elab_rules : tactic
-  | `(tactic| linearize! $[$loc:location]?) => do
+  | `(tactic| linearize! $[only%$o]? $[ [ $args,* ] ]? $[$loc:location]?) => do
     let location := match loc with
     | none => Location.wildcard
     | some loc => expandLocation loc
@@ -841,16 +849,35 @@ elab_rules : tactic
           setGoals [goal]
           -- First apply norm_num to clean up numerical expressions and casts in hypotheses and goal
           evalTactic (← `(tactic| norm_num at *))
-          -- Then apply linarith on the cleaned up goal
-          evalTactic (← `(tactic| linarith))
+          -- Then apply linarith with the provided arguments
+          let linarithCall ← match o, args with
+          | some _, some args =>
+            `(tactic| linarith only [$args,*])
+          | some _, none =>
+            `(tactic| linarith only)
+          | none, some args =>
+            `(tactic| linarith [$args,*])
+          | none, none =>
+            `(tactic| linarith)
+          evalTactic linarithCall
           -- Check if goal was solved
           if ← goal.isAssigned then
             continue  -- Goal was solved, don't add to remaining
           else
             remainingGoals := goal :: remainingGoals
         catch _ =>
-          -- If norm_num + linarith fails on this goal, keep it
-          remainingGoals := goal :: remainingGoals
+          -- If norm_num + linarith fails, try norm_num + omega as a fallback
+          try
+            setGoals [goal]
+            evalTactic (← `(tactic| norm_num at *))
+            evalTactic (← `(tactic| omega))
+            if ← goal.isAssigned then
+              continue  -- Goal was solved by omega
+            else
+              remainingGoals := goal :: remainingGoals
+          catch _ =>
+            -- If both linarith and omega fail, keep the goal
+            remainingGoals := goal :: remainingGoals
 
     setGoals remainingGoals.reverse
 
