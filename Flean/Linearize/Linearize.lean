@@ -532,7 +532,37 @@ def linearizeGoal (g : MVarId) : TacticM (List MVarId) := do
       else
         throwError "linearize: goal linearization only supports same-base zpow comparisons"
     | (``LE.le, #[_, _, lhs, rhs]) =>
-      if let some (b_rhs, _, exp_rhs, _) ← isNatCastZpow rhs then
+      -- Check for pattern 0 ≤ a^n using zpow_nonneg
+      if isLiteralZero lhs then
+        if let some (b, _, exp, _) ← isNatCastZpow rhs then
+          trace[linearize] "Applying zpow_nonneg for base {b}"
+          
+          let ⟨_, R, _⟩ ← inferTypeQ' rhs
+          
+          let exp : Q(ℤ) ← asInt exp
+          have a : Q(ℕ) := mkNatLit b
+          
+          -- Need instances for zpow_nonneg (same as zpow_pos)
+          let _inst1 ← synthInstanceQ q(DivisionRing $R)
+          let _inst2 ← synthInstanceQ q(PartialOrder $R)
+          let _inst3 ← synthInstanceQ q(PosMulReflectLT $R)
+          let _inst4 ← synthInstanceQ q(ZeroLEOneClass $R)
+          
+          assumeInstancesCommute
+          
+          let haGoal ← mkFreshExprMVarQ q(0 ≤ ($a : $R)) MetavarKind.syntheticOpaque (`ha)
+          
+          have thmProof : Q((0 : $R) ≤ ($a : $R) ^ $exp) := q(zpow_nonneg $haGoal $exp)
+          
+          -- Apply the theorem to reduce the goal
+          g.assign thmProof
+          
+          Term.synthesizeSyntheticMVarsUsingDefault
+          
+          return [haGoal.mvarId!]
+        else
+          throwError "linearize: goal linearization for 0 ≤ ... only supports zpow expressions"
+      else if let some (b_rhs, _, exp_rhs, _) ← isNatCastZpow rhs then
         if let some (b_lhs, _, exp_lhs, _) ← isNatCastZpow lhs then
           -- Both sides are zpow with same base: a^m ≤ a^n ↔ m ≤ n (when 1 < a)
           if b_lhs == b_rhs then
