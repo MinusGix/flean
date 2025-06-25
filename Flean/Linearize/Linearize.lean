@@ -2,6 +2,7 @@ import Mathlib.Data.Int.Log
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.NormNum
 import Lean.Elab.Tactic.Basic
+import Lean.Elab.Tactic.Location
 import Lean.Elab.Term
 import Flean.Linearize.Lemmas
 import Mathlib.Data.Real.Basic
@@ -18,8 +19,16 @@ into logarithmic form using `Int.log` to make them suitable for `linarith`.
 
 ```lean
 example (a : ℝ) (h : 1 < a) (h2 : a < (2 : ℝ)^100) : a < (2 : ℝ)^200 := by
-  linearize h2  -- transforms to: Int.log 2 a < 100
+  linearize at h2  -- transforms to: Int.log 2 a < 100
   linarith
+
+-- Or use linearize! to automatically apply linarith
+example (a : ℝ) (h : 1 < a) (h2 : a < (2 : ℝ)^100) : a < (2 : ℝ)^200 := by
+  linearize! at h2  -- transforms and applies linarith automatically
+
+-- Goal linearization for same-base exponential comparisons
+example (m n : ℤ) (h : m < n) : (2 : ℝ)^m < (2 : ℝ)^n := by
+  linearize  -- automatically reduces to m < n and solves
 ```
 -/
 
@@ -49,7 +58,7 @@ zpow b and Int.log b (almost) form a Galois connection.
 
 namespace Mathlib.Tactic.Linearize
 
-open Lean Elab Meta Tactic Qq
+open Lean Elab Meta Tactic Qq Parser.Tactic
 
 initialize registerTraceClass `linearize
 
@@ -61,9 +70,25 @@ def asInt (e : Expr) : MetaM Q(ℤ) := do
   else
     pure e
 
+/-- Check if an expression represents the literal 1, unwrapping various coercion layers -/
+def isLiteralOne (e : Expr) : Bool :=
+  e.isConstOf ``One.one ||
+  (match e.getAppFnArgs with
+   | (``OfNat.ofNat, #[_, n, _]) => n.rawNatLit? == some 1
+   | (``Int.ofNat, #[n]) => 
+     n.rawNatLit? == some 1 || n.isConstOf ``One.one ||
+     (match n.getAppFnArgs with
+      | (``OfNat.ofNat, #[_, m, _]) => m.rawNatLit? == some 1
+      | _ => false)
+   | (``Nat.cast, #[_, _, n]) =>
+     n.rawNatLit? == some 1 || n.isConstOf ``One.one ||
+     (match n.getAppFnArgs with
+      | (``OfNat.ofNat, #[_, m, _]) => m.rawNatLit? == some 1
+      | _ => false)
+   | _ => false)
+
 /-- Try to solve a side goal automatically based on its type -/
 def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
-  try
     -- Check if the goal is already assigned
     if ← g.isAssigned then
       trace[linearize] "Goal already solved"
@@ -80,11 +105,7 @@ def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
     match goalType.getAppFnArgs with
     | (``LT.lt, #[_, _, lhs, rhs]) =>
       -- Check if lhs is 1
-      let isOne := lhs.isConstOf ``One.one ||
-        (match lhs.getAppFnArgs with
-         | (``OfNat.ofNat, #[_, n, _]) => n.rawNatLit? == some 1
-         | _ => false)
-
+      let isOne := isLiteralOne lhs
       if isOne then
         -- This is a 1 < b goal, try norm_num first
         trace[linearize] "Detected 1 < b pattern, trying norm_num"
@@ -137,11 +158,7 @@ def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
             return some g
     | (``LE.le, #[_, _, lhs, rhs]) =>
       -- Check if lhs is 1 (for patterns like 1 ≤ b)
-      let isOne := lhs.isConstOf ``One.one ||
-        (match lhs.getAppFnArgs with
-         | (``OfNat.ofNat, #[_, n, _]) => n.rawNatLit? == some 1
-         | _ => false)
-
+      let isOne := isLiteralOne lhs
       if isOne then
         -- This is a 1 ≤ b goal, try norm_num first
         trace[linearize] "Detected 1 ≤ b pattern, trying norm_num"
@@ -193,12 +210,24 @@ def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
             trace[linearize] "linarith also failed, keeping as side goal"
             return some g
     | _ =>
-      -- Unknown goal type, keep it as is
-      trace[linearize] "Unknown side goal type, keeping as is"
-      return some g
-  catch e =>
-    trace[linearize] "Error in trySolveSideGoal: {e.toMessageData}"
-    return some g
+      -- Unknown goal type, try norm_num as a last resort
+      trace[linearize] "Unknown side goal type, trying norm_num"
+      try
+        setGoals [g]
+        evalTactic (← `(tactic| norm_num))
+        let remainingGoals ← getGoals
+        setGoals savedGoals
+        if remainingGoals.isEmpty then
+          return none  -- Goal was solved
+        else
+          trace[linearize] "norm_num couldn't solve it, keeping as side goal"
+          return some g
+      catch _ =>
+        setGoals savedGoals
+        trace[linearize] "norm_num failed, keeping as side goal"
+        return some g
+
+
 
 /-- Check if an expression is of the form `(b : R)^z` where `b` is a natural number literal -/
 def isNatCastZpow (e : Expr) : MetaM (Option (ℕ × Expr × Expr × Expr)) := do
@@ -347,6 +376,23 @@ def transformZpowComparison (e : Expr) : MetaM (Option Q(Prop)) := do
       return none
   | _ => return none
 
+
+/-- Find all linearizable hypotheses in the current goal -/
+def findLinearizableHyps (g : MVarId) : TacticM (Array FVarId) := do
+  g.withContext do
+    let lctx ← getLCtx
+    let mut fvars : Array FVarId := #[]
+    for ldecl in lctx do
+      if !ldecl.isImplementationDetail then
+        -- Check if this hypothesis can be linearized
+        let canLinearize ← try
+          let result ← transformZpowComparison ldecl.type
+          pure result.isSome
+        catch _ =>
+          pure false
+        if canLinearize then
+          fvars := fvars.push ldecl.fvarId
+    pure fvars
 
 /-- Apply linearization to a goal of the form a^m < a^n using zpow_lt_zpow_right₀ -/
 def linearizeGoal (g : MVarId) : TacticM (List MVarId) := do
@@ -618,43 +664,78 @@ def linearizeHyp (h : FVarId) (g : MVarId) : TacticM (List MVarId) := do
     | none =>
       throwError "linearize: hypothesis {d.userName} cannot be linearized"
 
-/-- Main linearize tactic implementation using mathlib patterns -/
-def linearizeTacticCore (targets : Array Expr) : TacticM Unit := do
-  -- Get the main goal
+/-- Apply linearization at the specified location -/
+def linearizeAtLocation (loc : Location) : TacticM Unit := do
   let g ← getMainGoal
-
-  -- Get target hypotheses
-  let targetFVars ← if targets.isEmpty then
-    trace[linearize] "targets are empty, trying to get all suitable hypotheses"
-    -- If no targets specified, get all suitable hypotheses
-    let lctx ← getLCtx
-    let mut fvars : Array FVarId := #[]
-    for ldecl in lctx do
-      if !ldecl.isImplementationDetail then
-        -- Check if this hypothesis can be linearized
+  g.withContext do
+    match loc with
+    | Location.targets hyps simplifyTarget =>
+      -- Get hypothesis FVarIds
+      let targetFVars ← hyps.filterMapM fun hyp => do
+        let fvarId ← getFVarId hyp
+        -- Verify it's linearizable
+        let decl ← fvarId.getDecl
         let canLinearize ← try
-          let result ← transformZpowComparison ldecl.type
-          pure result.isSome
+          let _ ← transformZpowComparison decl.type
+          pure true
         catch _ =>
           pure false
         if canLinearize then
-          fvars := fvars.push ldecl.fvarId
-    pure fvars
-  else
-    -- Convert target expressions to FVarIds
-    trace[linearize] "targets={targets}"
-    targets.filterMapM fun target => do
-      match target with
-      | Expr.fvar id => pure (some id)
-      | _ => pure none
+          return some fvarId
+        else
+          throwError "linearize: hypothesis {hyp} cannot be linearized"
 
-  if targetFVars.isEmpty then
-    -- No suitable hypotheses found, try goal linearization
-    trace[linearize] "No suitable hypotheses found, trying goal linearization"
-    try
-      let newGoals ← linearizeGoal g
+      if targetFVars.isEmpty && !simplifyTarget then
+        throwError "linearize: no suitable hypotheses found"
+
+      if targetFVars.isEmpty && simplifyTarget then
+        -- Only target specified, try goal linearization
+        trace[linearize] "Only target specified, trying goal linearization"
+        try
+          let newGoals ← linearizeGoal g
+          let mut remainingSideGoals : List MVarId := []
+          for sideGoal in newGoals do
+            match ← trySolveSideGoal sideGoal with
+            | none =>
+              trace[linearize] "Successfully auto-solved side goal"
+            | some g =>
+              trace[linearize] "Could not auto-solve side goal, keeping it"
+              remainingSideGoals := remainingSideGoals.append [g]
+
+          replaceMainGoal remainingSideGoals
+          return
+        catch e =>
+          throwError "linearize: goal linearization failed: {e.toMessageData}"
+
+      -- Apply linearization to hypotheses
+      let mut currentGoal := g
+      let mut allNewGoals : List MVarId := []
+
+      for fvar in targetFVars do
+        let newGoals ← linearizeHyp fvar currentGoal
+        match newGoals with
+        | mainGoal :: sideGoals =>
+          currentGoal := mainGoal
+          allNewGoals := allNewGoals ++ sideGoals
+        | [] =>
+          throwError "linearize: internal error - no goals returned"
+
+      -- If target is also specified, try goal linearization on the remaining goal
+      if simplifyTarget then
+        try
+          let goalNewGoals ← linearizeGoal currentGoal
+          allNewGoals := allNewGoals ++ goalNewGoals
+          -- If goal linearization succeeded, the goal is solved
+          replaceMainGoal allNewGoals
+          return
+        catch _ =>
+          -- Goal linearization failed, continue with hypothesis linearization only
+          pure ()
+
+      -- Try to automatically solve side goals
+      trace[linearize] "Attempting to auto-solve {allNewGoals.length} side goals"
       let mut remainingSideGoals : List MVarId := []
-      for sideGoal in newGoals do
+      for sideGoal in allNewGoals do
         match ← trySolveSideGoal sideGoal with
         | none =>
           trace[linearize] "Successfully auto-solved side goal"
@@ -662,49 +743,115 @@ def linearizeTacticCore (targets : Array Expr) : TacticM Unit := do
           trace[linearize] "Could not auto-solve side goal, keeping it"
           remainingSideGoals := remainingSideGoals.append [g]
 
-      replaceMainGoal remainingSideGoals
-      return
-    catch e =>
-      throwError "linearize: no suitable hypotheses found and goal linearization failed: {e.toMessageData}"
+      -- Set the new goal list
+      replaceMainGoal (currentGoal :: remainingSideGoals)
 
-  -- Apply linearization to each target hypothesis
-  let mut currentGoal := g
-  let mut allNewGoals : List MVarId := []
+    | Location.wildcard =>
+      -- Apply to all suitable hypotheses and the target
+      let targetFVars ← findLinearizableHyps g
 
-  for fvar in targetFVars do
-    let newGoals ← linearizeHyp fvar currentGoal
-    match newGoals with
-    | mainGoal :: sideGoals =>
-      currentGoal := mainGoal
-      allNewGoals := allNewGoals ++ sideGoals
-    | [] =>
-      throwError "linearize: internal error - no goals returned"
+      if targetFVars.isEmpty then
+        -- No hypotheses found, try goal linearization only
+        try
+          let newGoals ← linearizeGoal g
+          let mut remainingSideGoals : List MVarId := []
+          for sideGoal in newGoals do
+            match ← trySolveSideGoal sideGoal with
+            | none =>
+              trace[linearize] "Successfully auto-solved side goal"
+            | some g =>
+              trace[linearize] "Could not auto-solve side goal, keeping it"
+              remainingSideGoals := remainingSideGoals.append [g]
+          replaceMainGoal remainingSideGoals
+        catch e =>
+          throwError "linearize: no suitable hypotheses found and goal linearization failed: {e.toMessageData}"
+      else
+        -- Apply linearization to hypotheses
+        let mut currentGoal := g
+        let mut allNewGoals : List MVarId := []
 
-  -- Try to automatically solve side goals
-  trace[linearize] "Attempting to auto-solve {allNewGoals.length} side goals"
-  let mut remainingSideGoals : List MVarId := []
-  for sideGoal in allNewGoals do
-    match ← trySolveSideGoal sideGoal with
-    | none =>
-      trace[linearize] "Successfully auto-solved side goal"
-      -- Goal was solved, don't add it to remaining goals
-    | some g =>
-      trace[linearize] "Could not auto-solve side goal, keeping it"
-      remainingSideGoals := remainingSideGoals.append [g]
+        for fvar in targetFVars do
+          let newGoals ← linearizeHyp fvar currentGoal
+          match newGoals with
+          | mainGoal :: sideGoals =>
+            currentGoal := mainGoal
+            allNewGoals := allNewGoals ++ sideGoals
+          | [] =>
+            throwError "linearize: internal error - no goals returned"
 
-  -- Set the new goal list: main goal followed by remaining side condition goals
-  replaceMainGoal (currentGoal :: remainingSideGoals)
+        -- Also try goal linearization
+        let mut goalLinearized := false
+        try
+          let goalNewGoals ← linearizeGoal currentGoal
+          allNewGoals := allNewGoals ++ goalNewGoals
+          goalLinearized := true
+          -- Goal linearization succeeded, continue to auto-solve side goals
+        catch _ =>
+          -- Goal linearization failed, continue with hypothesis linearization only
+          pure ()
+
+        -- Try to automatically solve side goals
+        trace[linearize] "Attempting to auto-solve {allNewGoals.length} side goals"
+        let mut remainingSideGoals : List MVarId := []
+        for sideGoal in allNewGoals do
+          match ← trySolveSideGoal sideGoal with
+          | none =>
+            trace[linearize] "Successfully auto-solved side goal"
+          | some g =>
+            trace[linearize] "Could not auto-solve side goal, keeping it"
+            remainingSideGoals := remainingSideGoals.append [g]
+
+        -- If goal was linearized, it's been solved, so don't include it
+        if goalLinearized then
+          replaceMainGoal remainingSideGoals
+        else
+          replaceMainGoal (currentGoal :: remainingSideGoals)
 
 /-- The linearize tactic syntax -/
-syntax (name := linearize) "linearize" (ppSpace colGt term)* : tactic
+syntax (name := linearize) "linearize" (location)? : tactic
 
 /-- Elaboration rule for linearize tactic -/
 elab_rules : tactic
-  | `(tactic| linearize $[$targets]*) => do
-    trace[linearize] "pretargets={targets}"
-    let g ← getMainGoal
-    let targetExprs ← g.withContext do
-      targets.mapM (fun t => elabTerm t none)
-    linearizeTacticCore targetExprs
+  | `(tactic| linearize $[$loc:location]?) => do
+    let location := match loc with
+    | none => Location.wildcard
+    | some loc => expandLocation loc
+    linearizeAtLocation location
+
+/-- The linearize! tactic that applies linearize then linarith -/
+syntax (name := linearizeBang) "linearize!" (location)? : tactic
+
+/-- Elaboration rule for linearize! tactic -/
+elab_rules : tactic
+  | `(tactic| linearize! $[$loc:location]?) => do
+    let location := match loc with
+    | none => Location.wildcard
+    | some loc => expandLocation loc
+    linearizeAtLocation location
+    -- Apply norm_num then linarith to all remaining goals
+    let initialGoals ← getGoals
+    let mut remainingGoals : List MVarId := []
+
+    for goal in initialGoals do
+      if ← goal.isAssigned then
+        -- Goal was already solved during linearization
+        continue
+      else
+        try
+          setGoals [goal]
+          -- First apply norm_num to clean up numerical expressions and casts in hypotheses and goal
+          evalTactic (← `(tactic| norm_num at *))
+          -- Then apply linarith on the cleaned up goal
+          evalTactic (← `(tactic| linarith))
+          -- Check if goal was solved
+          if ← goal.isAssigned then
+            continue  -- Goal was solved, don't add to remaining
+          else
+            remainingGoals := goal :: remainingGoals
+        catch _ =>
+          -- If norm_num + linarith fails on this goal, keep it
+          remainingGoals := goal :: remainingGoals
+
+    setGoals remainingGoals.reverse
 
 end Mathlib.Tactic.Linearize
