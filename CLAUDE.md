@@ -48,6 +48,7 @@ This is a mathematical library focused on floating-point arithmetic formalizatio
 - `lake build` often! It will give you important insight into whether your proof works.
   - Prefer `lake build` over the ide get diagnostics tool, because ide diagnostics can be outdated
 - Feel free to ask the user for assistance if a specific sub-part is troublesome, I may be able to help resolve those!
+- Orders of definitions matters in Lean!
 
 **Key Mathematical Functions:**
 - `Int.log b x`: Returns the greatest power of `b` such that `b^(Int.log b x) ≤ x`. Essential for floating-point exponent calculations without noncomputability issues.
