@@ -151,4 +151,36 @@ example : (0 : ℝ) ≤ (2 : ℝ)^(-3 : ℤ) := by
 example (n : ℤ) : (0 : ℝ) ≤ (3 : ℝ)^n := by
   linearize
 
+-- Test 24: Goal linearization using one_lt_zpow₀ for 1 < a^n pattern
+example : (1 : ℝ) < (2 : ℝ)^(5 : ℤ) := by
+  linearize
+
+-- Test 25: Goal linearization using one_lt_zpow₀ with variable exponent
+example (n : ℤ) (hn : 0 < n) : (1 : ℝ) < (3 : ℝ)^n := by
+  linearize
+
+-- Test 26: Goal linearization using one_lt_pow for 1 < a^n pattern with natural exponent
+example : (1 : ℝ) < (2 : ℝ)^5 := by
+  linearize
+
+-- Test 27: Goal linearization using one_lt_pow with variable natural exponent
+example (n : ℕ) (hn : n ≠ 0) : (1 : ℝ) < (3 : ℝ)^n := by
+  linearize
+
+-- Test 28: Goal linearization using one_le_zpow₀ for 1 ≤ a^n pattern with integer exponent
+example : (1 : ℝ) ≤ (2 : ℝ)^(5 : ℤ) := by
+  linearize
+
+-- Test 29: Goal linearization using one_le_zpow₀ with variable exponent
+example (n : ℤ) (hn : 0 ≤ n) : (1 : ℝ) ≤ (3 : ℝ)^n := by
+  linearize
+
+-- Test 30: Goal linearization using one_le_pow₀ for 1 ≤ a^n pattern with natural exponent
+example : (1 : ℝ) ≤ (2 : ℝ)^5 := by
+  linearize
+
+-- Test 31: Goal linearization using one_le_pow₀ with variable natural exponent
+example (n : ℕ) : (1 : ℝ) ≤ (3 : ℝ)^n := by
+  linearize
+
 end ZpowTests

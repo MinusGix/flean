@@ -124,6 +124,10 @@ def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
     let goalType ← g.getType
     trace[linearize] "Trying to auto-solve side goal: {goalType}"
 
+    -- Debug: print the app function and args
+    let (fn, args) := goalType.getAppFnArgs
+    trace[linearize] "Goal app function: {fn}, num args: {args.size}"
+
     -- Save the current goal state
     let savedGoals ← getGoals
 
@@ -259,6 +263,28 @@ def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
               setGoals savedGoals
               trace[linearize] "linarith also failed, keeping as side goal"
               return some g
+    | (``Ne, #[_, _lhs, _rhs]) =>
+      -- This is a ≠ goal, try assumption first
+      trace[linearize] "Detected ≠ pattern, trying assumption"
+      let result ← observing? g.assumption
+      match result with
+      | some _ => return none  -- Goal was solved
+      | none =>
+        -- assumption failed, try norm_num
+        trace[linearize] "assumption failed, trying norm_num"
+        try
+          setGoals [g]
+          evalTactic (← `(tactic| norm_num))
+          let remainingGoals ← getGoals
+          setGoals savedGoals
+          if remainingGoals.isEmpty then
+            return none  -- Goal was solved
+          else
+            return some g
+        catch _ =>
+          setGoals savedGoals
+          trace[linearize] "norm_num also failed, keeping as side goal"
+          return some g
     | _ =>
       -- Unknown goal type, try norm_num as a last resort
       trace[linearize] "Unknown side goal type, trying norm_num"
@@ -464,8 +490,71 @@ def linearizeGoal (g : MVarId) : TacticM (List MVarId) := do
     -- Check if this goal can be linearized using zpow comparison
     match goalType.getAppFnArgs with
     | (``LT.lt, #[_, _, lhs, rhs]) =>
+      -- Check for pattern 1 < a^n using one_lt_zpow₀
+      if isLiteralOne lhs then
+        if let some (b, _, exp, _) ← isNatCastZpow rhs then
+          -- Check the type of the exponent to decide between zpow and pow
+          let expType ← inferType exp
+          if (← isDefEq expType q(ℕ)) then
+            -- Natural exponent: use one_lt_pow'
+            trace[linearize] "Applying one_lt_pow for base {b}"
+
+            let ⟨_, R, _⟩ ← inferTypeQ' rhs
+
+            have expNat : Q(ℕ) := exp
+            have a : Q(ℕ) := mkNatLit b
+
+            -- Need instances for one_lt_pow₀
+            let _inst1 ← synthInstanceQ q(DivisionRing $R)
+            let _inst2 ← synthInstanceQ q(PartialOrder $R)
+            let _inst3 ← synthInstanceQ q(ZeroLEOneClass $R)
+            let _inst4 ← synthInstanceQ q(PosMulMono $R)
+
+            assumeInstancesCommute
+
+            let haGoal ← mkFreshExprMVarQ q(1 < ($a : $R)) MetavarKind.syntheticOpaque (`ha)
+            let hnGoal ← mkFreshExprMVarQ q($expNat ≠ 0) MetavarKind.syntheticOpaque (`hn)
+
+            have thmProof : Q((1 : $R) < ($a : $R) ^ $expNat) := q(one_lt_pow₀ $haGoal $hnGoal)
+
+            -- Apply the theorem to reduce the goal
+            g.assign thmProof
+
+            Term.synthesizeSyntheticMVarsUsingDefault
+
+            return [haGoal.mvarId!, hnGoal.mvarId!]
+          else
+            -- Integer exponent: use one_lt_zpow₀
+            trace[linearize] "Applying one_lt_zpow₀ for base {b}"
+
+            let ⟨_, R, _⟩ ← inferTypeQ' rhs
+
+            let expInt : Q(ℤ) ← asInt exp
+            have a : Q(ℕ) := mkNatLit b
+
+            -- Need instances for one_lt_zpow₀
+            let _inst1 ← synthInstanceQ q(DivisionRing $R)
+            let _inst2 ← synthInstanceQ q(PartialOrder $R)
+            let _inst3 ← synthInstanceQ q(PosMulReflectLT $R)
+            let _inst4 ← synthInstanceQ q(ZeroLEOneClass $R)
+
+            assumeInstancesCommute
+
+            let haGoal ← mkFreshExprMVarQ q(1 < ($a : $R)) MetavarKind.syntheticOpaque (`ha)
+            let hnGoal ← mkFreshExprMVarQ q(0 < $expInt) MetavarKind.syntheticOpaque (`hn)
+
+            have thmProof : Q((1 : $R) < ($a : $R) ^ $expInt) := q(one_lt_zpow₀ $haGoal $hnGoal)
+
+            -- Apply the theorem to reduce the goal
+            g.assign thmProof
+
+            Term.synthesizeSyntheticMVarsUsingDefault
+
+            return [haGoal.mvarId!, hnGoal.mvarId!]
+        else
+          throwError "linearize: goal linearization for 1 < ... only supports power expressions with natural base"
       -- Check for pattern 0 < a^n using zpow_pos
-      if isLiteralZero lhs then
+      else if isLiteralZero lhs then
         if let some (b, _, exp, _) ← isNatCastZpow rhs then
           trace[linearize] "Applying zpow_pos for base {b}"
 
@@ -536,32 +625,95 @@ def linearizeGoal (g : MVarId) : TacticM (List MVarId) := do
       if isLiteralZero lhs then
         if let some (b, _, exp, _) ← isNatCastZpow rhs then
           trace[linearize] "Applying zpow_nonneg for base {b}"
-          
+
           let ⟨_, R, _⟩ ← inferTypeQ' rhs
-          
+
           let exp : Q(ℤ) ← asInt exp
           have a : Q(ℕ) := mkNatLit b
-          
+
           -- Need instances for zpow_nonneg (same as zpow_pos)
           let _inst1 ← synthInstanceQ q(DivisionRing $R)
           let _inst2 ← synthInstanceQ q(PartialOrder $R)
           let _inst3 ← synthInstanceQ q(PosMulReflectLT $R)
           let _inst4 ← synthInstanceQ q(ZeroLEOneClass $R)
-          
+
           assumeInstancesCommute
-          
+
           let haGoal ← mkFreshExprMVarQ q(0 ≤ ($a : $R)) MetavarKind.syntheticOpaque (`ha)
-          
+
           have thmProof : Q((0 : $R) ≤ ($a : $R) ^ $exp) := q(zpow_nonneg $haGoal $exp)
-          
+
           -- Apply the theorem to reduce the goal
           g.assign thmProof
-          
+
           Term.synthesizeSyntheticMVarsUsingDefault
-          
+
           return [haGoal.mvarId!]
         else
           throwError "linearize: goal linearization for 0 ≤ ... only supports zpow expressions"
+      -- Check for pattern 1 ≤ a^n using one_le_zpow₀
+      else if isLiteralOne lhs then
+        if let some (b, _, exp, _) ← isNatCastZpow rhs then
+          -- Check the type of the exponent to decide between zpow and pow
+          let expType ← inferType exp
+          if (← isDefEq expType q(ℕ)) then
+            -- Natural exponent: use one_le_pow₀
+            trace[linearize] "Applying one_le_pow₀ for base {b}"
+
+            let ⟨_, R, _⟩ ← inferTypeQ' rhs
+
+            have expNat : Q(ℕ) := exp
+            have a : Q(ℕ) := mkNatLit b
+
+            -- Need instances for one_le_pow₀
+            -- let _inst1 ← synthInstanceQ q(MonoidWithZero $R)
+            let _inst1 ← synthInstanceQ q(DivisionRing $R)
+            let _inst2 ← synthInstanceQ q(Preorder $R)
+            let _inst3 ← synthInstanceQ q(ZeroLEOneClass $R)
+            let _inst4 ← synthInstanceQ q(PosMulMono $R)
+
+            assumeInstancesCommute
+
+            let haGoal ← mkFreshExprMVarQ q(1 ≤ ($a : $R)) MetavarKind.syntheticOpaque (`ha)
+
+            have thmProof : Q((1 : $R) ≤ ($a : $R) ^ $expNat) := q(one_le_pow₀ $haGoal)
+
+            -- Apply the theorem to reduce the goal
+            g.assign thmProof
+
+            Term.synthesizeSyntheticMVarsUsingDefault
+
+            return [haGoal.mvarId!]
+          else
+            -- Integer exponent: use one_le_zpow₀
+            trace[linearize] "Applying one_le_zpow₀ for base {b}"
+
+            let ⟨_, R, _⟩ ← inferTypeQ' rhs
+
+            let expInt : Q(ℤ) ← asInt exp
+            have a : Q(ℕ) := mkNatLit b
+
+            -- Need instances for one_le_zpow₀
+            let _inst1 ← synthInstanceQ q(DivisionRing $R)
+            let _inst2 ← synthInstanceQ q(PartialOrder $R)
+            let _inst3 ← synthInstanceQ q(ZeroLEOneClass $R)
+            let _inst4 ← synthInstanceQ q(PosMulReflectLT $R)
+
+            assumeInstancesCommute
+
+            let haGoal ← mkFreshExprMVarQ q(1 ≤ ($a : $R)) MetavarKind.syntheticOpaque (`ha)
+            let hnGoal ← mkFreshExprMVarQ q(0 ≤ $expInt) MetavarKind.syntheticOpaque (`hn)
+
+            have thmProof : Q((1 : $R) ≤ ($a : $R) ^ $expInt) := q(one_le_zpow₀ $haGoal $hnGoal)
+
+            -- Apply the theorem to reduce the goal
+            g.assign thmProof
+
+            Term.synthesizeSyntheticMVarsUsingDefault
+
+            return [haGoal.mvarId!, hnGoal.mvarId!]
+        else
+          throwError "linearize: goal linearization for 1 ≤ ... only supports power expressions with natural base"
       else if let some (b_rhs, _, exp_rhs, _) ← isNatCastZpow rhs then
         if let some (b_lhs, _, exp_lhs, _) ← isNatCastZpow lhs then
           -- Both sides are zpow with same base: a^m ≤ a^n ↔ m ≤ n (when 1 < a)
