@@ -320,12 +320,18 @@ def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
 
 /-- Check if an expression is of the form `(b : R)^z` where `b` is a natural number literal -/
 def isNatCastZpow (e : Expr) : MetaM (Option (ℕ × Expr × Expr × Expr)) := do
-  trace[linearize] "Checking if zpow: {e}"
-  match e.getAppFnArgs with
+  trace[linearize] "isNatCastZpow checking: {e}"
+  trace[linearize] "  Expression kind: {e.ctorName}"
+  let appInfo := e.getAppFnArgs
+  trace[linearize] "  getAppFnArgs function: {appInfo.1}"
+  trace[linearize] "  getAppFnArgs #args: {appInfo.2.size}"
+  match appInfo with
   | (``HPow.hPow, #[_, _, _, _, base, exponent]) =>
     trace[linearize] "Found HPow.hPow with base: {base}, exponent: {exponent}"
     -- Check if base is a natural number cast
-    match base.getAppFnArgs with
+    let baseAppInfo := base.getAppFnArgs
+    trace[linearize] "Base getAppFnArgs: {baseAppInfo}"
+    match baseAppInfo with
     | (``Nat.cast, #[R, _, natExpr]) =>
       trace[linearize] "Found Nat.cast base with natExpr: {natExpr}"
       -- Try to extract the natural number value
@@ -333,7 +339,7 @@ def isNatCastZpow (e : Expr) : MetaM (Option (ℕ × Expr × Expr × Expr)) := d
         trace[linearize] "Found natural number: {n}"
         return some (n, base, exponent, R)
       else
-        trace[linearize] "No natural number found"
+        trace[linearize] "No natural number found in Nat.cast"
         return none
     | (``OfNat.ofNat, #[R, natExpr, _]) =>
       trace[linearize] "Found OfNat.ofNat base with natExpr: {natExpr}"
@@ -342,11 +348,41 @@ def isNatCastZpow (e : Expr) : MetaM (Option (ℕ × Expr × Expr × Expr)) := d
         trace[linearize] "Found natural number: {n}"
         return some (n, base, exponent, R)
       else
-        trace[linearize] "No natural number found"
+        trace[linearize] "No natural number found in OfNat.ofNat"
         return none
-    | _ =>
-      trace[linearize] "Base is not Nat.cast: {base.getAppFnArgs}"
-      return none
+    | (fn, args) =>
+      trace[linearize] "Base is not Nat.cast or OfNat.ofNat, fn: {fn}, args: {args}"
+      -- Sometimes the base might be wrapped differently, let's try to unfold it
+      let baseUnfolded ← whnf base
+      trace[linearize] "Trying with unfolded base: {baseUnfolded}"
+      match baseUnfolded.getAppFnArgs with
+      | (``OfNat.ofNat, #[R, natExpr, _]) =>
+        trace[linearize] "Found OfNat.ofNat after unfolding with natExpr: {natExpr}"
+        if let some n := natExpr.rawNatLit? then
+          trace[linearize] "Found natural number after unfolding: {n}"
+          return some (n, base, exponent, R)
+        else
+          return none
+      | _ =>
+        -- Check if the unfolded expression is an application ending with a natural literal
+        -- This handles cases like `inst.toDivisionRing.toAddGroupWithOne.toNatCast.1 2`
+        let rec findNatLit (e : Expr) : Option ℕ :=
+          match e with
+          | .lit (.natVal n) => some n
+          | .app f a => findNatLit a
+          | _ => none
+        
+        if let some n := findNatLit baseUnfolded then
+          trace[linearize] "Found nat value in unfolded base: {n}"
+          if n ≥ 2 then  -- Only handle bases ≥ 2 for logarithms
+            -- Need to infer the target type R from the original expression
+            let baseType ← inferType base
+            return some (n, base, exponent, baseType)
+          else
+            return none
+        else
+          trace[linearize] "Still not recognized after unfolding: {baseUnfolded}"
+          return none
   | (``Pow.pow, #[_, _, _, base, exponent]) =>
     trace[linearize] "Found Pow.pow with base: {base}, exponent: {exponent}"
     -- Also handle Pow.pow for natural exponents
@@ -637,8 +673,11 @@ def linearizeLTGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
 
 /-- Linearize LE goals of various patterns involving zpow -/
 def linearizeLEGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
+  trace[linearize] "linearizeLEGoal: lhs={lhs}, rhs={rhs}"
+  
   -- Check for pattern 0 ≤ a^n using zpow_nonneg
   if isLiteralZero lhs then
+    trace[linearize] "  Pattern: 0 ≤ a^n"
     if let some (b, _, exp, _) ← isNatCastZpow rhs then
       trace[linearize] "Applying zpow_nonneg for base {b}"
 
