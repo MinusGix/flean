@@ -15,6 +15,9 @@ The `linearize` tactic transforms exponential inequalities of the form `a < (b :
 (where `b` is a natural number base, `z` is an integer exponent, and `R` is a linear ordered field)
 into logarithmic form using `Int.log` to make them suitable for `linarith`.
 
+By default, `linearize` acts only on the goal. To target hypotheses, use `linearize at ...`.
+To target all hypotheses and the goal, use `linearize at *`.
+
 ## Usage
 
 ```lean
@@ -1349,7 +1352,7 @@ syntax (name := linearize) "linearize" (location)? : tactic
 elab_rules : tactic
   | `(tactic| linearize $[$loc:location]?) => do
     let location := match loc with
-    | none => Location.wildcard
+    | none => Location.targets #[] true
     | some loc => expandLocation loc
     linearizeAtLocation location
 

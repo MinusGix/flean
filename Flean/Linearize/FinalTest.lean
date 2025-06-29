@@ -58,7 +58,7 @@ section AllHypothesesTest
 example (a b : ℝ) (ha : 0 < a) (hb : 0 < b)
         (h1 : a < (2 : ℝ)^100) (h2 : b ≤ (2 : ℝ)^200) :
         Int.log 2 a < 100 ∧ Int.log 2 b ≤ 200 := by
-  linearize
+  linearize at h1 h2
   trivial
 
 end AllHypothesesTest
