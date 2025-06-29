@@ -5,6 +5,8 @@ import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.FieldSimp
 import Mathlib.Data.Real.Basic
 import Mathlib.Tactic.Ring
+import Flean.Linearize.Linearize
+import Lean.Elab.Tactic.Location
 
 @[ext]
 structure Radix where
@@ -413,3 +415,23 @@ def max_exp_def [StdFloatFormat] : FloatFormat.max_exp = 2 ^ StdFloatFormat.exp_
 def std_exp_range_def [StdFloatFormat] : FloatFormat.min_exp = 1 - FloatFormat.max_exp := StdFloatFormat.st
 
 end StdFloatFormat
+
+open Lean Elab Meta Tactic Parser.Tactic in
+/-- `flinearize!` is a specialized version of `linearize!` that includes common FloatFormat lemmas.
+It is equivalent to `linearize! [FloatFormat.valid_prec, FloatFormat.exp_order,
+FloatFormat.max_exp_pos, FloatFormat.min_exp_nonpos]` -/
+syntax (name := flinearizeBang) "flinearize!" (&" only")? (" [" term,* "]")? (location)? : tactic
+
+open Lean Elab Meta Tactic Parser.Tactic in
+elab_rules : tactic
+  | `(tactic| flinearize! $[only%$o]? $[ [ $args,* ] ]? $[$loc:location]?) => do
+    -- Call linearize! with the default FloatFormat lemmas plus any additional arguments
+    match o, args with
+    | some _, some args =>
+      evalTactic (← `(tactic| linearize! only [FloatFormat.valid_prec, FloatFormat.exp_order, FloatFormat.max_exp_pos, FloatFormat.min_exp_nonpos, FloatFormat.prec_pred_pow_le, $args,*] $[$loc:location]?))
+    | some _, none =>
+      evalTactic (← `(tactic| linearize! only [FloatFormat.valid_prec, FloatFormat.exp_order, FloatFormat.max_exp_pos, FloatFormat.min_exp_nonpos, FloatFormat.prec_pred_pow_le] $[$loc:location]?))
+    | none, some args =>
+      evalTactic (← `(tactic| linearize! [FloatFormat.valid_prec, FloatFormat.exp_order, FloatFormat.max_exp_pos, FloatFormat.min_exp_nonpos, FloatFormat.prec_pred_pow_le, $args,*] $[$loc:location]?))
+    | none, none =>
+      evalTactic (← `(tactic| linearize! [FloatFormat.valid_prec, FloatFormat.exp_order, FloatFormat.max_exp_pos, FloatFormat.min_exp_nonpos, FloatFormat.prec_pred_pow_le] $[$loc:location]?))

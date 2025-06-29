@@ -6,11 +6,13 @@ import Mathlib.Data.Real.Basic
 import Mathlib.Analysis.SpecialFunctions.Log.Base
 import Mathlib.Analysis.SpecialFunctions.Pow.Real
 import Mathlib.Data.Real.Irrational
+import Mathlib.Tactic.Polyrith
 
 import Flean.Basic
 import Flean.Ulp
 import Flean.Ufp
 import Flean.RoundingImpl
+import Flean.Linearize.Linearize
 
 section Rounding
 
@@ -108,9 +110,7 @@ theorem roundDown_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs
     -- smallestPosSubnormal = 2^(min_exp - prec + 1) < 2^min_exp
     have : FiniteFp.smallestPosSubnormal.toVal < (2 : R) ^ FloatFormat.min_exp := by
       rw [FiniteFp.smallestPosSubnormal_toVal]
-      apply zpow_lt_zpow_right₀ (by norm_num : (1 : R) < 2)
-      have := FloatFormat.valid_prec
-      omega
+      flinearize!
     exact lt_trans hs this
   simp [h_sub]
   unfold roundSubnormalDown
@@ -137,13 +137,7 @@ theorem roundDown_gt_largestFiniteFloat [FloatFormat] (x : R) (hn : 0 < x) (hs :
   unfold findPredecessorPos
   -- Since x ≥ 2^(max_exp + 1), we're beyond the normal range
   have h_sub : ¬(x < (2 : R) ^ FloatFormat.min_exp) := by
-    have h1 : (0 : R) < (2 : R) ^ FloatFormat.min_exp := zpow_pos (by norm_num) _
-    have h2 : (2 : R) ^ FloatFormat.min_exp ≤ (2 : R) ^ (FloatFormat.max_exp + 1) := by
-      apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
-      have := FloatFormat.exp_order_le
-      have := FloatFormat.max_exp_pos
-      have := FloatFormat.min_exp_nonpos
-      omega
+    have h2 : (2 : R) ^ FloatFormat.min_exp ≤ (2 : R) ^ (FloatFormat.max_exp + 1) := by flinearize!
     linarith
   simp [h_sub]
   -- The second condition is also false since x ≥ 2^(max_exp + 1)
@@ -207,32 +201,27 @@ theorem roundUp_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs :
   unfold findSuccessorPos
   -- We need to show x < 2^min_exp to enter the subnormal case
   -- smallestPosSubnormal = 2^(min_exp - prec + 1) < 2^min_exp
-  have h_sub : x < (2 : R) ^ FloatFormat.min_exp := by
-    exact lt_trans hs FiniteFp.smallestPosSubnormal_lt_minExp
-  simp [h_sub]
+  have h_sub : x < (2 : R) ^ FloatFormat.min_exp := lt_trans hs FiniteFp.smallestPosSubnormal_lt_minExp
+  simp only [h_sub, ↓reduceDIte]
   unfold roundSubnormalUp
   -- The ULP in subnormal range is 2^(min_exp - prec + 1) = smallestPosSubnormal
   -- So ⌈x / smallestPosSubnormal⌉ = 1 since 0 < x < smallestPosSubnormal
+  rw [FiniteFp.smallestPosSubnormal_toVal] at hs
   have h_ceil : ⌈x / FiniteFp.smallestPosSubnormal.toVal⌉ = 1 := by
-    rw [Int.ceil_eq_iff]
+    rw [Int.ceil_eq_iff, FiniteFp.smallestPosSubnormal_toVal]
     constructor
     · norm_num
       rw [div_pos_iff]
       left
       constructor
       · exact hn
-      · rw [FiniteFp.smallestPosSubnormal_toVal]
-        exact zpow_pos (by norm_num) _
+      · linearize
     · norm_cast
-      exact div_le_one_of_le₀ (le_of_lt hs) (by
-        rw [FiniteFp.smallestPosSubnormal_toVal]
-        exact le_of_lt (zpow_pos (by norm_num) _))
+      exact div_le_one_of_le₀ (le_of_lt hs) (by linearize)
   rw [FiniteFp.smallestPosSubnormal_toVal] at h_ceil
   simp [h_ceil]
   -- Show k = 1 and 1 < 2^(prec-1), so go to else branch
-  have h_k_lt : 1 < (2 : ℤ)^(FloatFormat.prec - 1) := by
-    have := FloatFormat.prec_pred_pow_le
-    linarith
+  have h_k_lt : 1 < (2 : ℤ)^(FloatFormat.prec - 1) := by flinearize!
   simp only [h_k_lt.not_ge] -- for some reason need the opposite to recognize it
   rw [dite_false, FiniteFp.smallestPosSubnormal]
 
@@ -262,11 +251,12 @@ lemma roundSubnormalUp_ge [FloatFormat] (x : R) (hsr : isSubnormalRange x) (f : 
     -- We know k = ⌈x / 2^(min_exp - prec + 1)⌉ and k > 0 in subnormal range
     -- So k.natAbs = k and k ≥ x / 2^(min_exp - prec + 1)
     -- Therefore k * 2^(min_exp - prec + 1) ≥ x
+    set_option trace.linearize true in
     have k_pos : 0 < k := by
       unfold k
       apply Int.ceil_pos.mpr
       apply div_pos hsr.left
-      apply zpow_pos (by norm_num)
+      flinearize!
     have h_natAbs : (k.natAbs : R) = (k : R) := by
       have : |k| = k := abs_of_pos k_pos
       convert this.symm
@@ -277,8 +267,7 @@ lemma roundSubnormalUp_ge [FloatFormat] (x : R) (hsr : isSubnormalRange x) (f : 
         rw [Int.cast_natAbs]
         rw [abs_of_pos k_pos]
     rw [h_natAbs]
-    have h_pos : (0 : R) < (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by
-      apply zpow_pos (by norm_num)
+    have h_pos : (0 : R) < (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by linearize
     -- x / 2^(min_exp - prec + 1) ≤ k
     -- So x ≤ k * 2^(min_exp - prec + 1)
     calc x = x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) *
