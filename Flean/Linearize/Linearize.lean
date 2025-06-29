@@ -640,31 +640,47 @@ def linearizeLTGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
   else if isLiteralZero lhs then
     trace[linearize] "  Pattern: 0 < a^n"
     if let some (b, _, exp, _) ← isNatCastZpow rhs then
-      trace[linearize] "Applying zpow_pos for base {b}"
+      let expType ← inferType exp
+      if (← isDefEq expType q(ℕ)) then
+        -- Natural exponent: use pow_pos
+        trace[linearize] "Applying pow_pos for base {b}"
+        let ⟨_, R, _⟩ ← inferTypeQ' rhs
+        have expNat : Q(ℕ) := exp
+        have a : Q(ℕ) := mkNatLit b
 
-      let ⟨_, R, _⟩ ← inferTypeQ' rhs
+        -- Need instances for pow_pos
+        let _inst1 ← synthInstanceQ q(MonoidWithZero $R)
+        let _inst2 ← synthInstanceQ q(PartialOrder $R)
+        let _inst3 ← synthInstanceQ q(ZeroLEOneClass $R)
+        let _inst4 ← synthInstanceQ q(PosMulStrictMono $R)
+        let _inst5 ← synthInstanceQ q(NatCast $R)
 
-      let exp : Q(ℤ) ← asInt exp
-      have a : Q(ℕ) := mkNatLit b
+        assumeInstancesCommute
 
-      -- Need instances for zpow_pos
-      let _inst1 ← synthInstanceQ q(DivisionRing $R)
-      let _inst2 ← synthInstanceQ q(PartialOrder $R)
-      let _inst3 ← synthInstanceQ q(PosMulReflectLT $R)
-      let _inst4 ← synthInstanceQ q(ZeroLEOneClass $R)
+        let haGoal ← mkFreshExprMVarQ q(0 < ($a : $R)) MetavarKind.syntheticOpaque (`ha)
+        have thmProof : Q((0 : $R) < ($a : $R) ^ $expNat) := q(pow_pos $haGoal $expNat)
+        g.assign thmProof
+        Term.synthesizeSyntheticMVarsUsingDefault
+        return [haGoal.mvarId!]
+      else
+        -- Integer exponent: use zpow_pos
+        trace[linearize] "Applying zpow_pos for base {b}"
+        let ⟨_, R, _⟩ ← inferTypeQ' rhs
+        let expInt : Q(ℤ) ← asInt exp
+        have a : Q(ℕ) := mkNatLit b
 
-      assumeInstancesCommute
+        -- Need instances for zpow_pos
+        let _inst1 ← synthInstanceQ q(DivisionRing $R)
+        let _inst2 ← synthInstanceQ q(PartialOrder $R)
+        let _inst3 ← synthInstanceQ q(PosMulReflectLT $R)
+        let _inst4 ← synthInstanceQ q(ZeroLEOneClass $R)
+        assumeInstancesCommute
 
-      let haGoal ← mkFreshExprMVarQ q(0 < ($a : $R)) MetavarKind.syntheticOpaque (`ha)
-
-      have thmProof : Q((0 : $R) < ($a : $R) ^ $exp) := q(zpow_pos $haGoal $exp)
-
-      -- Apply the theorem to reduce the goal
-      g.assign thmProof
-
-      Term.synthesizeSyntheticMVarsUsingDefault
-
-      return [haGoal.mvarId!]
+        let haGoal ← mkFreshExprMVarQ q(0 < ($a : $R)) MetavarKind.syntheticOpaque (`ha)
+        have thmProof : Q((0 : $R) < ($a : $R) ^ $expInt) := q(zpow_pos $haGoal $expInt)
+        g.assign thmProof
+        Term.synthesizeSyntheticMVarsUsingDefault
+        return [haGoal.mvarId!]
     else
       throwError "linearize: goal linearization for 0 < ... only supports zpow expressions"
   else if let some (b_rhs, _, exp_rhs, _) ← isNatCastZpow rhs then
@@ -715,33 +731,48 @@ def linearizeLEGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
   if isLiteralZero lhs then
     trace[linearize] "  Pattern: 0 ≤ a^n"
     if let some (b, _, exp, _) ← isNatCastZpow rhs then
-      trace[linearize] "Applying zpow_nonneg for base {b}"
+      let expType ← inferType exp
+      if (← isDefEq expType q(ℕ)) then
+        -- Natural exponent: use pow_nonneg
+        trace[linearize] "Applying pow_nonneg for base {b}"
+        let ⟨_, R, _⟩ ← inferTypeQ' rhs
+        have expNat : Q(ℕ) := exp
+        have a : Q(ℕ) := mkNatLit b
 
-      let ⟨_, R, _⟩ ← inferTypeQ' rhs
+        -- Need instances for pow_nonneg
+        let _inst1 ← synthInstanceQ q(MonoidWithZero $R)
+        let _inst2 ← synthInstanceQ q(Preorder $R)
+        let _inst3 ← synthInstanceQ q(ZeroLEOneClass $R)
+        let _inst4 ← synthInstanceQ q(PosMulMono $R)
+        let _inst5 ← synthInstanceQ q(NatCast $R)
+        assumeInstancesCommute
 
-      let exp : Q(ℤ) ← asInt exp
-      have a : Q(ℕ) := mkNatLit b
+        let haGoal ← mkFreshExprMVarQ q(0 ≤ ($a : $R)) MetavarKind.syntheticOpaque (`ha)
+        have thmProof : Q((0 : $R) ≤ ($a : $R) ^ $expNat) := q(pow_nonneg $haGoal $expNat)
+        g.assign thmProof
+        Term.synthesizeSyntheticMVarsUsingDefault
+        return [haGoal.mvarId!]
+      else
+        -- Integer exponent: use zpow_nonneg
+        trace[linearize] "Applying zpow_nonneg for base {b}"
+        let ⟨_, R, _⟩ ← inferTypeQ' rhs
+        let expInt : Q(ℤ) ← asInt exp
+        have a : Q(ℕ) := mkNatLit b
 
-      -- Need instances for zpow_nonneg (same as zpow_pos)
-      let _inst1 ← synthInstanceQ q(DivisionRing $R)
-      let _inst2 ← synthInstanceQ q(PartialOrder $R)
-      let _inst3 ← synthInstanceQ q(PosMulReflectLT $R)
-      let _inst4 ← synthInstanceQ q(ZeroLEOneClass $R)
+        -- Need instances for zpow_nonneg
+        let _inst1 ← synthInstanceQ q(DivisionRing $R)
+        let _inst2 ← synthInstanceQ q(PartialOrder $R)
+        let _inst3 ← synthInstanceQ q(PosMulReflectLT $R)
+        let _inst4 ← synthInstanceQ q(ZeroLEOneClass $R)
+        assumeInstancesCommute
 
-      assumeInstancesCommute
-
-      let haGoal ← mkFreshExprMVarQ q(0 ≤ ($a : $R)) MetavarKind.syntheticOpaque (`ha)
-
-      have thmProof : Q((0 : $R) ≤ ($a : $R) ^ $exp) := q(zpow_nonneg $haGoal $exp)
-
-      -- Apply the theorem to reduce the goal
-      g.assign thmProof
-
-      Term.synthesizeSyntheticMVarsUsingDefault
-
-      return [haGoal.mvarId!]
+        let haGoal ← mkFreshExprMVarQ q(0 ≤ ($a : $R)) MetavarKind.syntheticOpaque (`ha)
+        have thmProof : Q((0 : $R) ≤ ($a : $R) ^ $expInt) := q(zpow_nonneg $haGoal $expInt)
+        g.assign thmProof
+        Term.synthesizeSyntheticMVarsUsingDefault
+        return [haGoal.mvarId!]
     else
-      throwError "linearize: goal linearization for 0 ≤ ... only supports zpow expressions"
+      throwError "linearize: goal linearization for 0 ≤ ... only supports power expressions"
   -- Check for pattern 1 ≤ a^n using one_le_zpow₀
   else if isLiteralOne lhs then
     if let some (b, _, exp, _) ← isNatCastZpow rhs then
