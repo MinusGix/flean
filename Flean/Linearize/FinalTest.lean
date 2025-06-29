@@ -6,7 +6,7 @@ open Mathlib.Tactic.Linearize
 
 section BasicTests
 
--- set_option trace.linearize true
+-- -- set_option trace.linearize true
 -- set_option diagnostics true
 
 -- Test 1: Basic < transformation (lhs < base^exp)
@@ -81,7 +81,7 @@ end RealWorldExample
 
 section ZpowGoalTests
 
--- set_option trace.linearize true
+-- -- set_option trace.linearize true
 -- set_option diagnostics true
 -- Test 9: Goal linearization - 2^m < 2^n reduces to m < n
 example (m n : ℤ) (h : m < n) : (2 : ℝ)^m < (2 : ℝ)^n := by
@@ -126,6 +126,8 @@ example (a : ℝ) (ha : 0 < a) (h : a < (2 : ℝ)^5) (extra : Int.log 2 a ≥ 2)
 end LinearizeBangTests
 
 section ZpowTests
+
+-- set_option trace.linearize true
 
 -- Test 18: Goal linearization using zpow_pos for 0 < a^n pattern
 example : (0 : ℝ) < (2 : ℝ)^5 := by
@@ -184,3 +186,11 @@ example (n : ℕ) : (1 : ℝ) ≤ (3 : ℝ)^n := by
   linearize
 
 end ZpowTests
+
+section NeZpowTests
+
+-- Test 32: Goal linearization for 2^e ≠ 0
+example (e : ℤ) : (2 : ℝ)^e ≠ 0 := by
+  linearize
+
+end NeZpowTests

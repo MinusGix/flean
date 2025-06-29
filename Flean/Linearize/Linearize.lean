@@ -281,8 +281,36 @@ def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
       match result with
       | some _ => return none  -- Goal was solved
       | none =>
-        -- assumption failed, try norm_num
-        trace[linearize] "assumption failed, trying norm_num"
+        -- Try to solve using zpow_ne_zero for goals of the form a^n ≠ 0
+        let zpow_solved ← observing? do
+          let gs ← g.apply (← mkConstWithFreshMVarLevels ``zpow_ne_zero)
+          setGoals gs
+          evalTactic (← `(tactic| first | norm_num | assumption))
+          let remainingGoals ← getGoals
+          if not remainingGoals.isEmpty then
+            throwError "norm_num failed to solve zpow_ne_zero side goal"
+
+        if zpow_solved.isSome then
+          trace[linearize] "Solved with zpow_ne_zero"
+          return none
+
+        -- if that fails, try to solve `0 ≠ a^n` by applying symmetry first
+        let zpow_symm_solved ← observing? do
+          let [g'] ← g.apply (← mkConstWithFreshMVarLevels ``Ne.symm) | throwError "Ne.symm produced more/less than one goal"
+          setGoals [g']
+          let gs ← g'.apply (← mkConstWithFreshMVarLevels ``zpow_ne_zero)
+          setGoals gs
+          evalTactic (← `(tactic| first | norm_num | assumption))
+          let remainingGoals ← getGoals
+          if not remainingGoals.isEmpty then
+            throwError "norm_num failed to solve zpow_ne_zero side goal"
+
+        if zpow_symm_solved.isSome then
+            trace[linearize] "Solved with Ne.symm and zpow_ne_zero"
+            return none
+
+        -- if all else fails, try norm_num on the original goal
+        trace[linearize] "zpow_ne_zero failed, trying norm_num on original goal"
         let savedGoals ← getGoals
         try
           setGoals [g]
@@ -322,7 +350,15 @@ def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
 def isNatCastZpow (e : Expr) : MetaM (Option (ℕ × Expr × Expr × Expr)) := do
   trace[linearize] "isNatCastZpow checking: {e}"
   trace[linearize] "  Expression kind: {e.ctorName}"
-  let appInfo := e.getAppFnArgs
+
+  -- If the expression is a metavariable, try to instantiate it first
+  let e' ← if e.isMVar then
+    trace[linearize] "  Expression is mvar, attempting to instantiate"
+    instantiateMVars e
+  else
+    pure e
+
+  let appInfo := e'.getAppFnArgs
   trace[linearize] "  getAppFnArgs function: {appInfo.1}"
   trace[linearize] "  getAppFnArgs #args: {appInfo.2.size}"
   match appInfo with
@@ -371,7 +407,7 @@ def isNatCastZpow (e : Expr) : MetaM (Option (ℕ × Expr × Expr × Expr)) := d
           | .lit (.natVal n) => some n
           | .app f a => findNatLit a
           | _ => none
-        
+
         if let some n := findNatLit baseUnfolded then
           trace[linearize] "Found nat value in unfolded base: {n}"
           if n ≥ 2 then  -- Only handle bases ≥ 2 for logarithms
@@ -445,7 +481,7 @@ def transformZpowComparison (e : Expr) : MetaM (Option Q(Prop)) := do
 
     if let some (b_rhs, _, exp_rhs, _) ← isNatCastZpow rhs then
       if let some (b_lhs, _, exp_lhs, _) ← isNatCastZpow lhs then
-        -- Check if both sides have the same base: a^m < a^n � m < n (when 1 < a)
+        -- Check if both sides have the same base: a^m < a^n  m < n (when 1 < a)
         if b_lhs == b_rhs then
           let intExpLhs ← asInt exp_lhs
           let intExpRhs ← asInt exp_rhs
@@ -456,7 +492,7 @@ def transformZpowComparison (e : Expr) : MetaM (Option Q(Prop)) := do
         -- Skip linearization if lhs is 0 (since Int.log b 0 doesn't make sense)
         if isLiteralZero lhs then
           return none
-        -- lhs < (b : R)^exp � Int.log b lhs < exp (when 0 < lhs, 1 < b)
+        -- lhs < (b : R)^exp  Int.log b lhs < exp (when 0 < lhs, 1 < b)
         have b : Q(ℕ) := mkNatLit b_rhs
         have logExpr : Q(ℤ) := q(Int.log $b $lhs)
         let intExp ← asInt exp_rhs
@@ -465,7 +501,7 @@ def transformZpowComparison (e : Expr) : MetaM (Option Q(Prop)) := do
       -- Skip linearization if rhs is 0 (since Int.log b 0 doesn't make sense)
       if isLiteralZero rhs then
         return none
-      -- (b : R)^exp < rhs � exp < Int.log b rhs + 1 (when 0 < rhs, 1 < b)
+      -- (b : R)^exp < rhs  exp < Int.log b rhs + 1 (when 0 < rhs, 1 < b)
       have b : Q(ℕ) := mkNatLit b
       have plusOne : Q(ℤ) := q(Int.log $b $rhs + 1)
       let intExp ← asInt exp
@@ -674,7 +710,7 @@ def linearizeLTGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
 /-- Linearize LE goals of various patterns involving zpow -/
 def linearizeLEGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
   trace[linearize] "linearizeLEGoal: lhs={lhs}, rhs={rhs}"
-  
+
   -- Check for pattern 0 ≤ a^n using zpow_nonneg
   if isLiteralZero lhs then
     trace[linearize] "  Pattern: 0 ≤ a^n"
@@ -809,6 +845,43 @@ def linearizeLEGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
   else
     throwError "linearize: goal linearization only supports same-base zpow comparisons"
 
+/-- Linearize NE goals of the form `a^n ≠ 0` -/
+def linearizeNEGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
+  trace[linearize] "linearizeNEGoal: lhs={lhs}, rhs={rhs}"
+
+  -- Helper function to handle the core logic of applying zpow_ne_zero
+  let handle_zpow_ne_zero (zpow_expr : Expr) (g : MVarId) : TacticM (List MVarId) := do
+    if let some (b, _, exp, _) ← isNatCastZpow zpow_expr then
+      trace[linearize] "Applying zpow_ne_zero for base {b}"
+      let ⟨_, R, _⟩ ← inferTypeQ' zpow_expr
+      let exp : Q(ℤ) ← asInt exp
+      have a : Q(ℕ) := mkNatLit b
+
+      -- Need instance for zpow_ne_zero
+      -- let _inst1 ← synthInstanceQ q(GroupWithZero $R)
+      let _inst1 ← synthInstanceQ q(DivisionRing $R)
+      let _inst2 ← synthInstanceQ q(LinearOrder $R)
+      assumeInstancesCommute
+
+      let haGoal ← mkFreshExprMVarQ q(($a : $R) ≠ 0) MetavarKind.syntheticOpaque (`ha)
+      have thmProof : Q(($a : $R) ^ $exp ≠ 0) := q(zpow_ne_zero $exp $haGoal)
+      g.assign thmProof
+      Term.synthesizeSyntheticMVarsUsingDefault
+      return [haGoal.mvarId!]
+    else
+      throwError "linearize: goal linearization for ... ≠ 0 only supports zpow expressions"
+
+  -- Case 1: a^n ≠ 0
+  if isLiteralZero rhs then
+    handle_zpow_ne_zero lhs g
+  -- Case 2: 0 ≠ a^n
+  else if isLiteralZero lhs then
+    -- Apply symmetry to turn `0 ≠ a^n` into `a^n ≠ 0`
+    let [g'] ← g.apply (← mkConstWithFreshMVarLevels ``Ne.symm) | throwError "Ne.symm produced more/less than one goal"
+    handle_zpow_ne_zero rhs g'
+  else
+    throwError "linearize: goal linearization for ≠ only supports comparisons with 0"
+
 /-- Apply linearization to a goal of the form a^m < a^n using zpow_lt_zpow_right₀ -/
 def linearizeGoal (g : MVarId) : TacticM (List MVarId) := do
   g.withContext do
@@ -849,6 +922,9 @@ def linearizeGoal (g : MVarId) : TacticM (List MVarId) := do
     | (``LE.le, #[_, _, lhs, rhs]) =>
       trace[linearize] "  Dispatching to linearizeLEGoal (original 4-arg pattern)"
       linearizeLEGoal g lhs rhs
+    | (``Ne, #[_, lhs, rhs]) =>
+      trace[linearize] "  Dispatching to linearizeNEGoal (original 3-arg pattern)"
+      linearizeNEGoal g lhs rhs
     | _ =>
       -- If original doesn't work, try the reduced version (for mvar cases)
       trace[linearize] "  Original pattern didn't match, trying reduced goal"
@@ -859,6 +935,9 @@ def linearizeGoal (g : MVarId) : TacticM (List MVarId) := do
       | (``LE.le, #[_, _, lhs, rhs]) =>
         trace[linearize] "  Dispatching to linearizeLEGoal (reduced 4-arg pattern)"
         linearizeLEGoal g lhs rhs
+      | (``Ne, #[_, lhs, rhs]) =>
+        trace[linearize] "  Dispatching to linearizeNEGoal (reduced 3-arg pattern)"
+        linearizeNEGoal g lhs rhs
       | (fn, #[lhs, rhs]) =>
         -- Check if this is a 2-argument LT or LE pattern
         trace[linearize] "  Checking reduced 2-arg pattern, fn={fn}"
@@ -867,7 +946,7 @@ def linearizeGoal (g : MVarId) : TacticM (List MVarId) := do
           let actualFn := goalTypeReduced.getAppFn
           trace[linearize] "  Actual function from reduced goal: {actualFn}, constName: {actualFn.constName?}"
           trace[linearize] "  Function kind: {actualFn.ctorName}"
-          
+
           -- Check if it's a direct LT.lt or LE.le constant
           if actualFn.constName? == some ``LT.lt then
             trace[linearize] "  Dispatching to linearizeLTGoal (reduced 2-arg LT pattern)"
@@ -900,7 +979,7 @@ def linearizeGoal (g : MVarId) : TacticM (List MVarId) := do
       | _ =>
         trace[linearize] "  Goal pattern not recognized - wrong number of args"
         trace[linearize] "  Original args count: {args.size}, Reduced args count: {argsReduced.size}"
-        throwError "linearize: goal linearization only supports < and ≤ comparisons"
+        throwError "linearize: goal linearization only supports <, ≤, and ≠ comparisons"
 
 /-- Linearize LT hypotheses of various patterns involving zpow -/
 def linearizeLTHyp (h : FVarId) (g : MVarId) (d : LocalDecl) (transformed : Q(Prop)) (lhs rhs : Expr) : TacticM (List MVarId) := do
