@@ -6,3 +6,5 @@ import «Flean».FloatFormat
 import «Flean».Encoding
 import «Flean».Rounding
 import «Flean».Ulp
+import «Flean».Linearize.Linearize
+import «Flean».Gsplit.Gsplit
