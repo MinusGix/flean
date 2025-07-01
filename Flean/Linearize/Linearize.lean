@@ -30,7 +30,8 @@ example (a : ℝ) (h : 1 < a) (h2 : a < (2 : ℝ)^100) : a < (2 : ℝ)^200 := by
   linearize! at h2  -- transforms and applies linarith automatically
 
 -- linearize! also supports passing additional lemmas to linarith
-example (a : ℝ) (h : 1 < a) (h2 : a < (2 : ℝ)^5) (extra : Int.log 2 a ≥ 2) : Int.log 2 a ≤ 4 := by
+example (a : ℝ) (h : 1 < a) (h2 : a < (2 : ℝ)^5) (extra : Int.log 2 a ≥ 2) :
+    Int.log 2 a ≤ 4 := by
   linearize! [extra] at h2  -- passes extra to linarith
 
 -- linearize! will fall back to omega if linarith fails (useful for integer reasoning)
@@ -80,6 +81,21 @@ def asInt (e : Expr) : MetaM Q(ℤ) := do
     have e : Q(ℕ) := e
     pure q(Int.ofNat $e)
   else
+    pure e
+
+def asR {u : Level} (R : Q(Type u)) (e : Expr) (inst : Q(NatCast $R)) : MetaM Q($R) := do
+  let eType ← inferType e
+  if eType.isAppOf ``Nat then
+    have e : Q(ℕ) := e
+    match e with
+    | .lit (.natVal n) =>
+      -- @OfNat.ofNat ℝ 2 instOfNatAtLeastTwo : ℝ
+      let inst : Q(OfNat $R $n) := ← synthInstanceQ (q(OfNat $R $n))
+      pure q(@OfNat.ofNat $R $n $inst)
+    | _ =>
+      throwError "Expected a natural number literal"
+  else
+    -- TODO: smarter casting
     pure e
 
 /-- Check if an expression represents the literal 1, unwrapping various coercion layers -/
@@ -733,7 +749,7 @@ def linearizeLEGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
   -- Check for pattern 0 ≤ a^n using zpow_nonneg
   if isLiteralZero lhs then
     trace[linearize] "  Pattern: 0 ≤ a^n"
-    if let some (b, _, exp, _) ← isNatCastZpow rhs then
+    if let some (b, bExpr, exp, _) ← isNatCastZpow rhs then
       let expType ← inferType exp
       if (← isDefEq expType q(ℕ)) then
         -- Natural exponent: use pow_nonneg
@@ -759,18 +775,33 @@ def linearizeLEGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
         -- Integer exponent: use zpow_nonneg
         trace[linearize] "Applying zpow_nonneg for base {b}"
         let ⟨_, R, _⟩ ← inferTypeQ' rhs
-        let expInt : Q(ℤ) ← asInt exp
-        have a : Q(ℕ) := mkNatLit b
-
-        -- Need instances for zpow_nonneg
-        let _inst1 ← synthInstanceQ q(DivisionRing $R)
+        let _inst1 ← synthInstanceQ q(GroupWithZero $R)
         let _inst2 ← synthInstanceQ q(PartialOrder $R)
         let _inst3 ← synthInstanceQ q(PosMulReflectLT $R)
         let _inst4 ← synthInstanceQ q(ZeroLEOneClass $R)
+        let _inst5 ← synthInstanceQ q(NatCast $R)
         assumeInstancesCommute
 
-        let haGoal ← mkFreshExprMVarQ q(0 ≤ ($a : $R)) MetavarKind.syntheticOpaque (`ha)
-        have thmProof : Q((0 : $R) ≤ ($a : $R) ^ $expInt) := q(zpow_nonneg $haGoal $expInt)
+
+        let expInt : Q(ℤ) ← asInt exp
+        -- have a : Q(ℕ) := mkNatLit b
+        have bExpr : Q($R) := ← asR R bExpr _inst5
+
+        trace[linearize] "b={b}"
+        trace[linearize] "exp={exp}"
+        trace[linearize] "R={R}"
+        trace[linearize] "expInt={expInt}"
+        trace[linearize] "bExpr={bExpr}"
+
+        -- Need instances for zpow_nonneg
+        -- let _inst1 ← synthInstanceQ q(DivisionRing $R)
+        -- let _inst2 ← synthInstanceQ q(LinearOrder $R)
+        -- let _inst3 ← synthInstanceQ q(PosMulReflectLE $R)
+        -- let _inst4 ← synthInstanceQ q(ZeroLEOneClass $R)
+        -- [GroupWithZero G₀] [PartialOrder G₀] [PosMulReflectLT G₀] {a : G₀} [ZeroLEOneClass G₀]
+
+        let haGoal ← mkFreshExprMVarQ q(0 ≤ $bExpr) MetavarKind.syntheticOpaque (`ha)
+        have thmProof : Q(0 ≤ $bExpr ^ $expInt) := q(zpow_nonneg $haGoal $expInt)
         g.assign thmProof
         Term.synthesizeSyntheticMVarsUsingDefault
         return [haGoal.mvarId!]
