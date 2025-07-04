@@ -221,4 +221,18 @@ theorem findSuccessor_neg_eq (x : R) (hneg : x < 0) :
 
 end findSuccessor
 
+
+section Misc
+
+/-- Check if a value is exactly at the midpoint between two consecutive floating-point values -/
+def isMidpoint [FloatFormat] (x : R) : Prop :=
+  let pred := findPredecessor x
+  let succ := findSuccessor x
+  match pred, succ with
+  | Fp.finite p, Fp.finite s => x = (p.toVal + s.toVal) / 2
+  | _, _ => False
+
+end Misc
+
+
 end Rounding
