@@ -12,8 +12,8 @@ import Flean.Util
 import Flean.Basic
 import Flean.Ulp
 import Flean.Ufp
-import Flean.RoundingImpl
 import Flean.Linearize.Linearize
+import Flean.Rounding.Neighbor
 
 section Rounding
 
