@@ -1,5 +1,5 @@
 {
-    "editor.fontFamily": "'Monaspace Radon', 'Droid Sans Mono', 'monospace', monospace",
+    "editor.fontFamily": "'Monaspace Argon', 'Droid Sans Mono', 'monospace', monospace",
     "files.watcherInclude": [
         "/home/minus/Kairos/Code/Lean/flean"
     ]

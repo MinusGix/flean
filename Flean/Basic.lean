@@ -33,7 +33,7 @@ theorem isNormal.sig_max [FloatFormat] : isNormal (2^(FloatFormat.prec) - 1) := 
   exact ⟨by apply Nat.le_pred_of_lt; norm_num, by norm_num⟩
 
 theorem isSubnormal.min_exp_one [FloatFormat] : isSubnormal FloatFormat.min_exp 1 := by
-  have := FloatFormat.prec_pred_pow_le
+  have := FloatFormat.prec_pred_pow_le (R := ℕ)
   exact ⟨by rfl, by omega⟩
 
 theorem isSubnormal.zero [FloatFormat] : isSubnormal FloatFormat.min_exp 0 := by exact ⟨by rfl, by omega⟩
@@ -56,7 +56,7 @@ theorem IsValidFiniteVal.zero [FloatFormat] : IsValidFiniteVal FloatFormat.min_e
 
 theorem IsValidFiniteVal.one [FloatFormat] : IsValidFiniteVal 0 (2^(FloatFormat.prec - 1)) := by
   have := FloatFormat.valid_prec
-  have := FloatFormat.prec_pred_pow_le
+  have := FloatFormat.prec_pred_pow_le (R := ℕ)
   have := FloatFormat.exp_order_le
   have := FloatFormat.max_exp_pos
   have := FloatFormat.min_exp_nonpos
@@ -72,7 +72,7 @@ theorem IsValidFiniteVal.smallestPosNormal [FloatFormat] : IsValidFiniteVal Floa
 theorem IsValidFiniteVal.largestFiniteFloat [FloatFormat] : IsValidFiniteVal FloatFormat.max_exp (2^(FloatFormat.prec) - 1) := by
   have := FloatFormat.valid_prec
   have := FloatFormat.prec_pow_le (R := ℕ)
-  have := FloatFormat.prec_pred_pow_le
+  have := FloatFormat.prec_pred_pow_le (R := ℕ)
   exact ⟨FloatFormat.exp_order_le, by rfl, by omega, Or.inl isNormal.sig_max⟩
 
 /-- Minor helper theorem to remove some verbosity from proving a subnormal valid finite float -/
@@ -205,6 +205,68 @@ theorem toVal_neg_one [Field R] [LinearOrder R] [IsStrictOrderedRing R] : toVal 
 theorem toVal_neg_zero [Field R] : toVal (-(0 : FiniteFp)) = (0 : R) := by
   rw [toVal_neg_eq_neg, toVal_zero, neg_zero]
 
+/-- The integral significand of a finite float is zero iff the float converted to a value is zero -/
+theorem toVal_significand_zero_iff [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x : FiniteFp} : x.m = 0 ↔ toVal x = (0 : R) := by
+  constructor
+  · intro h
+    unfold toVal sign'
+    simp [h]
+  · intro h
+    unfold toVal sign' at h
+    cases' (mul_eq_zero.mp h) with h1 h2
+    · cases' (mul_eq_zero.mp h1) with h3
+      · split_ifs at h3 <;> linarith
+      · assumption_mod_cast
+    · have : (FloatFormat.radix.val : R) ^ (x.e - ↑FloatFormat.prec + 1) ≠ 0 := by
+        rw [FloatFormat.radix_val_eq_two]
+        apply zpow_ne_zero
+        norm_num
+      contradiction
+
+@[simp]
+theorem toVal_pos [Field R] [LinearOrder R] [IsStrictOrderedRing R] (x : FiniteFp) (hs : x.s = false) (hm : 0 < x.m) : (0 : R) < toVal x := by
+  unfold toVal sign'
+  simp only [hs, Bool.false_eq_true, ↓reduceIte, one_mul, FloatFormat.radix_val_eq_two,
+    Int.cast_ofNat, Nat.cast_pos, hm, mul_pos_iff_of_pos_left]
+  linearize
+
+/-- The float is positive iff the significand is positive and the sign is false -/
+theorem toVal_pos_iff [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x : FiniteFp} : x.s = false ∧ 0 < x.m ↔ (0 : R) < toVal x := by
+  constructor
+  · intro h
+    exact toVal_pos x h.1 h.2
+  · intro h
+    split_ands
+    · if h1 : x.s = true then
+        rw [h1]
+        unfold toVal sign' at h
+        have : 0 ≤ ↑x.m * (FloatFormat.radix.val : R) ^ (x.e - ↑FloatFormat.prec + 1) := by
+          apply mul_nonneg
+          · simp
+          · rw [FloatFormat.radix_val_eq_two]
+            norm_num
+            linearize
+        simp [h1] at h
+        linarith
+      else
+        simp [h1]
+    · have mnz : x.m ≠ 0 := by
+        intro hm
+        have := (FiniteFp.toVal_significand_zero_iff (R := R)).mp hm
+        linarith
+      omega
+
+@[simp]
+theorem toVal_nonneg [Field R] [LinearOrder R] [IsStrictOrderedRing R] (x : FiniteFp) (hs : x.s = false) : (0 : R) ≤ toVal x := by
+  unfold toVal sign'
+  simp [hs, FloatFormat.radix_val_eq_two]
+  apply mul_nonneg
+  linarith
+  linearize
+
+-- There can't be a toVal_nonneg_iff in full generality because -0 ends up >= 0
+
+
 end toVal
 
 def isNormal (x : FiniteFp) : Prop := _root_.isNormal x.m
@@ -224,7 +286,7 @@ theorem smallestPosSubnormal_toVal {R : Type*} [Field R] : smallestPosSubnormal.
   norm_num
 
 theorem smallestPosSubnormal_isSubnormal : smallestPosSubnormal.isSubnormal := by
-  have := FloatFormat.prec_pred_pow_le
+  have := FloatFormat.prec_pred_pow_le (R := ℕ)
   apply And.intro
   · rfl
   · unfold smallestPosSubnormal
@@ -237,6 +299,10 @@ theorem smallestPosSubnormal_lt_minExp {R : Type*} [Field R] [LinearOrder R] [Is
   apply zpow_lt_zpow_right₀ (by norm_num : (1 : R) < 2)
   have := FloatFormat.valid_prec
   omega
+
+theorem smallestPosSubnormal_toVal_pos {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : (0 : R) < smallestPosSubnormal.toVal := by
+  rw [smallestPosSubnormal_toVal]
+  linearize
 
 def smallestPosNormal : FiniteFp := ⟨
   false,
@@ -258,6 +324,10 @@ theorem smallestPosNormal_isNormal : smallestPosNormal.isNormal := by
   apply And.intro
   · apply pow_le_pow_right₀ (by norm_num) (by omega)
   · apply pow_lt_pow_right₀ (by norm_num) (by omega)
+
+theorem smallestPosNormal_toVal_pos {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : (0 : R) < smallestPosNormal.toVal := by
+  rw [smallestPosNormal_toVal]
+  linearize
 
 def largestFiniteFloat : FiniteFp := ⟨
   false,
@@ -301,7 +371,7 @@ theorem largestFiniteFloat_toVal_pos {R : Type*} [Field R] [LinearOrder R] [IsSt
   rw [largestFiniteFloat_toVal]
   have a1 := FloatFormat.max_exp_pos
   have a2 := FloatFormat.valid_prec
-  have a3 := FloatFormat.prec_pred_pow_le
+  have a3 := FloatFormat.prec_pred_pow_le (R := ℕ)
   have a4 := FloatFormat.exp_order_le
   have a5 := FloatFormat.min_exp_nonpos
   apply mul_pos
@@ -445,6 +515,29 @@ def sign' {R : Type*} [Neg R] [One R] (x : Fp) : R :=
   | .finite x => x.sign'
   | .infinite b => if b then 1 else -1
   | .NaN => 1
+
+instance : Neg Fp := ⟨fun x => match x with
+  | .finite x => .finite (-x)
+  | .infinite b => .infinite (!b)
+  | .NaN => .NaN⟩
+
+@[simp]
+theorem neg_def (x : Fp) : -x = match x with
+  | .finite x => .finite (-x)
+  | .infinite b => .infinite (!b)
+  | .NaN => .NaN := rfl
+
+instance : InvolutiveNeg Fp := ⟨by
+  intro x
+  rw [neg_def, neg_def]
+  match x with
+  | .finite x => norm_num
+  | .infinite b => norm_num
+  | .NaN => norm_num
+⟩
+
+@[simp]
+theorem neg_finite (f : FiniteFp) : -Fp.finite f = Fp.finite (-f) := rfl
 
 def isNaN (x : Fp) : Prop := x = .NaN
 

@@ -8,6 +8,7 @@ import Mathlib.Analysis.SpecialFunctions.Pow.Real
 import Mathlib.Data.Real.Irrational
 import Mathlib.Tactic.Polyrith
 
+import Flean.Util
 import Flean.Basic
 import Flean.Ulp
 import Flean.Ufp
@@ -34,25 +35,6 @@ def isMidpoint [FloatFormat] (x : R) : Prop :=
 def isEvenSignificand [FloatFormat] (f : FiniteFp) : Bool :=
   f.m % 2 = 0
 
--- Basic properties of rounding with zero
-section ZeroProperties
-
-/-- findPredecessor returns 0 when input is 0 -/
-theorem findPredecessor_zero [FloatFormat] : findPredecessor (0 : R) = Fp.finite 0 := by
-  -- By definition, findPredecessor checks if x = 0 first
-  unfold findPredecessor
-  -- The condition (0 : R) = 0 is true, so we take the first branch
-  simp
-
-/-- findSuccessor returns 0 when input is 0 -/
-theorem findSuccessor_zero [FloatFormat] : findSuccessor (0 : R) = Fp.finite 0 := by
-  -- By definition, findSuccessor also checks if x = 0 first
-  unfold findSuccessor
-  -- The condition (0 : R) = 0 is true, so we take the first branch
-  simp
-
-end ZeroProperties
-
 -- Round toward negative infinity (floor)
 section RoundDown
 
@@ -72,38 +54,30 @@ theorem roundDown_ne_pos_inf [FloatFormat] (x : R) : roundDown x ≠ Fp.infinite
   split at a
   · -- Case: x = 0, returns Fp.finite 0 ≠ Fp.infinite false
     simp_all
-  · split at a
-    · -- Case: x ≠ 0 and x > 0, uses findPredecessorPos which never returns positive infinity
-      have : findPredecessorPos x (by assumption) ≠ Fp.infinite false := findPredecessorPos_ne_inf x (by assumption) false
-      contradiction
-    · -- Case: x ≠ 0 and x ≤ 0, so x < 0 by trichotomy
-      -- The result is match findSuccessorPos (-x) with | Fp.infinite b => Fp.infinite (!b) | ..
-      -- For result to be Fp.infinite false, we need findSuccessorPos (-x) = Fp.infinite true
-      -- But findSuccessorPos never returns Fp.infinite true
-      have h_lt : x < 0 := by
-        -- We have ¬x = 0 and ¬0 < x, so by trichotomy x < 0
-        cases' lt_trichotomy x 0 with h h
-        · exact h
-        · cases' h with h h
-          · simp_all
-          · simp_all
-      have h_neg_pos : 0 < -x := neg_pos.mpr h_lt
-      have : findSuccessorPos (-x) h_neg_pos ≠ Fp.infinite true := findSuccessorPos_ne_neg_inf (-x) h_neg_pos
-      -- Now split on the match expression
-      generalize heq : findSuccessorPos (-x) h_neg_pos = result
-      simp only [heq] at a
-      cases result with
-      | finite f => simp_all
-      | infinite b =>
-        simp_all only [Bool.not_eq_false]
-        rw [← heq] at this
-        simp_all
-      | NaN => simp_all
+  · split_ifs at a with h2
+    -- Case: x ≠ 0 and x ≤ 0, so x < 0 by trichotomy
+    -- The result is match findSuccessorPos (-x) with | Fp.infinite b => Fp.infinite (!b) | ..
+    -- For result to be Fp.infinite false, we need findSuccessorPos (-x) = Fp.infinite true
+    -- But findSuccessorPos never returns Fp.infinite true
+    have h_lt : x < 0 := by
+      rename_i h1 h3
+      apply lt_of_le_of_ne (not_lt.mp h2) h3
+    have h_neg_pos : 0 < -x := neg_pos.mpr h_lt
+    have : findSuccessorPos (-x) h_neg_pos ≠ Fp.infinite true := findSuccessorPos_ne_neg_inf (-x) h_neg_pos
+    generalize heq : findSuccessorPos (-x) h_neg_pos = result
+    simp only [heq] at a
+    cases result with
+    | finite f => simp_all
+    | infinite b =>
+      simp_all only [Bool.not_eq_false]
+      rw [← heq] at this
+      simp_all
+    | NaN => simp_all
 
 theorem roundDown_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < FiniteFp.smallestPosSubnormal.toVal):
   roundDown x = Fp.finite 0 := by
   unfold roundDown findPredecessor
-  simp [ne_of_gt hn, hn]
+  simp only [ne_of_gt hn, ↓reduceDIte, hn]
   unfold findPredecessorPos
   -- Since x < smallestPosSubnormal, x is in subnormal range
   have h_sub : x < (2 : R) ^ FloatFormat.min_exp := by
@@ -112,23 +86,10 @@ theorem roundDown_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs
       rw [FiniteFp.smallestPosSubnormal_toVal]
       flinearize!
     exact lt_trans hs this
-  simp [h_sub]
-  unfold roundSubnormalDown
-  -- The ULP in subnormal range is 2^(min_exp - prec + 1) = smallestPosSubnormal
-  -- So ⌊x / smallestPosSubnormal⌋ = 0 since x < smallestPosSubnormal
-  have h_floor : ⌊x / FiniteFp.smallestPosSubnormal.toVal⌋ = 0 := by
-    rw [Int.floor_eq_zero_iff]
-    constructor
-    · apply div_nonneg (le_of_lt hn)
-      rw [FiniteFp.smallestPosSubnormal_toVal]
-      exact le_of_lt (zpow_pos (by norm_num) _)
-    · rw [div_lt_one_iff]
-      left
-      constructor
-      · linarith
-      · trivial
-  rw [FiniteFp.smallestPosSubnormal_toVal] at h_floor
-  simp [h_floor]
+  simp only [h_sub, ↓reduceDIte]
+  rw [Fp.finite.injEq]
+  apply roundSubnormalDown_eq_zero_iff.mpr
+  trivial
 
 theorem roundDown_gt_largestFiniteFloat [FloatFormat] (x : R) (hn : 0 < x) (hs : x ≥ (2 : R) ^ (FloatFormat.max_exp + 1)):
   roundDown x = Fp.finite FiniteFp.largestFiniteFloat := by
@@ -144,6 +105,29 @@ theorem roundDown_gt_largestFiniteFloat [FloatFormat] (x : R) (hn : 0 < x) (hs :
   have h_overflow : ¬(x < (2 : R) ^ (FloatFormat.max_exp + 1)) := by
     exact not_lt.mpr hs
   simp [h_overflow]
+
+theorem roundDown_nonneg_imp_nonneg [FloatFormat] (x : R) (hs : 0 ≤ x) (f : FiniteFp) (h' : roundDown x = Fp.finite f) : (0 : R) ≤ f.toVal := by
+  unfold roundDown findPredecessor at h'
+  split_ifs at h'
+  · rw [Fp.finite.injEq] at h'
+    simp [← h']
+  · rw [Fp.finite.injEq] at h'
+    rw [← h']
+    apply findPredecessorPos_nonneg
+  · norm_num at h'
+    rename_i h1 h2
+    norm_num at h1 h2
+    have := (hs.ge_iff_eq.mp h2).symm
+    contradiction
+
+theorem roundDown_pos_imp_pos [FloatFormat] (x : R) (hs : FiniteFp.smallestPosSubnormal.toVal ≤ x) (f : FiniteFp) (h' : roundDown x = Fp.finite f) : (0 : R) < f.toVal := by
+  unfold roundDown findPredecessor at h'
+  have hpos : 0 < x := by linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := R)]
+  split_ifs at h'
+  · simp_all only [lt_self_iff_false]
+  · rw [Fp.finite.injEq] at h'
+    rw [← h']
+    apply findPredecessorPos_pos hs
 
 end RoundDown
 
@@ -165,34 +149,11 @@ theorem roundUp_ne_neg_inf [FloatFormat] (x : R) : roundUp x ≠ Fp.infinite tru
   intro a
   split at a
   · -- Case: x = 0, returns Fp.finite 0 ≠ Fp.infinite true
-    simp_all
-  · split at a
-    · -- Case: x ≠ 0 and x > 0, uses findSuccessorPos which never returns negative infinity
-      have : findSuccessorPos x (by assumption) ≠ Fp.infinite true := findSuccessorPos_ne_neg_inf x (by assumption)
-      contradiction
-    · -- Case: x ≠ 0 and x ≤ 0, so x < 0 by trichotomy
-      -- The result is match findPredecessorPos (-x) with | Fp.infinite b => Fp.infinite (!b) | ..
-      -- For result to be Fp.infinite true, we need findPredecessorPos (-x) = Fp.infinite false
-      -- But findPredecessorPos never returns Fp.infinite false
-      have h_lt : x < 0 := by
-        -- We have ¬x = 0 and ¬0 < x, so by trichotomy x < 0
-        cases' lt_trichotomy x 0 with h h
-        · exact h
-        · cases' h with h h
-          · simp_all
-          · simp_all
-      have h_neg_pos : 0 < -x := neg_pos.mpr h_lt
-      have : findPredecessorPos (-x) h_neg_pos ≠ Fp.infinite false := findPredecessorPos_ne_inf (-x) h_neg_pos false
-      -- Now split on the match expression
-      generalize heq : findPredecessorPos (-x) h_neg_pos = result
-      simp only [heq] at a
-      cases result with
-      | finite f => simp_all
-      | infinite b =>
-        simp_all only [Bool.not_eq_true]
-        rw [← heq] at this
-        simp_all
-      | NaN => simp_all
+    simp_all only [reduceCtorEq]
+  · split_ifs at a with h2
+    -- Case: x ≠ 0 and x > 0, uses findSuccessorPos which never returns negative infinity
+    have : findSuccessorPos x (by assumption) ≠ Fp.infinite true := findSuccessorPos_ne_neg_inf x (by assumption)
+    contradiction
 
 theorem roundUp_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < FiniteFp.smallestPosSubnormal.toVal):
   roundUp x = Fp.finite FiniteFp.smallestPosSubnormal := by
@@ -209,189 +170,18 @@ theorem roundUp_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs :
   rw [FiniteFp.smallestPosSubnormal_toVal] at hs
   have h_ceil : ⌈x / FiniteFp.smallestPosSubnormal.toVal⌉ = 1 := by
     rw [Int.ceil_eq_iff, FiniteFp.smallestPosSubnormal_toVal]
+    norm_num
     constructor
-    · norm_num
-      rw [div_pos_iff]
-      left
-      constructor
-      · exact hn
-      · linearize
-    · norm_cast
-      exact div_le_one_of_le₀ (le_of_lt hs) (by linearize)
+    · exact div_pos hn (by linearize)
+    · exact div_le_one_of_le₀ (le_of_lt hs) (by linearize)
   rw [FiniteFp.smallestPosSubnormal_toVal] at h_ceil
   simp [h_ceil]
   -- Show k = 1 and 1 < 2^(prec-1), so go to else branch
-  have h_k_lt : 1 < (2 : ℤ)^(FloatFormat.prec - 1) := by flinearize!
+  have h_k_lt : 1 < (2 : ℤ)^(FloatFormat.prec - 1) := by
+    apply one_lt_pow₀ (by norm_num)
+    fomega
   simp only [h_k_lt.not_ge] -- for some reason need the opposite to recognize it
   rw [dite_false, FiniteFp.smallestPosSubnormal]
-
-
--- Helper lemmas for roundUp_ge proof
-
--- Fundamental ceiling property for subnormal range
-lemma roundSubnormalUp_ge [FloatFormat] (x : R) (hsr : isSubnormalRange x) (f : FiniteFp)
-  (h : roundSubnormalUp x hsr = Fp.finite f) : x ≤ f.toVal := by
-  unfold roundSubnormalUp at h
-  let k := ⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉
-  by_cases hk : k ≥ 2^(FloatFormat.prec - 1)
-  · -- Case: k ≥ 2^(prec-1), transition to normal range
-    unfold k at hk
-    simp only [ge_iff_le, hk, ↓reduceDIte, Fp.finite.injEq] at h
-    -- h now shows: f = FiniteFp.smallestPosNormal
-    rw [← h, FiniteFp.smallestPosNormal_toVal]
-    exact le_of_lt (hsr.right)
-  · -- Case: k < 2^(prec-1), stays in subnormal range
-    unfold k at hk
-    simp only [ge_iff_le, hk, ↓reduceDIte, Fp.finite.injEq] at h
-    rw [← h]
-    unfold FiniteFp.toVal FiniteFp.sign'
-    rw [FloatFormat.radix_val_eq_two]
-    simp
-    -- Goal: x ≤ k.natAbs * 2^(min_exp - prec + 1)
-    -- We know k = ⌈x / 2^(min_exp - prec + 1)⌉ and k > 0 in subnormal range
-    -- So k.natAbs = k and k ≥ x / 2^(min_exp - prec + 1)
-    -- Therefore k * 2^(min_exp - prec + 1) ≥ x
-    set_option trace.linearize true in
-    have k_pos : 0 < k := by
-      unfold k
-      apply Int.ceil_pos.mpr
-      apply div_pos hsr.left
-      flinearize!
-    have h_natAbs : (k.natAbs : R) = (k : R) := by
-      have : |k| = k := abs_of_pos k_pos
-      convert this.symm
-      constructor
-      · intro h1
-        rw [abs_of_pos k_pos]
-      · intro h1
-        rw [Int.cast_natAbs]
-        rw [abs_of_pos k_pos]
-    rw [h_natAbs]
-    have h_pos : (0 : R) < (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by linearize
-    -- x / 2^(min_exp - prec + 1) ≤ k
-    -- So x ≤ k * 2^(min_exp - prec + 1)
-    calc x = x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) *
-              (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by {
-        rw [div_mul_cancel₀ _ (ne_of_gt h_pos)]
-      }
-      _ ≤ (k : R) * (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by
-        apply mul_le_mul_of_nonneg_right
-        · unfold k
-          exact Int.le_ceil _
-        · exact le_of_lt h_pos
-
-/-- rounding a normal up is bounded above by the float's representation -/
-lemma roundNormalUp_ge [FloatFormat] (x : R) (hnr : isNormalRange x) (f : FiniteFp)
-  (h : roundNormalUp x hnr = Fp.finite f) : x ≤ f.toVal := by
-  unfold roundNormalUp at h
-  let e := findExponentDown x
-  let binade_base := (2 : R) ^ e
-  let scaled := x / binade_base
-  let m_scaled := scaled * (2 : R) ^ (FloatFormat.prec - 1)
-  let m := ⌈m_scaled⌉
-
-  have m_pos : 0 < m := by
-    apply Int.ceil_pos.mpr
-    apply mul_pos
-    apply div_pos (isNormalRange_pos x hnr)
-    apply zpow_pos (by norm_num)
-    apply pow_pos (by norm_num : (0 : R) < 2)
-
-  by_cases hm : 2^FloatFormat.prec ≤ m
-  · -- Case: overflow within binade
-    unfold m m_scaled scaled binade_base e at hm
-    by_cases he : e + 1 > FloatFormat.max_exp
-    · -- Overflow to infinity case - contradiction since h says result is finite
-      unfold e at he
-      simp only [ge_iff_le, hm, he, ↓reduceDIte] at h
-      -- This returns Fp.infinite false, but h says result is Fp.finite f
-      exfalso
-      cases h
-    · -- Move to next exponent case
-      unfold e at he
-      simp only [ge_iff_le, hm, he, ↓reduceDIte, Fp.finite.injEq] at h
-      rw [← h]
-      unfold FiniteFp.toVal FiniteFp.sign'
-      rw [FloatFormat.radix_val_eq_two]
-      simp
-      -- Goal: x ≤ 2^(prec-1) * 2^(e + 1 - prec + 1) = 2^(e + 1)
-      rw [← zpow_add₀ (by norm_num : (2 : R) ≠ 0)]
-      ring_nf
-      -- Goal is x ≤ 2 ^ (e + 1)
-      -- Use that findExponentDown gives us e such that 2^e ≤ x < 2^(e+1) in normal range
-      have hbound := findExponentDown_div_binade_normal hnr
-      have : x < binade_base * 2 := by
-        unfold binade_base
-        have : binade_base * 2 = (2 : R) ^ (e + 1) := by
-          rw [← zpow_add_one₀ (by norm_num : (2 : R) ≠ 0)]
-        rw [this]
-        -- hbound says x / 2^e < 2, so x < 2^(e+1)
-        have h1 : x / (2 : R) ^ e < 2 := hbound.right
-        rw [zpow_add_one₀, mul_comm]
-        exact (div_lt_iff₀ (zpow_pos (by norm_num : (0 : R) < 2) e)).mp h1
-        norm_num
-      unfold binade_base e at this
-      rw [zpow_one_add₀, mul_comm]
-      linarith
-      norm_num
-  · -- Case: no overflow, m < 2^prec
-    unfold m m_scaled scaled binade_base e at hm
-    simp only [ge_iff_le, hm, ↓reduceDIte, Fp.finite.injEq] at h
-    rw [← h]
-    unfold FiniteFp.toVal FiniteFp.sign'
-    rw [FloatFormat.radix_val_eq_two]
-    simp only [Bool.false_eq_true, ↓reduceIte, FloatFormat.pow_prec_sub_one_nat_int, one_mul,
-      Int.cast_ofNat, ge_iff_le]
-    -- Goal: x ≤ m.natAbs * 2^(e - prec + 1)
-    -- First we need to show m > 0 and m.natAbs = m
-    have h_natAbs := natAbs_cast_of_pos (R := R) m_pos
-    unfold m m_scaled scaled binade_base e at h_natAbs m_pos
-    have m_pos' : 0 < x / (2 : R) ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1) := by
-      apply Int.ceil_pos.mp
-      trivial
-    simp_all only [FloatFormat.pow_prec_sub_one_nat_int, Int.ceil_pos, ge_iff_le]
-
-    -- Now x ≤ m * 2^(e - prec + 1)
-    have h_pos : (0 : R) < (2 : R) ^ ((e : ℤ) - (FloatFormat.prec : ℤ) + 1) := by
-      apply zpow_pos (by norm_num)
-    -- Show x ≤ m * 2^(e - prec + 1)
-    calc x = x / (2 : R) ^ e * (2 : R) ^ (FloatFormat.prec - 1) / (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ e := by {
-        rw [FloatFormat.pow_prec_sub_one_nat_int]
-        rw [mul_div_cancel_right₀, div_mul_cancel₀]
-        apply zpow_ne_zero _ (by norm_num)
-        apply zpow_ne_zero _ (by norm_num)
-      }
-      _ ≤ (m : R) / (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ e := by
-        apply mul_le_mul_of_nonneg_right
-        apply div_le_div_of_nonneg_right
-        · unfold m
-          exact Int.le_ceil _
-        · apply pow_nonneg (by norm_num)
-        · apply zpow_nonneg (by norm_num)
-      _ = (m : R) * (2 : R) ^ (e - (FloatFormat.prec : ℤ) + 1) := by
-        rw [div_mul_eq_mul_div]
-        rw [mul_div_assoc]
-        rw [FloatFormat.pow_prec_sub_one_nat_int]
-        rw [← zpow_sub₀ (by norm_num)]
-        ring_nf
-    unfold m m_scaled scaled binade_base e
-    simp only [FloatFormat.pow_prec_sub_one_nat_int, le_refl]
-
--- findSuccessorPos preserves the ceiling property
-lemma findSuccessorPos_ge [FloatFormat] (x : R) (hpos : 0 < x) (f : FiniteFp)
-  (h : findSuccessorPos x hpos = Fp.finite f) : x ≤ f.toVal := by
-  unfold findSuccessorPos at h
-  split_ifs at h with h_sub h_normal
-  · -- Subnormal case
-    exact roundSubnormalUp_ge x ⟨hpos, h_sub⟩ f h
-  · -- Normal case
-    exact roundNormalUp_ge x ⟨le_of_not_gt h_sub, h_normal⟩ f h
-  -- Overflow case handled automatically
-
--- findPredecessorPos preserves the floor property
-lemma findPredecessorPos_le [FloatFormat] (x : R) (hpos : 0 < x) (f : FiniteFp)
-  (h : findPredecessorPos x hpos = Fp.finite f) : f.toVal ≤ x := by
-  sorry -- Floor property for predecessor - to be completed
 
 -- Main theorem: roundUp returns a value ≥ input (fundamental property of rounding up)
 theorem roundUp_ge [FloatFormat] (x : R) (f : FiniteFp)
@@ -404,47 +194,23 @@ theorem roundUp_ge [FloatFormat] (x : R) (f : FiniteFp)
   · -- Case: x > 0
     exact findSuccessorPos_ge x h_pos f h
   · -- Case: x < 0
-    -- Use symmetry: findSuccessor x = -findPredecessor (-x)
     have h_neg : 0 < -x := neg_pos.mpr (lt_of_le_of_ne (le_of_not_gt h_pos) h_zero)
     unfold findPredecessorPos at h
     norm_num at h
     split at h
     <;> rename_i heq
-    <;> split at heq
-    · rename_i f' h1
-      have hf : f = -f' := by simp_all only [Left.neg_pos_iff, Fp.finite.injEq]
-      have hf' : f' = -f := by simp [hf]
-      rw [hf'] at heq
-      have a := roundSubnormalDown_le (-x) (by trivial) (-f) heq
-      rw [FiniteFp.toVal_neg_eq_neg] at a
+    · rw [neg_eq_iff_eq_neg] at h
+      have a := roundSubnormalDown_le (-x) (by trivial)
+      rw [h, FiniteFp.toVal_neg_eq_neg] at a
       linarith
-    · split at heq
-      · injection h with h1
-        rw [neg_eq_iff_eq_neg.mp h1] at heq
-        sorry
-      · injection heq with h₁
-        injection h with h₂
-        rw [neg_eq_iff_eq_neg.mp h₂] at h₁
-        rw [← neg_eq_iff_eq_neg.mpr h₁]
-        rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.largestFiniteFloat_toVal]
-        simp_all only [not_lt, Left.neg_pos_iff, ge_iff_le]
-        have ha : x ≤ -2^(FloatFormat.max_exp + 1) := by linarith
-        apply le_trans
-        exact ha
-        norm_num
-        rw [zpow_add_one₀ (by norm_num)]
-        rw [zpow_add_one₀ (by norm_num)]
-        -- apply (mul_le_mul_iff_left ?_).mp
-        apply mul_le_mul_of_nonneg_left
-        simp only [zpow_neg, zpow_natCast, tsub_le_iff_right, le_add_iff_nonneg_right, inv_pos,
-          Nat.ofNat_pos, pow_pos, mul_nonneg_iff_of_pos_left, Nat.ofNat_nonneg]
-        apply zpow_nonneg (by norm_num)
-    · rename_i b h1
-      have := roundSubnormalDown_ne_infinite (-x) (by trivial) b
-      contradiction
-    · trivial
-    · trivial
-    · trivial
+    · split at h
+      · rw [neg_eq_iff_eq_neg] at h
+        have h1 : isNormalRange (-x) := by split_ands <;> linarith
+        have a := roundNormalDown_le (-x) h1
+        rw [h, FiniteFp.toVal_neg_eq_neg] at a
+        linarith
+      · rw [← h, FiniteFp.toVal_neg_eq_neg]
+        linarith [FiniteFp.largestFiniteFloat_lt_maxExp_succ (R := R)]
 
 -- roundUp doesn't return NaN for positive finite inputs
 theorem roundUp_pos_not_nan [FloatFormat] (x : R) (xpos : 0 < x) :
@@ -454,16 +220,11 @@ theorem roundUp_pos_not_nan [FloatFormat] (x : R) (xpos : 0 < x) :
   simp [ne_of_gt xpos] at a
   unfold findSuccessorPos at a
   split_ifs at a with h1 h2
-  · -- Subnormal case: roundSubnormalUp
-    have h : isSubnormalRange x := ⟨xpos, h1⟩
-    have := roundSubnormalUp_ne_nan x h
-    contradiction
-  · -- Normal case: roundNormalUp
-    norm_num at h1
-    have h : isNormalRange x := ⟨h1, h2⟩
-    have := roundNormalUp_ne_nan x h
-    contradiction
-  --· Overflow case: discharged automatically
+  -- Normal case: roundNormalUp
+  norm_num at h1
+  have h : isNormalRange x := ⟨h1, h2⟩
+  have := roundNormalUp_ne_nan x h
+  contradiction
 
 theorem roundUp_gt_largestFiniteFloat [FloatFormat] (x : R) (hn : 0 < x) (hs : x > FiniteFp.largestFiniteFloat.toVal):
   roundUp x = Fp.infinite false := by
@@ -514,32 +275,86 @@ theorem roundTowardZero_zero [FloatFormat] : roundTowardZero (0 : R) = Fp.finite
   unfold roundTowardZero
   simp
 
+theorem roundTowardZero_pos_eq [FloatFormat] (x : R) (hpos : 0 < x) : roundTowardZero x = roundDown x := by
+  simp [roundTowardZero, hpos]
+  intro hz
+  linarith
+
+theorem roundTowardZero_neg_eq [FloatFormat] (x : R) (hneg : x < 0) : roundTowardZero x = roundUp x := by
+  have xnz : x ≠ 0 := by linarith
+  have xngt : ¬0 < x := by linarith
+  simp only [roundTowardZero, xnz, ↓reduceIte, gt_iff_lt, xngt] -- because it is too dumb to figure this out...
+
 /-- roundTowardZero never increases magnitude -/
 theorem roundTowardZero_magnitude_le [FloatFormat] (x : R) (f : FiniteFp) :
   roundTowardZero x = Fp.finite f → |f.toVal| ≤ |x| := by
   intro h
-  unfold roundTowardZero at h
-  split_ifs at h with h_zero h_pos
-  · -- Case: x = 0
-    simp at h
-    rw [← h]
-    simp [h_zero, FiniteFp.toVal_zero]
-  · -- Case: x > 0, use roundDown
-    have h_eq : roundDown x = Fp.finite f := h
-    -- roundDown gives us the largest float ≤ x, so f.toVal ≤ x
-    -- Since x > 0 and f.toVal ≤ x, we have |f.toVal| ≤ |x|
-    sorry -- Need roundDown_le property
-  · -- Case: x < 0, use roundUp
-    have h_eq : roundUp x = Fp.finite f := h
-    -- roundUp gives us the smallest float ≥ x, so x ≤ f.toVal
-    -- Since x < 0 and x ≤ f.toVal, we need to show |f.toVal| ≤ |x|
-    -- This requires analyzing if f.toVal is negative or positive
-    sorry -- Need roundUp_ge and analysis of sign
+  cases' lt_trichotomy x 0 with h1 h2
+  · rw [roundTowardZero_neg_eq x h1] at h
+    unfold roundUp at h
+    rw [findSuccessor_neg_eq x h1, Fp.finite.injEq] at h
+    have ha := findPredecessorPos_le (-x) (neg_pos.mpr h1)
+    rw [neg_eq_iff_eq_neg] at h
+    rw [h, FiniteFp.toVal_neg_eq_neg] at ha
+    norm_num at ha
+    apply abs_le_abs_of_nonpos
+    · have := findPredecessorPos_nonneg (x := -x) (hpos := neg_pos.mpr h1)
+      rw [h, FiniteFp.toVal_neg_eq_neg] at this
+      linarith
+    · trivial
+  · cases' h2 with h2 h3
+    · rw [h2, abs_zero]
+      rw [h2, roundTowardZero_zero, Fp.finite.injEq] at h
+      rw [← h, FiniteFp.toVal_zero, abs_zero]
+    · rw [roundTowardZero_pos_eq x h3] at h
+      unfold roundDown at h
+      rw [findPredecessor_pos_eq x h3, Fp.finite.injEq] at h
+      have ha := findPredecessorPos_le x h3
+      rw [← h]
+      apply abs_le_abs_of_nonneg
+      apply findPredecessorPos_nonneg
+      trivial
+
+theorem roundTowardZero_le_pos [FloatFormat] (x : R) (f : FiniteFp) (hpos : 0 < x) :
+  roundTowardZero x = Fp.finite f → f.toVal ≤ x := by
+  intro hf
+  apply le_of_abs_le
+  rw [← abs_of_pos hpos]
+  apply roundTowardZero_magnitude_le x f hf
 
 /-- roundTowardZero preserves sign for non-zero finite results -/
-theorem roundTowardZero_sign_preservation [FloatFormat] (x : R) (f : FiniteFp) :
-  roundTowardZero x = Fp.finite f → f.toVal ≠ (0 : R) → (x > 0 ↔ f.toVal > (0 : R)) := by
-  sorry
+theorem roundTowardZero_pos [FloatFormat] (x : R) (f : FiniteFp) :
+  roundTowardZero x = Fp.finite f → f.toVal ≠ (0 : R) → (0 < x ↔ (0 : R) < f.toVal) := by
+  intro hf fnz
+  constructor
+  · intro xpos
+    rw [roundTowardZero_pos_eq x xpos] at hf
+    unfold roundDown at hf
+    rw [findPredecessor_pos_eq x xpos, Fp.finite.injEq] at hf
+    rw [← hf]
+    apply findPredecessorPos_pos
+    have := findPredecessorPos_nonneg (x := x) (hpos := xpos)
+    rw [← hf] at fnz
+    have : (0 : R) < (findPredecessorPos x xpos).toVal := lt_of_le_of_ne this fnz.symm
+    apply findPredecessorPos_pos_iff.mpr this
+  · intro fpos
+    unfold roundTowardZero at hf
+    split_ifs at hf with h1 h2
+    · rw [Fp.finite.injEq] at hf
+      rw [← hf, FiniteFp.toVal_zero] at fnz
+      contradiction
+    · trivial
+    · norm_num at h2
+      have h2 : x < 0 := h2.lt_of_ne h1
+      unfold roundUp at hf
+      rw [findSuccessor_neg_eq x h2, Fp.finite.injEq] at hf
+      rw [neg_eq_iff_eq_neg] at hf
+      have ha := findPredecessorPos_le (-x) (neg_pos.mpr h2)
+      rw [hf, FiniteFp.toVal_neg_eq_neg] at ha
+      have ha' := findPredecessorPos_nonneg (x := -x) (hpos := neg_pos.mpr h2)
+      rw [hf, FiniteFp.toVal_neg_eq_neg] at ha'
+      norm_num at ha'
+      linarith
 
 end RoundTowardZero
 

@@ -809,7 +809,7 @@ def linearizeLEGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
       throwError "linearize: goal linearization for 0 ≤ ... only supports power expressions"
   -- Check for pattern 1 ≤ a^n using one_le_zpow₀
   else if isLiteralOne lhs then
-    if let some (b, _, exp, _) ← isNatCastZpow rhs then
+    if let some (b, bExpr, exp, _) ← isNatCastZpow rhs then
       -- Check the type of the exponent to decide between zpow and pow
       let expType ← inferType exp
       if (← isDefEq expType q(ℕ)) then
@@ -846,21 +846,23 @@ def linearizeLEGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
 
         let ⟨_, R, _⟩ ← inferTypeQ' rhs
 
-        let expInt : Q(ℤ) ← asInt exp
-        have a : Q(ℕ) := mkNatLit b
-
         -- Need instances for one_le_zpow₀
         let _inst1 ← synthInstanceQ q(DivisionRing $R)
         let _inst2 ← synthInstanceQ q(PartialOrder $R)
         let _inst3 ← synthInstanceQ q(ZeroLEOneClass $R)
         let _inst4 ← synthInstanceQ q(PosMulReflectLT $R)
-
+        let _inst5 ← synthInstanceQ q(NatCast $R)
         assumeInstancesCommute
 
-        let haGoal ← mkFreshExprMVarQ q(1 ≤ ($a : $R)) MetavarKind.syntheticOpaque (`ha)
+        let expInt : Q(ℤ) ← asInt exp
+        -- have a : Q(ℕ) := mkNatLit b
+        have bExpr : Q($R) := ← asR R bExpr _inst5
+
+
+        let haGoal ← mkFreshExprMVarQ q(1 ≤ $bExpr) MetavarKind.syntheticOpaque (`ha)
         let hnGoal ← mkFreshExprMVarQ q(0 ≤ $expInt) MetavarKind.syntheticOpaque (`hn)
 
-        have thmProof : Q((1 : $R) ≤ ($a : $R) ^ $expInt) := q(one_le_zpow₀ $haGoal $hnGoal)
+        have thmProof : Q((1 : $R) ≤ $bExpr ^ $expInt) := q(one_le_zpow₀ $haGoal $hnGoal)
 
         -- Apply the theorem to reduce the goal
         g.assign thmProof

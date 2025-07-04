@@ -267,10 +267,12 @@ theorem prec_pow_le [FloatFormat] {R : Type*} [Semiring R] [LinearOrder R] [IsSt
   rw [show (4 : R) = (2 : R)^(2 : ℕ) by norm_num]
   apply pow_le_pow_right₀ (by norm_num) FloatFormat.valid_prec
 
-theorem prec_pred_pow_le [FloatFormat] : 2 ≤ 2^(FloatFormat.prec - 1) := by
-  rw [show 2 = 2^1 by norm_num]
+theorem prec_pred_pow_le [FloatFormat] {R : Type*} [Semiring R] [LinearOrder R] [IsStrictOrderedRing R] : (2 : R) ≤ (2 : R)^(FloatFormat.prec - 1) := by
+  conv_lhs => rw [show (2 : R) = (2 : R)^(1 : ℕ) by norm_num]
   have := FloatFormat.valid_prec
-  apply pow_le_pow_right₀ (by norm_num) (by omega)
+  gcongr
+  norm_num
+  omega
 
 @[simp]
 theorem pow_prec_pred_lt [FloatFormat] : 2^(FloatFormat.prec - 1) < 2^FloatFormat.prec := by
@@ -286,6 +288,12 @@ theorem zpow_prec_pred_lt' [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [
   rw [zpow_sub_one₀ (by norm_num)]
   norm_num
 
+theorem zpow_neg_prec_plus_one_le_two [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+  : (2 : R)^(-(FloatFormat.prec : ℤ) + 1) ≤ (2 : R) := by
+  conv_rhs => rw [← zpow_one (2 : R)]
+  gcongr
+  <;> norm_num
+
 /-- 2^(prec - 1) where the power is nat is equivalent to 2^(prec - 1) as integers
 This is somehow annoying to work with otherwise, Lean's existing casting facilities are too simplistic.
 This being simp makes it somehow used by norm_num? -/
@@ -297,6 +305,27 @@ theorem pow_prec_sub_one_nat_int [FloatFormat] {R : Type*} [Field R]
   rw [zpow_natCast]
   have := FloatFormat.valid_prec
   omega
+
+
+theorem zpow_min_exp_prec_plus_one_le_zpow_min_exp_sub_one
+  {R : Type*}
+  [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+  [FloatFormat] : (2 : R)^(FloatFormat.min_exp - FloatFormat.prec + 1) ≤ (2 : R)^(FloatFormat.min_exp - 1) := by
+  gcongr
+  norm_num
+  have := FloatFormat.valid_prec
+  rw [sub_eq_add_neg, sub_eq_add_neg, add_assoc]
+  apply add_le_add_left
+  norm_num
+
+theorem zpow_min_exp_prec_plus_one_le_zpow_min_exp
+  {R : Type*}
+  [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+  [FloatFormat] : (2 : R)^(FloatFormat.min_exp - FloatFormat.prec + 1) ≤ (2 : R)^(FloatFormat.min_exp) := by
+  have := zpow_min_exp_prec_plus_one_le_zpow_min_exp_sub_one (R := R)
+  apply le_trans this
+  simp only [Nat.one_lt_ofNat, zpow_le_zpow_iff_right₀, tsub_le_iff_right, le_add_iff_nonneg_right,
+    zero_le_one]
 
 -- @[simp high]
 theorem pow_prec_nat_int [FloatFormat] {R : Type*} [Field R]
@@ -326,6 +355,18 @@ theorem natCast_pow_prec_msb [FloatFormat] {R : Type*} [Field R] [LinearOrder R]
 theorem natCast_pow_prec_msb' [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
   : (2 : R)^(FloatFormat.prec - 1) = ↑((2 : ℕ)^(FloatFormat.prec - 1)) := by
   simp only [pow_prec_sub_one_nat_int, Nat.cast_pow, Nat.cast_ofNat]
+
+namespace Const
+
+theorem const_pow_le_pow_prec [FloatFormat] : 2^2 ≤ 2^FloatFormat.prec := by
+  gcongr
+  norm_num
+  exact FloatFormat.valid_prec
+
+theorem const_le_pow_prec [FloatFormat] : 4 ≤ 2^FloatFormat.prec := by
+  simp only [prec_pow_le]
+
+end Const
 
 -- def Decimal32 : FloatFormat := {
 --   radix := Radix.Decimal,
@@ -416,22 +457,182 @@ def std_exp_range_def [StdFloatFormat] : FloatFormat.min_exp = 1 - FloatFormat.m
 
 end StdFloatFormat
 
+-- open Lean Elab Meta Tactic Parser.Tactic in
+-- /-- `flinearize!` is a specialized version of `linearize!` that includes common FloatFormat lemmas.
+-- It is equivalent to `linearize! [FloatFormat.valid_prec, FloatFormat.exp_order,
+-- FloatFormat.max_exp_pos, FloatFormat.min_exp_nonpos]` -/
+-- syntax (name := flinearizeBang) "flinearize!" (&" only")? (" [" term,* "]")? (location)? : tactic
+
+-- open Lean Elab Meta Tactic Parser.Tactic in
+-- elab_rules : tactic
+--   | `(tactic| flinearize! $[only%$o]? $[ [ $args,* ] ]? $[$loc:location]?) => do
+--     -- Call linearize! with the default FloatFormat lemmas plus any additional arguments
+--     match o, args with
+--     | some _, some args =>
+--       evalTactic (← `(tactic| linearize! only [FloatFormat.valid_prec, FloatFormat.exp_order, FloatFormat.max_exp_pos, FloatFormat.min_exp_nonpos, FloatFormat.prec_pred_pow_le, $args,*] $[$loc:location]?))
+--     | some _, none =>
+--       evalTactic (← `(tactic| linearize! only [FloatFormat.valid_prec, FloatFormat.exp_order, FloatFormat.max_exp_pos, FloatFormat.min_exp_nonpos, FloatFormat.prec_pred_pow_le] $[$loc:location]?))
+--     | none, some args =>
+--       evalTactic (← `(tactic| linearize! [FloatFormat.valid_prec, FloatFormat.exp_order, FloatFormat.max_exp_pos, FloatFormat.min_exp_nonpos, FloatFormat.prec_pred_pow_le, $args,*] $[$loc:location]?))
+--     | none, none =>
+--       evalTactic (← `(tactic| linearize! [FloatFormat.valid_prec, FloatFormat.exp_order, FloatFormat.max_exp_pos, FloatFormat.min_exp_nonpos, FloatFormat.prec_pred_pow_le] $[$loc:location]?))
+
 open Lean Elab Meta Tactic Parser.Tactic in
-/-- `flinearize!` is a specialized version of `linearize!` that includes common FloatFormat lemmas.
-It is equivalent to `linearize! [FloatFormat.valid_prec, FloatFormat.exp_order,
-FloatFormat.max_exp_pos, FloatFormat.min_exp_nonpos]` -/
-syntax (name := flinearizeBang) "flinearize!" (&" only")? (" [" term,* "]")? (location)? : tactic
+syntax (name := flinearizeBang) "flinearize!" (" (" term ")")? (&" only")? (" [" term,* "]")? (location)? : tactic
 
 open Lean Elab Meta Tactic Parser.Tactic in
 elab_rules : tactic
-  | `(tactic| flinearize! $[only%$o]? $[ [ $args,* ] ]? $[$loc:location]?) => do
-    -- Call linearize! with the default FloatFormat lemmas plus any additional arguments
-    match o, args with
-    | some _, some args =>
-      evalTactic (← `(tactic| linearize! only [FloatFormat.valid_prec, FloatFormat.exp_order, FloatFormat.max_exp_pos, FloatFormat.min_exp_nonpos, FloatFormat.prec_pred_pow_le, $args,*] $[$loc:location]?))
-    | some _, none =>
-      evalTactic (← `(tactic| linearize! only [FloatFormat.valid_prec, FloatFormat.exp_order, FloatFormat.max_exp_pos, FloatFormat.min_exp_nonpos, FloatFormat.prec_pred_pow_le] $[$loc:location]?))
-    | none, some args =>
-      evalTactic (← `(tactic| linearize! [FloatFormat.valid_prec, FloatFormat.exp_order, FloatFormat.max_exp_pos, FloatFormat.min_exp_nonpos, FloatFormat.prec_pred_pow_le, $args,*] $[$loc:location]?))
-    | none, none =>
-      evalTactic (← `(tactic| linearize! [FloatFormat.valid_prec, FloatFormat.exp_order, FloatFormat.max_exp_pos, FloatFormat.min_exp_nonpos, FloatFormat.prec_pred_pow_le] $[$loc:location]?))
+  | `(tactic| flinearize! $[($R_user)]? $[only%$o]? $[ [ $args,* ] ]? $[$loc:location]?) => do
+    -- Determine the type `R` to use for specialization.
+    let R_opt : Option (TSyntax `term) ←
+      match R_user with
+      | some r =>
+        -- 1. If the user provides `(R)`, use that. It has the highest priority.
+        pure (some r)
+      | none =>
+        -- 2. If no type is given, try to infer it from the main goal.
+        let goalExpr ← getMainTarget
+        trace[linarith] "goalExpr: {goalExpr}"
+        let mut inferredType : Option Expr := none
+        -- Look for binary relations like `a < b` or `a ≤ b`
+        if goalExpr.isAppOfArity ``LT.lt 4 || goalExpr.isAppOfArity ``LE.le 4 then
+          let lhs := goalExpr.getAppArgs[0]!
+          trace[linarith] "lhs: {lhs}"
+          inferredType := some lhs
+        -- Look for equality `a = b` (which is `Eq R a b`)
+        else if goalExpr.isAppOfArity ``Eq 3 then
+          trace[linarith] "goalExpr: {goalExpr}"
+          inferredType := some (goalExpr.getAppArgs[0]!)
+        trace[linarith] "inferredType: {inferredType}"
+
+        match inferredType with
+        | some typeExpr =>
+          -- Convert the inferred type `Expr` back into a `Syntax` object.
+          -- pure (some (← delab typeExpr))
+          let typeSyntax ← typeExpr.toSyntax
+          trace[linarith] "typeSyntax: {typeSyntax}"
+          pure (some typeSyntax)
+        | none =>
+          -- 3. If inference fails, proceed without a type.
+          pure none
+
+    -- Build the list of lemmas for linarith.
+    let mut allTerms : Array (TSyntax `term) :=
+      #[← `(FloatFormat.valid_prec), ← `(FloatFormat.exp_order),
+        ← `(FloatFormat.max_exp_pos), ← `(FloatFormat.min_exp_nonpos), ← `(FloatFormat.pow_prec_pred_lt)]
+
+    -- Add generic lemmas, specializing them if we have a type for R.
+    match R_opt with
+    | some r =>
+      trace[linarith] "r: {r}"
+      allTerms := allTerms.push (← `(FloatFormat.prec_pred_pow_le (R := $r)))
+    | none =>
+      allTerms := allTerms.push (← `(FloatFormat.prec_pred_pow_le))
+
+    -- Append any additional lemmas provided by the user.
+    if let some userArgs := args then
+      allTerms := allTerms ++ userArgs.getElems
+
+    -- Construct and evaluate the final tactic call.
+    let tac ← `(tactic| linearize! [$allTerms,*])
+    evalTactic tac
+
+
+open Lean Elab Meta Tactic Parser.Tactic in
+syntax (name := flinarith) "flinarith" (" (" term ")")? (" [" term,* "]")? : tactic
+
+open Lean Elab Meta Tactic Parser.Tactic in
+elab_rules : tactic
+  | `(tactic| flinarith $[($R_user)]? $[ [ $args,* ] ]?) => do
+    -- Determine the type `R` to use for specialization.
+    let R_opt : Option (TSyntax `term) ←
+      match R_user with
+      | some r =>
+        -- 1. If the user provides `(R)`, use that. It has the highest priority.
+        pure (some r)
+      | none =>
+        -- 2. If no type is given, try to infer it from the main goal.
+        let goalExpr ← getMainTarget
+        trace[linarith] "goalExpr: {goalExpr}"
+        let mut inferredType : Option Expr := none
+        -- Look for binary relations like `a < b` or `a ≤ b`
+        if goalExpr.isAppOfArity ``LT.lt 4 || goalExpr.isAppOfArity ``LE.le 4 then
+          let lhs := goalExpr.getAppArgs[0]!
+          trace[linarith] "lhs: {lhs}"
+          inferredType := some lhs
+        -- Look for equality `a = b` (which is `Eq R a b`)
+        else if goalExpr.isAppOfArity ``Eq 3 then
+          trace[linarith] "goalExpr: {goalExpr}"
+          inferredType := some (goalExpr.getAppArgs[0]!)
+        trace[linarith] "inferredType: {inferredType}"
+
+        match inferredType with
+        | some typeExpr =>
+          -- Convert the inferred type `Expr` back into a `Syntax` object.
+          -- pure (some (← delab typeExpr))
+          let typeSyntax ← typeExpr.toSyntax
+          trace[linarith] "typeSyntax: {typeSyntax}"
+          pure (some typeSyntax)
+        | none =>
+          -- 3. If inference fails, proceed without a type.
+          pure none
+
+    -- Build the list of lemmas for linarith.
+    let mut allTerms : Array (TSyntax `term) :=
+      #[← `(FloatFormat.valid_prec), ← `(FloatFormat.exp_order),
+        ← `(FloatFormat.max_exp_pos), ← `(FloatFormat.min_exp_nonpos), ← `(FloatFormat.pow_prec_pred_lt)]
+
+    -- Add generic lemmas, specializing them if we have a type for R.
+    match R_opt with
+    | some r =>
+      trace[linarith] "r: {r}"
+      allTerms := allTerms.push (← `(FloatFormat.prec_pred_pow_le (R := $r)))
+    | none =>
+      allTerms := allTerms.push (← `(FloatFormat.prec_pred_pow_le))
+
+    -- Append any additional lemmas provided by the user.
+    if let some userArgs := args then
+      allTerms := allTerms ++ userArgs.getElems
+
+    -- Construct and evaluate the final tactic call.
+    let tac ← `(tactic| linarith [$allTerms,*])
+    evalTactic tac
+
+
+open Lean Elab Meta Tactic Parser.Tactic in
+-- Define the syntax for the `fomega` tactic.
+-- It accepts an optional list of user-provided terms.
+syntax (name := fomega) "fomega" (" [" term,* "]")? : tactic
+
+-- Define the elaborator for the tactic.
+open Lean Elab Meta Tactic Parser.Tactic in
+elab_rules : tactic
+  | `(tactic| fomega $[ [ $args,* ] ]?) => do
+    -- `withMainContext` ensures that context changes are properly managed.
+    withMainContext do
+      -- 1. Define the default `FloatFormat` lemmas.
+      --    Lemmas that are generic over a ring `R` are specialized to `ℕ`,
+      --    since `omega` operates on natural numbers.
+      let defaultLemmas : Array (TSyntax `term) := #[
+        ← `(FloatFormat.valid_prec),
+        ← `(FloatFormat.exp_order),
+        ← `(FloatFormat.max_exp_pos),
+        ← `(FloatFormat.min_exp_nonpos),
+        ← `(FloatFormat.prec_pred_pow_le (R := ℕ)),
+        ← `(FloatFormat.pow_prec_pred_lt)
+      ]
+
+      -- 2. Combine the default lemmas with any lemmas provided by the user.
+      let allLemmas :=
+        if let some userArgs := args then
+          defaultLemmas ++ userArgs.getElems
+        else
+          defaultLemmas
+
+      -- 3. Introduce every lemma from the combined list into the local context.
+      --    The `have` tactic adds each one as a new hypothesis.
+      for l in allLemmas do
+        evalTactic (← `(tactic| have := $l))
+
+      -- 4. Finally, call `omega`, which can now use the newly introduced facts.
+      evalTactic (← `(tactic| omega))
