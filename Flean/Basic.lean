@@ -7,6 +7,7 @@ import Mathlib.Data.Real.Basic
 import Mathlib.Data.Nat.Bits
 
 import Flean.FloatFormat
+import Flean.Util
 
 /-! Based off of 'Handbook of Floating Point Arithmetic' by Jean-Michel Muller et al. -/
 -- Some designs of floating point arithmetic talk about floats as a subset of the reals/rationals with some extra properties
@@ -268,6 +269,206 @@ theorem toVal_nonneg [Field R] [LinearOrder R] [IsStrictOrderedRing R] (x : Fini
 
 
 end toVal
+
+theorem eq_def (x y : FiniteFp) : x = y ↔ x.s = y.s ∧ x.e = y.e ∧ x.m = y.m := by
+  constructor
+  · intro h
+    simp [h]
+  · intro h
+    ext
+    <;> simp [h]
+
+@[reducible]
+def is_mag_le (x y : FiniteFp) : Prop :=
+  if x.e = y.e then x.m ≤ y.m
+  else if x.e > y.e then x.m * 2^((x.e - y.e).natAbs) ≤ y.m
+  else x.m ≤ y.m * 2^((y.e - x.e).natAbs)
+
+theorem is_mag_le_refl (x : FiniteFp) : is_mag_le x x := by
+  simp [is_mag_le]
+
+@[reducible]
+def is_le (x y : FiniteFp) : Prop := (x.s ∧ !y.s) ∨
+  (!x.s ∧ y.s ∧ x.m = 0 ∧ y.m = 0) ∨
+  (!x.s ∧ !y.s ∧ is_mag_le x y) ∨
+  (x.s ∧ y.s ∧ is_mag_le y x)
+
+instance : LE FiniteFp := ⟨is_le⟩
+
+instance : LT FiniteFp := ⟨fun x y => is_le x y ∧ x ≠ y⟩
+
+theorem le_def (x y : FiniteFp) : x ≤ y ↔ is_le x y := by rfl
+
+theorem le_def' (x y : FiniteFp) : x ≤ y ↔ ((x.s ∧ !y.s) ∨
+  (!x.s ∧ y.s ∧ x.m = 0 ∧ y.m = 0) ∨
+  (!x.s ∧ !y.s ∧ is_mag_le x y) ∨
+  (x.s ∧ y.s ∧ is_mag_le y x)) := by rfl
+
+theorem lt_def (x y : FiniteFp) : x < y ↔ is_le x y ∧ x ≠ y := by rfl
+
+theorem mag_le_significand_le {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+  {j k : FiniteFp} : (j.is_mag_le k) ↔ (j.m : R) * (2 : R) ^ (j.e - ↑FloatFormat.prec + 1) ≤ (k.m : R) * (2 : R) ^ (k.e - ↑FloatFormat.prec + 1) := by
+  -- have ha : (j k : FiniteFp) → (j.is_mag_le k) ↔ (j.m : R) * (2 : R) ^ (j.e - ↑FloatFormat.prec + 1) ≤ (k.m : R) * (2 : R) ^ (k.e - ↑FloatFormat.prec + 1) := by
+  -- intro j k
+  constructor
+  · intro h
+    unfold is_mag_le at h
+    split_ifs at h with h1 h2
+    · rw [h1]
+      apply mul_le_mul_of_nonneg_right
+      exact_mod_cast h
+      linearize
+    · --apply mul_le_of_le_div₀
+      rw [mul_comm]
+      apply mul_le_mul_of_mul_div_le
+      rw [← zpow_sub₀]
+      norm_num
+      rw [← zpow_natAbs_nonneg_eq_zpow]
+      exact_mod_cast h
+      norm_num
+      omega
+      norm_num
+      linearize
+    · norm_num at h2
+      apply mul_le_of_le_div₀
+      · apply mul_nonneg
+        linarith
+        linearize
+      · linearize
+      · rw [mul_div_assoc, ← zpow_sub₀]
+        norm_num
+        rw [← zpow_natAbs_nonneg_eq_zpow]
+        exact_mod_cast h
+        norm_num
+        omega
+        norm_num
+  · intro h
+    unfold is_mag_le
+    -- TODO: A lot of the logic is similar between forward/backward directions.
+    split_ifs with h1 h2
+    · rw [h1] at h
+      apply (Nat.cast_le (α := R)).mp
+      apply (mul_le_mul_right ?_).mp
+      exact h
+      linearize
+    · apply (Nat.cast_le (α := R)).mp
+      rw [Nat.cast_mul, Nat.cast_pow]
+      rw [zpow_natAbs_nonneg_eq_zpow]
+      norm_num
+      have h' : (j.m : R) * (2 : R) ^ (j.e - ↑FloatFormat.prec + 1) / (2 : R)^(k.e - ↑FloatFormat.prec + 1) ≤ ↑k.m := by
+        apply div_le_of_le_mul₀
+        linearize
+        linarith
+        trivial
+      rw [mul_div_assoc, ← zpow_sub₀] at h'
+      norm_num at h'
+      trivial
+      norm_num
+      norm_num
+      linarith
+    · norm_num at h2
+      apply (Nat.cast_le (α := R)).mp
+      rw [Nat.cast_mul, Nat.cast_pow]
+      rw [zpow_natAbs_nonneg_eq_zpow]
+      norm_num
+      have h' : (j.m : R) ≤ (k.m : R) * (2 : R) ^ (k.e - ↑FloatFormat.prec + 1) / (2 : R) ^ (j.e - ↑FloatFormat.prec + 1) := by
+        apply (le_div_iff₀ ?_).mpr
+        trivial
+        linearize
+      rw [mul_div_assoc, ← zpow_sub₀] at h'
+      norm_num at h'
+      trivial
+      norm_num
+      norm_num
+      omega
+
+/-- The order on floats is the same as the order on their values
+    This allows easier proofs for various properties. -/
+theorem le_iff_toVal_le {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+  {x y : FiniteFp} : x ≤ y ↔ x.toVal (R := R) ≤ y.toVal (R := R) := by
+  constructor
+  · intro h
+    rw [le_def'] at h
+    unfold toVal sign'
+    rw [FloatFormat.radix_val_eq_two]
+
+    rcases h with _ | _ | _ | _
+    <;> simp_all [mag_le_significand_le.mp]
+    · have rhs_ng : 0 ≤ (y.m : R) * (2 : R) ^ (y.e - ↑FloatFormat.prec + 1) := by
+        apply mul_nonneg
+        linarith
+        linearize
+      have lhs_ng : 0 ≤ (x.m : R) * (2 : R) ^ (x.e - ↑FloatFormat.prec + 1) := by
+        apply mul_nonneg
+        linarith
+        linearize
+      linarith
+  · intro h
+    rw [le_def']
+    unfold toVal sign' at h
+    rw [FloatFormat.radix_val_eq_two] at h
+    split_ifs at h with h1 h2 h3
+    <;> simp_all
+    · apply mag_le_significand_le.mpr h
+    · have hj : (j : FiniteFp) → 0 ≤ (j.m : R) * (2 : R) ^ (j.e - ↑FloatFormat.prec + 1) := by
+        intro j
+        apply mul_nonneg
+        linarith
+        linearize
+      have hy := hj y
+      have hx := hj x
+      have hny := le_trans hx h
+      have hy' : 0 ≤ (y.m : R) := by linarith
+      have hny' : 0 ≤ -(y.m : R) := by
+        rw [← neg_mul] at hny
+        apply nonneg_of_mul_nonneg_left hny
+        linearize
+      have hyz : (y.m : R) = 0 := by linarith
+      have hyz : y.m = 0 := by exact_mod_cast hyz
+      have hx' : 0 ≤ (x.m : R) := by linarith
+      if x.m = 0 then trivial
+      else
+        rename_i xnz
+        have hx : 0 < (x.m : R) * (2 : R) ^ (x.e - ↑FloatFormat.prec + 1) := by
+          apply mul_pos
+          apply lt_of_le_of_ne hx'
+          symm
+          norm_num
+          exact xnz
+          linearize
+        linarith
+    · apply mag_le_significand_le.mpr h
+
+theorem toVal_le (R : Type*) [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : FiniteFp} : x.toVal (R := R) ≤ y.toVal (R := R) → x ≤ y := by
+  intro h
+  apply (le_iff_toVal_le (R := R)).mpr
+  exact h
+
+theorem le_toVal_le (R : Type*) [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : FiniteFp} : x ≤ y → x.toVal (R := R) ≤ y.toVal (R := R) := by
+  intro h
+  apply (le_iff_toVal_le (R := R)).mp
+  exact h
+
+instance : Preorder FiniteFp := {
+  le_refl := by simp [le_def', is_mag_le]
+  le_trans := by
+    intro a b c hab hbc
+    have hab := le_toVal_le ℚ hab
+    have hbc := le_toVal_le ℚ hbc
+    apply toVal_le ℚ
+    linarith
+  lt := fun x y => x ≤ y ∧ ¬y ≤ x
+  lt_iff_le_not_ge := by simp_all [le_def']
+}
+
+instance : PartialOrder FiniteFp := {
+  le_antisymm := by
+    intro a b hab hba
+    rw [le_def'] at hab hba
+    sorry
+}
+
+-- instance : IsStrictTotalOrder FiniteFp is_le := by
 
 def isNormal (x : FiniteFp) : Prop := _root_.isNormal x.m
 

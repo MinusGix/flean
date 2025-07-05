@@ -54,3 +54,25 @@ theorem Int.ceil_ne_zero_pos {R : Type*} [Field R] [LinearOrder R] [FloorRing R]
   have := Int.ceil_eq_iff.mp hz
   norm_num at this
   linarith
+
+-- Connecting `zpow` and `pow` of a sort
+theorem zpow_natAbs_nonneg_eq_zpow {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] {a : R} {n : ℤ} :
+  0 < a → 0 ≤ n → (a ^ n.natAbs : R) = a ^ n := by
+  intro ha hn
+  induction n with
+  | zero => simp
+  | succ n ih =>
+    have : 0 ≤ ↑n := by linarith
+    have h1 := ih (by exact_mod_cast this)
+    have h2 : ((n : ℤ) + 1).natAbs = (↑n : ℤ).natAbs + 1 := by aesop
+    rw [h2]
+    simp_all
+    rw [pow_add, zpow_add_one₀]
+    norm_num
+    linarith
+  | pred n ih =>
+    have : 0 ≤ -(n : ℤ) := by linarith
+    have h1 := ih (by exact_mod_cast this)
+    have h2 : (-(n : ℤ) - 1).natAbs = (-(n : ℤ)).natAbs - 1 := by aesop
+    rw [h2]
+    simp_all
