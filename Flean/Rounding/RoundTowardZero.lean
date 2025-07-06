@@ -33,6 +33,9 @@ def roundTowardZero [FloatFormat] (x : R) : Fp :=
     -- For negative x, round up (toward zero)
     roundUp x
 
+theorem roundTowardZero_mono [FloatFormat] {x y : R} (h : x ≤ y) : roundTowardZero x ≤ roundTowardZero y := by
+  sorry
+
 /-- roundTowardZero returns 0 when input is 0 -/
 theorem roundTowardZero_zero [FloatFormat] : roundTowardZero (0 : R) = Fp.finite 0 := by
   unfold roundTowardZero
