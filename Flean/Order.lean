@@ -457,8 +457,11 @@ instance : Preorder FiniteFp := {
 instance : PartialOrder FiniteFp := {
   le_antisymm := by
     intro a b hab hba
-    rw [le_def'] at hab hba
-    sorry
+    rw [le_def] at hab hba
+    cases' hab with h1 h1
+    · have h2 := lt_asymm h1
+      grind
+    · trivial
 }
 
 end FiniteFp
