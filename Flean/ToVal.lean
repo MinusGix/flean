@@ -19,6 +19,11 @@ theorem toVal_mag_nonneg [Field R] [LinearOrder R] [IsStrictOrderedRing R] (x : 
   rw [FloatFormat.radix_val_eq_two]
   apply mul_nonneg (by norm_num) (by linearize)
 
+theorem toVal_mag_nonneg' (R : Type*) [Field R] [LinearOrder R] [IsStrictOrderedRing R] (x : FiniteFp) : 0 ≤ x.m * (2 : R)^(x.e - FloatFormat.prec + 1) := by
+  rw [← Int.cast_two, ← FloatFormat.radix_val_eq_two]
+  change 0 ≤ toVal_mag x (R := R)
+  apply toVal_mag_nonneg
+
 theorem toVal_eq_sign_mul_mag [Field R] (x : FiniteFp) : toVal x (R := R) = x.sign' * toVal_mag x := by
   unfold toVal sign' toVal_mag
   norm_num
@@ -207,36 +212,50 @@ theorem eq_of_toVal_eq [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : 
   split_ands <;> trivial
 
 /-- If two finite floats have the same value, then they have the same sign as long as they are non-zero. -/
-theorem sign_eq_of_toVal_eq [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : FiniteFp} (xnz : ¬x.isZero) (ynz : ¬y.isZero) (hv : x.toVal (R := R) = y.toVal (R := R)) : x.s = y.s := by
+theorem sign_eq_of_toVal_eq [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : FiniteFp} (hnz : ¬x.isZero ∨ ¬y.isZero) (hv : x.toVal (R := R) = y.toVal (R := R)) : x.s = y.s := by
   by_contra hs
-  unfold isZero at xnz ynz
-  have hxm_pos : 0 < toVal_mag x (R := R):= by
-    apply toVal_mag_pos
-    omega
-  have hym_pos : 0 < toVal_mag y (R := R):= by
-    apply toVal_mag_pos
-    omega
-  if hs : x.s = true then
-    have hy : y.s = false := by grind
-    simp [toVal, sign', hs, hy] at hv
-    unfold toVal_mag at hxm_pos hym_pos
-    linarith
-  else
-    have hy : y.s = true := by grind
-    simp [toVal, sign', hs, hy] at hv
-    unfold toVal_mag at hxm_pos hym_pos
-    linarith
-
+  unfold isZero at hnz
+  cases' hnz with xnz ynz
+  · have hxm_pos : 0 < toVal_mag x (R := R):= by
+      apply toVal_mag_pos
+      omega
+    rw [toVal_mag, FloatFormat.radix_val_eq_two] at hxm_pos
+    norm_num at hxm_pos
+    if hx : x.s = true then
+      have hy : y.s = false := by grind
+      simp [toVal, sign', hx, hy, FloatFormat.radix_val_eq_two] at hv
+      have hj := toVal_mag_nonneg' R y
+      linarith
+    else
+      have hy : y.s = true := by grind
+      simp [toVal, sign', hx, hy, FloatFormat.radix_val_eq_two] at hv
+      have hj := toVal_mag_nonneg' R y
+      linarith
+  · have hym_pos : 0 < toVal_mag y (R := R):= by
+      apply toVal_mag_pos
+      omega
+    rw [toVal_mag, FloatFormat.radix_val_eq_two] at hym_pos
+    norm_num at hym_pos
+    if hx : x.s = true then
+      have hy : y.s = false := by grind
+      simp [toVal, sign', hx, hy, FloatFormat.radix_val_eq_two] at hv
+      have hj := toVal_mag_nonneg' R x
+      linarith
+    else
+      have hy : y.s = true := by grind
+      simp [toVal, sign', hx, hy, FloatFormat.radix_val_eq_two] at hv
+      have hj := toVal_mag_nonneg' R x
+      linarith
 
 /-- Version of `eq_of_toVal_eq` that simply requires that the inputs are non-zero -/
-theorem eq_of_toVal_eq' [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : FiniteFp} (xnz : ¬x.isZero) (ynz : ¬y.isZero) : x.toVal (R := R) = y.toVal (R := R) → x = y := by
+theorem eq_of_toVal_eq' [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : FiniteFp} (hnz : ¬x.isZero ∨ ¬y.isZero) : x.toVal (R := R) = y.toVal (R := R) → x = y := by
   intro hv
   apply eq_of_toVal_eq ?_ hv
   -- Now we have to prove that the signs are equal
   -- unfold isZero at xnz ynz
   unfold toVal sign' at hv
   rw [FloatFormat.radix_val_eq_two] at hv
-  apply sign_eq_of_toVal_eq xnz ynz hv
+  apply sign_eq_of_toVal_eq hnz hv
 
 theorem imp_toVal_eq [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : FiniteFp} : x = y → x.toVal (R := R) = y.toVal := by
   intro hxy
@@ -246,15 +265,12 @@ theorem imp_toVal_eq [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : Fi
   simp_all
 
 /-- toVal is injective, except for 0 and -0 -/
-theorem imp_toVal_ne [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : FiniteFp} : x ≠ y → (¬x.isZero ∧ ¬y.isZero) → x.toVal (R := R) ≠ y.toVal := by
+theorem imp_toVal_ne [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : FiniteFp} : x ≠ y → (¬x.isZero ∨ ¬y.isZero) → x.toVal (R := R) ≠ y.toVal := by
   intro hxy hnz
   norm_num at hxy
-  rw [eq_def] at hxy
-  -- unfold isZero at hnz
-  rw [not_and_or, not_and_or] at hxy
-  -- unfold toVal sign'
+  rw [eq_def, not_and_or, not_and_or] at hxy
   intro hv
-  have := eq_of_toVal_eq' hnz.1 hnz.2 hv
+  have := eq_of_toVal_eq' hnz hv
   rw [this] at hxy
   grind
 

@@ -39,6 +39,9 @@ theorem is_mag_lt_imp_is_mag_le {x y : FiniteFp} : x.is_mag_lt y → x.is_mag_le
   · simp [h1, h2, le_of_lt h]
   · simp [h1, h2, le_of_lt h]
 
+theorem not_is_mag_lt_refl {x : FiniteFp} : ¬x.is_mag_lt x := by
+  norm_num [is_mag_lt]
+
 instance : LE FiniteFp := ⟨is_le⟩
 
 theorem le_def (x y : FiniteFp) : x ≤ y ↔ (x < y ∨ x = y) := by rfl
@@ -47,7 +50,7 @@ theorem lt_def (x y : FiniteFp) : x < y ↔ (x.s ∧ !y.s) ∨
   (!x.s ∧ !y.s ∧ x.is_mag_lt y) ∨
   (x.s ∧ y.s ∧ y.is_mag_lt x) := by rfl
 
-theorem is_lt_imp_is_le {x y : FiniteFp} : x < y → x ≤ y := by
+theorem lt_imp_is_le {x y : FiniteFp} : x < y → x ≤ y := by
   rw [lt_def, le_def, lt_def, eq_def]
   intro h
   simp_all
@@ -59,6 +62,9 @@ theorem lt_imp_ne {x y : FiniteFp} : x < y → x ≠ y := by
   rw [eq_def]
   intro hn
   simp_all [is_mag_lt]
+
+theorem not_lt_refl {x : FiniteFp} : ¬x < x := by
+  simp [lt_def, not_is_mag_lt_refl]
 
 theorem mag_lt_disjoint {x y : FiniteFp} : x.is_mag_lt y → ¬y.is_mag_lt x := by
   unfold is_mag_lt
@@ -350,81 +356,102 @@ theorem toVal_le_handle (R : Type*) [Field R] [LinearOrder R] [IsStrictOrderedRi
     rw [not_and_or] at hz
     exact hz
 
+/-- Two floats are ordered the same as their values, as long as they are non-zero -/
+theorem lt_toVal_lt (R : Type*) [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : FiniteFp} : x < y → (¬x.isZero ∨ ¬y.isZero) → x.toVal (R := R) < y.toVal (R := R) := by
+  intro h hnz
+  apply lt_of_le_of_ne
+  · apply le_toVal_le
+    apply lt_imp_is_le h
+  · apply imp_toVal_ne _ hnz
+    apply lt_imp_ne h
 
+/-- If the values are ordered, then the floats are ordered -/
+theorem toVal_lt (R : Type*) [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : FiniteFp} : x.toVal (R := R) < y.toVal (R := R) → x < y := by
+  intro hlt
+  rw [lt_def]
+  unfold toVal sign' at hlt
+  rw [FloatFormat.radix_val_eq_two] at hlt
+  split_ifs at hlt with h1 h2 h3
+  · norm_num [h1, h2]
+    norm_num at hlt
+    apply mag_lt_significand_lt.mpr hlt
+  · norm_num [h1, h2]
+  · norm_num [h1, h3]
+    norm_num at hlt
+    have hx := toVal_mag_nonneg' R x
+    have hy := toVal_mag_nonneg' R y
+    linarith
+  · norm_num [h1, h3]
+    norm_num at hlt
+    apply mag_lt_significand_lt.mpr hlt
+
+theorem is_le_trans {a b c : FiniteFp} : a ≤ b → b ≤ c → a ≤ c := by
+  intro hab hbc
+  have hab := le_toVal_le ℚ hab
+  have hbc := le_toVal_le ℚ hbc
+  apply toVal_le_handle ℚ (by linarith)
+  intro hz
+  rw [isZero_iff, isZero_iff] at hz
+  rcases hz with ⟨h1 | h2, h3 | h4⟩
+  · simp [le_def, h1, h3]
+  · have := not_zero_le_neg_zero
+    rename_i ha hb
+    rw [h1] at ha
+    rw [h4] at hb
+    simp_all [le_def, lt_def, zero_def, neg_def, is_mag_lt, toVal, sign', FloatFormat.radix_val_eq_two]
+    aesop
+  · simp [neg_zero_le_zero, h2, h3]
+  · simp [le_def, h2, h4]
+
+theorem is_mag_lt_trans {a b c : FiniteFp} : a.is_mag_lt b → b.is_mag_lt c → a.is_mag_lt c := by
+  intro hab hbc
+  have hab := (mag_lt_significand_lt (R := ℚ)).mp hab
+  have hbc := (mag_lt_significand_lt (R := ℚ)).mp hbc
+  apply (mag_lt_significand_lt (R := ℚ)).mpr
+  linarith
+
+theorem is_lt_trans {a b c : FiniteFp} : a < b → b < c → a < c := by
+  intro hab hbc
+  rw [lt_def] at hab hbc ⊢
+  cases' hab with h1 h1
+  <;> cases' hbc with h2 h2
+  · grind
+  · grind
+  · grind
+  · cases' h1 with h1 h1
+    <;> cases' h2 with h2 h2
+    · have := is_mag_lt_trans h1.right.right h2.right.right
+      grind
+    · grind
+    · grind
+    · have := is_mag_lt_trans h2.right.right h1.right.right
+      grind
 
 instance : Preorder FiniteFp := {
   le_refl := by simp [le_def]
-  le_trans := by
-    intro a b c hab hbc
-    have hab := le_toVal_le ℚ hab
-    have hbc := le_toVal_le ℚ hbc
-    apply toVal_le_handle ℚ (by linarith)
-    intro hz
-    rw [isZero_iff, isZero_iff] at hz
-    norm_num at hz
-    norm_num
-    rcases hz with ⟨h1 | h2, h3 | h4⟩
-    · simp [le_def, h1, h3]
-    · have := not_zero_le_neg_zero
-      rename_i ha hb
-      rw [h1] at ha
-      rw [h4] at hb
-      simp_all [le_def, lt_def, zero_def, neg_def, is_mag_lt, toVal, sign', FloatFormat.radix_val_eq_two]
-      aesop
-    · simp [neg_zero_le_zero, h2, h3]
-    · simp [le_def, h2, h4]
+  le_trans := by apply is_le_trans
   lt := fun a b => a < b
   lt_iff_le_not_ge := by
     intro a b
     constructor
     · intro ha
-      have hn := lt_imp_ne ha
-      rw [le_def, lt_def, le_def, lt_def]
       split_ands
-      · left
-        rw [lt_def] at ha
-        simp_all
-      · intro hv
-        rw [lt_def] at ha
-        have hv := Or.resolve_right hv hn
-        cases' ha
-        <;> cases' hv
-        · simp_all
-        · simp_all
-        · simp_all
-        · norm_num at hn
-          rw [eq_def] at hn
-          rw [is_mag_lt] at *
-          simp_all
-          grind
-    · sorry
-
-
-
-
-    -- constructor
-    -- · intro h
-    --   rw [lt_def] at h
-    --   rw [le_def', le_def']
-    --   split_ands
-    --   · rcases h with h1 | h2 | h3
-    --     · simp_all
-    --     · grind
-    --     · grind
-    --   · rcases h with h1 | h2 | h3
-    --     · norm_num at h1
-    --       rw [h1.left, h1.right]
-    --       sorry -- here
-    --     · grind
-    --     · grind
-    -- · intro hab
-    --   rw [le_def', le_def'] at hab
-    --   obtain ⟨hab, hba⟩ := hab
-    --   rw [lt_def]
-    --   rcases hab with h1 | h2 | h3
-    --   · grind
-    --   · grind
-    --   · sorry
+      · rw [le_def]
+        left; exact ha
+      · intro hba
+        cases' hba with h1 h2
+        · exact not_lt_refl (is_lt_trans ha h1)
+        · rw [h2] at ha
+          apply not_lt_refl ha
+    · intro ha
+      rw [le_def] at ha
+      cases' ha.left with h1 h2
+      · trivial
+      · exfalso
+        have : b ≤ a := by
+          rw [h2]
+          simp [le_def]
+        apply ha.right this
 }
 
 instance : PartialOrder FiniteFp := {
