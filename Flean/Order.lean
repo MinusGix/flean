@@ -28,6 +28,9 @@ def is_mag_le (x y : FiniteFp) : Prop :=
 theorem is_mag_le_refl (x : FiniteFp) : is_mag_le x x := by
   simp [is_mag_le]
 
+def is_mag_eq (x y : FiniteFp) : Prop :=
+  x.e = y.e ∧ x.m = y.m
+
 @[reducible]
 def is_le (x y : FiniteFp) : Prop := x < y ∨ x = y
 
@@ -73,6 +76,32 @@ theorem mag_lt_disjoint {x y : FiniteFp} : x.is_mag_lt y → ¬y.is_mag_lt x := 
   · simp_all [le_of_lt h]
   · split_ifs <;> omega
   · split_ifs <;> omega
+
+theorem is_mag_eq_refl (x : FiniteFp) : is_mag_eq x x := by
+  simp [is_mag_eq]
+
+theorem is_mag_eq_symm {x y : FiniteFp} : is_mag_eq x y → is_mag_eq y x := by
+  unfold is_mag_eq
+  grind
+
+theorem is_mag_eq_trans {x y z : FiniteFp} : is_mag_eq x y → is_mag_eq y z → is_mag_eq x z := by
+  unfold is_mag_eq
+  grind
+
+theorem is_mag_eq_imp_is_mag_le {x y : FiniteFp} : is_mag_eq x y → is_mag_le x y := by
+  unfold is_mag_eq is_mag_le
+  intro h
+  simp_all
+
+-- theorem is_mag_le_iff_is_mag_lt_or_eq {x y : FiniteFp} : is_mag_le x y ↔ is_mag_lt x y ∨ is_mag_eq x y := by
+--   unfold is_mag_le is_mag_lt is_mag_eq
+--   constructor
+--   · split_ifs with h1 h2
+--     · grind
+--     · intro h3
+--       left
+
+
 
 theorem zero_le_zero : (0 : FiniteFp) ≤ 0 := by
   simp only [zero_def, le_def, or_true]
@@ -427,6 +456,117 @@ theorem is_lt_trans {a b c : FiniteFp} : a < b → b < c → a < c := by
     · have := is_mag_lt_trans h2.right.right h1.right.right
       grind
 
+theorem mag_le_total (a b : FiniteFp) : a.is_mag_le b ∨ b.is_mag_le a := by
+  rw [mag_le_significand_le (R := ℚ), mag_le_significand_le (R := ℚ)]
+  apply le_total
+
+-- theorem mag_le_iff_mag_lt_or_eq (a b : FiniteFp) : a.is_mag_le b ↔ a.is_mag_lt b ∨ (a.e = b.e ∧ a.m = b.m) := by
+--   rw [mag_le_significand_le (R := ℚ), mag_lt_significand_lt (R := ℚ)]
+--   constructor
+--   · intro h
+
+    -- if h1 : a.e = b.e ∧ a.m = b.m then
+    --   grind
+    -- else
+    --   left
+    --   apply lt_of_le_of_ne h
+    --   rw [not_and_or] at h1
+    --   cases' h1
+    --   ·
+
+theorem mag_le_imp_le_of_pos {x y : FiniteFp} : !x.s → !y.s → x.is_mag_le y → x ≤ y := by
+  intro h1 h2 h3
+
+  have h3 := (mag_le_significand_le (R := ℚ)).mp h3
+  apply toVal_le_handle ℚ
+  · unfold toVal sign'
+    norm_num at h1 h2
+    norm_num [h1, h2]
+    trivial
+  · intro nz
+    rw [isZero_iff, isZero_iff] at nz
+    rcases nz with ⟨h1 | h2, h3 | h4⟩
+    · simp [le_def, h1, h3]
+    · have := not_zero_le_neg_zero
+      rename_i ha hb
+      rw [h1] at ha
+      rw [h4] at hb
+      simp_all only [zero_def, Bool.not_false, neg_def, Bool.not_true, Bool.false_eq_true]
+    · simp [neg_zero_le_zero, h2, h3]
+    · simp [le_def, h2, h4]
+
+-- theorem mag_lt_total {a b : FiniteFp} : a.is_mag_lt b ∨ b.is_mag_lt a ∨ a = b := by
+--   rw [mag_lt_significand_lt (R := ℚ), mag_lt_significand_lt (R := ℚ)]
+--   -- apply le_total
+--   rw [show ↑a.m * 2 ^ (a.e - ↑FloatFormat.prec + 1) < ↑b.m * (2 : ℚ) ^ (b.e - ↑FloatFormat.prec + 1) ↔ ( ↑a.m * 2 ^ (a.e - ↑FloatFormat.prec + 1) < ↑b.m * (2 : ℚ) ^ (b.e - ↑FloatFormat.prec + 1) ∨ a = b) by ring_nf]
+--   rw [← le_iff_lt_or_eq]
+  -- have h : (x y : ℚ) → (x < y ∨ x = y) ↔ x ≤ y := by
+  --   intro x y
+  --   constructor
+  --   · intro h
+  --     rw []
+
+theorem mag_le_imp_le_of_neg {x y : FiniteFp} : x.s → y.s → x.is_mag_le y → y ≤ x:= by
+  intro h1 h2 h3
+  have h3 := (mag_le_significand_le (R := ℚ)).mp h3
+  apply toVal_le_handle ℚ
+  · unfold toVal sign'
+    simp [h1, h2]
+    trivial
+  · intro nz
+    rw [isZero_iff, isZero_iff] at nz
+    rcases nz with ⟨h1 | h2, h3 | h4⟩
+    · simp [le_def, h1, h3]
+    · have := not_zero_le_neg_zero
+      rename_i hb ha
+      rw [h1] at ha
+      rw [h4] at hb
+      simp_all only [zero_def, Bool.not_false, neg_def, Bool.not_true, Bool.false_eq_true]
+    · simp [neg_zero_le_zero, h2, h3]
+    · simp [le_def, h2, h4]
+
+section Decidable
+
+-- Decidable equality
+def beq (x y : FiniteFp) : Bool :=
+  x.s == y.s && x.e == y.e && x.m == y.m
+
+-- Boolean version of is_mag_lt
+def bmag_lt (x y : FiniteFp) : Bool :=
+  if h : x.e = y.e then x.m < y.m
+  else if x.e > y.e then x.m * 2^((x.e - y.e).natAbs) < y.m
+  else x.m < y.m * 2^((y.e - x.e).natAbs)
+
+-- Boolean version of is_lt
+def blt (x y : FiniteFp) : Bool :=
+  (x.s && !y.s) ||
+  (!x.s && !y.s && x.bmag_lt y) ||
+  (x.s && y.s && y.bmag_lt x)
+
+-- Finally, boolean version of is_le
+def ble (x y : FiniteFp) : Bool :=
+  blt x y || beq x y
+
+theorem beq_iff_eq {a b : FiniteFp} : (beq a b) = true ↔ a = b := by
+  norm_num [beq, eq_def]
+  grind
+
+theorem blt_iff_lt {a b : FiniteFp} : (blt a b) = true ↔ a < b := by
+  norm_num [blt, lt_def, bmag_lt, is_mag_lt]
+  grind
+
+theorem ble_iff_le {a b : FiniteFp} : (ble a b) = true ↔ a ≤ b := by
+  norm_num [ble, le_def, lt_def, blt, beq, eq_def, is_mag_lt, bmag_lt]
+  grind
+
+instance (x y : FiniteFp) : Decidable (x < y) := decidable_of_iff (blt x y) blt_iff_lt
+
+instance (x y : FiniteFp) : Decidable (x ≤ y) := decidable_of_iff (ble x y) ble_iff_le
+
+instance : DecidableEq FiniteFp := fun a b => decidable_of_iff (beq a b) beq_iff_eq
+
+end Decidable
+
 instance : Preorder FiniteFp := {
   le_refl := by simp [le_def]
   le_trans := by apply is_le_trans
@@ -462,6 +602,35 @@ instance : PartialOrder FiniteFp := {
     · have h2 := lt_asymm h1
       grind
     · trivial
+}
+
+instance : LinearOrder FiniteFp := {
+  le_total := by
+    intro a b
+    -- rw [le_def, le_def, lt_def, lt_def]
+    if ha : a.s then
+      if hb : b.s then
+        have := mag_le_total a b
+        cases' this with h1 h1
+        · right
+          apply mag_le_imp_le_of_neg ha hb h1
+        · left
+          apply mag_le_imp_le_of_neg hb ha h1
+      else
+        simp_all [le_def, lt_def]
+    else
+      if hb : b.s then
+        simp_all [le_def, lt_def]
+      else
+        have := mag_le_total a b
+        cases' this with h1 h1
+        · left
+          apply mag_le_imp_le_of_pos (by grind) (by grind) h1
+        · right
+          apply mag_le_imp_le_of_pos (by grind) (by grind) h1
+  toDecidableLE := inferInstance
+  toDecidableLT := inferInstance
+  toDecidableEq := inferInstance
 }
 
 end FiniteFp

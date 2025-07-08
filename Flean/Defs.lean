@@ -94,7 +94,7 @@ structure FiniteFp [FloatFormat] where
   /-- The integral significand. Without the sign. -/
   m : ℕ
   valid : IsValidFiniteVal e m
-deriving Repr
+deriving Repr, DecidableEq
 
 namespace FiniteFp
 
@@ -136,6 +136,8 @@ theorem zero_def : (0 : FiniteFp) = {
   -- TODO: is there a better way to do this?
   valid := IsValidFiniteVal.zero
 } := rfl
+
+instance : Inhabited FiniteFp := ⟨0⟩
 
 instance : One FiniteFp :=
   ⟨{
@@ -214,6 +216,7 @@ inductive Fp [FloatFormat] where
   | infinite : Bool → Fp
   /-- Indeterminate NaN value. At this level, the specific bits are not considered. -/
   | NaN : Fp
+deriving Repr, DecidableEq
 
 namespace Fp
 
