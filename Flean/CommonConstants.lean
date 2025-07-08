@@ -203,4 +203,171 @@ theorem finite_le_largestFiniteFloat {R : Type*} [Field R] [LinearOrder R] [IsSt
     have h_pos : f.s = false := by simp at h; exact h
     exact finite_pos_le_largest f h_pos
 
+section Finiteness
+
+def normalFiniteEm : List (ℤ × ℕ) :=
+  let e := List.range ((FloatFormat.max_exp - FloatFormat.min_exp + 1).natAbs) |> List.map (· + FloatFormat.min_exp)
+  let m := List.range (2^FloatFormat.prec - 2^(FloatFormat.prec-1)) |> List.map (· + 2^(FloatFormat.prec-1))
+  e ×ˢ m
+
+theorem normalFiniteEm_isNormal : ∀ e m, (e, m) ∈ normalFiniteEm → _root_.isNormal m := by
+  intro _ m hin
+  unfold _root_.isNormal
+  unfold normalFiniteEm at hin
+  extract_lets le lm at hin
+  rw [List.mem_product] at hin
+  have hin := hin.right
+  unfold lm at hin
+  rw [List.mem_map] at hin
+  rcases hin with ⟨a, har, hmeq⟩
+  rw [List.mem_range] at har
+  have har' : a + 2 ^ (FloatFormat.prec - 1) < 2 ^ FloatFormat.prec := by
+    rw [← add_lt_add_iff_right (a := 2 ^ (FloatFormat.prec - 1))] at har
+    rw [Nat.sub_add_cancel] at har
+    trivial
+    gcongr
+    norm_num
+    fomega
+  rw [← hmeq]
+  split_ands
+  · linarith
+  · trivial
+
+theorem normalFiniteEm_isValidFiniteVal : ∀ e m, (e, m) ∈ normalFiniteEm → IsValidFiniteVal e m := by
+  intro e m hin
+  unfold IsValidFiniteVal
+  have normal := normalFiniteEm_isNormal e m hin
+  unfold normalFiniteEm at hin
+  extract_lets le lm at hin
+  rw [List.mem_product] at hin
+  have hin := hin.right
+  unfold lm at hin
+  rw [List.mem_map] at hin
+  rcases hin with ⟨a, har, hmeq⟩
+  rw [List.mem_range] at har
+
+  have hein := hin.left
+  unfold le at hein
+  rw [List.mem_map] at hein
+  rcases hein with ⟨b, her, heqe⟩
+  norm_num at her
+  rcases her with ⟨c, hcr, heqc⟩
+  split_ands
+  · linarith
+  · zify at hcr
+    rw [abs_of_pos] at hcr
+    linarith
+    flinarith
+  · simp_all
+  · left
+    trivial
+
+def normalFiniteEmv : List { (e, m) : ℤ × ℕ | IsValidFiniteVal e m } :=
+  normalFiniteEm.attachWith (λ em => IsValidFiniteVal em.1 em.2) (λ em => normalFiniteEm_isValidFiniteVal em.1 em.2)
+
+def subnormalFiniteEm : List (ℤ × ℕ) :=
+  List.range (2^(FloatFormat.prec-1)) |> List.map (FloatFormat.min_exp, ·)
+
+theorem subnormalFiniteEm_isSubnormal : ∀ e m, (e, m) ∈ subnormalFiniteEm → _root_.isSubnormal e m := by
+  intro e m hin
+  unfold _root_.isSubnormal
+  unfold subnormalFiniteEm at hin
+  rw [List.mem_map] at hin
+  rcases hin with ⟨a, har, hmeq⟩
+  rw [List.mem_range] at har
+  split_ands
+  · grind
+  · grind
+
+theorem subnormalFiniteEm_isValidFiniteVal : ∀ e m, (e, m) ∈ subnormalFiniteEm → IsValidFiniteVal e m := by
+  intro e m hin
+  unfold IsValidFiniteVal
+  have subnormal := subnormalFiniteEm_isSubnormal e m hin
+  unfold subnormalFiniteEm at hin
+  rw [List.mem_map] at hin
+  rcases hin with ⟨a, har, hmeq⟩
+  rw [List.mem_range] at har
+  split_ands
+  · grind
+  · fomega
+  · fomega
+  · right
+    trivial
+
+def subnormalFiniteEmv : List { (e, m) : ℤ × ℕ | IsValidFiniteVal e m } :=
+  subnormalFiniteEm.attachWith (λ em => IsValidFiniteVal em.1 em.2) (λ em => subnormalFiniteEm_isValidFiniteVal em.1 em.2)
+
+def allFiniteEm : List (ℤ × ℕ) := normalFiniteEm ++ subnormalFiniteEm
+
+theorem allFiniteEm_isValidFiniteVal : ∀ e m, (e, m) ∈ allFiniteEm → IsValidFiniteVal e m := by
+  intro e m
+  unfold allFiniteEm
+  rw [List.mem_append]
+  have := normalFiniteEm_isValidFiniteVal e m
+  have := subnormalFiniteEm_isValidFiniteVal e m
+  grind
+
+def allFiniteEmv : List { (e, m) : ℤ × ℕ | IsValidFiniteVal e m } :=
+  allFiniteEm.attachWith (λ em => IsValidFiniteVal em.1 em.2) (λ em => allFiniteEm_isValidFiniteVal em.1 em.2)
+
+def allFiniteFps : List FiniteFp :=
+  [true, false] ×ˢ allFiniteEmv |> List.map (fun (s, v) => ⟨s, v.val.1, v.val.2, v.property⟩)
+
+theorem in_allFiniteFps (f : FiniteFp) : f ∈ allFiniteFps := by
+  unfold allFiniteFps
+  rw [List.mem_map]
+  rcases f with ⟨s, e, m, vf⟩
+  use (s, ⟨(e, m), vf⟩)
+  simp
+  have : ⟨(e, m), vf⟩ ∈ allFiniteEmv  := by
+    unfold IsValidFiniteVal at *
+    unfold allFiniteEmv allFiniteEm --normalFiniteEm subnormalFiniteEm
+    rw [List.mem_attachWith, List.mem_append]
+    have hvs := vf.right.right.right
+    cases' hvs with h1 h1
+    · left -- Normal
+      unfold normalFiniteEm
+      extract_lets el ml
+      unfold el ml
+      rw [List.mem_product, List.mem_map, List.mem_map]
+      split_ands
+      · use e - FloatFormat.min_exp
+        norm_num
+        use (e - FloatFormat.min_exp).natAbs
+        split_ands
+        · zify
+          rw [abs_of_nonneg, abs_of_nonneg]
+          <;> omega
+        · zify
+          rw [abs_of_nonneg]
+          omega
+      · use m - 2^(FloatFormat.prec - 1)
+        norm_num
+        omega
+    · right -- Subnormal
+      unfold subnormalFiniteEm
+      rw [List.mem_map]
+      norm_num
+      unfold _root_.isSubnormal at h1
+      split_ands
+      · fomega
+      · omega
+  if s = false then
+    grind
+  else
+    grind
+
+
+instance : Fintype FiniteFp := {
+  elems := allFiniteFps.toFinset
+  complete := by
+    intro f
+    apply List.mem_toFinset.mpr
+    apply in_allFiniteFps
+}
+instance : Finite (FiniteFp) := inferInstance
+
+
+end Finiteness
+
 end FiniteFp
