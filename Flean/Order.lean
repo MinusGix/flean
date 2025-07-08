@@ -1,5 +1,6 @@
 import Flean.Defs
 import Flean.ToVal
+import Flean.CommonConstants
 
 namespace FiniteFp
 
@@ -632,5 +633,47 @@ instance : LinearOrder FiniteFp := {
   toDecidableLT := inferInstance
   toDecidableEq := inferInstance
 }
+
+theorem le_largestFiniteFloat {a : FiniteFp} : a ≤ FiniteFp.largestFiniteFloat := by
+  apply toVal_le_handle ℚ
+  apply finite_le_largestFiniteFloat
+  intro h
+  exfalso
+  have h := h.right
+  unfold largestFiniteFloat isZero at h
+  norm_num at h
+  have := FloatFormat.prec_pow_le (R := ℕ)
+  omega
+
+instance : Top FiniteFp := ⟨FiniteFp.largestFiniteFloat⟩
+instance : Bot FiniteFp := ⟨-FiniteFp.largestFiniteFloat⟩
+
+theorem top_def : ⊤ = FiniteFp.largestFiniteFloat := rfl
+theorem bot_def : ⊥ = -FiniteFp.largestFiniteFloat := rfl
+
+instance : OrderTop FiniteFp := {
+  le_top := by
+    rw [top_def]
+    apply le_largestFiniteFloat
+}
+
+instance : OrderBot FiniteFp := {
+  bot_le := by
+    rw [bot_def]
+    intro a
+    apply toVal_le_handle ℚ
+    rw [FiniteFp.toVal_neg_eq_neg, neg_le, ← FiniteFp.toVal_neg_eq_neg]
+    apply finite_le_largestFiniteFloat
+    intro h
+    have h := h.left
+    rw [isZero, neg_def, largestFiniteFloat] at h
+    norm_num at h
+    have := FloatFormat.prec_pow_le (R := ℕ)
+    omega
+}
+
+instance : BoundedOrder FiniteFp := {}
+
+instance : Lattice FiniteFp := inferInstance
 
 end FiniteFp
