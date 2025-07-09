@@ -357,6 +357,55 @@ theorem in_allFiniteFps (f : FiniteFp) : f ∈ allFiniteFps := by
   else
     grind
 
+theorem allFiniteFps_no_dup : List.Nodup allFiniteFps := by
+  unfold allFiniteFps
+  rw [List.nodup_map_iff]
+  · apply List.nodup_product
+    trivial
+    unfold allFiniteEmv
+    rw [List.nodup_attachWith]
+    unfold allFiniteEm
+    rw [List.nodup_append]
+    split_ands
+    · unfold normalFiniteEm
+      extract_lets el ml
+      apply List.nodup_product
+      · unfold el
+        rw [List.nodup_map_iff]
+        · norm_num
+          rw [List.nodup_flatMap]
+          split_ands
+          · simp
+          · unfold List.Disjoint Function.onFun
+            norm_num
+            apply List.pairwise_disjoint_range
+        · intro a b h
+          grind
+      · unfold ml
+        rw [List.nodup_map_iff]
+        · apply List.nodup_range
+        · intro a b h
+          grind
+    · unfold subnormalFiniteEm
+      rw [List.nodup_map_iff]
+      · apply List.nodup_range
+      · intro a b h
+        grind
+    · unfold normalFiniteEm subnormalFiniteEm
+      extract_lets el1 ml1
+      unfold List.Disjoint
+      norm_num
+      intro a b ain bin x hx he
+      unfold el1 at ain
+      rw [List.mem_map] at ain
+      unfold ml1 at bin
+      rw [List.mem_map] at bin
+      have b' := Classical.choose_spec bin
+      rw [← b'.right]
+      linarith
+  · intro a b h
+    grind
+
 
 instance : Fintype FiniteFp := {
   elems := allFiniteFps.toFinset
@@ -366,6 +415,37 @@ instance : Fintype FiniteFp := {
     apply in_allFiniteFps
 }
 instance : Finite (FiniteFp) := inferInstance
+
+theorem univ_def : Finset.univ = allFiniteFps.toFinset := by rfl
+
+-- TODO: Define individual sizes for normal/subnormal
+theorem card_def : Fintype.card FiniteFp = 2 * ((FloatFormat.max_exp - FloatFormat.min_exp + 1) * (2^(FloatFormat.prec - 1)) + 2^(FloatFormat.prec - 1)) := by
+  unfold Fintype.card
+  rw [univ_def]
+  rw [List.toFinset_card_of_nodup allFiniteFps_no_dup]
+  unfold allFiniteFps
+  rw [List.length_map, List.length_product, List.length_cons, List.length_cons, List.length_nil]
+  unfold allFiniteEmv allFiniteEm normalFiniteEm subnormalFiniteEm
+  rw [List.length_attachWith, List.length_append]
+  extract_lets el ml
+  rw [List.length_product, List.length_map]
+  norm_num
+  unfold ml
+  rw [List.length_map, List.length_range]
+  rw [abs_of_nonneg]
+  rw [Nat.cast_sub, Nat.cast_pow, Nat.cast_pow, Nat.cast_two]
+  -- apply (mul_eq_mul_iff_eq_and_eq_of_pos ?_ ?_ ?_ ?_).mpr
+  have : ((2 : ℤ) ^ FloatFormat.prec - 2 ^ (FloatFormat.prec - 1)) = 2 ^(FloatFormat.prec - 1) := by
+    -- rw [show (2 : ℤ)^FloatFormat.prec = (2 : ℤ)^(FloatFormat.prec - 1 + 1) by later]
+    have : (2 : ℤ)^FloatFormat.prec = (2 : ℤ)^(FloatFormat.prec - 1 + 1) := by
+      congr
+      fomega
+    rw [this]
+    rw [pow_add, pow_one]
+    ring
+  rw [this]
+  fomega
+  fomega
 
 
 end Finiteness

@@ -76,3 +76,50 @@ theorem zpow_natAbs_nonneg_eq_zpow {R : Type*} [Field R] [LinearOrder R] [IsStri
     have h2 : (-(n : ℤ) - 1).natAbs = (-(n : ℤ)).natAbs - 1 := by aesop
     rw [h2]
     simp_all
+
+-- NOTE: Taken from mathlib since for some reason it is protected
+theorem List.nodup_product {α : Type*} {β : Type*} {l₁ : List α} {l₂ : List β} (d₁ : l₁.Nodup) (d₂ : l₂.Nodup) : (l₁ ×ˢ l₂).Nodup :=
+  List.nodup_flatMap.2
+    ⟨fun a _ => d₂.map <| Function.LeftInverse.injective fun b => (rfl : (a, b).2 = b),
+      d₁.imp fun {a₁ a₂} n x h₁ h₂ => by
+        rcases List.mem_map.1 h₁ with ⟨b₁, _, rfl⟩
+        rcases List.mem_map.1 h₂ with ⟨b₂, mb₂, ⟨⟩⟩
+        exact n rfl⟩
+
+-- Doesn't exist in mathlib
+@[simp]
+theorem List.nodup_attachWith {α : Type*} {l : List α} (P : α → Prop) (H : ∀ x ∈ l, P x) : Nodup (attachWith l P H) ↔ Nodup l :=
+  ⟨fun h => attachWith_map_subtype_val (p := P) (l := l) H ▸ h.map fun _ _ => Subtype.eq, fun h =>
+    Nodup.of_map Subtype.val ((attachWith_map_subtype_val (p := P) (l := l) H).symm ▸ h)⟩
+
+theorem List.flatMap_singleton_cast_eq_map {α : Type*} {β : Type*} [c : Coe α β] (l : List α) : l.flatMap (fun x => [c.coe x]) = map (fun x => c.coe x) l := by
+  unfold List.flatMap
+  induction l with
+  | nil => simp
+  | cons x xs ih =>
+    rw [List.map_cons, List.flatten_cons, List.map_cons]
+    rw [ih]
+    simp
+
+theorem List.flatMap_singleton_natCast_eq_map {l : List ℕ} : flatMap (fun x => [(x : ℤ)]) l = map (fun x => (x : ℤ)) l := by
+  unfold List.flatMap
+  induction l with
+  | nil => simp
+  | cons x xs ih => aesop
+
+theorem List.pairwise_disjoint_range {n : ℕ} : List.Pairwise (fun a b => a ≠ b) (List.range n) := by
+  induction n with
+  | zero => simp
+  | succ n ih =>
+    rw [List.range_succ]
+    simp
+    rw [List.pairwise_append]
+    split_ands
+    · trivial
+    · apply List.pairwise_singleton
+    · intro a ain b bin
+      rw [List.mem_singleton] at bin
+      rw [bin]
+      intro hn
+      rw [hn] at ain
+      exact List.not_mem_range_self ain

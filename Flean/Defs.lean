@@ -13,6 +13,7 @@ import Flean.Util
 -- TODO: these should be defined in a namespace, possibly under a different name
 @[reducible]
 def isNormal [FloatFormat] (m : ℕ) : Prop := (2^(FloatFormat.prec - 1) ≤ m ∧ m < 2^FloatFormat.prec)
+/-- Subnormal numbers are those with exponent `FloatFormat.min_exp` and significand less than `2^(FloatFormat.prec - 1)`. Note that we include zero in our notion of a subnormal number, even if it is not quite the same. -/
 @[reducible]
 def isSubnormal [FloatFormat] (e : ℤ) (m : ℕ) : Prop := (e = FloatFormat.min_exp ∧ m ≤ 2^(FloatFormat.prec - 1) - 1)
 
