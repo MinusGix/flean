@@ -1,5 +1,7 @@
 import Flean.ENNRat.Basic
 import Mathlib.Data.NNRat.Defs
+import Mathlib.Data.Rat.Cast.CharZero
+
 
 open Set NNRat ENNRat
 
@@ -24,6 +26,42 @@ theorem toNNRat_eq_toNNRat_iff {r p : ℚ} (hr : 0 ≤ r) (hp : 0 ≤ p) :
 lemma toNNRat_le_toNNRat_iff' {r p : ℚ} : r.toNNRat ≤ p.toNNRat ↔ r ≤ p ∨ r ≤ 0 := by
   simp_rw [← not_lt, toNNRat_lt_toNNRat_iff', not_and_or]
 
+@[simp]
+lemma toNNRat_le_one {r : ℚ} : r.toNNRat ≤ 1 ↔ r ≤ 1 := by
+  simpa using toNNRat_le_toNNRat_iff zero_le_one
+
+@[simp]
+lemma one_lt_toNNRat {r : ℚ} : 1 < r.toNNRat ↔ 1 < r := by
+  simpa only [not_le] using toNNRat_le_one.not
+
+@[simp]
+lemma toNNRat_le_natCast {r : ℚ} {n : ℕ} : r.toNNRat ≤ n ↔ r ≤ n := by
+  simpa using toNNRat_le_toNNRat_iff n.cast_nonneg
+
+@[simp]
+lemma natCast_lt_toNNRat {r : ℚ} {n : ℕ} : n < r.toNNRat ↔ n < r := by
+  simpa only [not_le] using toNNRat_le_natCast.not
+
+@[simp]
+lemma ofNat_lt_toNNRat {r : ℚ} {n : ℕ} [n.AtLeastTwo] :
+    ofNat(n) < r.toNNRat ↔ n < r :=
+  natCast_lt_toNNRat
+
+lemma toNNRat_eq_iff_eq_coe {r : ℚ} {p : ℚ≥0} (hp : p ≠ 0) : r.toNNRat = p ↔ r = p :=
+  ⟨fun h ↦ h ▸ (coe_toNNRat _ <| not_lt.1 fun hlt ↦ hp <| h ▸ toNNRat_of_nonpos hlt.le).symm,
+    fun h ↦ h.symm ▸ toNNRat_coe p⟩
+
+@[simp]
+lemma toNNRat_eq_one {r : ℚ} : r.toNNRat = 1 ↔ r = 1 := toNNRat_eq_iff_eq_coe one_ne_zero
+
+@[simp]
+lemma toNNRat_eq_natCast {r : ℚ} {n : ℕ} (hn : n ≠ 0) : r.toNNRat = n ↔ r = n :=
+  mod_cast toNNRat_eq_iff_eq_coe <| Nat.cast_ne_zero.2 hn
+
+@[simp]
+lemma toNNRat_eq_ofNat {r : ℚ} {n : ℕ} [n.AtLeastTwo] :
+    r.toNNRat = ofNat(n) ↔ r = OfNat.ofNat n :=
+  toNNRat_eq_natCast (NeZero.ne n)
 
 end Rat
 
@@ -63,7 +101,7 @@ theorem ofRat_add_le {p q : ℚ} : ENNRat.ofRat (p + q) ≤ ENNRat.ofRat p + ENN
 theorem toRat_le_toRat (ha : a ≠ ∞) (hb : b ≠ ∞) : a.toRat ≤ b.toRat ↔ a ≤ b := by
   lift a to ℚ≥0 using ha
   lift b to ℚ≥0 using hb
-  sorry
+  simp only [ofNNRat_eq_NNRatCast, coe_toRat, cast_le, coe_le_coe]
 
 @[gcongr]
 theorem toRat_mono (hb : b ≠ ∞) (h : a ≤ b) : a.toRat ≤ b.toRat :=
@@ -78,7 +116,7 @@ theorem toRat_mono' (h : a ≤ b) (ht : b = ∞ → a = ∞) : a.toRat ≤ b.toR
 theorem toRat_lt_toRat (ha : a ≠ ∞) (hb : b ≠ ∞) : a.toRat < b.toRat ↔ a < b := by
   lift a to ℚ≥0 using ha
   lift b to ℚ≥0 using hb
-  sorry
+  simp only [ofNNRat_eq_NNRatCast, coe_toRat, cast_lt, coe_lt_coe]
 
 @[gcongr]
 theorem toRat_strict_mono (hb : b ≠ ∞) (h : a < b) : a.toRat < b.toRat :=
@@ -211,74 +249,74 @@ lemma ofNat_le_ofRat {n : ℕ} [n.AtLeastTwo] {p : ℚ} :
     ofNat(n) ≤ ENNRat.ofRat p ↔ OfNat.ofNat n ≤ p :=
   natCast_le_ofRat (NeZero.ne n)
 
--- @[simp, norm_cast]
--- lemma ofRat_le_natCast {r : ℚ} {n : ℕ} : ENNRat.ofRat r ≤ n ↔ r ≤ n :=
---   coe_le_coe.trans Rat.toNNRat_le_natCast
+@[simp, norm_cast]
+lemma ofRat_le_natCast {r : ℚ} {n : ℕ} : ENNRat.ofRat r ≤ n ↔ r ≤ n :=
+  coe_le_coe.trans Rat.toNNRat_le_natCast
 
--- @[simp]
--- lemma ofRat_le_one {r : ℚ} : ENNRat.ofRat r ≤ 1 ↔ r ≤ 1 :=
---   coe_le_coe.trans Rat.toNNRat_le_one
+@[simp]
+lemma ofRat_le_one {r : ℚ} : ENNRat.ofRat r ≤ 1 ↔ r ≤ 1 :=
+  coe_le_coe.trans Rat.toNNRat_le_one
 
--- @[simp]
--- lemma ofRat_le_ofNat {r : ℚ} {n : ℕ} [n.AtLeastTwo] :
---     ENNRat.ofRat r ≤ ofNat(n) ↔ r ≤ OfNat.ofNat n :=
---   ofRat_le_natCast
+@[simp]
+lemma ofRat_le_ofNat {r : ℚ} {n : ℕ} [n.AtLeastTwo] :
+    ENNRat.ofRat r ≤ ofNat(n) ↔ r ≤ OfNat.ofNat n :=
+  ofRat_le_natCast
 
--- @[simp]
--- lemma natCast_lt_ofRat {n : ℕ} {r : ℚ} : n < ENNRat.ofRat r ↔ n < r :=
---   coe_lt_coe.trans Rat.natCast_lt_toNNRat
+@[simp]
+lemma natCast_lt_ofRat {n : ℕ} {r : ℚ} : n < ENNRat.ofRat r ↔ n < r :=
+  coe_lt_coe.trans Rat.natCast_lt_toNNRat
 
--- @[simp]
--- lemma one_lt_ofRat {r : ℚ} : 1 < ENNRat.ofRat r ↔ 1 < r := coe_lt_coe.trans Rat.one_lt_toNNRat
+@[simp]
+lemma one_lt_ofRat {r : ℚ} : 1 < ENNRat.ofRat r ↔ 1 < r := coe_lt_coe.trans Rat.one_lt_toNNRat
 
--- @[simp]
--- lemma ofNat_lt_ofRat {n : ℕ} [n.AtLeastTwo] {r : ℚ} :
---     ofNat(n) < ENNRat.ofRat r ↔ OfNat.ofNat n < r :=
---   natCast_lt_ofRat
+@[simp]
+lemma ofNat_lt_ofRat {n : ℕ} [n.AtLeastTwo] {r : ℚ} :
+    ofNat(n) < ENNRat.ofRat r ↔ OfNat.ofNat n < r :=
+  natCast_lt_ofRat
 
--- @[simp]
--- lemma ofRat_eq_natCast {r : ℚ} {n : ℕ} (h : n ≠ 0) : ENNRat.ofRat r = n ↔ r = n :=
---   ENNRat.coe_inj.trans <| Rat.toNNRat_eq_natCast h
+@[simp]
+lemma ofRat_eq_natCast {r : ℚ} {n : ℕ} (h : n ≠ 0) : ENNRat.ofRat r = n ↔ r = n :=
+  ENNRat.coe_inj.trans <| Rat.toNNRat_eq_natCast h
 
--- @[simp]
--- lemma ofRat_eq_one {r : ℚ} : ENNRat.ofRat r = 1 ↔ r = 1 :=
---   ENNRat.coe_inj.trans Rat.toNNRat_eq_one
+@[simp]
+lemma ofRat_eq_one {r : ℚ} : ENNRat.ofRat r = 1 ↔ r = 1 :=
+  ENNRat.coe_inj.trans Rat.toNNRat_eq_one
 
--- @[simp]
--- lemma ofRat_eq_ofNat {r : ℚ} {n : ℕ} [n.AtLeastTwo] :
---     ENNRat.ofRat r = ofNat(n) ↔ r = OfNat.ofNat n :=
---   ofRat_eq_natCast (NeZero.ne n)
+@[simp]
+lemma ofRat_eq_ofNat {r : ℚ} {n : ℕ} [n.AtLeastTwo] :
+    ENNRat.ofRat r = ofNat(n) ↔ r = OfNat.ofNat n :=
+  ofRat_eq_natCast (NeZero.ne n)
 
--- theorem ofRat_le_iff_le_toRat {a : ℚ} {b : ℚ≥0∞} (hb : b ≠ ∞) :
---     ENNRat.ofRat a ≤ b ↔ a ≤ ENNRat.toRat b := by
---   lift b to ℚ≥0 using hb
---   simpa [ENNRat.ofRat, ENNRat.toRat] using Rat.toNNRat_le_iff_le_coe
+theorem ofRat_le_iff_le_toRat {a : ℚ} {b : ℚ≥0∞} (hb : b ≠ ∞) :
+    ENNRat.ofRat a ≤ b ↔ a ≤ ENNRat.toRat b := by
+  lift b to ℚ≥0 using hb
+  simpa [ENNRat.ofNNRat_eq_NNRatCast, ENNRat.ofRat, ENNRat.toRat] using Rat.toNNRat_le_iff_le_coe
 
--- theorem ofRat_lt_iff_lt_toRat {a : ℚ} {b : ℚ≥0∞} (ha : 0 ≤ a) (hb : b ≠ ∞) :
---     ENNRat.ofRat a < b ↔ a < ENNRat.toRat b := by
---   lift b to ℚ≥0 using hb
---   simpa [ENNRat.ofRat, ENNRat.toRat] using Rat.toNNRat_lt_iff_lt_coe ha
+theorem ofRat_lt_iff_lt_toRat {a : ℚ} {b : ℚ≥0∞} (ha : 0 ≤ a) (hb : b ≠ ∞) :
+    ENNRat.ofRat a < b ↔ a < ENNRat.toRat b := by
+  lift b to ℚ≥0 using hb
+  simpa [ENNRat.ofNNRat_eq_NNRatCast, ENNRat.ofRat, ENNRat.toRat] using Rat.toNNRat_lt_iff_lt_coe ha
 
--- theorem ofRat_lt_coe_iff {a : ℚ} {b : ℚ≥0} (ha : 0 ≤ a) : ENNRat.ofRat a < b ↔ a < b :=
---   (ofRat_lt_iff_lt_toRat ha coe_ne_top).trans <| by rw [coe_toRat]
+theorem ofRat_lt_coe_iff {a : ℚ} {b : ℚ≥0} (ha : 0 ≤ a) : ENNRat.ofRat a < b ↔ a < b :=
+  (ofRat_lt_iff_lt_toRat ha coe_ne_top).trans <| by rw [coe_toRat]
 
--- theorem le_ofRat_iff_toRat_le {a : ℚ≥0∞} {b : ℚ} (ha : a ≠ ∞) (hb : 0 ≤ b) :
---     a ≤ ENNRat.ofRat b ↔ ENNRat.toRat a ≤ b := by
---   lift a to ℚ≥0 using ha
---   simpa [ENNRat.ofRat, ENNRat.toRat] using Rat.le_toNNRat_iff_coe_le hb
+theorem le_ofRat_iff_toRat_le {a : ℚ≥0∞} {b : ℚ} (ha : a ≠ ∞) (hb : 0 ≤ b) :
+    a ≤ ENNRat.ofRat b ↔ ENNRat.toRat a ≤ b := by
+  lift a to ℚ≥0 using ha
+  simpa [ENNRat.ofNNRat_eq_NNRatCast, ENNRat.ofRat, ENNRat.toRat] using Rat.le_toNNRat_iff_coe_le hb
 
--- theorem toRat_le_of_le_ofRat {a : ℚ≥0∞} {b : ℚ} (hb : 0 ≤ b) (h : a ≤ ENNRat.ofRat b) :
---     ENNRat.toRat a ≤ b :=
---   have ha : a ≠ ∞ := ne_top_of_le_ne_top ofRat_ne_top h
---   (le_ofRat_iff_toRat_le ha hb).1 h
+theorem toRat_le_of_le_ofRat {a : ℚ≥0∞} {b : ℚ} (hb : 0 ≤ b) (h : a ≤ ENNRat.ofRat b) :
+    ENNRat.toRat a ≤ b :=
+  have ha : a ≠ ∞ := ne_top_of_le_ne_top ofRat_ne_top h
+  (le_ofRat_iff_toRat_le ha hb).1 h
 
--- theorem lt_ofRat_iff_toRat_lt {a : ℚ≥0∞} {b : ℚ} (ha : a ≠ ∞) :
---     a < ENNRat.ofRat b ↔ ENNRat.toRat a < b := by
---   lift a to ℚ≥0 using ha
---   simpa [ENNRat.ofRat, ENNRat.toRat] using Rat.lt_toNNRat_iff_coe_lt
+theorem lt_ofRat_iff_toRat_lt {a : ℚ≥0∞} {b : ℚ} (ha : a ≠ ∞) :
+    a < ENNRat.ofRat b ↔ ENNRat.toRat a < b := by
+  lift a to ℚ≥0 using ha
+  simpa [ENNRat.ofNNRat_eq_NNRatCast, ENNRat.ofRat, ENNRat.toRat] using Rat.lt_toNNRat_iff_coe_lt
 
--- theorem toRat_lt_of_lt_ofRat {b : ℚ} (h : a < ENNRat.ofRat b) : ENNRat.toRat a < b :=
---   (lt_ofRat_iff_toRat_lt h.ne_top).1 h
+theorem toRat_lt_of_lt_ofRat {b : ℚ} (h : a < ENNRat.ofRat b) : ENNRat.toRat a < b :=
+  (lt_ofRat_iff_toRat_lt h.ne_top).1 h
 
 theorem ofRat_mul {p q : ℚ} (hp : 0 ≤ p) :
     ENNRat.ofRat (p * q) = ENNRat.ofRat p * ENNRat.ofRat q := by
@@ -314,35 +352,35 @@ def toNNRatHom : ℚ≥0∞ →*₀ ℚ≥0 where
 theorem toNNRat_pow (a : ℚ≥0∞) (n : ℕ) : (a ^ n).toNNRat = a.toNNRat ^ n :=
   toNNRatHom.map_pow a n
 
--- /-- `ENNRat.toRat` as a `MonoidHom`. -/
--- def toRatHom : ℚ≥0∞ →*₀ ℚ :=
---   (NNRat.toRatHom : ℚ≥0 →*₀ ℚ).comp toNNRatHom
+/-- `ENNRat.toRat` as a `MonoidHom`. -/
+def toRatHom : ℚ≥0∞ →*₀ ℚ :=
+  (NNRat.castHom ℚ : ℚ≥0 →*₀ ℚ).comp toNNRatHom
 
--- @[simp]
--- theorem toRat_mul : (a * b).toRat = a.toRat * b.toRat :=
---   toRatHom.map_mul a b
+@[simp]
+theorem toRat_mul : (a * b).toRat = a.toRat * b.toRat :=
+  toRatHom.map_mul a b
 
--- theorem toRat_nsmul (a : ℚ≥0∞) (n : ℕ) : (n • a).toRat = n • a.toRat := by simp
+theorem toRat_nsmul (a : ℚ≥0∞) (n : ℕ) : (n • a).toRat = n • a.toRat := by simp
 
--- @[simp]
--- theorem toRat_pow (a : ℚ≥0∞) (n : ℕ) : (a ^ n).toRat = a.toRat ^ n :=
---   toRatHom.map_pow a n
+@[simp]
+theorem toRat_pow (a : ℚ≥0∞) (n : ℕ) : (a ^ n).toRat = a.toRat ^ n :=
+  toRatHom.map_pow a n
 
--- theorem toRat_ofRat_mul (c : ℚ) (a : ℚ≥0∞) (h : 0 ≤ c) :
---     ENNRat.toRat (ENNRat.ofRat c * a) = c * ENNRat.toRat a := by
---   rw [ENNRat.toRat_mul, ENNRat.toRat_ofRat h]
+theorem toRat_ofRat_mul (c : ℚ) (a : ℚ≥0∞) (h : 0 ≤ c) :
+    ENNRat.toRat (ENNRat.ofRat c * a) = c * ENNRat.toRat a := by
+  rw [ENNRat.toRat_mul, ENNRat.toRat_ofRat h]
 
--- theorem toRat_mul_top (a : ℚ≥0∞) : ENNRat.toRat (a * ∞) = 0 := by
---   rw [toRat_mul, toRat_top, mul_zero]
+theorem toRat_mul_top (a : ℚ≥0∞) : ENNRat.toRat (a * ∞) = 0 := by
+  rw [toRat_mul, toRat_top, mul_zero]
 
--- theorem toRat_top_mul (a : ℚ≥0∞) : ENNRat.toRat (∞ * a) = 0 := by
---   rw [mul_comm]
---   exact toRat_mul_top _
+theorem toRat_top_mul (a : ℚ≥0∞) : ENNRat.toRat (∞ * a) = 0 := by
+  rw [mul_comm]
+  exact toRat_mul_top _
 
--- theorem toRat_eq_toRat (ha : a ≠ ∞) (hb : b ≠ ∞) : a.toRat = b.toRat ↔ a = b := by
---   lift a to ℚ≥0 using ha
---   lift b to ℚ≥0 using hb
---   simp only [coe_inj, NNRat.coe_inj, coe_toRat]
+theorem toRat_eq_toRat (ha : a ≠ ∞) (hb : b ≠ ∞) : a.toRat = b.toRat ↔ a = b := by
+  lift a to ℚ≥0 using ha
+  lift b to ℚ≥0 using hb
+  simp [ENNRat.ofNNRat_eq_NNRatCast, coe_inj, NNRat.coe_inj, coe_toRat]
 
 protected theorem trichotomy (p : ℚ≥0∞) : p = 0 ∨ p = ∞ ∨ 0 < p.toRat := by
   simpa only [or_iff_not_imp_left] using toRat_pos
