@@ -212,6 +212,94 @@ def isZero_iff (x : FiniteFp) : x.isZero ↔ (x = 0 ∨ x = -0) := by
 
 end FiniteFp
 
+-- /-- Floating point numbers with infinite values -/
+-- inductive InfFp [FloatFormat]
+-- | finite : FiniteFp → InfFp
+-- | infinite : Bool → InfFp
+-- deriving Repr, DecidableEq
+
+-- namespace InfFp
+
+-- variable [FloatFormat]
+
+-- instance : Zero InfFp := ⟨.finite 0⟩
+
+-- instance : Inhabited InfFp := ⟨0⟩
+
+-- theorem zero_def : (0 : InfFp) = .finite 0 := rfl
+
+-- instance : One InfFp := ⟨.finite 1⟩
+
+-- theorem one_def : (1 : InfFp) = .finite 1 := rfl
+
+-- def sign (x : InfFp) : Bool :=
+--   match x with
+--   | .finite x => x.sign
+--   | .infinite b => b
+
+-- def sign' {R : Type*} [Neg R] [One R] (x : InfFp) : R :=
+--   match x with
+--   | .finite x => x.sign'
+--   | .infinite b => if b then 1 else -1
+
+-- instance : Neg InfFp := ⟨fun x => match x with
+--   | .finite x => .finite (-x)
+--   | .infinite b => .infinite (!b)
+-- ⟩
+
+-- theorem neg_def (x : InfFp) : -x = match x with
+--   | .finite x => .finite (-x)
+--   | .infinite b => .infinite (!b) := rfl
+
+-- instance : InvolutiveNeg InfFp := ⟨by
+--   intro x
+--   rw [neg_def, neg_def]
+--   match x with
+--   | .finite x => norm_num
+--   | .infinite b => norm_num
+-- ⟩
+
+-- def isZero (x : InfFp) : Prop :=
+--   match x with
+--   | .finite x => x.isZero
+--   | .infinite _ => false
+
+-- theorem isZero_infinite (b : Bool) : ¬(InfFp.infinite b).isZero := by
+--   simp [isZero]
+
+-- def isInfinite (x : InfFp) : Prop :=
+--   match x with
+--   | .finite _ => false
+--   | .infinite _ => true
+
+-- def isFinite (x : InfFp) : Prop :=
+--   match x with
+--   | .finite _ => true
+--   | .infinite _ => false
+
+-- def finite_isFinite (x : FiniteFp) : (InfFp.finite x).isFinite := by
+--   simp only [isFinite]
+
+-- def infinite_isInfinite (x : Bool) : (InfFp.infinite x).isInfinite := by
+--   simp only [isInfinite]
+
+-- def isInfinite_notFinite (x : InfFp) : x.isInfinite → ¬x.isFinite := by
+--   unfold isInfinite isFinite
+--   aesop
+
+-- def isFinite_notInfinite (x : InfFp) : x.isFinite → ¬x.isInfinite := by
+--   unfold isInfinite isFinite
+--   aesop
+
+
+
+-- instance : Coe FiniteFp InfFp := ⟨InfFp.finite⟩
+
+
+-- end InfFp
+
+
+
 inductive Fp [FloatFormat] where
   | finite : FiniteFp → Fp
   | infinite : Bool → Fp
@@ -237,6 +325,10 @@ theorem zero_def : (0 : Fp) = .finite (
   valid := IsValidFiniteVal.zero
 }
 ) := rfl
+
+instance : One Fp := ⟨.finite 1⟩
+
+theorem one_def : (1 : Fp) = .finite 1 := rfl
 
 def sign (x : Fp) : Bool :=
   match x with
@@ -375,3 +467,93 @@ def notNaN_notInfinite {x : Fp} : ¬x.isNaN → ¬x.isInfinite → x.isFinite :=
 -- TODO: to EReal
 
 end Fp
+
+-- This might be a better formulation due to a more automatic linking between the two types
+abbrev InfFp [FloatFormat] := {x : Fp // x ≠ Fp.NaN}
+
+namespace InfFp
+
+variable [FloatFormat]
+
+instance : Zero InfFp := ⟨⟨0, by simp⟩⟩
+
+instance : Inhabited InfFp := ⟨0⟩
+
+theorem zero_def : (0 : InfFp) = ⟨0, by simp⟩ := rfl
+
+instance : One InfFp := ⟨⟨1, by simp⟩⟩
+
+@[simp, reducible] def finite (x : FiniteFp) : InfFp := ⟨.finite x, by simp⟩
+
+@[simp, reducible] def infinite (b : Bool) : InfFp := ⟨.infinite b, by simp⟩
+
+def sign (x : InfFp) : Bool :=
+  match x with
+  | ⟨.finite x, _⟩ => x.sign
+  | ⟨.infinite b, _⟩ => b
+  | ⟨.NaN, _⟩ => false
+
+def sign' {R : Type*} [Neg R] [One R] (x : InfFp) : R :=
+  match x with
+  | ⟨.finite x, _⟩ => x.sign'
+  | ⟨.infinite b, _⟩ => if b then 1 else -1
+  | ⟨.NaN, _⟩ => 1
+
+instance : Neg InfFp := ⟨fun x => match x with
+  | ⟨.finite x, _⟩ => ⟨.finite (-x), by simp⟩
+  | ⟨.infinite b, _⟩ => ⟨.infinite (!b), by simp⟩
+  | ⟨.NaN, _⟩ => ⟨0, by simp⟩⟩ -- can't occur
+
+theorem neg_def (x : InfFp) : -x = match x with
+  | ⟨.finite x, _⟩ => ⟨.finite (-x), by simp⟩
+  | ⟨.infinite b, _⟩ => ⟨.infinite (!b), by simp⟩
+  | ⟨.NaN, _⟩ => ⟨0, by simp⟩ := rfl -- can't occur
+
+instance : InvolutiveNeg InfFp := ⟨by
+  intro x
+  rw [neg_def, neg_def]
+  match x with
+  | ⟨.finite x, _⟩ => norm_num
+  | ⟨.infinite b, _⟩ => grind
+  | ⟨.NaN, _⟩ => grind
+⟩
+
+def isZero (x : InfFp) : Prop :=
+  match x with
+  | ⟨.finite x, _⟩ => x.isZero
+  | ⟨.infinite _, _⟩ => false
+  | ⟨.NaN, _⟩ => false
+
+
+theorem isZero_infinite (b : Bool) : ¬(InfFp.infinite b).isZero := by
+  simp [isZero]
+
+def isInfinite (x : InfFp) : Prop :=
+  match x with
+  | .finite _ => false
+  | .infinite _ => true
+
+def isFinite (x : InfFp) : Prop :=
+  match x with
+  | .finite _ => true
+  | .infinite _ => false
+
+def finite_isFinite (x : FiniteFp) : (InfFp.finite x).isFinite := by
+  simp only [isFinite]
+
+def infinite_isInfinite (x : Bool) : (InfFp.infinite x).isInfinite := by
+  simp only [isInfinite]
+
+def isInfinite_notFinite (x : InfFp) : x.isInfinite → ¬x.isFinite := by
+  unfold isInfinite isFinite
+  aesop
+
+def isFinite_notInfinite (x : InfFp) : x.isFinite → ¬x.isInfinite := by
+  unfold isInfinite isFinite
+  aesop
+
+instance : Coe FiniteFp InfFp := ⟨InfFp.finite⟩
+
+-- instance : ConditionallyCompleteLattice
+
+end InfFp

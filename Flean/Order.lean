@@ -2,6 +2,23 @@ import Flean.Defs
 import Flean.ToVal
 import Flean.CommonConstants
 
+/-!
+
+An ordering for floating point numbers.
+
+Note that the *default* ordering we provide for floating point numbers is distinct from what the specification and programming languages has.
+However, only in minor ways.
+
+# FiniteFp
+`FiniteFp` is given a signed magnitude total order.
+The main exception to normal floating point ordering is that `-0 < +0`, as this allows us to define a stricter ordering, and make easier translations between Rational results and Floating Point numbers.
+
+TODO: Define a `stdLt` for `FiniteFp` that is the same as the default ordering, with an easy way to translate conditions based on it into `<` with some side condition.
+
+# Fp
+
+-/
+
 namespace FiniteFp
 
 variable [FloatFormat]
@@ -94,15 +111,6 @@ theorem is_mag_eq_imp_is_mag_le {x y : FiniteFp} : is_mag_eq x y → is_mag_le x
   intro h
   simp_all
 
--- theorem is_mag_le_iff_is_mag_lt_or_eq {x y : FiniteFp} : is_mag_le x y ↔ is_mag_lt x y ∨ is_mag_eq x y := by
---   unfold is_mag_le is_mag_lt is_mag_eq
---   constructor
---   · split_ifs with h1 h2
---     · grind
---     · intro h3
---       left
-
-
 
 theorem zero_le_zero : (0 : FiniteFp) ≤ 0 := by
   simp only [zero_def, le_def, or_true]
@@ -118,8 +126,6 @@ theorem not_zero_le_neg_zero : ¬(0 : FiniteFp) ≤ (-0 : FiniteFp) := by
 
 theorem mag_le_significand_le {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
   {j k : FiniteFp} : (j.is_mag_le k) ↔ (j.m : R) * (2 : R) ^ (j.e - ↑FloatFormat.prec + 1) ≤ (k.m : R) * (2 : R) ^ (k.e - ↑FloatFormat.prec + 1) := by
-  -- have ha : (j k : FiniteFp) → (j.is_mag_le k) ↔ (j.m : R) * (2 : R) ^ (j.e - ↑FloatFormat.prec + 1) ≤ (k.m : R) * (2 : R) ^ (k.e - ↑FloatFormat.prec + 1) := by
-  -- intro j k
   constructor
   · intro h
     unfold is_mag_le at h
@@ -128,8 +134,7 @@ theorem mag_le_significand_le {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
       apply mul_le_mul_of_nonneg_right
       exact_mod_cast h
       linearize
-    · --apply mul_le_of_le_div₀
-      rw [mul_comm]
+    · rw [mul_comm]
       apply mul_le_mul_of_mul_div_le
       rw [← zpow_sub₀]
       norm_num
@@ -677,3 +682,59 @@ instance : BoundedOrder FiniteFp := {}
 instance : Lattice FiniteFp := inferInstance
 
 end FiniteFp
+
+namespace Fp
+
+variable [FloatFormat]
+
+@[reducible]
+def is_total_lt (x y : Fp) : Prop :=
+  match (x, y) with
+  | (.finite x, .finite y) => x < y
+  | (.infinite b, .infinite c) => b = false && c = true
+  | (.infinite b, .finite _) => b
+  | (.finite _, .infinite b) => !b
+  | (.NaN, _) => true -- total order has NaN less than everything
+  | (_, .NaN) => false
+
+instance : LT Fp := ⟨is_total_lt⟩
+
+@[reducible]
+def is_total_le (x y : Fp) : Prop :=
+  is_total_lt x y ∨ x = y
+
+instance : LE Fp := ⟨is_total_le⟩
+
+theorem lt_def (x y : Fp) : x < y ↔ (match (x, y) with
+  | (.finite x, .finite y) => x < y
+  | (.infinite b, .infinite c) => b = false && c = true
+  | (.infinite b, .finite _) => b
+  | (.finite _, .infinite b) => !b
+  | (.NaN, _) => true
+  | (_, .NaN) => false) := by rfl
+
+theorem le_def (x y : Fp) : x ≤ y ↔ ((match (x, y) with
+  | (.finite x, .finite y) => x < y
+  | (.infinite b, .infinite c) => b = false && c = true
+  | (.infinite b, .finite _) => b
+  | (.finite _, .infinite b) => !b
+  | (.NaN, _) => true
+  | (_, .NaN) => false) ∨ x = y) := by rfl
+
+-- theorem lt_cases {x y : Fp} :
+
+protected theorem lt_imp_le {x y : Fp} : x < y → x ≤ y := by
+  intro h
+  rw [le_def]
+  left
+  exact h
+
+-- theorem lt_imp_ne {x y : Fp} : x < y → x ≠ y := by
+--   intro h
+--   rw [lt_def] at h
+--   simp_all
+
+
+
+
+end Fp

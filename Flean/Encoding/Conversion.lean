@@ -483,31 +483,31 @@ theorem toBits_ofBits [StdFloatFormat] (f : Fp) : ofBits (toBits f).representati
 
 end Fp
 
-def l := @FiniteFp.largestFiniteFloat FloatFormat.Binary32.toFloatFormat
-def sn := @FiniteFp.smallestPosNormal FloatFormat.Binary32.toFloatFormat
-def ss := @FiniteFp.smallestPosSubnormal FloatFormat.Binary32.toFloatFormat
-def o := (@FiniteFp.instOne FloatFormat.Binary32.toFloatFormat).one
-def z := (@FiniteFp.instZero FloatFormat.Binary32.toFloatFormat).zero
+-- def l := @FiniteFp.largestFiniteFloat FloatFormat.Binary32.toFloatFormat
+-- def sn := @FiniteFp.smallestPosNormal FloatFormat.Binary32.toFloatFormat
+-- def ss := @FiniteFp.smallestPosSubnormal FloatFormat.Binary32.toFloatFormat
+-- def o := (@FiniteFp.instOne FloatFormat.Binary32.toFloatFormat).one
+-- def z := (@FiniteFp.instZero FloatFormat.Binary32.toFloatFormat).zero
 
-def ftr := λ f => @FiniteFp.toVal FloatFormat.Binary32.toFloatFormat ℚ _ f
-def tr := λ f => @Fp.toRat? FloatFormat.Binary32.toFloatFormat f
-def off := λ f => @Fp.finite FloatFormat.Binary32.toFloatFormat f
-def toB := λ f => @Fp.toBits FloatFormat.Binary32.toFloatFormat f
-def ofB := λ b => @Fp.ofBits FloatFormat.Binary32 b
-def toOfB := λ f => ofB (@Fp.FpQuotient.representative FloatFormat.Binary32.toFloatFormat (toB f))
+-- def ftr := λ f => @FiniteFp.toVal FloatFormat.Binary32.toFloatFormat ℚ _ f
+-- def tr := λ f => @Fp.toRat? FloatFormat.Binary32.toFloatFormat f
+-- def off := λ f => @Fp.finite FloatFormat.Binary32.toFloatFormat f
+-- def toB := λ f => @Fp.toBits FloatFormat.Binary32.toFloatFormat f
+-- def ofB := λ b => @Fp.ofBits FloatFormat.Binary32 b
+-- def toOfB := λ f => ofB (@Fp.FpQuotient.representative FloatFormat.Binary32.toFloatFormat (toB f))
 
-#eval! (ftr l)
-#eval! (tr (toOfB (off l)))
+-- #eval! (ftr l)
+-- #eval! (tr (toOfB (off l)))
 
-#eval! (ftr sn) -- (1 : Rat)/85070591730234615865843651857942052864 correct
-#eval! (tr (toOfB (off sn))) -- 0??
-#eval! (@Fp.FpQuotient.representative FloatFormat.Binary32.toFloatFormat (toB (off sn))) -- 0??
+-- #eval! (ftr sn) -- (1 : Rat)/85070591730234615865843651857942052864 correct
+-- #eval! (tr (toOfB (off sn))) -- 0??
+-- #eval! (@Fp.FpQuotient.representative FloatFormat.Binary32.toFloatFormat (toB (off sn))) -- 0??
 
-#eval! (ftr ss)
-#eval! (tr (toOfB (off ss)))
+-- #eval! (ftr ss)
+-- #eval! (tr (toOfB (off ss)))
 
-#eval! (ftr o)
-#eval! (tr (toOfB (off o)))
+-- #eval! (ftr o)
+-- #eval! (tr (toOfB (off o)))
 
-#eval! (ftr z)
-#eval! (tr (toOfB (off z)))
+-- #eval! (ftr z)
+-- #eval! (tr (toOfB (off z)))

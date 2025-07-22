@@ -1,4 +1,5 @@
 import Flean.Defs
+import Flean.BoundedSymm
 
 namespace FiniteFp
 
@@ -282,6 +283,75 @@ def toReal (x : FiniteFp) : ℝ := x.toVal
 end toVal
 
 end FiniteFp
+
+-- namespace InfFp
+
+-- variable [FloatFormat]
+-- variable {R : Type*} [Field R]
+
+-- def toVal? (x : InfFp) : Option R :=
+--   match x with
+--   | .finite x => some (FiniteFp.toVal x)
+--   | .infinite _ => none
+
+-- def toRat? (x : InfFp) : Option ℚ := toVal? x
+
+-- abbrev Extended (R : Type*) := WithBot (WithTop R)
+
+-- def toVal (x : InfFp) : Extended R :=
+--   match x with
+--   | .finite x => FiniteFp.toVal (R := R) x
+--   | .infinite b => if b then ⊤ else ⊥
+
+-- def toVal_mag (x : InfFp) : Extended R :=
+--   match x with
+--   | .finite x => FiniteFp.toVal_mag (R := R) x
+--   | .infinite _ => ⊤
+
+-- theorem toVal_mag_nonneg [LinearOrder R] [IsStrictOrderedRing R] [BoundedOrder (Extended R)] (x : InfFp) : 0 ≤ toVal_mag (R := R) x :=
+--   match x with
+--   | .finite x => by simp [toVal_mag, FiniteFp.toVal_mag_nonneg x]
+--   | .infinite b => by simp [toVal_mag]
+
+-- TODO: this needs enough of a notion of how R and Extended R are related to make sense
+-- theorem toVal_eq_sign_mul_mag [LinearOrder R] [IsStrictOrderedRing R] [Neg (Extended R)] [BoundedSymm (Extended R)]
+-- -- [Ring (Extended R)] [LinearOrder (Extended R)] [IsStrictOrderedRing (Extended R)]
+-- (x : InfFp) : toVal (R := R) x = (sign' (R := (R)) x) * (toVal_mag (R := R) x) := by
+--   -- simp [FiniteFp.toVal_eq_sign_mul_mag, toVal, toVal_mag, sign', FiniteFp.sign']
+--   unfold toVal_mag toVal sign'
+--   match x with
+--   | finite f =>
+--     norm_num
+--     rw [FiniteFp.toVal_eq_sign_mul_mag]
+--     push_cast
+--     rfl
+--   | infinite b =>
+--     norm_num
+--     split_ifs
+--     norm_num
+--     have j := BoundedSymm.top_eq_neg_bot (R := Extended R)
+--     rw [j]
+--     norm_num
+--     symm
+
+    -- apply WithBot.coe_add_eq_bot_iff.mpr
+    -- rw [WithBot.coe_one]
+    -- rw [← WithBot.coe_top, ← WithBot.coe_mul]
+    -- rw [j]
+    -- rw [← WithBot.coe_add]
+    -- rw [WithBot.coe_add]
+
+
+
+
+
+    -- have h : (-(1 : WithTop R)) = 0 - 1 := by simp_all only [Bool.not_eq_true, zero_sub]
+    -- rw [h]
+
+    -- rw [← WithBot.coe_add]
+
+
+
 
 namespace Fp
 
