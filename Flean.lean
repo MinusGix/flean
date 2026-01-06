@@ -8,3 +8,5 @@ import «Flean».Rounding.Rounding
 import «Flean».Ulp
 import «Flean».Linearize.Linearize
 import «Flean».Gsplit.Gsplit
+import «Flean».ENNRat
+import «Flean».ERat

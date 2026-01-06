@@ -210,6 +210,10 @@ def isZero_iff (x : FiniteFp) : x.isZero ↔ (x = 0 ∨ x = -0) := by
     norm_num at h
     cases' h with h1 h1 <;> simp [h1]
 
+instance {x : FiniteFp} : Decidable (x.isZero) := by
+  unfold isZero
+  infer_instance
+
 end FiniteFp
 
 -- /-- Floating point numbers with infinite values -/

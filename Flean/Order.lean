@@ -23,6 +23,8 @@ namespace FiniteFp
 
 variable [FloatFormat]
 
+section MagOrder
+
 @[reducible]
 def is_mag_lt (x y : FiniteFp) : Prop :=
   if x.e = y.e then x.m < y.m
@@ -111,6 +113,9 @@ theorem is_mag_eq_imp_is_mag_le {x y : FiniteFp} : is_mag_eq x y → is_mag_le x
   intro h
   simp_all
 
+
+theorem neg_zero_lt_zero : (-0 : FiniteFp) < 0 := by
+  simp [lt_def, zero_def, neg_def, isZero]
 
 theorem zero_le_zero : (0 : FiniteFp) ≤ 0 := by
   simp only [zero_def, le_def, or_true]
@@ -462,6 +467,18 @@ theorem is_lt_trans {a b c : FiniteFp} : a < b → b < c → a < c := by
     · have := is_mag_lt_trans h2.right.right h1.right.right
       grind
 
+theorem pos_nz_is_mag_lt_imp_nz {x y : FiniteFp} (hs : x.s = false) (hnz : ¬x.isZero): x.is_mag_lt y → ¬y.isZero := by
+  intro hm
+  unfold isZero at hnz ⊢
+  unfold is_mag_lt at hm
+  split_ifs at hm
+  · grind
+  · grind
+  · simp_all only [gt_iff_lt, not_lt]
+    apply Aesop.BuiltinRules.not_intro
+    intro a
+    simp_all only [zero_mul, not_lt_zero']
+
 theorem mag_le_total (a b : FiniteFp) : a.is_mag_le b ∨ b.is_mag_le a := by
   rw [mag_le_significand_le (R := ℚ), mag_le_significand_le (R := ℚ)]
   apply le_total
@@ -680,6 +697,155 @@ instance : OrderBot FiniteFp := {
 instance : BoundedOrder FiniteFp := {}
 
 instance : Lattice FiniteFp := inferInstance
+
+end MagOrder
+
+section StdOrder
+
+-- TODO: should this be in the main file?
+
+@[reducible]
+def stdEquiv (x y : FiniteFp) : Prop :=
+  (x.isZero ∧ y.isZero) ∨ -- -0 == 0
+  x = y
+
+@[reducible]
+def stdLt (x y : FiniteFp) : Prop :=
+  ((x.s ∧ !y.s) ∧ (¬x.isZero ∨ ¬y.isZero)) ∨
+  (!x.s ∧ !y.s ∧ x.is_mag_lt y) ∨
+  (x.s ∧ y.s ∧ y.is_mag_lt x)
+
+@[reducible]
+def stdLe (x y : FiniteFp) : Prop :=
+  x.stdLt y ∨ x.stdEquiv y
+
+section StdEquiv
+
+@[simp]
+theorem stdEquiv_refl {x : FiniteFp} : x.stdEquiv x := by grind
+
+theorem stdEquiv_symm {x y : FiniteFp} : x.stdEquiv y → y.stdEquiv x := by grind
+
+@[simp]
+theorem stdEquiv_trans {x y z : FiniteFp} : x.stdEquiv y → y.stdEquiv z → x.stdEquiv z := by grind
+
+@[simp]
+theorem stdEquiv_zero_neg_zero : (0 : FiniteFp).stdEquiv (-0) := by
+  simp [FiniteFp.zero_def, FiniteFp.neg_def, stdEquiv, isZero]
+
+@[simp]
+theorem stdEquiv_neg_zero_zero : (-0 : FiniteFp).stdEquiv 0 := by
+  simp [FiniteFp.neg_def, FiniteFp.zero_def, stdEquiv, isZero]
+
+def stdEquiv_equivalence : Equivalence stdEquiv := {
+  refl := λ _ => stdEquiv_refl
+  symm := stdEquiv_symm
+  trans := stdEquiv_trans
+}
+
+end StdEquiv
+
+section StdLt
+
+@[simp]
+theorem not_stdLt_refl {x : FiniteFp} : ¬x.stdLt x := by grind
+
+@[simp]
+theorem zero_not_stdLt_neg_zero : ¬(0 : FiniteFp).stdLt (-0) := by
+  simp [stdLt, zero_def, neg_def]
+
+@[simp]
+theorem neg_zero_not_stdLt_zero : ¬(-0 : FiniteFp).stdLt 0 := by
+  simp [stdLt, zero_def, neg_def, isZero]
+
+theorem stdLt_imp_lt {x y : FiniteFp} (hlt : x.stdLt y) : x < y := by
+  rw [lt_def]
+  grind
+
+theorem lt_imp_stdLt {x y : FiniteFp} (hlt : x < y) (hnz : ¬x.isZero ∨ ¬y.isZero): x.stdLt y := by
+  rw [lt_def] at hlt
+  grind
+
+theorem lt_imp_stdLt_left_nz {x y : FiniteFp} (hlt : x < y) (hnz : ¬x.isZero) : x.stdLt y := lt_imp_stdLt hlt (Or.inl hnz)
+
+theorem lt_imp_stdLt_right_nz {x y : FiniteFp} (hlt : x < y) (hnz : ¬y.isZero) : x.stdLt y := lt_imp_stdLt hlt (Or.inr hnz)
+
+theorem stdLt_trans {x y z : FiniteFp} (hxy : x.stdLt y) (hyz : y.stdLt z) : x.stdLt z := by
+  unfold stdLt at *
+  have := @pos_nz_is_mag_lt_imp_nz
+  cases' hxy with h1 h1
+  <;> cases' hyz with h2 h2
+  <;> simp_all
+  · grind
+  · cases' h2.right with h3 h3
+    · left
+      unfold is_mag_lt at h1
+      unfold isZero at h3 ⊢
+      split_ifs at h1 with h4 h5
+      · grind
+      · grind
+      · have ha : 0 < 2 ^ (x.e - y.e).natAbs := by linearize
+        have hb : 0 < x.m * 2 ^ (x.e - y.e).natAbs := by omega
+        have hc : 0 < x.m := by
+          apply Nat.pos_of_mul_pos_right hb
+        omega
+    · grind
+  · cases' h1 with h1 h1
+    <;> cases' h2 with h2 h2
+    · simp_all
+      apply is_mag_lt_trans h1.right h2.right.right
+    · grind
+    · grind
+    · simp_all
+      apply is_mag_lt_trans h2.right.right h1.right
+
+
+-- TODO: toVal_stdLt proofs?
+
+end StdLt
+
+section StdLe
+
+theorem stdLe_refl {x : FiniteFp} : x.stdLe x := by grind
+
+theorem stdLe_stdEquiv {x y z : FiniteFp} (hnz : ¬y.isZero ∨ ¬z.isZero) (hxy : x.stdLe y) (hyz : y.stdEquiv z) : x.stdLe z := by
+  if h2 : y.isZero then
+    grind
+  else
+    grind
+
+theorem stdLe_trans {x y z : FiniteFp} (hxy : x.stdLe y) (hyz : y.stdLe z) : x.stdLe z := by
+  have h1 := @stdLt_trans
+  have h2 := @stdEquiv_trans
+  unfold stdLe at hxy hyz ⊢
+  cases' hxy with h1 h1
+  <;> cases' hyz with h2 h2
+  · left
+    apply stdLt_trans h1 h2
+  · apply @stdLe_stdEquiv _ x y z
+    · sorry
+    · grind
+    · grind
+  · sorry
+  · grind
+
+
+end StdLe
+
+section Decidable
+
+def bstdLt (x y : FiniteFp) : Bool :=
+  (x.s && !y.s && (¬x.isZero || ¬y.isZero)) ||
+  (!x.s && !y.s && x.bmag_lt y) ||
+  (x.s && y.s && y.bmag_lt x)
+
+theorem bstdLt_iff_stdLt {x y : FiniteFp} : (bstdLt x y) = true ↔ x.stdLt y := by
+  norm_num [bstdLt, stdLt, bmag_lt, is_mag_lt]
+  grind
+
+end Decidable
+
+end StdOrder
 
 end FiniteFp
 
