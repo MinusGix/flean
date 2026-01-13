@@ -35,7 +35,7 @@ def roundNormalDown (x : R) (h : isNormalRange x) : FiniteFp :=
     apply le_trans
     apply hb.left
     conv_lhs => rw [← mul_one (x / 2 ^ (findExponentDown x))]
-    rw [mul_le_mul_left (by linarith)]
+    rw [mul_le_mul_iff_of_pos_left (by linarith)]
     linearize
   have vf : IsValidFiniteVal e m.natAbs := by
     have hb := findExponentDown_div_binade_normal h
@@ -46,7 +46,7 @@ def roundNormalDown (x : R) (h : isNormalRange x) : FiniteFp :=
     · apply Int.le_floor.mpr
       zify
       conv_lhs => rw [← one_mul (2 ^ (FloatFormat.prec - 1))]
-      rw [mul_le_mul_right]
+      rw [mul_le_mul_iff_of_pos_right]
       · exact hb.left
       · linearize
     · apply Int.floor_lt.mpr
@@ -66,21 +66,24 @@ theorem roundNormalDown_le (x : R) (h : isNormalRange x) : (roundNormalDown x h)
   rw [FloatFormat.radix_val_eq_two]
   norm_num
   obtain ⟨hb, _⟩ := findExponentDown_div_binade_normal h
-  rw [Int.cast_natAbs_pos]
-  · rw [div_eq_mul_inv, ← inv_zpow, inv_zpow', mul_assoc, ← zpow_add₀]
-    rw [mul_comm, ← le_div_iff₀']
-    rw [div_eq_mul_inv, ← inv_zpow, inv_zpow', neg_add, neg_sub', sub_neg_eq_add]
-    rw [add_sub]
-    apply Int.floor_le
-    linearize
-    norm_num
-  · apply Int.floor_pos.mpr
+  have hfloor_pos : 0 < ⌊x / 2 ^ findExponentDown x * (2 : R) ^ ((FloatFormat.prec : ℤ) - 1)⌋ := by
+    apply Int.floor_pos.mpr
     apply le_mul_of_le_mul_of_nonneg_left
     · rw [mul_one]
       exact hb
-    · apply one_le_zpow₀ (by norm_num) -- TODO linearize should solve this
-      flinarith
+    · apply one_le_zpow₀ (by norm_num : (1 : R) ≤ 2)
+      have := FloatFormat.valid_prec
+      omega
     · linarith
+  have hcast_pos : (0 : R) < (⌊x / 2 ^ findExponentDown x * (2 : R) ^ ((FloatFormat.prec : ℤ) - 1)⌋ : R) := Int.cast_pos.mpr hfloor_pos
+  rw [abs_of_pos hcast_pos]
+  rw [div_eq_mul_inv, ← inv_zpow, inv_zpow', mul_assoc, ← zpow_add₀]
+  rw [mul_comm, ← le_div_iff₀']
+  rw [div_eq_mul_inv, ← inv_zpow, inv_zpow', neg_add, neg_sub', sub_neg_eq_add]
+  rw [add_sub]
+  apply Int.floor_le
+  linearize
+  norm_num
 
 -- TODO: we could certainly put a tighter lower bound on roundNormalDown
 theorem roundNormalDown_pos (x : R) (h : isNormalRange x) : (0 : R) < (roundNormalDown x h).toVal := by
@@ -164,7 +167,7 @@ def roundNormalUp (x : R) (h : isNormalRange x) : Fp :=
         have j : 2^(FloatFormat.prec - 1) ≤ x / 2^e * 2^(FloatFormat.prec - 1) := by
           unfold e
           conv_lhs => rw [← one_mul (2^(FloatFormat.prec - 1))]
-          rw [mul_le_mul_right] -- why is linarith not smart enough to use this
+          rw [mul_le_mul_iff_of_pos_right] -- why is linarith not smart enough to use this
           linarith
           linearize
         apply lt_of_le_of_lt' j

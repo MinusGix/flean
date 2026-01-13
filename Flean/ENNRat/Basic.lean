@@ -94,7 +94,7 @@ instance : LinearOrderedCommMonoidWithZero ℚ≥0∞ :=
   { inferInstanceAs (LinearOrderedAddCommMonoidWithTop ℚ≥0∞),
       inferInstanceAs (CommSemiring ℚ≥0∞) with
     bot_le _ := bot_le
-    mul_le_mul_left := fun _ _ => mul_le_mul_left'
+    mul_le_mul_left := fun _ _ h c => mul_le_mul_left h c
     zero_le_one := zero_le 1 }
 
 instance : Unique (AddUnits ℚ≥0∞) where

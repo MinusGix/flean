@@ -33,11 +33,11 @@ theorem ufp_ulp_eq [FloatFormat] [Field R] [LinearOrder R] [IsStrictOrderedRing 
   delta ufp ulp
   -- delta ufp
   have hz : (2 : R)^(FloatFormat.prec - 1) = (2 : R)^((FloatFormat.prec : ℤ) - 1) := by
-    conv => rhs; rw [← Nat.cast_one]
-    rw [← Nat.cast_sub]
-    rw [zpow_natCast]
+    have h1 : (1 : ℤ) = (1 : ℕ) := rfl
     have := FloatFormat.valid_prec
-    omega
+    have hprec : 1 ≤ FloatFormat.prec := by omega
+    rw [show ((FloatFormat.prec : ℤ) - 1) = ((FloatFormat.prec - 1 : ℕ) : ℤ) by omega]
+    rw [zpow_natCast]
   rw [hz]
   norm_num
   split_ifs with h

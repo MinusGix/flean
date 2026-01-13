@@ -188,7 +188,7 @@ theorem relativeError_ulp_upper_bound [FloatFormat] (x : R) (y : FiniteFp) (α :
   rw [show (2 ^ (Int.log 2 (-x) - ↑FloatFormat.prec + 1) / -x) = -(2 ^ (Int.log 2 (-x) - ↑FloatFormat.prec + 1) / x) by ring]
 
   -- Now we have the two simple branches where one is positive and the other is negative.
-  all_goals apply (mul_le_mul_left hα).mpr -- get rid of the α
+  all_goals apply (mul_le_mul_iff_of_pos_left hα).mpr -- get rid of the α
   all_goals rw [sub_add, zpow_sub₀ (by norm_num)]
 
   all_goals rw [div_eq_mul_inv, div_eq_mul_inv, mul_comm, ← mul_assoc, mul_comm x⁻¹, ← div_eq_mul_inv _ x, ← inv_zpow, inv_zpow', neg_sub]

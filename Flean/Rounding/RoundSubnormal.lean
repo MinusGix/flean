@@ -174,15 +174,14 @@ theorem roundSubnormalDown_le (x : R) (h : isSubnormalRange x) : (roundSubnormal
     norm_num at h'
     unfold FiniteFp.toVal FiniteFp.sign'
     norm_num
-    have : ¬(x / 2 ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1) < 0) := by
+    have hdiv_nonneg : ¬(x / 2 ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1) < 0) := by
       norm_num
       apply div_nonneg
       linarith
       linearize
-    simp only [this, false_or] at h'
-
-    rw [Int.cast_natAbs_pos (Int.floor_pos.mpr (by trivial))]
-
+    simp only [hdiv_nonneg, false_or] at h'
+    have hfloor_pos : 0 < ⌊x / 2 ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1)⌋ := Int.floor_pos.mpr (by trivial)
+    rw [abs_of_pos (Int.cast_pos.mpr hfloor_pos)]
     rw[FloatFormat.radix_val_eq_two]
     apply mul_le_of_le_div₀
     · linarith
@@ -200,8 +199,8 @@ theorem roundSubnormalDown_nonneg {x : R} {h : isSubnormalRange x} : (0 : R) ≤
     rw [FloatFormat.radix_val_eq_two]
     norm_num
     apply mul_nonneg
-    apply Nat.cast_nonneg
-    linearize
+    · exact abs_nonneg _
+    · linearize
 
 theorem roundSubnormalDown_pos {x : R} {h : isSubnormalRange x} (hx : FiniteFp.smallestPosSubnormal.toVal ≤ x) : (0 : R) < (roundSubnormalDown x h).toVal := by
   unfold roundSubnormalDown
