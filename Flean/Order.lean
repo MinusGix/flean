@@ -168,7 +168,7 @@ theorem mag_le_significand_le {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
     split_ifs with h1 h2
     · rw [h1] at h
       apply (Nat.cast_le (α := R)).mp
-      apply (mul_le_mul_right ?_).mp
+      apply (mul_le_mul_iff_left₀ ?_).mp
       exact h
       linearize
     · apply (Nat.cast_le (α := R)).mp
@@ -237,7 +237,7 @@ theorem mag_lt_significand_lt {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
     split_ifs with h1 h2
     · rw [h1] at h
       apply (Nat.cast_lt (α := R)).mp
-      apply (mul_lt_mul_right ?_).mp
+      apply (mul_lt_mul_iff_left₀ ?_).mp
       exact h
       linearize
     · apply (Nat.cast_lt (α := R)).mp
@@ -334,7 +334,7 @@ theorem toVal_le (R : Type*) [Field R] [LinearOrder R] [IsStrictOrderedRing R]
     rw [is_mag_lt]
     split_ifs with he he1
     · rw [he] at hv
-      rw [mul_le_mul_right] at hv
+      rw [mul_le_mul_iff_left₀] at hv
       norm_num [he]
       apply lt_or_eq_of_le
       assumption_mod_cast

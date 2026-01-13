@@ -1,5 +1,7 @@
 import Mathlib.Data.Int.Log
 import Mathlib.Algebra.Group.Defs
+import Mathlib.Tactic.Linarith
+import Mathlib.Tactic.Cases
 
 /-!
 # Linearize tactic helper lemmas

@@ -392,17 +392,13 @@ theorem allFiniteFps_no_dup : List.Nodup allFiniteFps := by
       · intro a b h
         grind
     · unfold normalFiniteEm subnormalFiniteEm
-      extract_lets el1 ml1
-      unfold List.Disjoint
-      norm_num
-      intro a b ain bin x hx he
-      unfold el1 at ain
-      rw [List.mem_map] at ain
-      unfold ml1 at bin
-      rw [List.mem_map] at bin
-      have b' := Classical.choose_spec bin
-      rw [← b'.right]
-      linarith
+      intro ⟨e1, m1⟩ hnorm ⟨e2, m2⟩ hsub hne
+      simp only [List.mem_product, List.mem_map, List.mem_range] at hnorm hsub
+      obtain ⟨_, ⟨k, hk, hm⟩⟩ := hnorm
+      obtain ⟨a, ha, heq⟩ := hsub
+      simp only [Prod.mk.injEq] at hne heq
+      obtain ⟨_, rfl⟩ := heq
+      omega
   · intro a b h
     grind
 

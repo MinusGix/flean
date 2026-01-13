@@ -5,6 +5,7 @@ import Mathlib.Data.Int.Notation
 import Mathlib.Data.Rat.Defs
 import Mathlib.Data.Rat.Cast.Defs
 import Mathlib.Tactic.Linarith
+import Mathlib.Tactic.IntervalCases
 import Mathlib.Data.Real.Basic
 import Mathlib.Tactic.Ring
 
@@ -47,38 +48,18 @@ theorem lt_add_neg_toNat_lt (a b : ℤ) (c : ℕ) (a_pos : a > 0) : a < c → b 
   omega
 
 theorem Nat.clog_eq_zero_iff {b x : ℕ} (hb : 1 < b) : Nat.clog b x = 0 ↔ x ≤ 1 := by
-  -- have := Nat.clog_pos hb
-  apply Iff.intro
+  constructor
   · intro h
-    unfold Nat.clog at h
-    lift_lets at h
-    extract_lets n at h
-    split_ifs at h with h1
-    simp_all only [true_and, not_lt, n]
+    by_contra hx
+    push_neg at hx
+    have := Nat.clog_pos hb hx
+    omega
   · intro h
-    -- TODO(minor): is there a better way to cases by a small number of values in x ≤ 1?
-    if x = 0 then
-      simp_all only [zero_le, clog_zero_right]
-    else if x = 1 then
-      simp_all only [le_refl, one_ne_zero, not_false_eq_true, clog_one_right]
-    else
-      have h := h.lt_of_ne (by trivial)
-      have h' := h.nat_succ_le
-      simp only [succ_eq_add_one, add_le_iff_nonpos_left, nonpos_iff_eq_zero] at h'
-      contradiction
+    interval_cases x <;> simp [Nat.clog_zero_right, Nat.clog_one_right]
 
 theorem Nat.clog_ne_zero_iff {b x : ℕ} (hb : 1 < b) : Nat.clog b x ≠ 0 ↔ 2 ≤ x := by
-  apply Iff.intro
-  · intro hnz
-    unfold Nat.clog at hnz
-    lift_lets at hnz
-    extract_lets n at hnz
-    split_ifs at hnz with h1
-    simp_all only [true_and, not_lt, n]
-    exact h1.right
-    contradiction
-  · intro hx
-    exact (Nat.clog_pos hb hx).ne'
+  rw [ne_eq, Nat.clog_eq_zero_iff hb]
+  omega
 
 -- Obviously we can't have the backwards direction in general. Nat.clog 2 3 = Nat.clog 2 4 = 2, but 3 ≠ 4.
 -- we could with some powers stuff if that would be useful

@@ -300,23 +300,19 @@ This being simp makes it somehow used by norm_num? -/
 @[simp]
 theorem pow_prec_sub_one_nat_int [FloatFormat] {R : Type*} [Field R]
   : (2 : R)^(FloatFormat.prec - 1) = (2 : R)^((FloatFormat.prec : ℤ) - 1) := by
-  conv => rhs; rw [← Nat.cast_one]
-  rw [← Nat.cast_sub]
-  rw [zpow_natCast]
   have := FloatFormat.valid_prec
-  omega
+  have h : (FloatFormat.prec : ℤ) - 1 = ((FloatFormat.prec - 1 : ℕ) : ℤ) := by omega
+  rw [h, zpow_natCast]
 
 
 theorem zpow_min_exp_prec_plus_one_le_zpow_min_exp_sub_one
   {R : Type*}
   [Field R] [LinearOrder R] [IsStrictOrderedRing R]
   [FloatFormat] : (2 : R)^(FloatFormat.min_exp - FloatFormat.prec + 1) ≤ (2 : R)^(FloatFormat.min_exp - 1) := by
-  gcongr
-  norm_num
-  have := FloatFormat.valid_prec
-  rw [sub_eq_add_neg, sub_eq_add_neg, add_assoc]
-  apply add_le_add_left
-  norm_num
+  have h := FloatFormat.valid_prec
+  have h2 : (2 : ℤ) ≤ (FloatFormat.prec : ℤ) := Nat.cast_le.mpr h
+  apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+  linarith
 
 theorem zpow_min_exp_prec_plus_one_le_zpow_min_exp
   {R : Type*}
