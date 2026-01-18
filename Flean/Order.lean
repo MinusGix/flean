@@ -822,11 +822,121 @@ theorem stdLe_trans {x y z : FiniteFp} (hxy : x.stdLe y) (hyz : y.stdLe z) : x.s
   <;> cases' hyz with h2 h2
   · left
     apply stdLt_trans h1 h2
-  · apply @stdLe_stdEquiv _ x y z
-    · sorry
-    · grind
-    · grind
-  · sorry
+  · -- h1 : x.stdLt y, h2 : y.stdEquiv z
+    -- Handle the case where both y and z are zero
+    unfold stdEquiv at h2
+    rcases h2 with ⟨hy_zero, hz_zero⟩ | rfl
+    · -- Both y and z are zero, need to prove x.stdLt z directly
+      left
+      unfold stdLt at h1 ⊢
+      rcases h1 with ⟨⟨hxs, hys⟩, hxnz⟩ | ⟨hxs, hys, hmag⟩ | ⟨hxs, hys, hmag⟩
+      · -- Case 1: x negative, y positive, one nonzero
+        -- Since y is zero, x is nonzero (negative)
+        unfold isZero at hy_zero hz_zero hxnz
+        cases' hxnz with hxnz' hynz'
+        · -- x is nonzero
+          left
+          constructor
+          · constructor
+            · exact hxs
+            · -- z is zero, so z.s depends on the zero representation
+              -- isZero means e = min_exp and m = 0
+              -- From y.isZero and !y.s, y = +0
+              -- From z.isZero, z could be +0 or -0
+              simp_all only [not_and, Decidable.not_not, and_true, or_true]
+          · left; exact hxnz'
+        · -- y is nonzero but we said y is zero - contradiction
+          exfalso; exact hynz' hy_zero
+      · -- Case 2: x positive, y positive, x.is_mag_lt y
+        -- If y is zero, y.m = 0, so x.m < 0 (impossible)
+        exfalso
+        unfold isZero is_mag_lt at hy_zero hmag
+        simp_all only [Bool.not_eq_true]
+      · -- Case 3: x negative, y negative, y.is_mag_lt x
+        -- y is zero (-0), x is negative
+        left
+        constructor
+        · constructor
+          · exact hxs
+          · -- Need to show !z.s, i.e., z is positive sign
+            -- If z is zero, could be +0 or -0
+            -- If z = -0, we'd be in case 3 again
+            -- Actually need to do case analysis on z.s
+            by_cases hz_s : z.s
+            · -- z = -0, use case 3
+              simp only [hz_s, Bool.not_true, and_false, or_false]
+              right; right
+              constructor
+              · exact hxs
+              · constructor
+                · exact hz_s
+                · -- y.is_mag_lt x and z is zero, so z.is_mag_lt x should hold
+                  unfold isZero is_mag_lt at hy_zero hz_zero hmag ⊢
+                  simp_all only [Bool.not_eq_true]
+            · simp only [hz_s, Bool.not_false, and_true, true_and]
+        · unfold isZero is_mag_lt at hy_zero hmag
+          simp_all only [Bool.not_eq_true, or_true]
+    · -- y = z, so x.stdLt y implies x.stdLt z
+      left
+      exact h1
+  · -- h1 : x.stdEquiv y, h2 : y.stdLt z
+    -- Symmetric case
+    unfold stdEquiv at h1
+    rcases h1 with ⟨hx_zero, hy_zero⟩ | rfl
+    · -- Both x and y are zero
+      left
+      unfold stdLt at h2 ⊢
+      rcases h2 with ⟨⟨hys, hzs⟩, hynz⟩ | ⟨hys, hzs, hmag⟩ | ⟨hys, hzs, hmag⟩
+      · -- Case 1: y negative, z positive, one nonzero
+        unfold isZero at hx_zero hy_zero hynz
+        cases' hynz with hynz' hznz'
+        · exfalso; exact hynz' hy_zero
+        · left
+          constructor
+          · constructor
+            · by_cases hxs : x.s
+              · exact hxs
+              · -- x is +0, y is negative - but y is zero too
+                -- Need: x.s = true. If x = +0, then x.s = false
+                -- But we can also check case 2 or 3
+                simp only [hxs, Bool.false_eq_true, false_and, Bool.not_eq_true, and_true, or_false]
+                right; left
+                constructor
+                · simp only [hxs, Bool.not_false]
+                · constructor
+                  · simp only [hzs, Bool.not_true]
+                  · -- x.is_mag_lt z, x is zero, z is nonzero
+                    unfold isZero is_mag_lt at hx_zero hznz'
+                    simp_all only [Bool.not_eq_true]
+            · exact hzs
+          · right; exact hznz'
+      · -- y positive, z positive, y.is_mag_lt z
+        -- y is zero means y.m = 0
+        -- y.is_mag_lt z means 0 < z.m (or similar)
+        left
+        constructor
+        · constructor
+          · by_cases hxs : x.s
+            · exact hxs
+            · simp only [hxs, Bool.false_eq_true, false_and, Bool.not_eq_true, and_true, or_false]
+              right; left
+              constructor
+              · simp only [hxs, Bool.not_false]
+              · constructor
+                · exact hzs
+                · unfold isZero is_mag_lt at hx_zero hy_zero hmag ⊢
+                  simp_all only [Bool.not_eq_true]
+          · exact hzs
+        · unfold isZero is_mag_lt at hy_zero hmag
+          simp_all only [Bool.not_eq_true, or_true]
+      · -- y negative, z negative, z.is_mag_lt y
+        -- But y is zero, so z.is_mag_lt y means z.m < 0 (impossible)
+        exfalso
+        unfold isZero is_mag_lt at hy_zero hmag
+        simp_all only [Bool.not_eq_true]
+    · -- x = y, so y.stdLt z implies x.stdLt z
+      left
+      exact h2
   · grind
 
 
