@@ -162,16 +162,12 @@ instance [FloatFormat] : DecidablePred FloatBits.isExponentAllOnes := inferInsta
 /-- The exponent being all ones means that it is equivalent to 2^W - 1 -/
 def isExponentAllOnes_eq_ofNat (b : FloatBits) : b.isExponentAllOnes ↔ b.toBitsTriple.exponent.toNat = (2^FloatFormat.exponentBits - 1) := by
   unfold isExponentAllOnes
-  unfold BitVec.allOnes BitVec.toNat
   constructor
-  <;> intro h
-  · rw [h]
-    simp only [BitVec.val_toFin, BitVec.toNat_ofNatLT]
-  · ext
-    rw [BitVec.val_toFin] at h
-    -- simp only [BitVec.getLsbD, h, Nat.testBit_two_pow_sub_one, Fin.is_lt, decide_true,
-    --   BitVec.toNat_ofNatLT]
-    sorry -- TODO: this worked previously
+  · intro h
+    rw [h, BitVec.toNat_allOnes]
+  · intro h
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_allOnes, h]
 
 -- TODO: probably get rid of this. We should justh have a `.significand` method that does the conversion to bitstriple inside it
 @[reducible]
