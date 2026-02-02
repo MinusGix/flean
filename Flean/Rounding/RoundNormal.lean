@@ -114,6 +114,50 @@ theorem roundNormalDown_pos (x : R) (h : isNormalRange x) : (0 : R) < (roundNorm
 
 theorem roundNormalDown_nonneg (x : R) (h : isNormalRange x) : (0 : R) ≤ (roundNormalDown x h).toVal := le_of_lt (roundNormalDown_pos x h)
 
+/-- roundNormalDown y has toVal ≥ 2^min_exp (the smallest normal value) -/
+theorem roundNormalDown_ge_zpow_min_exp (y : R) (h : isNormalRange y) :
+    (2 : R) ^ FloatFormat.min_exp ≤ (roundNormalDown y h).toVal := by
+  -- The key: roundNormalDown y has m ≥ 2^(prec-1) and e ≥ min_exp
+  -- toVal = m * 2^(e - prec + 1) ≥ 2^(prec-1) * 2^(min_exp - prec + 1) = 2^min_exp
+  -- For now, use transitivity through the range condition
+  calc (2 : R) ^ FloatFormat.min_exp ≤ y := h.left
+    _ = (roundNormalDown y h).toVal + (y - (roundNormalDown y h).toVal) := by ring
+    _ ≤ y := by linarith [roundNormalDown_le y h]
+  -- This isn't quite right; we need the actual lower bound
+  sorry
+
+/-- roundNormalDown has toVal ≥ 2^(findExponentDown y) -/
+theorem roundNormalDown_ge_zpow_exp (y : R) (h : isNormalRange y) :
+    (2 : R) ^ findExponentDown y ≤ (roundNormalDown y h).toVal (R := R) := by
+  sorry
+
+/-- roundNormalDown is monotone on toVal -/
+theorem roundNormalDown_toVal_mono {x y : R} (hx : isNormalRange x) (hy : isNormalRange y) (h : x ≤ y) :
+    (roundNormalDown x hx).toVal (R := R) ≤ (roundNormalDown y hy).toVal (R := R) := by
+  -- Case 1: same binade - floor monotonicity applies directly
+  -- Case 2: x in lower binade - roundNormalDown x ≤ x < 2^ey ≤ roundNormalDown y
+  have hex := findExponentDown_normal x hx
+  have hey := findExponentDown_normal y hy
+  by_cases hexp : findExponentDown x = findExponentDown y
+  · -- Same binade: use floor monotonicity
+    sorry
+  · -- Different binades: x is in a lower binade than y
+    have hxpos := isNormalRange_pos x hx
+    have hmono : findExponentDown x ≤ findExponentDown y := by
+      rw [hex, hey]
+      exact Int.log_mono_right hxpos h
+    have hexp_lt : findExponentDown x < findExponentDown y := lt_of_le_of_ne hmono hexp
+    have hexp_bound : findExponentDown x + 1 ≤ findExponentDown y := by linarith
+    apply le_of_lt
+    calc (roundNormalDown x hx).toVal (R := R)
+        ≤ x := roundNormalDown_le x hx
+      _ < (2 : R) ^ (Int.log 2 x + 1) := Int.lt_zpow_succ_log_self (by norm_num : 1 < 2) x
+      _ = (2 : R) ^ (findExponentDown x + 1) := by rw [hex]
+      _ ≤ (2 : R) ^ findExponentDown y := by
+          apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+          exact hexp_bound
+      _ ≤ (roundNormalDown y hy).toVal := roundNormalDown_ge_zpow_exp y hy
+
 /-- Round a positive normal value up -/
 def roundNormalUp (x : R) (h : isNormalRange x) : Fp :=
   -- Find the exponent by comparing with powers of 2

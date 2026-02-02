@@ -78,6 +78,114 @@ lemma findPredecessorPos_le (x : R) (hpos : 0 < x) : (findPredecessorPos x hpos)
   · apply roundNormalDown_le
   · linarith [FiniteFp.largestFiniteFloat_lt_maxExp_succ (R := R)]
 
+/-- findPredecessorPos always returns a non-negative float (sign = false) -/
+theorem findPredecessorPos_sign_false (x : R) (hpos : 0 < x) :
+    (findPredecessorPos x hpos).s = false := by
+  unfold findPredecessorPos
+  split_ifs with h1 h2
+  · -- Subnormal case: roundSubnormalDown
+    simp only [roundSubnormalDown]
+    split_ifs <;> rfl
+  · -- Normal case: roundNormalDown
+    simp only [roundNormalDown]
+  · -- Overflow case: largestFiniteFloat
+    simp only [FiniteFp.largestFiniteFloat]
+
+/-- The toVal of findPredecessorPos is monotone: if x ≤ y then the results are ordered.
+    This is the key lemma - it says the floor operation on floats is monotone. -/
+theorem findPredecessorPos_toVal_mono {x y : R} (hx : 0 < x) (hy : 0 < y) (h : x ≤ y) :
+    (findPredecessorPos x hx).toVal (R := R) ≤ (findPredecessorPos y hy).toVal (R := R) := by
+  unfold findPredecessorPos
+  -- Split on ranges for x and y
+  by_cases hx_sub : x < (2 : R) ^ FloatFormat.min_exp
+  · -- x is in subnormal range
+    simp only [hx_sub, ↓reduceDIte]
+    by_cases hy_sub : y < (2 : R) ^ FloatFormat.min_exp
+    · -- y also in subnormal range
+      simp only [hy_sub, ↓reduceDIte]
+      apply roundSubnormalDown_toVal_mono ⟨hx, hx_sub⟩ ⟨hy, hy_sub⟩ h
+    · -- y in normal or overflow range
+      simp only [hy_sub, ↓reduceDIte]
+      by_cases hy_nor : y < (2 : R) ^ (FloatFormat.max_exp + 1)
+      · -- y in normal range: roundSubnormalDown x ≤ roundNormalDown y
+        simp only [hy_nor, ↓reduceDIte]
+        -- roundSubnormalDown x ≤ x < 2^min_exp ≤ roundNormalDown y
+        have hstep : (roundSubnormalDown x ⟨hx, hx_sub⟩).toVal (R := R) < (2 : R) ^ FloatFormat.min_exp := by
+          calc (roundSubnormalDown x ⟨hx, hx_sub⟩).toVal (R := R)
+              ≤ x := roundSubnormalDown_le x ⟨hx, hx_sub⟩
+            _ < (2 : R) ^ FloatFormat.min_exp := hx_sub
+        apply le_of_lt
+        calc (roundSubnormalDown x ⟨hx, hx_sub⟩).toVal (R := R)
+            < (2 : R) ^ FloatFormat.min_exp := hstep
+          _ ≤ (roundNormalDown y ⟨not_lt.mp hy_sub, hy_nor⟩).toVal := roundNormalDown_ge_zpow_min_exp y ⟨not_lt.mp hy_sub, hy_nor⟩
+      · -- y in overflow range
+        simp only [hy_nor, ↓reduceDIte]
+        -- roundSubnormalDown x is a finite float, so it's ≤ largestFiniteFloat
+        exact FiniteFp.finite_le_largestFiniteFloat _
+  · -- x is in normal or overflow range
+    simp only [hx_sub, ↓reduceDIte]
+    by_cases hx_nor : x < (2 : R) ^ (FloatFormat.max_exp + 1)
+    · -- x in normal range
+      simp only [hx_nor, ↓reduceDIte]
+      -- y must also be in normal or overflow range (since x ≤ y and x ≥ 2^min_exp)
+      have hy_not_sub : ¬(y < (2 : R) ^ FloatFormat.min_exp) := by
+        intro hy_sub
+        have : y < x := lt_of_lt_of_le hy_sub (not_lt.mp hx_sub)
+        linarith
+      simp only [hy_not_sub, ↓reduceDIte]
+      by_cases hy_nor : y < (2 : R) ^ (FloatFormat.max_exp + 1)
+      · -- Both in normal range
+        simp only [hy_nor, ↓reduceDIte]
+        exact roundNormalDown_toVal_mono ⟨not_lt.mp hx_sub, hx_nor⟩ ⟨not_lt.mp hy_not_sub, hy_nor⟩ h
+      · -- y in overflow range
+        simp only [hy_nor, ↓reduceDIte]
+        -- roundNormalDown x is a finite float, so it's ≤ largestFiniteFloat
+        exact FiniteFp.finite_le_largestFiniteFloat _
+    · -- x in overflow range
+      -- y must also be in overflow range
+      have hy_not_sub : ¬(y < (2 : R) ^ FloatFormat.min_exp) := by
+        intro hy_sub
+        have hx_sub' : x < (2 : R) ^ FloatFormat.min_exp := by
+          apply lt_of_le_of_lt h hy_sub
+        exact hx_sub hx_sub'
+      have hy_not_nor : ¬(y < (2 : R) ^ (FloatFormat.max_exp + 1)) := by
+        intro hy_nor
+        have hx_nor' : x < (2 : R) ^ (FloatFormat.max_exp + 1) := by
+          apply lt_of_le_of_lt h hy_nor
+        exact hx_nor hx_nor'
+      simp only [hx_nor, hy_not_sub, hy_not_nor, ↓reduceDIte]
+      -- Both return largestFiniteFloat, goal is ≤ by reflexivity
+      exact le_refl _
+
+/-- findPredecessorPos is monotone in the FiniteFp ordering -/
+theorem findPredecessorPos_mono {x y : R} (hx : 0 < x) (hy : 0 < y) (h : x ≤ y) :
+    findPredecessorPos x hx ≤ findPredecessorPos y hy := by
+  -- Use toVal_le_handle: for non-negative floats, ordering matches toVal ordering
+  apply FiniteFp.toVal_le_handle R
+  · exact findPredecessorPos_toVal_mono hx hy h
+  · intro hz
+    -- Both have sign = false (non-negative), so if both are zero, they're both = 0
+    have hsx := findPredecessorPos_sign_false x hx
+    have hsy := findPredecessorPos_sign_false y hy
+    rw [FiniteFp.isZero_iff, FiniteFp.isZero_iff] at hz
+    rcases hz with ⟨h1 | h2, h3 | h4⟩
+    · rw [h1, h3]
+    · -- h4 says findPredecessorPos y hy = -0, but sign is false, contradiction
+      exfalso
+      have hsign : (findPredecessorPos y hy).s = (-0 : FiniteFp).s := by rw [h4]
+      rw [hsy, FiniteFp.neg_def, FiniteFp.zero_def] at hsign
+      simp at hsign
+    · -- h2 says findPredecessorPos x hx = -0, but sign is false, contradiction
+      exfalso
+      have hsign : (findPredecessorPos x hx).s = (-0 : FiniteFp).s := by rw [h2]
+      rw [hsx, FiniteFp.neg_def, FiniteFp.zero_def] at hsign
+      simp at hsign
+    · -- Both are -0, same contradiction
+      exfalso
+      have hsign : (findPredecessorPos x hx).s = (-0 : FiniteFp).s := by rw [h2]
+      rw [hsx, FiniteFp.neg_def, FiniteFp.zero_def] at hsign
+      simp at hsign
+
 end findPredecessorPos
 
 
@@ -218,6 +326,66 @@ theorem findSuccessor_neg_eq (x : R) (hneg : x < 0) :
   have hnz : x ≠ 0 := by linarith
   have hnpos : ¬0 < x := by linarith
   simp [findSuccessor, hneg, hnz, hnpos]
+
+/-- findSuccessor is monotone on negative values.
+    For x ≤ y < 0, findSuccessor x ≤ findSuccessor y.
+    This follows from findPredecessorPos_mono by symmetry. -/
+theorem findSuccessor_mono_neg {x y : R} (hx : x < 0) (hy : y < 0) (h : x ≤ y) :
+    findSuccessor x ≤ findSuccessor y := by
+  -- Use the formula: findSuccessor x = -findPredecessorPos (-x)
+  rw [findSuccessor_neg_eq x hx, findSuccessor_neg_eq y hy]
+  -- Now show Fp.finite (-f_x) ≤ Fp.finite (-f_y)
+  -- where f_x = findPredecessorPos (-x) and f_y = findPredecessorPos (-y)
+  -- From x ≤ y < 0, we get 0 < -y ≤ -x
+  have hny : 0 < -y := neg_pos.mpr hy
+  have hnx : 0 < -x := neg_pos.mpr hx
+  have hyx : -y ≤ -x := neg_le_neg h
+  -- By findPredecessorPos_toVal_mono: f_y.toVal ≤ f_x.toVal
+  have hmono := findPredecessorPos_toVal_mono hny hnx hyx
+  -- Use FiniteFp.toVal_le_handle to convert from toVal ordering
+  have htoVal : (-findPredecessorPos (-x) hnx).toVal (R := R) ≤ (-findPredecessorPos (-y) hny).toVal (R := R) := by
+    rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg]
+    linarith
+  -- Get -f_x ≤ -f_y in FiniteFp ordering
+  have hle : -findPredecessorPos (-x) hnx ≤ -findPredecessorPos (-y) hny := by
+    apply FiniteFp.toVal_le_handle R htoVal
+    intro hz
+    -- Both are zero case: -f_x and -f_y both zero means f_x and f_y both zero
+    -- f_x has sign false, so isZero means f_x = 0 (not -0)
+    -- -f_x = -0 has sign true
+    -- So if -f_x.isZero and -f_y.isZero, they're both -0 or 0
+    have hsx := findPredecessorPos_sign_false (-x) hnx
+    have hsy := findPredecessorPos_sign_false (-y) hny
+    rw [FiniteFp.isZero_iff, FiniteFp.isZero_iff] at hz
+    rcases hz with ⟨h1 | h2, h3 | h4⟩
+    · -- Both are 0: -f_x = 0 and -f_y = 0 means f_x = 0 and f_y = 0
+      -- But -0 = ⟨true, 0, 0⟩ ≠ ⟨false, 0, 0⟩ = 0
+      exfalso
+      rw [FiniteFp.neg_def, FiniteFp.eq_def] at h1
+      simp only [FiniteFp.zero_def, Bool.not_false] at h1
+      have := h1.left
+      rw [hsx] at this
+      simp at this
+    · -- -f_x = 0, -f_y = -0: contradiction since -f_x has sign = !f_x.s = !false = true ≠ false
+      exfalso
+      rw [FiniteFp.neg_def, FiniteFp.eq_def] at h1
+      simp only [FiniteFp.zero_def, Bool.not_false] at h1
+      rw [hsx] at h1
+      simp at h1
+    · -- -f_x = -0, -f_y = 0: same contradiction for -f_y
+      exfalso
+      rw [FiniteFp.neg_def, FiniteFp.eq_def] at h3
+      simp only [FiniteFp.zero_def, Bool.not_false] at h3
+      rw [hsy] at h3
+      simp at h3
+    · -- Both are -0: -f_x = -0 and -f_y = -0, so they're equal
+      rw [h2, h4]
+  -- Convert FiniteFp.le to Fp.le
+  rw [Fp.le_def]
+  rw [FiniteFp.le_def] at hle
+  cases hle with
+  | inl hlt => left; exact hlt
+  | inr heq => right; rw [heq]
 
 end findSuccessor
 

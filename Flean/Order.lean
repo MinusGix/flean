@@ -780,7 +780,6 @@ theorem stdLt_trans {x y z : FiniteFp} (hxy : x.stdLt y) (hyz : y.stdLt z) : x.s
   · cases' h2.right with h3 h3
     · left
       unfold is_mag_lt at h1
-      unfold isZero at h3 ⊢
       split_ifs at h1 with h4 h5
       · grind
       · grind
@@ -900,7 +899,18 @@ protected theorem lt_imp_le {x y : Fp} : x < y → x ≤ y := by
 --   rw [lt_def] at h
 --   simp_all
 
+/-- Ordering on Fp.finite values corresponds to FiniteFp ordering -/
+theorem finite_le_finite_iff (x y : FiniteFp) : Fp.finite x ≤ Fp.finite y ↔ x ≤ y := by
+  rw [le_def, FiniteFp.le_def]
+  simp only [Fp.finite.injEq]
 
+theorem le_refl (x : Fp) : x ≤ x := by
+  rw [le_def]; right; rfl
 
+/-- Transitivity for Fp.finite values -/
+theorem finite_le_trans {x y z : FiniteFp} (hxy : Fp.finite x ≤ Fp.finite y)
+    (hyz : Fp.finite y ≤ Fp.finite z) : Fp.finite x ≤ Fp.finite z := by
+  rw [finite_le_finite_iff] at hxy hyz ⊢
+  exact FiniteFp.is_le_trans hxy hyz
 
 end Fp

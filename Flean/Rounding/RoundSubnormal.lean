@@ -243,4 +243,49 @@ theorem roundSubnormalDown_pos_iff {x : R} {h : isSubnormalRange x} : FiniteFp.s
         linarith
         linearize
 
+/-- Monotonicity of roundSubnormalDown on toVal: if x ≤ y in the subnormal range, then
+    (roundSubnormalDown x).toVal ≤ (roundSubnormalDown y).toVal -/
+theorem roundSubnormalDown_toVal_mono {x y : R} (hx : isSubnormalRange x) (hy : isSubnormalRange y) (h : x ≤ y) :
+    (roundSubnormalDown x hx).toVal (R := R) ≤ (roundSubnormalDown y hy).toVal (R := R) := by
+  -- Use floor monotonicity: if x ≤ y then ⌊x/ulp⌋ ≤ ⌊y/ulp⌋
+  have hulp_pos : (0 : R) < (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by linearize
+  have hkx_le_ky : ⌊x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌋ ≤
+                   ⌊y / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌋ := by
+    apply Int.floor_le_floor
+    apply div_le_div_of_nonneg_right h (le_of_lt hulp_pos)
+  -- Case split on whether each rounds to zero
+  by_cases hkx_zero : ⌊x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌋ = 0
+  · -- x rounds to zero
+    have hrx : roundSubnormalDown x hx = 0 := by
+      unfold roundSubnormalDown
+      simp only [hkx_zero, ↓reduceDIte]
+    rw [hrx, FiniteFp.toVal_zero]
+    apply roundSubnormalDown_nonneg
+  · -- x doesn't round to zero
+    by_cases hky_zero : ⌊y / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌋ = 0
+    · -- y rounds to zero but x doesn't - contradiction
+      exfalso
+      have hkx_nonneg : 0 ≤ ⌊x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌋ :=
+        Int.floor_nonneg.mpr (div_nonneg (le_of_lt hx.left) (le_of_lt hulp_pos))
+      have hkx_le_zero : ⌊x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌋ ≤ 0 := by
+        calc _ ≤ ⌊y / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌋ := hkx_le_ky
+          _ = 0 := hky_zero
+      have := le_antisymm hkx_le_zero hkx_nonneg
+      exact hkx_zero this
+    · -- Neither rounds to zero
+      unfold roundSubnormalDown
+      simp only [hkx_zero, ↓reduceDIte, hky_zero]
+      unfold FiniteFp.toVal FiniteFp.sign'
+      rw [FloatFormat.radix_val_eq_two]
+      simp only [Bool.false_eq_true, ↓reduceIte, one_mul, ge_iff_le]
+      -- Goal: |↑(floor x).natAbs| * 2^exp ≤ |↑(floor y).natAbs| * 2^exp
+      gcongr
+      -- Goal: (floor x).natAbs ≤ (floor y).natAbs as Nats
+      -- Since floor results are non-negative, natAbs preserves the order
+      have hkx_nonneg : 0 ≤ ⌊x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌋ :=
+        Int.floor_nonneg.mpr (div_nonneg (le_of_lt hx.left) (le_of_lt hulp_pos))
+      have hky_nonneg : 0 ≤ ⌊y / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌋ :=
+        Int.floor_nonneg.mpr (div_nonneg (le_of_lt hy.left) (le_of_lt hulp_pos))
+      omega
+
 end Rounding

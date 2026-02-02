@@ -189,7 +189,7 @@ def sign (x : FiniteFp) : Bool := x.s
 def sign'  {R : Type*} [Neg R] [One R] (x : FiniteFp) : R :=
   if x.s then -1 else 1
 
-def isZero (x : FiniteFp) : Prop := x.m = 0
+abbrev isZero (x : FiniteFp) : Prop := x.m = 0
 
 /-- There are only two representations of zero -/
 def isZero_iff (x : FiniteFp) : x.isZero ↔ (x = 0 ∨ x = -0) := by
