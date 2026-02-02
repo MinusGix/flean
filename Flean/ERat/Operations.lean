@@ -784,22 +784,86 @@ lemma mul_ne_bot (a b : ERat) :
 --     (x * y).toENNReal = x.toENNReal * y.toENNReal := by
 --   rw [ERat.mul_comm, toENNReal_mul hy, mul_comm]
 
--- lemma right_distrib_of_nonneg {a b c : ERat} (ha : 0 ≤ a) (hb : 0 ≤ b) :
---     (a + b) * c = a * c + b * c := by
---   sorry
-  -- lift a to ℚ≥0∞ using ha
-  -- lift b to ℚ≥0∞ using hb
-  -- cases c using recENNReal with
-  -- | coe c => exact_mod_cast add_mul a b c
-  -- | neg_coe c hc =>
-  --   simp only [mul_neg, ← coe_ennreal_add, ← coe_ennreal_mul, add_mul]
-  --   rw [coe_ennreal_add, ERat.neg_add (.inl (coe_ennreal_ne_bot _)) (.inr (coe_ennreal_ne_bot _)),
-  --     sub_eq_add_neg]
+-- Helper for distributivity: if a + b = 0 with a, b ≥ 0 then both are 0
+private lemma add_eq_zero_of_nonneg {a b : ERat} (ha : 0 ≤ a) (hb : 0 ≤ b) (hab : a + b = 0) :
+    a = 0 ∧ b = 0 := by
+  constructor
+  · by_contra h
+    have hapos : 0 < a := lt_of_le_of_ne ha (Ne.symm h)
+    have : 0 < a + b := ERat.add_pos_of_pos_of_nonneg hapos hb
+    exact (this.ne' hab).elim
+  · by_contra h
+    have hbpos : 0 < b := lt_of_le_of_ne hb (Ne.symm h)
+    have : 0 < a + b := ERat.add_pos_of_nonneg_of_pos ha hbpos
+    exact (this.ne' hab).elim
 
--- lemma left_distrib_of_nonneg {a b c : ERat} (ha : 0 ≤ a) (hb : 0 ≤ b) :
---     c * (a + b) = c * a + c * b := by
---   nth_rewrite 1 [ERat.mul_comm]; nth_rewrite 2 [ERat.mul_comm]; nth_rewrite 3 [ERat.mul_comm]
---   exact right_distrib_of_nonneg ha hb
+-- The key distributivity lemma: (a + b) * c = a * c + b * c when a, b ≥ 0
+lemma right_distrib_of_nonneg {a b c : ERat} (ha : 0 ≤ a) (hb : 0 ≤ b) :
+    (a + b) * c = a * c + b * c := by
+  induction c using ERat.rec with
+  | bot =>
+    by_cases hab : a + b = 0
+    · obtain ⟨ha0, hb0⟩ := add_eq_zero_of_nonneg ha hb hab
+      simp [ha0, hb0]
+    · have hab_pos : 0 < a + b := lt_of_le_of_ne (add_nonneg ha hb) (Ne.symm hab)
+      rw [mul_bot_of_pos hab_pos]
+      by_cases ha0 : a = 0
+      · simp only [ha0, zero_mul, zero_add]
+        have hb_pos : 0 < b := by rwa [ha0, zero_add] at hab_pos
+        rw [mul_bot_of_pos hb_pos]
+      · rw [mul_bot_of_pos (lt_of_le_of_ne ha (Ne.symm ha0)), bot_add]
+  | coe c =>
+    -- Case split on a and b being ⊤ or finite
+    rcases eq_or_ne a ⊤ with rfl | ha'
+    · -- a = ⊤
+      have hb_ne_bot : b ≠ ⊥ := ne_bot_of_le_ne_bot (ne_of_gt bot_lt_zero) hb
+      rw [top_add_of_ne_bot hb_ne_bot]
+      rcases lt_trichotomy c 0 with hc | rfl | hc
+      · simp only [top_mul_coe_of_neg hc]
+        symm; exact bot_add (b * c)
+      · simp only [coe_zero, mul_zero, add_zero]
+      · simp only [top_mul_coe_of_pos hc]
+        have hc_nonneg : (0 : ERat) ≤ c := le_of_lt (ERat.coe_pos.mpr hc)
+        have hmul_ne_bot : b * ↑c ≠ ⊥ := (mul_ne_bot b c).mpr ⟨Or.inl hb_ne_bot, Or.inr (coe_ne_bot c), Or.inr hc_nonneg, Or.inl hb⟩
+        symm; exact top_add_of_ne_bot hmul_ne_bot
+    · rcases eq_or_ne b ⊤ with rfl | hb'
+      · -- b = ⊤
+        have ha_ne_bot : a ≠ ⊥ := ne_bot_of_le_ne_bot (ne_of_gt bot_lt_zero) ha
+        rw [add_top_of_ne_bot ha_ne_bot]
+        rcases lt_trichotomy c 0 with hc | rfl | hc
+        · simp only [top_mul_coe_of_neg hc]
+          symm; exact add_bot (a * c)
+        · simp only [coe_zero, mul_zero, add_zero]
+        · simp only [top_mul_coe_of_pos hc]
+          -- Goal is ⊤ = a * c + ⊤, use add_top_of_ne_bot
+          have hc_nonneg : (0 : ERat) ≤ c := le_of_lt (ERat.coe_pos.mpr hc)
+          have hmul_ne_bot : a * ↑c ≠ ⊥ := (mul_ne_bot a c).mpr ⟨Or.inl ha_ne_bot, Or.inr (coe_ne_bot c), Or.inr hc_nonneg, Or.inl ha⟩
+          symm; exact add_top_of_ne_bot hmul_ne_bot
+      · -- Both a and b are finite
+        have hab : a ≠ ⊥ := ne_bot_of_le_ne_bot (ne_of_gt bot_lt_zero) ha
+        have hbb : b ≠ ⊥ := ne_bot_of_le_ne_bot (ne_of_gt bot_lt_zero) hb
+        lift a to ℚ using ⟨ha', hab⟩
+        lift b to ℚ using ⟨hb', hbb⟩
+        simp only [← coe_add, ← coe_mul, ERat.coe_eq_coe_iff, add_mul]
+  | top =>
+    by_cases hab : a + b = 0
+    · obtain ⟨ha0, hb0⟩ := add_eq_zero_of_nonneg ha hb hab
+      simp [ha0, hb0]
+    · have hab_pos : 0 < a + b := lt_of_le_of_ne (add_nonneg ha hb) (Ne.symm hab)
+      rw [mul_top_of_pos hab_pos]
+      by_cases ha0 : a = 0
+      · simp only [ha0, zero_mul, zero_add]
+        have hb_pos : 0 < b := by rwa [ha0, zero_add] at hab_pos
+        rw [mul_top_of_pos hb_pos]
+      · rw [mul_top_of_pos (lt_of_le_of_ne ha (Ne.symm ha0))]
+        have hb_ne_bot : b ≠ ⊥ := ne_bot_of_le_ne_bot (ne_of_gt bot_lt_zero) hb
+        have : b * ⊤ ≠ ⊥ := (mul_ne_bot b ⊤).mpr ⟨Or.inl hb_ne_bot, Or.inr top_ne_bot, Or.inr le_top, Or.inl hb⟩
+        symm; exact top_add_of_ne_bot this
+
+lemma left_distrib_of_nonneg {a b c : ERat} (ha : 0 ≤ a) (hb : 0 ≤ b) :
+    c * (a + b) = c * a + c * b := by
+  nth_rewrite 1 [ERat.mul_comm]; nth_rewrite 2 [ERat.mul_comm]; nth_rewrite 3 [ERat.mul_comm]
+  exact right_distrib_of_nonneg ha hb
 
 -- lemma left_distrib_of_nonneg_of_ne_top {x : ERat} (hx_nonneg : 0 ≤ x)
 --     (hx_ne_top : x ≠ ⊤) (y z : ERat) :

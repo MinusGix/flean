@@ -36,6 +36,18 @@ theorem coe_ennRat_mul' (x y : ℚ≥0∞) (hx : x ≠ ⊤) (hy : y ≠ ⊤) :
   lift y to ℚ≥0 using hy
   rfl
 
+-- Addition of ENNRat coerced to ERat
+@[simp, norm_cast]
+theorem coe_ennRat_add (x y : ℚ≥0) : ((x + y : ℚ≥0∞) : ERat) = (x : ERat) + y := by
+  simp only [ENNRat.toERat]
+  rfl
+
+theorem coe_ennRat_add' (x y : ℚ≥0∞) (hx : x ≠ ⊤) (hy : y ≠ ⊤) :
+    ((x + y : ℚ≥0∞) : ERat) = (x : ERat) + y := by
+  lift x to ℚ≥0 using hx
+  lift y to ℚ≥0 using hy
+  exact coe_ennRat_add x y
+
 -- Casting from Nat to ERat via ℚ
 theorem coe_coe_eq_natCast (n : ℕ) : ((n : ℚ) : ERat) = n := rfl
 
@@ -602,14 +614,17 @@ lemma mul_le_of_forall_lt_of_nonneg (ha : 0 ≤ a) (hc : 0 ≤ c)
 
 /-! #### Division Distributivity -/
 
--- TODO: These lemmas require right_distrib_of_nonneg which is commented out in ERat/Operations.lean
+/-- Division distributes over addition from the right when both numerators are nonnegative. -/
 lemma div_right_distrib_of_nonneg (h : 0 ≤ a) (h' : 0 ≤ b) :
     (a + b) / c = a / c + b / c := by
-  sorry
+  simp only [div_eq_mul_inv]
+  exact right_distrib_of_nonneg h h'
 
-lemma add_div_of_nonneg_right (h : 0 ≤ c) :
-    (a + b) / c = a / c + b / c := by
-  sorry
+/-- Division distributes over addition when the divisor is nonnegative.
+    Note: This is only true when the divisor is nonnegative (or when both a, b are nonnegative). -/
+lemma add_div_of_nonneg_right (ha : 0 ≤ a) (hb : 0 ≤ b) (hc : 0 ≤ c) :
+    (a + b) / c = a / c + b / c :=
+  div_right_distrib_of_nonneg ha hb
 
 end ERat
 

@@ -13,6 +13,7 @@ import Mathlib.Algebra.Order.Field.Basic
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.FieldSimp
 import Flean.ENNRat.Basic
+import Flean.ENNRat.Rat
 
 section
 
@@ -375,6 +376,39 @@ theorem coe_toRat_le {x : ERat} (h : x ≠ ⊥) : ↑x.toRat ≤ x := by
   · simp only [h', le_top]
   · simp only [le_refl, coe_toRat h' h]
 
+/-! ### toENNRat -/
+
+/-- `x.toENNRat` returns `x` if it is nonnegative, `0` otherwise. -/
+def toENNRat (x : ERat) : ℚ≥0∞ :=
+  if x = ⊤ then ⊤
+  else ENNRat.ofRat x.toRat
+
+@[simp] lemma toENNRat_top : (⊤ : ERat).toENNRat = ⊤ := rfl
+
+@[simp] lemma toENNRat_bot : (⊥ : ERat).toENNRat = 0 := by
+  simp [toENNRat, ENNRat.ofRat]
+
+@[simp] lemma toENNRat_zero : (0 : ERat).toENNRat = 0 := by
+  simp [toENNRat, ENNRat.ofRat]
+
+lemma toENNRat_of_ne_top {x : ERat} (hx : x ≠ ⊤) : x.toENNRat = ENNRat.ofRat x.toRat :=
+  if_neg hx
+
+@[simp]
+lemma toENNRat_eq_top_iff {x : ERat} : x.toENNRat = ⊤ ↔ x = ⊤ := by
+  by_cases h : x = ⊤
+  · simp [h]
+  · simp [h, toENNRat, ENNRat.ofRat_lt_top.ne]
+
+lemma toENNRat_of_nonpos {x : ERat} (hx : x ≤ 0) : x.toENNRat = 0 := by
+  by_cases h : x = ⊤
+  · exact (not_le.mpr (zero_lt_top)).elim (h ▸ hx)
+  · simp only [toENNRat_of_ne_top h, ENNRat.ofRat_eq_zero]
+    exact toRat_nonpos hx
+
+lemma toENNRat_of_nonneg {x : ERat} (hx : 0 ≤ x) (hx' : x ≠ ⊤) :
+    x.toENNRat = ENNRat.ofRat x.toRat := toENNRat_of_ne_top hx'
+
 theorem eq_top_iff_forall_lt (x : ERat) : x = ⊤ ↔ ∀ y : ℚ, (y : ERat) < x := by
   constructor
   · rintro rfl
@@ -391,6 +425,61 @@ theorem eq_bot_iff_forall_lt (x : ERat) : x = ⊥ ↔ ∀ y : ℚ, x < (y : ERat
     intro h
     exact ⟨x.toRat, coe_toRat_le h⟩
 
+@[simp]
+lemma toENNRat_coe (r : ℚ) : (r : ERat).toENNRat = ENNRat.ofRat r := by
+  simp [toENNRat, coe_ne_top, toRat_coe]
+
+lemma toENNRat_coe_ennRat (x : ℚ≥0∞) : (x : ERat).toENNRat = x := by
+  cases x with
+  | top => rfl
+  | coe x =>
+    -- x : ℚ≥0, and (↑x : ℚ≥0∞) coerces to ERat as x.val : ℚ
+    simp only [ENNRat.toERat, toENNRat_coe]
+    exact ENNRat.ofRat_coe_nnRat
+
+/-- Coercion from ENNRat to ERat for finite values. -/
+lemma coe_ennRat_coe (x : ℚ≥0) : ((x : ℚ≥0∞) : ERat) = (x : ℚ) := rfl
+
+/-- Coercion from ENNRat.ofRat to ERat. -/
+lemma coe_ennRat_ofRat' (r : ℚ) : ((ENNRat.ofRat r : ℚ≥0∞) : ERat) = max r 0 := by
+  simp [ENNRat.ofRat, ENNRat.toERat, Rat.toNNRat]
+
+/-- Round-trip: if `x` is nonnegative, coercing `x.toENNRat` back to `ERat` gives `x`. -/
+lemma coe_toENNRat {x : ERat} (hx : 0 ≤ x) : (x.toENNRat : ERat) = x := by
+  rcases eq_or_ne x ⊤ with rfl | hx'
+  · rfl
+  · have hxb : x ≠ ⊥ := ne_bot_of_le_ne_bot (ne_of_gt bot_lt_zero) hx
+    rw [toENNRat_of_nonneg hx hx', coe_ennRat_ofRat']
+    rw [max_eq_left (toRat_nonneg hx), coe_toRat hx' hxb]
+
+/-- Induction principle for ERat splitting into negative and nonnegative cases.
+    For nonnegative values, we get a proof that `x = ↑(x.toENNRat)`. -/
+@[elab_as_elim]
+lemma recENNRat {P : ERat → Prop}
+    (hneg : ∀ x : ERat, x < 0 → P x)
+    (hnneg : ∀ x : ℚ≥0∞, P x) :
+    ∀ x, P x := by
+  intro x
+  rcases lt_trichotomy x 0 with hx | rfl | hx
+  · exact hneg x hx
+  · exact hnneg 0
+  · have h : 0 ≤ x := le_of_lt hx
+    rw [← coe_toENNRat h]
+    exact hnneg x.toENNRat
+
+/-- Induction principle with explicit hypothesis that x ≥ 0 in the nonnegative case. -/
+@[elab_as_elim]
+lemma recENNRat' {P : ERat → Prop}
+    (hneg : ∀ x : ERat, x < 0 → P x)
+    (hnneg : ∀ x : ℚ≥0∞, ∀ hx : 0 ≤ (x : ERat), P x) :
+    ∀ x, P x := by
+  intro x
+  rcases lt_trichotomy x 0 with hx | rfl | hx
+  · exact hneg x hx
+  · exact hnneg 0 le_rfl
+  · have h : 0 ≤ x := le_of_lt hx
+    rw [← coe_toENNRat h]
+    exact hnneg x.toENNRat (by rw [coe_toENNRat h]; exact h)
 
 end ERat
 
