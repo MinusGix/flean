@@ -39,6 +39,35 @@ theorem coe_ennRat_mul' (x y : ℚ≥0∞) (hx : x ≠ ⊤) (hy : y ≠ ⊤) :
 -- Casting from Nat to ERat via ℚ
 theorem coe_coe_eq_natCast (n : ℕ) : ((n : ℚ) : ERat) = n := rfl
 
+-- Coercion from ENNRat to ERat preserves order
+theorem coe_ennRat_ne_top_iff {x : ℚ≥0∞} : (x : ERat) ≠ ⊤ ↔ x ≠ ⊤ := by
+  cases x with
+  | top => simp only [coe_ennRat_top, ne_eq, not_true_eq_false]
+  | coe x => exact ⟨fun _ => ENNRat.coe_ne_top, fun _ => coe_ne_top x⟩
+
+@[simp, norm_cast]
+theorem coe_ennRat_le_coe_ennRat_iff {x y : ℚ≥0∞} : (x : ERat) ≤ (y : ERat) ↔ x ≤ y := by
+  cases x with
+  | top =>
+    cases y with
+    | top => simp only [coe_ennRat_top, le_refl]
+    | coe y =>
+      -- ⊤ ≤ (↑y : ERat) ↔ ⊤ ≤ (↑y : ℚ≥0∞), both false since y is finite
+      simp only [coe_ennRat_top, top_le_iff]
+      exact ⟨fun h => (coe_ne_top y h).elim, fun h => (ENNRat.coe_ne_top h).elim⟩
+  | coe x =>
+    cases y with
+    | top => simp only [coe_ennRat_top, le_top]
+    | coe y =>
+      -- x y : ℚ≥0, the coercion chain ℚ≥0 → ℚ≥0∞ → ERat factors through ℚ
+      -- ↑(↑x : ℚ≥0∞) : ERat = (x : ℚ) : ERat
+      constructor
+      · intro h; exact ENNRat.coe_le_coe.mpr (NNRat.coe_le_coe.mp (ERat.coe_le_coe_iff.mp h))
+      · intro h; exact ERat.coe_le_coe_iff.mpr (NNRat.coe_le_coe.mpr (ENNRat.coe_le_coe.mp h))
+
+@[gcongr] protected theorem coe_ennRat_le_coe_ennRat {x y : ℚ≥0∞} (h : x ≤ y) :
+    (x : ERat) ≤ (y : ERat) := coe_ennRat_le_coe_ennRat_iff.mpr h
+
 /-! ### Absolute value -/
 
 -- TODO: use `Rat.nnabs` for the case `(x : ℚ)`
@@ -143,8 +172,17 @@ theorem le_iff_sign {x y : ERat} :
       sign x = SignType.neg ∧ sign y = SignType.neg ∧ y.abs ≤ x.abs ∨
         sign x = SignType.zero ∧ sign y = SignType.zero ∨
           sign x = SignType.pos ∧ sign y = SignType.pos ∧ x.abs ≤ y.abs := by
-  -- TODO: Proof needs to be updated for new Lean/mathlib API (type coercion issues with abs)
-  sorry
+  constructor
+  · intro h
+    refine (sign.monotone h).lt_or_eq.imp_right (fun hs => ?_)
+    rw [← x.sign_mul_abs, ← y.sign_mul_abs] at h
+    cases hy : sign y <;> rw [hs, hy] at h ⊢
+    · simp
+    · left; simpa using h
+    · right; right; simpa using h
+  · rintro (h | h | h | h)
+    · exact (sign.monotone.reflect_lt h).le
+    all_goals rw [← x.sign_mul_abs, ← y.sign_mul_abs]; simp [h]
 
 instance : CommMonoidWithZero ERat :=
   { inferInstanceAs (MulZeroOneClass ERat) with

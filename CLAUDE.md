@@ -55,6 +55,42 @@ This is a mathematical library focused on floating-point arithmetic formalizatio
 - When writing powers, there is zpow and pow. zpow is used with R, like `(2 : R)^(FloatFormat.prec : ℕ)`
 - Casting can be a pain but is solvable with effort. Often writing sub-theorems for the conversion can be helpful! There's a distinction between `(2 : R)^(FloatFormat.prec : ℕ)` and `(2 : R)^(FloatFormat.prec : ℤ)`
 
+## ERat and ENNRat Coercion Patterns
+
+When working with ERat (Extended Rationals) and ENNRat (Extended Nonnegative Rationals), understanding the coercion chains is essential:
+
+**Type Definitions:**
+- `ENNRat = WithTop ℚ≥0` (nonnegative rationals with infinity)
+- `ERat = WithBot (WithTop ℚ)` (rationals with both ±∞)
+
+**Coercion Chains:**
+```
+ℚ≥0 → ℚ≥0∞ → ERat
+ │      │
+ └──→ ℚ ──→ ERat
+```
+
+For finite values, the chain `ℚ≥0 → ℚ≥0∞ → ERat` factors through `ℚ`:
+- `ENNRat.toERat` sends `.some x` (where `x : ℚ≥0`) to `(x : ℚ) : ERat`
+- This means `↑(↑x : ℚ≥0∞) : ERat = (x : ℚ) : ERat` for `x : ℚ≥0`
+
+**Key Lemmas for Coercions:**
+- `ENNRat.coe_pow (x : ℚ≥0) (n : ℕ) : (↑(x ^ n) : ℚ≥0∞) = (↑x)^n` (this is `rfl`)
+- `NNRat.coe_pow (x : ℚ≥0) (n : ℕ) : (↑(x ^ n) : ℚ) = (↑x)^n`
+- `ERat.coe_pow (x : ℚ) (n : ℕ) : (↑(x ^ n) : ERat) = (↑x)^n`
+- `coe_ennRat_mul' (x y : ℚ≥0∞) (hx : x ≠ ⊤) (hy : y ≠ ⊤) : ((x * y : ℚ≥0∞) : ERat) = (x : ERat) * y`
+
+**Proof Strategies:**
+1. **Use `lift` for finite cases:** `lift x to ℚ≥0 using hx` extracts finite values
+2. **`rw` often fails on coercions:** The pattern may look identical but have different implicit types. Use `simp only [lemma]`, `conv`, or `calc` blocks instead
+3. **`congr` can resolve type mismatches:** When `rw [ih]` fails but the pattern appears identical, try `congr 1` which is more flexible about implicit arguments
+4. **For ERat case analysis:** Use `match` with patterns `⊤`, `⊥`, `(x : ℚ)` rather than `cases`/`induction` which give `bot`/`coe` constructors
+
+**Common Pitfalls:**
+- `simp` and `rw` may fail to find patterns due to implicit coercion differences
+- Power operations in different types (ℚ≥0∞ vs ERat) are not definitionally equal even for the same base
+- When stuck, check if `calc` with explicit type annotations makes the coercion chain clear
+
 ## Custom Tactic Development
 
 When designing custom tactics for this project, refer to the comprehensive metaprogramming guide:
