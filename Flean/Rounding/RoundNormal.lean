@@ -19,6 +19,29 @@ section Rounding
 variable {n : ℕ} {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] [OfNat R n]
 variable [FloatFormat]
 
+/-! ## Helper theorems for normal rounding -/
+
+/-- When n > 0, casting natAbs to R equals casting n directly -/
+theorem Int.cast_natAbs_of_pos {n : ℤ} (hn : 0 < n) : (↑n.natAbs : R) = (↑n : R) := by
+  rw [Nat.cast_natAbs, abs_of_nonneg (le_of_lt hn)]
+
+/-- The floor of a normal value scaled to the precision range is positive -/
+theorem floor_scaled_normal_pos (x : R) (hx : isNormalRange x) :
+    0 < ⌊x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌋ := by
+  apply Int.floor_pos.mpr
+  apply one_le_mul_of_one_le_of_one_le
+  · exact (findExponentDown_div_binade_normal hx).left
+  · apply one_le_pow₀ (by norm_num : (1 : R) ≤ 2)
+
+/-- Scaling preserves inequalities in the same binade -/
+theorem scaled_le_of_le {x y : R} (e : ℤ) (h : x ≤ y) :
+    x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1) ≤
+    y / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1) := by
+  apply mul_le_mul_of_nonneg_right
+  · apply div_le_div_of_nonneg_right h
+    exact le_of_lt (zpow_pos (by norm_num : (0 : R) < 2) _)
+  · exact pow_nonneg (by norm_num : (0 : R) ≤ 2) _
+
 /-- Round a positive normal value down -/
 def roundNormalDown (x : R) (h : isNormalRange x) : FiniteFp :=
   -- Find the exponent by comparing with powers of 2
@@ -29,14 +52,7 @@ def roundNormalDown (x : R) (h : isNormalRange x) : FiniteFp :=
   -- scaled is now in [1, 2)
   let m_scaled := scaled * (2 : R) ^ (FloatFormat.prec - 1)
   let m := ⌊m_scaled⌋
-  have mpos : m > 0 := by
-    have hb := findExponentDown_div_binade_normal h
-    apply Int.floor_pos.mpr
-    apply le_trans
-    apply hb.left
-    conv_lhs => rw [← mul_one (x / 2 ^ (findExponentDown x))]
-    rw [mul_le_mul_iff_of_pos_left (by linarith)]
-    linearize
+  have mpos : m > 0 := floor_scaled_normal_pos x h
   have vf : IsValidFiniteVal e m.natAbs := by
     have hb := findExponentDown_div_binade_normal h
     apply findExponentDown_IsValidFiniteVal_normal
@@ -94,42 +110,101 @@ theorem roundNormalDown_pos (x : R) (h : isNormalRange x) : (0 : R) < (roundNorm
   apply mul_pos
   rw [Int.cast_natAbs]
   apply Int.cast_pos.mpr
-  -- apply abs_pos.mpr
   obtain ⟨h3, h4⟩ := findExponentDown_div_binade_normal h
   rw [abs_of_pos]
   apply Int.floor_pos.mpr
   · apply one_le_mul_of_one_le_of_one_le
     trivial
-    apply one_le_zpow₀ (by norm_num) -- TODO linearize should solve this
+    apply one_le_zpow₀ (by norm_num)
     flinarith
   · apply Int.floor_pos.mpr
     apply one_le_mul_of_one_le_of_one_le
     trivial
-    apply one_le_zpow₀ (by norm_num) -- TODO linearize should solve this
+    apply one_le_zpow₀ (by norm_num)
     flinarith
   · rw [FloatFormat.radix_val_eq_two]
-    norm_num -- TODO: linearize shouldn't need norm num to get rid of cast for this
+    norm_num
     linearize
 
 
 theorem roundNormalDown_nonneg (x : R) (h : isNormalRange x) : (0 : R) ≤ (roundNormalDown x h).toVal := le_of_lt (roundNormalDown_pos x h)
 
-/-- roundNormalDown y has toVal ≥ 2^min_exp (the smallest normal value) -/
-theorem roundNormalDown_ge_zpow_min_exp (y : R) (h : isNormalRange y) :
-    (2 : R) ^ FloatFormat.min_exp ≤ (roundNormalDown y h).toVal := by
-  -- The key: roundNormalDown y has m ≥ 2^(prec-1) and e ≥ min_exp
-  -- toVal = m * 2^(e - prec + 1) ≥ 2^(prec-1) * 2^(min_exp - prec + 1) = 2^min_exp
-  -- For now, use transitivity through the range condition
-  calc (2 : R) ^ FloatFormat.min_exp ≤ y := h.left
-    _ = (roundNormalDown y h).toVal + (y - (roundNormalDown y h).toVal) := by ring
-    _ ≤ y := by linarith [roundNormalDown_le y h]
-  -- This isn't quite right; we need the actual lower bound
-  sorry
-
 /-- roundNormalDown has toVal ≥ 2^(findExponentDown y) -/
 theorem roundNormalDown_ge_zpow_exp (y : R) (h : isNormalRange y) :
     (2 : R) ^ findExponentDown y ≤ (roundNormalDown y h).toVal (R := R) := by
-  sorry
+  -- Key idea: toVal = m * 2^(e - prec + 1) where m ≥ 2^(prec-1)
+  -- So toVal ≥ 2^(prec-1) * 2^(e - prec + 1) = 2^e
+  unfold roundNormalDown FiniteFp.toVal FiniteFp.sign'
+  simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
+  rw [FloatFormat.radix_val_eq_two]
+  have hb := findExponentDown_div_binade_normal h
+  have hprec_ge := FloatFormat.valid_prec
+  -- floor(y/2^e * 2^(prec-1)) ≥ 1 * 2^(prec-1) = 2^(prec-1)
+  have hscaled_ge : (2 : R) ^ (FloatFormat.prec - 1) ≤ y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1) := by
+    calc (2 : R) ^ (FloatFormat.prec - 1)
+        = 1 * (2 : R) ^ (FloatFormat.prec - 1) := by ring
+      _ ≤ y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1) := by
+          apply mul_le_mul_of_nonneg_right hb.left
+          positivity
+  have hfloor_pos : 0 < ⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ := by
+    apply Int.floor_pos.mpr
+    calc (1 : R) ≤ (2 : R) ^ (FloatFormat.prec - 1) := one_le_pow₀ (by norm_num : (1 : R) ≤ 2)
+      _ ≤ y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1) := hscaled_ge
+  -- floor(...) ≥ 2^(prec-1) as integers
+  have hfloor_lb_int : (2 : ℤ) ^ (FloatFormat.prec - 1) ≤ ⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ := by
+    rw [Int.le_floor]
+    simp only [Int.cast_pow, Int.cast_ofNat]
+    exact hscaled_ge
+  -- Simplify the goal: natAbs of floor = floor since floor is positive
+  have hfloor_cast_eq : (↑(⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋.natAbs) : R) =
+      (⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ : R) := by
+    rw [Nat.cast_natAbs]
+    -- Goal: ↑|⌊...⌋| = ↑⌊...⌋  where |.| is integer absolute value
+    congr 1
+    exact abs_of_pos hfloor_pos
+  rw [hfloor_cast_eq]
+  -- 2^e = 2^(prec-1) * 2^(e - prec + 1) ≤ floor(...) * 2^(e - prec + 1)
+  have hpow_split : (2 : R) ^ findExponentDown y =
+      (2 : R) ^ (FloatFormat.prec - 1 : ℤ) * (2 : R) ^ (findExponentDown y - (FloatFormat.prec - 1 : ℤ)) := by
+    rw [← zpow_add₀ (by norm_num : (2 : R) ≠ 0)]
+    congr 1; ring
+  have hexp_eq2 : findExponentDown y - (FloatFormat.prec - 1 : ℤ) = findExponentDown y - ↑FloatFormat.prec + 1 := by ring
+  -- Convert the integer floor bound to R using zpow
+  have hfloor_lb : (2 : R) ^ (FloatFormat.prec - 1 : ℤ) ≤ ⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ := by
+    have hp : (FloatFormat.prec - 1 : ℤ) = ((FloatFormat.prec - 1 : ℕ) : ℤ) := by omega
+    -- From hfloor_lb_int: (2 : ℤ)^n ≤ ⌊...⌋ in ℤ, cast to R
+    have h_cast := (@Int.cast_mono R _ _ _ _) hfloor_lb_int
+    -- h_cast : ↑((2 : ℤ)^n) ≤ ↑⌊...⌋, simp to get (2 : R)^n
+    simp only [Int.cast_pow, Int.cast_ofNat] at h_cast
+    -- h_cast : (2 : R) ^ (FloatFormat.prec - 1 : ℕ) ≤ ↑⌊...⌋
+    calc (2 : R) ^ (FloatFormat.prec - 1 : ℤ)
+        = (2 : R) ^ ((FloatFormat.prec - 1 : ℕ) : ℤ) := by rw [hp]
+      _ = (2 : R) ^ (FloatFormat.prec - 1 : ℕ) := zpow_natCast (2 : R) (FloatFormat.prec - 1)
+      _ ≤ ⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ := h_cast
+  have hmain : (2 : R) ^ findExponentDown y ≤
+      ↑⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ *
+      (2 : R) ^ (findExponentDown y - ↑FloatFormat.prec + 1) := by
+    calc (2 : R) ^ findExponentDown y
+        = (2 : R) ^ (FloatFormat.prec - 1 : ℤ) * (2 : R) ^ (findExponentDown y - (FloatFormat.prec - 1 : ℤ)) := hpow_split
+      _ ≤ ↑⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ *
+          (2 : R) ^ (findExponentDown y - (FloatFormat.prec - 1 : ℤ)) := by
+            apply mul_le_mul_of_nonneg_right hfloor_lb
+            positivity
+      _ = ↑⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ *
+          (2 : R) ^ (findExponentDown y - ↑FloatFormat.prec + 1) := by
+            rw [hexp_eq2]
+  convert hmain using 2 <;> norm_cast
+
+/-- roundNormalDown y has toVal ≥ 2^min_exp (the smallest normal value) -/
+theorem roundNormalDown_ge_zpow_min_exp (y : R) (h : isNormalRange y) :
+    (2 : R) ^ FloatFormat.min_exp ≤ (roundNormalDown y h).toVal := by
+  -- Use transitivity: 2^min_exp ≤ 2^(findExponentDown y) ≤ toVal
+  have hexp_ge := findExponentDown_min y
+  calc (2 : R) ^ FloatFormat.min_exp
+      ≤ (2 : R) ^ findExponentDown y := by
+          apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+          exact hexp_ge
+    _ ≤ (roundNormalDown y h).toVal := roundNormalDown_ge_zpow_exp y h
 
 /-- roundNormalDown is monotone on toVal -/
 theorem roundNormalDown_toVal_mono {x y : R} (hx : isNormalRange x) (hy : isNormalRange y) (h : x ≤ y) :
@@ -140,7 +215,27 @@ theorem roundNormalDown_toVal_mono {x y : R} (hx : isNormalRange x) (hy : isNorm
   have hey := findExponentDown_normal y hy
   by_cases hexp : findExponentDown x = findExponentDown y
   · -- Same binade: use floor monotonicity
-    sorry
+    -- Both have same exponent e, so toVal = ⌊scaled⌋ * 2^(e - prec + 1)
+    -- Since x ≤ y and same e, scaled_x ≤ scaled_y, so ⌊scaled_x⌋ ≤ ⌊scaled_y⌋
+    unfold roundNormalDown FiniteFp.toVal FiniteFp.sign'
+    simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
+    rw [hexp, FloatFormat.radix_val_eq_two]
+    -- Goal: ↑⌊scaled_x⌋.natAbs * 2^(...) ≤ ↑⌊scaled_y⌋.natAbs * 2^(...)
+    -- Since floors are positive, natAbs = floor
+    have hfloor_x_pos : 0 < ⌊x / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ := by
+      rw [← hexp]; exact floor_scaled_normal_pos x hx
+    have hfloor_y_pos := floor_scaled_normal_pos y hy
+    -- The scaled inequality follows from h : x ≤ y
+    have hscaled_le := scaled_le_of_le (findExponentDown y) h
+    -- Use Nat.cast_natAbs and abs_of_nonneg to simplify
+    simp only [Nat.cast_natAbs, abs_of_nonneg (le_of_lt hfloor_x_pos),
+               abs_of_nonneg (le_of_lt hfloor_y_pos), Nat.cast_ofNat]
+    apply mul_le_mul_of_nonneg_right
+    · -- ⌊scaled_x⌋ ≤ ⌊scaled_y⌋
+      apply Int.cast_le.mpr
+      exact Int.floor_le_floor hscaled_le
+    · -- 2^(e - prec + 1) ≥ 0
+      linearize
   · -- Different binades: x is in a lower binade than y
     have hxpos := isNormalRange_pos x hx
     have hmono : findExponentDown x ≤ findExponentDown y := by
