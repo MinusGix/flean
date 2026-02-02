@@ -23,14 +23,37 @@ protected theorem div_eq_inv_mul : a / b = b⁻¹ * a := by rw [div_eq_mul_inv, 
   simp_all only [Nat.cast_zero, some_eq_coe', zero_eq_coe]
   rfl
 
+private theorem inv_coe_eq_coe_inv (r : ℚ≥0) (hr : r ≠ 0) : (↑r : ℚ≥0∞)⁻¹ = ↑(r⁻¹) := by
+  show ENNRat.inv (some r) = some (r⁻¹)
+  -- ENNRat.inv pattern matches on the internal representation
+  -- For r ≠ 0, some r doesn't match the "0" pattern, so we get some (r⁻¹)
+  unfold ENNRat.inv
+  -- Now we have a match expression; since r ≠ 0, the first branch doesn't apply
+  split
+  · -- Case: r matches the internal 0 representation
+    rename_i h
+    -- h says some r = some ⟨0, ...⟩, so r = 0
+    exfalso
+    apply hr
+    exact Option.some.inj h
+  · -- Case: some r = none, contradiction
+    rename_i heq
+    cases heq
+  · -- Case: generic some q where some r = some q
+    rename_i q _ hne
+    -- hne : some r = some q, so r = q
+    have heq : r = q := Option.some.inj hne
+    subst heq
+    rfl
+
 theorem coe_inv_le : (↑r⁻¹ : ℚ≥0∞) ≤ (↑r)⁻¹ := by
-  -- TODO: proof needs to be updated for new Lean/mathlib API
-  sorry
+  rcases eq_or_ne r 0 with rfl | hr
+  · -- Case r = 0: LHS = ↑0⁻¹ = ↑0 = 0, RHS = (↑0)⁻¹ = ⊤
+    simp only [_root_.inv_zero, coe_zero, zero_le]
+  · -- Case r ≠ 0: both sides equal
+    rw [inv_coe_eq_coe_inv r hr]
 @[simp, norm_cast]
-theorem coe_inv (hr : r ≠ 0) : (↑r⁻¹ : ℚ≥0∞) = (↑r)⁻¹ := by
-  apply coe_inv_le.antisymm
-  -- simp [ENNRat.ofNNRat_eq_NNRatCast, ← coe_mul, mul_inv_cancel₀ hr, coe_one]
-  sorry
+theorem coe_inv (hr : r ≠ 0) : (↑r⁻¹ : ℚ≥0∞) = (↑r)⁻¹ := (inv_coe_eq_coe_inv r hr).symm
 
 @[norm_cast]
 theorem coe_inv_two : ((2⁻¹ : ℚ≥0) : ℚ≥0∞) = 2⁻¹ := by rw [coe_inv _root_.two_ne_zero, coe_two]
@@ -60,10 +83,11 @@ protected theorem inv_pow : ∀ {a : ℚ≥0∞} {n : ℕ}, (a ^ n)⁻¹ = a⁻�
 
 protected theorem mul_inv_cancel (h0 : a ≠ 0) (ht : a ≠ ∞) : a * a⁻¹ = 1 := by
   lift a to ℚ≥0 using ht
-  norm_cast at h0; norm_cast
-  -- exact mul_inv_cancel₀ h0
-  unfold_projs
-  sorry
+  have h0' : a ≠ 0 := coe_ne_zero.mp h0
+  calc (a : ℚ≥0∞) * (↑a)⁻¹ = ↑a * ↑(a⁻¹) := by rw [coe_inv h0']
+    _ = ↑(a * a⁻¹) := by rw [coe_mul]
+    _ = ↑(1 : ℚ≥0) := by rw [mul_inv_cancel₀ h0']
+    _ = 1 := coe_one
 
 protected theorem inv_mul_cancel (h0 : a ≠ 0) (ht : a ≠ ∞) : a⁻¹ * a = 1 :=
   mul_comm a a⁻¹ ▸ ENNRat.mul_inv_cancel h0 ht
@@ -243,12 +267,25 @@ protected theorem inv_pos : 0 < a⁻¹ ↔ a ≠ ∞ :=
 theorem inv_strictAnti : StrictAnti (Inv.inv : ℚ≥0∞ → ℚ≥0∞) := by
   intro a b h
   lift a to ℚ≥0 using h.ne_top
-  sorry
-  -- induction b; · simp [ENNRat.coe_ne_top]
-  -- rw [coe_lt_coe] at h
-  -- rcases eq_or_ne a 0 with (rfl | ha); · simp [h]
-  -- rw [← coe_inv h.ne_bot, ← coe_inv ha, coe_lt_coe]
-  -- exact NNRat.inv_lt_inv ha h
+  -- Case split on whether b is ⊤
+  rcases eq_or_ne b ⊤ with rfl | hb
+  · -- b = ⊤: need to show ⊤⁻¹ < a⁻¹, i.e., 0 < a⁻¹
+    simp only [inv_top, ENNRat.inv_pos]
+    exact coe_ne_top
+  · -- b is finite
+    lift b to ℚ≥0 using hb
+    have hab : a < b := coe_lt_coe.mp h
+    rcases eq_or_ne a 0 with rfl | ha
+    · -- a = 0: need (↑b)⁻¹ < (↑0)⁻¹, i.e., (↑b)⁻¹ < ⊤
+      have hb0 : b ≠ 0 := hab.ne_bot
+      calc (↑b : ℚ≥0∞)⁻¹ = ↑(b⁻¹) := inv_coe_eq_coe_inv b hb0
+        _ < ⊤ := coe_lt_top
+        _ = (↑(0 : ℚ≥0) : ℚ≥0∞)⁻¹ := by simp [inv_zero]
+    · -- a ≠ 0 and b is finite with a < b
+      have ha0 : 0 < a := pos_iff_ne_zero.mpr ha
+      calc (↑b : ℚ≥0∞)⁻¹ = ↑(b⁻¹) := inv_coe_eq_coe_inv b hab.ne_bot
+        _ < ↑(a⁻¹) := by rw [coe_lt_coe]; exact inv_strictAnti₀ ha0 hab
+        _ = (↑a : ℚ≥0∞)⁻¹ := (inv_coe_eq_coe_inv a ha).symm
 
 @[simp]
 protected theorem inv_lt_inv : a⁻¹ < b⁻¹ ↔ b < a :=
@@ -330,16 +367,23 @@ protected lemma div_div_cancel {a b : ℚ≥0∞} (h₀ : a ≠ 0) (h₁ : a ≠
 protected theorem le_div_iff_mul_le (h0 : b ≠ 0 ∨ c ≠ 0) (ht : b ≠ ∞ ∨ c ≠ ∞) :
     a ≤ c / b ↔ a * b ≤ c := by
   induction' b with b
-  · lift c to ℚ≥0 using ht.neg_resolve_left rfl
-    sorry
-  · sorry
-  --   rw [div_top, nonpos_iff_eq_zero]
-  --   rcases eq_or_ne a 0 with (rfl | ha) <;> simp [*]
-  -- rcases eq_or_ne b 0 with (rfl | hb)
-  -- · have hc : c ≠ 0 := h0.neg_resolve_left rfl
-  --   simp [div_zero hc]
-  -- · rw [← coe_ne_zero] at hb
-  --   rw [← ENNRat.mul_le_mul_right hb coe_ne_top, ENNRat.div_mul_cancel hb coe_ne_top]
+  · -- b = ⊤
+    lift c to ℚ≥0 using ht.neg_resolve_left rfl
+    simp only [div_top]
+    rcases eq_or_ne a 0 with (rfl | ha)
+    · simp
+    · -- a ≠ 0: LHS is a ≤ 0 which is false, RHS is ⊤ ≤ ↑c which is also false
+      simp only [mul_top ha, top_le_iff]
+      have ha0 : 0 < a := pos_iff_ne_zero.mpr ha
+      exact iff_of_false (fun h => (lt_of_lt_of_le ha0 h).ne rfl) coe_ne_top
+  · -- b is finite (some b : ℚ≥0)
+    rcases eq_or_ne b 0 with (rfl | hb)
+    · -- b = 0
+      have hc : c ≠ 0 := h0.neg_resolve_left rfl
+      simp [div_zero hc]
+    · -- b ≠ 0
+      have hb' : (b : ℚ≥0∞) ≠ 0 := coe_ne_zero.mpr hb
+      rw [← ENNRat.mul_le_mul_right hb' coe_ne_top, ENNRat.div_mul_cancel hb' coe_ne_top]
 
 protected theorem div_le_iff_le_mul (hb0 : b ≠ 0 ∨ c ≠ ∞) (hbt : b ≠ ∞ ∨ c ≠ 0) :
     a / b ≤ c ↔ a ≤ c * b := by
@@ -655,9 +699,11 @@ theorem monotone_zpow {x : ℚ≥0∞} (hx : 1 ≤ x) : Monotone ((x ^ ·) : ℤ
 protected theorem zpow_add {x : ℚ≥0∞} (hx : x ≠ 0) (h'x : x ≠ ∞) (m n : ℤ) :
     x ^ (m + n) = x ^ m * x ^ n := by
   lift x to ℚ≥0 using h'x
-  sorry
-  -- replace hx : x ≠ 0 := by simpa only [Ne, coe_eq_zero] using hx
-  -- simp only [← coe_zpow hx, zpow_add₀ hx, coe_mul]
+  replace hx : x ≠ 0 := coe_ne_zero.mp hx
+  calc (↑x : ℚ≥0∞) ^ (m + n) = ↑(x ^ (m + n)) := (coe_zpow hx (m + n)).symm
+    _ = ↑(x ^ m * x ^ n) := by rw [zpow_add₀ hx]
+    _ = ↑(x ^ m) * ↑(x ^ n) := coe_mul (x ^ m) (x ^ n)
+    _ = (↑x : ℚ≥0∞) ^ m * (↑x : ℚ≥0∞) ^ n := by rw [coe_zpow hx, coe_zpow hx]
 
 protected theorem zpow_neg {x : ℚ≥0∞} (x_ne_zero : x ≠ 0) (x_ne_top : x ≠ ⊤) (m : ℤ) :
     x ^ (-m) = (x ^ m)⁻¹ :=
@@ -710,8 +756,7 @@ theorem ofRat_div_of_pos {x y : ℚ} (hy : 0 < y) :
   simp only [ENNRat.toRat, toNNRat_inv, NNRat.coe_inv]
 
 @[simp] theorem toRat_div (a b : ℚ≥0∞) : (a / b).toRat = a.toRat / b.toRat := by
-  -- rw [div_eq_mul_inv, toRat_mul, toRat_inv, div_eq_mul_inv]
-  sorry
+  rw [div_eq_mul_inv, toRat_mul, toRat_inv, div_eq_mul_inv]
 
 end Inv
 end ENNRat
