@@ -441,6 +441,41 @@ theorem standardExpRange_pos [FloatFormat] (standard : FloatFormat.isStandardExp
 --   simp only [Decimal128, min_exp, max_exp]
 --   norm_num
 
+/-! ### Overflow Threshold Bounds
+
+These lemmas establish bounds related to the overflow threshold used in rounding operations.
+The overflow threshold is `(2 - 2^(1-prec)/2) * 2^max_exp`, which is the point where
+round-to-nearest produces infinity.
+-/
+
+/-- 2^(1 - prec) ≤ 1 since prec ≥ 2, so 1 - prec ≤ -1 < 0 -/
+theorem zpow_one_sub_prec_le_one [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] :
+    (2 : R)^(1 - (FloatFormat.prec : ℤ)) ≤ 1 := by
+  apply zpow_le_one_of_nonpos₀ (by norm_num)
+  have := FloatFormat.valid_prec
+  omega
+
+/-- The coefficient (2 - 2^(1-prec)/2) in the overflow threshold is at least 1 -/
+theorem overflow_coef_ge_one [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] :
+    (1 : R) ≤ 2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2 := by
+  have h := zpow_one_sub_prec_le_one (R := R)
+  linarith
+
+/-- The overflow threshold is positive -/
+theorem overflow_threshold_pos [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] :
+    (0 : R) < (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := by
+  apply mul_pos
+  · have h := overflow_coef_ge_one (R := R)
+    linarith
+  · positivity
+
+/-- The overflow threshold is at least 2^max_exp -/
+theorem zpow_max_exp_le_overflow_threshold [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] :
+    (2 : R) ^ FloatFormat.max_exp ≤ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := by
+  have h := overflow_coef_ge_one (R := R)
+  have hpos : (0 : R) < 2 ^ FloatFormat.max_exp := by positivity
+  nlinarith
+
 end FloatFormat
 
 namespace StdFloatFormat

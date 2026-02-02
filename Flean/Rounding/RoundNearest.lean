@@ -65,14 +65,10 @@ theorem rnEven_le_half_subnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < Fi
 theorem rnEven_ge_inf [FloatFormat] (x : R) (hx : x ≥ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp) :
   roundNearestTiesToEven x = Fp.infinite false := by
   unfold roundNearestTiesToEven
-  -- Key facts about the threshold
-  have hprec_ge : (2 : ℕ) ≤ FloatFormat.prec := FloatFormat.valid_prec
-  have hexp_neg : 1 - (FloatFormat.prec : ℤ) ≤ 0 := by omega
-  have hzpow_le : (2 : R)^(1 - (FloatFormat.prec : ℤ)) ≤ 1 := zpow_le_one_of_nonpos₀ (by norm_num) hexp_neg
-  have hcoef_ge : (1 : R) ≤ 2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2 := by linarith
-  have hthresh_pos : (0 : R) < (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := by
-    apply mul_pos; linarith; positivity
-  -- x is positive
+  -- Use helper lemmas from FloatFormat
+  have hthresh_pos := FloatFormat.overflow_threshold_pos (R := R)
+  have hcoef_ge := FloatFormat.overflow_coef_ge_one (R := R)
+  -- x is positive since threshold is positive
   have hx_pos : 0 < x := lt_of_lt_of_le hthresh_pos hx
   have hx_ne : x ≠ 0 := ne_of_gt hx_pos
   have habs : |x| = x := abs_of_pos hx_pos
@@ -82,31 +78,23 @@ theorem rnEven_ge_inf [FloatFormat] (x : R) (hx : x ≥ (2 - 2^(1 - (FloatFormat
     have hsmall_lt_min : (FiniteFp.smallestPosSubnormal.toVal : R) / 2 < (2 : R) ^ FloatFormat.min_exp := by
       rw [FiniteFp.smallestPosSubnormal_toVal]
       have hpos : (0 : R) < 2 ^ (FloatFormat.min_exp - FloatFormat.prec + 1) := by positivity
-      have hexp_le : FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1 ≤ FloatFormat.min_exp := by omega
+      have hexp_le : FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1 ≤ FloatFormat.min_exp := by
+        have := FloatFormat.valid_prec; omega
       have hstep1 : (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) / 2 < 2 ^ (FloatFormat.min_exp - FloatFormat.prec + 1) := by linarith
       have hstep2 : (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) ≤ 2 ^ FloatFormat.min_exp :=
         zpow_le_zpow_right₀ (by norm_num) hexp_le
       linarith
     have hmin_lt_max : (2 : R) ^ FloatFormat.min_exp < 2 ^ FloatFormat.max_exp :=
       zpow_lt_zpow_right₀ (by norm_num) FloatFormat.exp_order
-    have hmax_le_thresh : (2 : R) ^ FloatFormat.max_exp ≤ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := by
-      have hzpow_pos : (0 : R) < 2 ^ FloatFormat.max_exp := by positivity
-      nlinarith
-    -- Chain: smallestPosSubnormal/2 < 2^min_exp < 2^max_exp ≤ threshold
     calc (FiniteFp.smallestPosSubnormal.toVal : R) / 2
         < (2 : R) ^ FloatFormat.min_exp := hsmall_lt_min
       _ < (2 : R) ^ FloatFormat.max_exp := hmin_lt_max
-      _ ≤ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := hmax_le_thresh
+      _ ≤ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := FloatFormat.zpow_max_exp_le_overflow_threshold
   -- Now the main split_ifs
   split_ifs with h1 h2
   · exact absurd h1 hx_ne
-  · -- |x| < smallestPosSubnormal / 2, contradiction with habs_ge and hsmall_lt
-    rw [habs] at h2
-    linarith
-  · -- |x| ≥ threshold, returns Fp.infinite (x < 0) = Fp.infinite false since x > 0
-    congr 1
-    simp only [decide_eq_false_iff_not, not_lt]
-    exact le_of_lt hx_pos
+  · rw [habs] at h2; linarith
+  · congr 1; simp only [decide_eq_false_iff_not, not_lt]; exact le_of_lt hx_pos
 
 end RoundNearestTiesToEven
 
@@ -148,14 +136,10 @@ theorem rnAway_lt_half_subnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < Fi
 theorem rnAway_ge_inf [FloatFormat] (x : R) (hx : x ≥ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp) :
   roundNearestTiesAwayFromZero x = Fp.infinite false := by
   unfold roundNearestTiesAwayFromZero
-  -- Key facts about the threshold
-  have hprec_ge : (2 : ℕ) ≤ FloatFormat.prec := FloatFormat.valid_prec
-  have hexp_neg : 1 - (FloatFormat.prec : ℤ) ≤ 0 := by omega
-  have hzpow_le : (2 : R)^(1 - (FloatFormat.prec : ℤ)) ≤ 1 := zpow_le_one_of_nonpos₀ (by norm_num) hexp_neg
-  have hcoef_ge : (1 : R) ≤ 2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2 := by linarith
-  have hthresh_pos : (0 : R) < (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := by
-    apply mul_pos; linarith; positivity
-  -- x is positive
+  -- Use helper lemmas from FloatFormat
+  have hthresh_pos := FloatFormat.overflow_threshold_pos (R := R)
+  have hcoef_ge := FloatFormat.overflow_coef_ge_one (R := R)
+  -- x is positive since threshold is positive
   have hx_pos : 0 < x := lt_of_lt_of_le hthresh_pos hx
   have hx_ne : x ≠ 0 := ne_of_gt hx_pos
   have habs : |x| = x := abs_of_pos hx_pos
@@ -165,31 +149,23 @@ theorem rnAway_ge_inf [FloatFormat] (x : R) (hx : x ≥ (2 - 2^(1 - (FloatFormat
     have hsmall_lt_min : (FiniteFp.smallestPosSubnormal.toVal : R) / 2 < (2 : R) ^ FloatFormat.min_exp := by
       rw [FiniteFp.smallestPosSubnormal_toVal]
       have hpos : (0 : R) < 2 ^ (FloatFormat.min_exp - FloatFormat.prec + 1) := by positivity
-      have hexp_le : FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1 ≤ FloatFormat.min_exp := by omega
+      have hexp_le : FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1 ≤ FloatFormat.min_exp := by
+        have := FloatFormat.valid_prec; omega
       have hstep1 : (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) / 2 < 2 ^ (FloatFormat.min_exp - FloatFormat.prec + 1) := by linarith
       have hstep2 : (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) ≤ 2 ^ FloatFormat.min_exp :=
         zpow_le_zpow_right₀ (by norm_num) hexp_le
       linarith
     have hmin_lt_max : (2 : R) ^ FloatFormat.min_exp < 2 ^ FloatFormat.max_exp :=
       zpow_lt_zpow_right₀ (by norm_num) FloatFormat.exp_order
-    have hmax_le_thresh : (2 : R) ^ FloatFormat.max_exp ≤ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := by
-      have hzpow_pos : (0 : R) < 2 ^ FloatFormat.max_exp := by positivity
-      nlinarith
-    -- Chain: smallestPosSubnormal/2 < 2^min_exp < 2^max_exp ≤ threshold
     calc (FiniteFp.smallestPosSubnormal.toVal : R) / 2
         < (2 : R) ^ FloatFormat.min_exp := hsmall_lt_min
       _ < (2 : R) ^ FloatFormat.max_exp := hmin_lt_max
-      _ ≤ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := hmax_le_thresh
+      _ ≤ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := FloatFormat.zpow_max_exp_le_overflow_threshold
   -- Now the main split_ifs
   split_ifs with h1 h2
   · exact absurd h1 hx_ne
-  · -- |x| < smallestPosSubnormal / 2, contradiction with habs_ge and hsmall_lt
-    rw [habs] at h2
-    linarith
-  · -- |x| ≥ threshold, returns Fp.infinite (x < 0) = Fp.infinite false since x > 0
-    congr 1
-    simp only [decide_eq_false_iff_not, not_lt]
-    exact le_of_lt hx_pos
+  · rw [habs] at h2; linarith
+  · congr 1; simp only [decide_eq_false_iff_not, not_lt]; exact le_of_lt hx_pos
 
 end RoundNearestTiesAwayFromZero
 
