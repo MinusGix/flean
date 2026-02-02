@@ -174,10 +174,35 @@ lemma mul_le_mul_of_nonpos_right {a b c : ERat} (h : b ≤ a) (hc : c ≤ 0) : a
 theorem coe_pow (x : ℚ) (n : ℕ) : (↑(x ^ n) : ERat) = (x : ERat) ^ n :=
   map_pow (⟨⟨(↑), coe_one⟩, coe_mul⟩ : ℚ →* ERat) _ _
 
+private lemma top_pow_pos_erat : ∀ n : ℕ, (0 : ERat) < ⊤ ^ n
+  | 0 => by simp
+  | n + 1 => by
+    simp only [pow_succ]
+    exact ERat.mul_pos (top_pow_pos_erat n) zero_lt_top
+
 @[simp, norm_cast]
 theorem coe_ennRat_pow (x : ℚ≥0∞) (n : ℕ) : (↑(x ^ n) : ERat) = (x : ERat) ^ n := by
-  -- TODO: Proof needs to be updated for new Lean/mathlib API
-  sorry
+  rcases eq_or_ne x ⊤ with rfl | hx
+  · -- x = ⊤
+    induction n with
+    | zero => simp [coe_ennRat_one]
+    | succ n ih =>
+      simp only [ENNRat.top_pow (Nat.succ_ne_zero n), coe_ennRat_top, pow_succ]
+      exact ((mul_comm _ _).trans (top_mul_of_pos (top_pow_pos_erat n))).symm
+  · -- x is finite
+    lift x to ℚ≥0 using hx
+    -- For x : ℚ≥0, prove by induction on n
+    induction n with
+    | zero => simp only [pow_zero, coe_ennRat_one]
+    | succ n ih =>
+      simp only [pow_succ]
+      -- Goal: ↑((↑x : ℚ≥0∞) ^ n * ↑x) = (↑(↑x : ℚ≥0∞) : ERat) ^ n * ↑(↑x : ℚ≥0∞)
+      have h1 : ((↑x : ℚ≥0∞) ^ n) ≠ ⊤ := ENNRat.coe_ne_top
+      have h2 : (↑x : ℚ≥0∞) ≠ ⊤ := ENNRat.coe_ne_top
+      calc (((↑x : ℚ≥0∞) ^ n * (↑x : ℚ≥0∞) : ℚ≥0∞) : ERat)
+          = (((↑x : ℚ≥0∞) ^ n : ℚ≥0∞) : ERat) * ((↑x : ℚ≥0∞) : ERat) :=
+            coe_ennRat_mul' _ _ h1 h2
+        _ = ((↑x : ℚ≥0∞) : ERat) ^ n * ((↑x : ℚ≥0∞) : ERat) := by congr 1
 
 lemma exists_nat_ge_mul {a : ERat} (ha : a ≠ ⊤) (n : ℕ) :
     ∃ m : ℕ, a * n ≤ m :=

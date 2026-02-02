@@ -62,11 +62,21 @@ if and only if `x` is not `⊥`. -/
 theorem add_top_iff_ne_bot {x : ERat} : x + ⊤ = ⊤ ↔ x ≠ ⊥ := by rw [add_comm, top_add_iff_ne_bot]
 
 protected theorem add_pos_of_nonneg_of_pos {a b : ERat} (ha : 0 ≤ a) (hb : 0 < b) : 0 < a + b := by
-  -- lift a to ℚ≥0∞ using ha
-  -- lift b to ℚ≥0∞ using hb.le
-  -- norm_cast at *
-  -- simp [hb]
-  sorry
+  -- 0 ≤ a implies a ≠ ⊥ (since ⊥ < 0)
+  have ha_ne_bot : a ≠ ⊥ := fun h => (lt_of_lt_of_le bot_lt_zero (h ▸ ha)).ne rfl
+  -- 0 < b implies b ≠ ⊥
+  have hb_ne_bot : b ≠ ⊥ := fun h => (lt_of_lt_of_le bot_lt_zero (h ▸ hb.le)).ne rfl
+  match b with
+  | ⊤ => simp only [add_top_of_ne_bot ha_ne_bot, zero_lt_top]
+  | ⊥ => exact (hb_ne_bot rfl).elim
+  | (b' : ℚ) =>
+    match a with
+    | ⊤ => simp only [top_add_of_ne_bot (coe_ne_bot b'), zero_lt_top]
+    | ⊥ => exact (ha_ne_bot rfl).elim
+    | (a' : ℚ) =>
+      have h1 : (0 : ERat) = ↑(0 : ℚ) := rfl
+      rw [h1, ← coe_add, ERat.coe_lt_coe_iff]
+      exact _root_.add_pos_of_nonneg_of_pos (ERat.coe_le_coe_iff.mp ha) (ERat.coe_lt_coe_iff.mp hb)
 
 protected theorem add_pos_of_pos_of_nonneg {a b : ERat} (ha : 0 < a) (hb : 0 ≤ b) : 0 < a + b :=
   add_comm a b ▸ ERat.add_pos_of_nonneg_of_pos hb ha
