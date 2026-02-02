@@ -8,6 +8,8 @@
 -/
 import Batteries.Data.Rat
 import Mathlib.Order.TypeTags
+import Mathlib.Order.WithBot
+import Mathlib.Algebra.Order.Field.Basic
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.FieldSimp
 import Flean.ENNRat.Basic
@@ -30,6 +32,14 @@ instance : IsOrderedAddMonoid ERat := inferInstanceAs (IsOrderedAddMonoid (WithB
 instance : AddCommMonoidWithOne ERat := inferInstanceAs (AddCommMonoidWithOne (WithBot (WithTop ℚ)))
 
 instance : CharZero ERat := inferInstanceAs (CharZero (WithBot (WithTop ℚ)))
+
+-- Build the DenselyOrdered instance step by step
+-- ℚ has DenselyOrdered (from LinearOrderedSemiField) and NoMaxOrder/NoMinOrder (from IsStrictOrderedRing)
+-- WithTop ℚ has DenselyOrdered (needs DenselyOrdered ℚ and NoMaxOrder ℚ)
+-- WithBot (WithTop ℚ) has DenselyOrdered (needs DenselyOrdered (WithTop ℚ) and NoMinOrder (WithTop ℚ))
+instance : DenselyOrdered (WithTop ℚ) := WithTop.denselyOrdered
+instance : NoMinOrder (WithTop ℚ) := inferInstance
+instance : DenselyOrdered ERat := WithBot.denselyOrdered
 
 @[coe] def Rat.toERat : ℚ → ERat := WithBot.some ∘ WithTop.some
 
