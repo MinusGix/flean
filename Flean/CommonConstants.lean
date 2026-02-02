@@ -36,6 +36,20 @@ theorem smallestPosSubnormal_toVal_pos {R : Type*} [Field R] [LinearOrder R] [Is
   rw [smallestPosSubnormal_toVal]
   linearize
 
+/-- Half of smallestPosSubnormal is strictly less than 2^min_exp.
+    This is useful for showing underflow threshold < overflow threshold. -/
+theorem smallestPosSubnormal_half_lt_zpow_min_exp {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] :
+    (smallestPosSubnormal.toVal : R) / 2 < (2 : R) ^ FloatFormat.min_exp := by
+  rw [smallestPosSubnormal_toVal]
+  have hpos : (0 : R) < 2 ^ (FloatFormat.min_exp - FloatFormat.prec + 1) := by positivity
+  have hexp_le : FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1 ≤ FloatFormat.min_exp := by
+    have := FloatFormat.valid_prec; omega
+  have hstep1 : (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) / 2 < 2 ^ (FloatFormat.min_exp - FloatFormat.prec + 1) := by
+    linarith
+  have hstep2 : (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) ≤ 2 ^ FloatFormat.min_exp :=
+    zpow_le_zpow_right₀ (by norm_num) hexp_le
+  linarith
+
 def smallestPosNormal : FiniteFp := ⟨
   false,
   FloatFormat.min_exp,
