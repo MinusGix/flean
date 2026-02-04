@@ -75,9 +75,9 @@ theorem FloatBits.isFinite_validFloatVal [StdFloatFormat] {b : FloatBits} (hf : 
 
 
   if is_subnormal then
-    simp_all only [tsub_le_iff_right, BitVec.ofNat_eq_ofNat, ↓reduceIte, ge_iff_le, le_refl, is_subnormal, e]
+    simp_all only [tsub_le_iff_right, BitVec.ofNat_eq_ofNat, ↓reduceIte, le_refl, is_subnormal, e]
   else
-    simp_all only [tsub_le_iff_right, BitVec.ofNat_eq_ofNat, ↓reduceIte, ge_iff_le, sub_add_cancel,
+    simp_all only [tsub_le_iff_right, BitVec.ofNat_eq_ofNat, ↓reduceIte, sub_add_cancel,
       Nat.one_le_cast, is_subnormal, e]
     rename_i h
     have h1 : exponent.toNat ≠ 0 := by
@@ -92,7 +92,7 @@ theorem FloatBits.isFinite_validFloatVal [StdFloatFormat] {b : FloatBits} (hf : 
     rw [tsub_le_iff_right]
     unfold FloatFormat.exponentBias
     specialize exLe (by trivial)
-    have := (Nat.le_pow_iff_clog_le ?_).mp exLt.le
+    have := (Nat.clog_le_iff_le_pow ?_).mpr exLt.le
     have a0 : FloatFormat.max_exp.toNat + 1 ≤ 2^FloatFormat.exponentBits2 := Nat.le_pow_clog (by norm_num) _
     have a2 : exponent.toNat + 1 < 2^FloatFormat.exponentBits := by
       unfold FloatFormat.exponentBits
@@ -117,27 +117,38 @@ theorem FloatBits.isFinite_validFloatVal [StdFloatFormat] {b : FloatBits} (hf : 
   have mLt := ((BitVec.ofBool true) ++ significand).isLt
   if is_subnormal then
     simp_all only [tsub_le_iff_right, BitVec.ofNat_eq_ofNat, ne_eq, ↓reduceIte, BitVec.toNat_ofNat, Nat.zero_mod,
-      Nat.ofNat_pos, pow_pos, not_true_eq_false, zero_le, false_implies, e, is_subnormal, exponent, m,
+      pow_pos, not_true_eq_false, zero_le, false_implies, e, is_subnormal, exponent, m,
       significand]
     have mLt := significand.isLt
-    have := FloatFormat.valid_prec
+    have hprec := FloatFormat.valid_prec
     unfold FloatFormat.significandBits at mLt
-    have : 2 ^ (FloatFormat.prec - 1) ≤ 2 ^ FloatFormat.prec := by
+    have : (2 : ℕ) ^ (FloatFormat.prec - 1).toNat ≤ 2 ^ FloatFormat.prec.toNat := by
       apply Nat.pow_le_pow_right
       omega
-      omega
-    have : 2 ^ (FloatFormat.prec - 1) ≤ 2 ^ FloatFormat.prec - 1 := by
+      have : (FloatFormat.prec - 1).toNat ≤ FloatFormat.prec.toNat := by
+        rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
+        omega
+      exact this
+    have : (2 : ℕ) ^ (FloatFormat.prec - 1).toNat ≤ 2 ^ FloatFormat.prec.toNat - 1 := by
+      have hprec_nat : FloatFormat.prec.toNat ≥ 2 := by
+        have hp := FloatFormat.valid_prec
+        have : (2 : ℤ) ≤ FloatFormat.prec := hp
+        exact (Int.le_toNat (by omega)).mpr this
+      rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
       qify
       rw [Nat.cast_sub, Nat.cast_one, Nat.cast_pow, Nat.cast_two]
-      exact (two_pow_pred_lt_two_pow_sub_one FloatFormat.valid_prec).le
-      omega
+      exact (two_pow_pred_lt_two_pow_sub_one hprec_nat).le
+      exact Nat.one_le_two_pow
     linarith
   else
-    simp_all only [tsub_le_iff_right, BitVec.ofNat_eq_ofNat, ne_eq, ↓reduceIte, not_false_eq_true, true_implies,
+    simp_all only [tsub_le_iff_right, BitVec.ofNat_eq_ofNat, ne_eq, ↓reduceIte, true_implies,
       e, is_subnormal, exponent, m, significand]
     unfold FloatFormat.significandBits at mLt
-    have := FloatFormat.valid_prec
-    simp_rw [show 1 + (FloatFormat.prec - 1) = FloatFormat.prec by omega] at mLt
+    have hprec := FloatFormat.valid_prec
+    have h_add : 1 + (FloatFormat.prec - 1).toNat = FloatFormat.prec.toNat := by
+      rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
+      omega
+    simp_rw [h_add] at mLt
     omega
 
   if is_subnormal then
@@ -166,10 +177,13 @@ theorem FloatBits.isFinite_validFloatVal [StdFloatFormat] {b : FloatBits} (hf : 
         BitVec.toNat_ofNat, pow_one, Nat.mod_succ, add_tsub_cancel_left, ge_iff_le, e, is_subnormal, exponent, m,
         significand]
     · split_ifs; contradiction
-      have := FloatFormat.valid_prec
+      have hprec := FloatFormat.valid_prec
       have mLt := ((BitVec.ofBool true) ++ significand).isLt
       unfold FloatFormat.significandBits at mLt
-      simp_rw [show 1 + (FloatFormat.prec - 1) = FloatFormat.prec by omega] at mLt
+      have h_add : 1 + (FloatFormat.prec - 1).toNat = FloatFormat.prec.toNat := by
+        rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
+        omega
+      simp_rw [h_add] at mLt
       omega
 
 /-! Convert Bits back into a float.-/
@@ -398,30 +412,40 @@ theorem lift_repr_toBitsTriple_significand [StdFloatFormat] {f : FiniteFp} : (Fp
   · norm_num
     rw [show BitVec.toNat 1 = 1 by simp]
     have hs' := vf.right.right.right.resolve_right hs
-    unfold FloatFormat.significandBits
+    -- Rewrite prec.toNat - 1 to (prec - 1).toNat for consistency
+    rw [← FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
+    -- Goal now has (prec - 1).toNat form
+    have hprecm1 : (FloatFormat.prec - 1).toNat = FloatFormat.prec.toNat - 1 :=
+      FloatFormat.prec_sub_one_toNat_eq_toNat_sub
     apply Nat.eq_of_testBit_eq
     intro i
     rw [Nat.testBit_or, Nat.testBit_shiftLeft, Nat.testBit_mod_two_pow]
-    by_cases ilt : i < FloatFormat.prec - 1
+    by_cases ilt : i < (FloatFormat.prec - 1).toNat
     · rw [decide_eq_false_iff_not.mpr (by omega), Bool.false_and, Bool.false_or, decide_eq_true ilt, Bool.true_and]
     · rw [decide_eq_true (by omega), decide_eq_false (by omega), Bool.true_and, Bool.false_and, Bool.or_false]
-      by_cases ieq : i = FloatFormat.prec - 1
+      by_cases ieq : i = (FloatFormat.prec - 1).toNat
       · rw [ieq]
         simp only [tsub_self, Nat.testBit_zero, Nat.mod_succ, decide_true, Bool.true_eq]
-        by_cases hbit : f.m.testBit (FloatFormat.prec - 1) = true
+        by_cases hbit : f.m.testBit (FloatFormat.prec - 1).toNat = true
         · trivial
         · rw [Bool.not_eq_true] at hbit
-          have p : ∀ j, j ≥ FloatFormat.prec - 1 → f.m.testBit j = false := by
+          have p : ∀ j, j ≥ (FloatFormat.prec - 1).toNat → f.m.testBit j = false := by
             intro j jge
-            by_cases jeq : j = FloatFormat.prec - 1
+            by_cases jeq : j = (FloatFormat.prec - 1).toNat
             · rw [jeq]
               exact hbit
-            · exact Nat.testBit_lt_two_pow'.mp hs'.right j (by omega)
+            · have hp := FloatFormat.valid_prec
+              rw [hprecm1] at jge jeq
+              exact Nat.testBit_lt_two_pow'.mp hs'.right j (by omega)
           have := Nat.lt_pow_two_of_testBit f.m p
+          simp only [hprecm1] at *
           omega
-      · rw [Nat.testBit_lt_two_pow'.mp hs'.right i (by omega)]
-        have := (not_congr Nat.testBit_one_eq_true_iff_self_eq_zero).mpr (by omega : ¬i - (FloatFormat.prec - 1) = 0)
+      · have hp := FloatFormat.valid_prec
+        rw [hprecm1] at ieq ilt
+        rw [Nat.testBit_lt_two_pow'.mp hs'.right i (by omega)]
+        have := (not_congr Nat.testBit_one_eq_true_iff_self_eq_zero).mpr (by omega : ¬i - (FloatFormat.prec.toNat - 1) = 0)
         norm_num at this
+        rw [hprecm1]
         rw [this]
 
 /-- Converting from Fp to Bits and back yields the same value. -/

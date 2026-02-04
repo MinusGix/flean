@@ -8,8 +8,7 @@ import Mathlib.Tactic.Ring
 -- TODO: test how much these can be simplified using the SAT solver.
 
 theorem Nat.testBit_lt_two_pow_forward' {x : Nat} {i : Nat} : x < 2^i → ∀ j, j ≥ i → Nat.testBit x j = false := by
-  intro h
-  intro j hj
+  intro h j hj
   apply Nat.testBit_eq_false_of_lt
   apply lt_of_lt_of_le
   exact h
@@ -81,7 +80,7 @@ theorem ofNat_le_eq_zero_iff {n : Nat} {x : Nat} (h : x < 2^n) : BitVec.ofNat n 
 
 theorem ofBool_beq_one (x : Bool) : (BitVec.ofBool x == 1) = x := by
   cases x
-  · simp_all only [ofBool_false, ofNat_eq_ofNat, beq_true, beq_eq_false_iff_ne, ne_eq, reduceEq, not_false_eq_true]
+  · simp_all only [ofBool_false, ofNat_eq_ofNat, beq_eq_false_iff_ne, ne_eq, reduceEq, not_false_eq_true]
   · simp_all only [ofBool_true, ofNat_eq_ofNat, beq_self_eq_true]
 
 theorem ofBool_beq_zero (x : Bool) : (BitVec.ofBool x == 0) = (x == false) := by

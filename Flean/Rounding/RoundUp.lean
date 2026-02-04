@@ -5,7 +5,7 @@ import Mathlib.Tactic.Linarith
 import Mathlib.Data.Real.Basic
 import Mathlib.Analysis.SpecialFunctions.Log.Base
 import Mathlib.Analysis.SpecialFunctions.Pow.Real
-import Mathlib.Data.Real.Irrational
+import Mathlib.NumberTheory.Real.Irrational
 import Mathlib.Tactic.Polyrith
 
 import Flean.Util
@@ -63,11 +63,21 @@ theorem roundUp_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs :
   rw [FiniteFp.smallestPosSubnormal_toVal] at h_ceil
   simp [h_ceil]
   -- Show k = 1 and 1 < 2^(prec-1), so go to else branch
-  have h_k_lt : 1 < (2 : ℤ)^(FloatFormat.prec - 1) := by
-    apply one_lt_pow₀ (by norm_num)
-    fomega
-  simp only [h_k_lt.not_ge] -- for some reason need the opposite to recognize it
-  rw [dite_false, FiniteFp.smallestPosSubnormal]
+  -- The condition uses prec.toNat - 1 with (2 : ℤ)^n
+  have h_k_lt : (2 : ℤ) ^ (FloatFormat.prec.toNat - 1) > 1 := by
+    have hp := FloatFormat.valid_prec
+    have h2 : FloatFormat.prec.toNat ≥ 2 := by
+      apply (Int.le_toNat (by omega)).mpr
+      exact FloatFormat.valid_prec
+    have hne : FloatFormat.prec.toNat - 1 ≠ 0 := by omega
+    have hnat : 1 < (2 : ℕ) ^ (FloatFormat.prec.toNat - 1) := Nat.one_lt_pow hne (by norm_num : 1 < 2)
+    -- (2 : ℤ)^n = (↑(2 : ℕ))^n = ↑((2 : ℕ)^n) by Nat.cast_pow
+    calc (2 : ℤ) ^ (FloatFormat.prec.toNat - 1)
+        = ((2 : ℕ) ^ (FloatFormat.prec.toNat - 1) : ℤ) := by simp only [Nat.cast_pow, Nat.cast_ofNat]
+      _ > 1 := by omega
+  have h_not_ge : ¬((2 : ℤ) ^ (FloatFormat.prec.toNat - 1) ≤ 1) := not_le.mpr h_k_lt
+  simp only [h_not_ge, ↓reduceDIte]
+  rfl
 
 -- Main theorem: roundUp returns a value ≥ input (fundamental property of rounding up)
 theorem roundUp_ge [FloatFormat] (x : R) (f : FiniteFp)

@@ -12,25 +12,44 @@ import Flean.Util
 
 -- TODO: these should be defined in a namespace, possibly under a different name
 @[reducible]
-def isNormal [FloatFormat] (m : ℕ) : Prop := (2^(FloatFormat.prec - 1) ≤ m ∧ m < 2^FloatFormat.prec)
+def isNormal [FloatFormat] (m : ℕ) : Prop := (2^(FloatFormat.prec - 1).toNat ≤ m ∧ m < 2^FloatFormat.prec.toNat)
 /-- Subnormal numbers are those with exponent `FloatFormat.min_exp` and significand less than `2^(FloatFormat.prec - 1)`. Note that we include zero in our notion of a subnormal number, even if it is not quite the same. -/
 @[reducible]
-def isSubnormal [FloatFormat] (e : ℤ) (m : ℕ) : Prop := (e = FloatFormat.min_exp ∧ m ≤ 2^(FloatFormat.prec - 1) - 1)
+def isSubnormal [FloatFormat] (e : ℤ) (m : ℕ) : Prop := (e = FloatFormat.min_exp ∧ m ≤ 2^(FloatFormat.prec - 1).toNat - 1)
+
+/-- Characterize isNormal using ℤ comparisons for omega compatibility -/
+theorem isNormal_iff_int [FloatFormat] (m : ℕ) :
+    isNormal m ↔ (2 : ℤ)^(FloatFormat.prec - 1).toNat ≤ m ∧ (m : ℤ) < (2 : ℤ)^FloatFormat.prec.toNat := by
+  simp only [isNormal, Int.two_pow_eq_nat_cast]
+  constructor <;> intro h <;> omega
+
+/-- Characterize isSubnormal using ℤ comparisons for omega compatibility -/
+theorem isSubnormal_iff_int [FloatFormat] (e : ℤ) (m : ℕ) :
+    isSubnormal e m ↔ e = FloatFormat.min_exp ∧ (m : ℤ) ≤ (2 : ℤ)^(FloatFormat.prec - 1).toNat - 1 := by
+  simp only [isSubnormal, Int.two_pow_eq_nat_cast]
+  have hpow_pos : 1 ≤ (2 : ℕ)^(FloatFormat.prec - 1).toNat := Nat.one_le_two_pow
+  constructor <;> intro h <;> omega
 
 /-- sig_msb stands for significand most significant bit, because `2^(prec - 1)` means that only the topmost bit is set-/
-theorem isNormal.sig_msb [FloatFormat] : isNormal (2^(FloatFormat.prec - 1)) := by
+theorem isNormal.sig_msb [FloatFormat] : isNormal (2^(FloatFormat.prec - 1).toNat) := by
   have := FloatFormat.valid_prec
-  exact ⟨by linarith, by apply pow_lt_pow_right₀ (by norm_num) (by omega)⟩
+  constructor
+  · rfl
+  · exact FloatFormat.nat_two_pow_prec_sub_one_lt_two_pow_prec
 
 /-- sig_max stands for significand max, where all bits are set -/
-theorem isNormal.sig_max [FloatFormat] : isNormal (2^(FloatFormat.prec) - 1) := by
-  exact ⟨by apply Nat.le_pred_of_lt; norm_num, by norm_num⟩
+theorem isNormal.sig_max [FloatFormat] : isNormal (2^FloatFormat.prec.toNat - 1) := by
+  have hlt := FloatFormat.nat_two_pow_prec_sub_one_lt_two_pow_prec
+  have hge := FloatFormat.nat_four_le_two_pow_prec
+  constructor
+  · apply Nat.le_pred_of_lt hlt
+  · omega
 
 theorem isSubnormal.min_exp_one [FloatFormat] : isSubnormal FloatFormat.min_exp 1 := by
-  have := FloatFormat.prec_pred_pow_le (R := ℕ)
-  exact ⟨by rfl, by omega⟩
+  have := FloatFormat.nat_two_le_two_pow_prec_sub_one
+  exact ⟨rfl, by omega⟩
 
-theorem isSubnormal.zero [FloatFormat] : isSubnormal FloatFormat.min_exp 0 := by exact ⟨by rfl, by omega⟩
+theorem isSubnormal.zero [FloatFormat] : isSubnormal FloatFormat.min_exp 0 := ⟨rfl, by omega⟩
 
 theorem isSubnormal.zero_iff [FloatFormat] {e : ℤ} : isSubnormal e 0 ↔ e = FloatFormat.min_exp := by simp [isSubnormal]
 
@@ -42,49 +61,48 @@ def IsValidFiniteVal [FloatFormat] (e : ℤ) (m : ℕ) : Prop :=
   -- The exponent is above the minimum
   e ≥ FloatFormat.min_exp ∧ e ≤ FloatFormat.max_exp ∧
   -- We can represent the integral significand with prec bits
-  m < 2^FloatFormat.prec ∧
+  m < 2^FloatFormat.prec.toNat ∧
   -- Normal/subnormal; as well as ensuring that (s, M, e) is a unique repr for some number
   (isNormal m ∨ isSubnormal e m)
 
 theorem IsValidFiniteVal.zero [FloatFormat] : IsValidFiniteVal FloatFormat.min_exp 0 := by
-  have := FloatFormat.prec_pow_le (R := ℕ)
-  exact ⟨by rfl, FloatFormat.exp_order_le, by omega, Or.inr isSubnormal.zero⟩
+  have := FloatFormat.nat_four_le_two_pow_prec
+  exact ⟨le_refl _, FloatFormat.exp_order_le, by omega, Or.inr isSubnormal.zero⟩
 
-theorem IsValidFiniteVal.one [FloatFormat] : IsValidFiniteVal 0 (2^(FloatFormat.prec - 1)) := by
+theorem IsValidFiniteVal.one [FloatFormat] : IsValidFiniteVal 0 (2^(FloatFormat.prec - 1).toNat) := by
   have := FloatFormat.valid_prec
-  have := FloatFormat.prec_pred_pow_le (R := ℕ)
+  have := FloatFormat.nat_two_le_two_pow_prec_sub_one
+  have hlt := FloatFormat.nat_two_pow_prec_sub_one_lt_two_pow_prec
   have := FloatFormat.exp_order_le
   have := FloatFormat.max_exp_pos
   have := FloatFormat.min_exp_nonpos
-  exact ⟨by omega, by omega, by apply pow_lt_pow_right₀ (by norm_num) (by omega), Or.inl isNormal.sig_msb⟩
+  exact ⟨by omega, by omega, hlt, Or.inl isNormal.sig_msb⟩
 
 theorem IsValidFiniteVal.smallestPosSubnormal [FloatFormat] : IsValidFiniteVal FloatFormat.min_exp 1 := by
-  have := FloatFormat.prec_pow_le (R := ℕ)
-  exact ⟨by trivial, FloatFormat.exp_order_le, by omega, Or.inr isSubnormal.min_exp_one⟩
+  have := FloatFormat.nat_four_le_two_pow_prec
+  exact ⟨le_refl _, FloatFormat.exp_order_le, by omega, Or.inr isSubnormal.min_exp_one⟩
 
-theorem IsValidFiniteVal.smallestPosNormal [FloatFormat] : IsValidFiniteVal FloatFormat.min_exp (2^(FloatFormat.prec - 1)) :=
-  ⟨by trivial, FloatFormat.exp_order_le, FloatFormat.pow_prec_pred_lt, Or.inl isNormal.sig_msb⟩
+theorem IsValidFiniteVal.smallestPosNormal [FloatFormat] : IsValidFiniteVal FloatFormat.min_exp (2^(FloatFormat.prec - 1).toNat) :=
+  ⟨le_refl _, FloatFormat.exp_order_le, FloatFormat.nat_two_pow_prec_sub_one_lt_two_pow_prec, Or.inl isNormal.sig_msb⟩
 
-theorem IsValidFiniteVal.largestFiniteFloat [FloatFormat] : IsValidFiniteVal FloatFormat.max_exp (2^(FloatFormat.prec) - 1) := by
+theorem IsValidFiniteVal.largestFiniteFloat [FloatFormat] : IsValidFiniteVal FloatFormat.max_exp (2^FloatFormat.prec.toNat - 1) := by
   have := FloatFormat.valid_prec
-  have := FloatFormat.prec_pow_le (R := ℕ)
-  have := FloatFormat.prec_pred_pow_le (R := ℕ)
-  exact ⟨FloatFormat.exp_order_le, by rfl, by omega, Or.inl isNormal.sig_max⟩
+  have := FloatFormat.nat_four_le_two_pow_prec
+  have := FloatFormat.nat_two_le_two_pow_prec_sub_one
+  exact ⟨FloatFormat.exp_order_le, le_refl _, by omega, Or.inl isNormal.sig_max⟩
 
 /-- Minor helper theorem to remove some verbosity from proving a subnormal valid finite float -/
-theorem IsValidFiniteVal_subnormal [FloatFormat] (m : ℕ) : m ≤ 2^(FloatFormat.prec - 1) - 1 → IsValidFiniteVal FloatFormat.min_exp m := by
+theorem IsValidFiniteVal_subnormal [FloatFormat] (m : ℕ) : m ≤ 2^(FloatFormat.prec - 1).toNat - 1 → IsValidFiniteVal FloatFormat.min_exp m := by
   intro hm
+  have hlt := FloatFormat.nat_two_pow_prec_sub_one_lt_two_pow_prec
   split_ands
-  · rfl
+  · exact le_refl _
   · exact FloatFormat.exp_order_le
-  · apply lt_of_le_of_lt hm
-    have := FloatFormat.valid_prec
-    have := FloatFormat.pow_prec_pred_lt
-    apply lt_trans
-    exact (by norm_num : 2 ^ (FloatFormat.prec - 1) - 1 < 2 ^ (FloatFormat.prec - 1)) -- for some reason can't pick up on this obvious fact and no clear lemma to use??
-    simp only [FloatFormat.pow_prec_pred_lt]
+  · calc m ≤ 2^(FloatFormat.prec - 1).toNat - 1 := hm
+      _ < 2^(FloatFormat.prec - 1).toNat := Nat.sub_lt (Nat.one_le_two_pow) (by norm_num)
+      _ < 2^FloatFormat.prec.toNat := hlt
   · right
-    trivial
+    exact ⟨rfl, hm⟩
 
 @[ext]
 structure FiniteFp [FloatFormat] where
@@ -143,7 +161,7 @@ instance : Inhabited FiniteFp := ⟨0⟩
 instance : One FiniteFp :=
   ⟨{
     s := false,
-    m := 2^(FloatFormat.prec - 1),
+    m := 2^(FloatFormat.prec - 1).toNat,
     e := 0,
     valid := IsValidFiniteVal.one
   }⟩
@@ -151,7 +169,7 @@ instance : One FiniteFp :=
 theorem one_def : (1 : FiniteFp) = {
   s := false,
   e := 0,
-  m := 2^(FloatFormat.prec - 1),
+  m := 2^(FloatFormat.prec - 1).toNat,
   valid := IsValidFiniteVal.one
 } := rfl
 
@@ -463,8 +481,8 @@ def notNaN_notInfinite {x : Fp} : ¬x.isNaN → ¬x.isInfinite → x.isFinite :=
   simp_all only [not_or, Bool.false_eq_true]
   obtain ⟨left, right⟩ := hi
   split
-  next x x_1 => simp_all only [not_false_eq_true]
-  next x b => simp_all only [not_false_eq_true, infinite.injEq, Bool.not_eq_true, not_true_eq_false]
+  next x x_1 => simp_all only []
+  next x b => simp_all only [infinite.injEq, Bool.not_eq_true, not_true_eq_false]
   next x => simp_all only [not_true_eq_false]
 
 

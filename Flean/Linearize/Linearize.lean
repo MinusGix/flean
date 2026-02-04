@@ -83,7 +83,7 @@ def asInt (e : Expr) : MetaM Q(ℤ) := do
   else
     pure e
 
-def asR {u : Level} (R : Q(Type u)) (e : Expr) (inst : Q(NatCast $R)) : MetaM Q($R) := do
+def asR {u : Level} (R : Q(Type u)) (e : Expr) (_inst : Q(NatCast $R)) : MetaM Q($R) := do
   let eType ← inferType e
   if eType.isAppOf ``Nat then
     have e : Q(ℕ) := e
@@ -424,7 +424,7 @@ def isNatCastZpow (e : Expr) : MetaM (Option (ℕ × Expr × Expr × Expr)) := d
         let rec findNatLit (e : Expr) : Option ℕ :=
           match e with
           | .lit (.natVal n) => some n
-          | .app f a => findNatLit a
+          | .app _f a => findNatLit a
           | _ => none
 
         if let some n := findNatLit baseUnfolded then
@@ -969,7 +969,7 @@ def linearizeGoal (g : MVarId) : TacticM (List MVarId) := do
       let (f2, args2) := f.getAppFnArgs
       trace[linearize] "    f app function: {f2}, args: {args2}"
     | .mvar id => trace[linearize] "  Goal is mvar: {id}"
-    | .fvar id => trace[linearize] "  Goal is fvar"
+    | .fvar _id => trace[linearize] "  Goal is fvar"
     | .const name levels => trace[linearize] "  Goal is const: {name}, levels: {levels}"
     | _ => trace[linearize] "  Goal is other: {goalType.ctorName}"
 

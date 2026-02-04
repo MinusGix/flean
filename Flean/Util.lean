@@ -16,7 +16,7 @@ theorem cast_natAbs_pos {R : Type*} [Ring R]
   {k : ℤ}
   : 0 < k → (k.natAbs : R) = (k : R) := by
   intro kpos
-  rw [Int.cast_natAbs, abs_of_pos kpos]
+  rw [Nat.cast_natAbs, abs_of_pos kpos]
 
 end Int
 
@@ -90,7 +90,7 @@ theorem List.nodup_product {α : Type*} {β : Type*} {l₁ : List α} {l₂ : Li
 -- Doesn't exist in mathlib
 @[simp]
 theorem List.nodup_attachWith {α : Type*} {l : List α} (P : α → Prop) (H : ∀ x ∈ l, P x) : Nodup (attachWith l P H) ↔ Nodup l :=
-  ⟨fun h => attachWith_map_subtype_val (p := P) (l := l) H ▸ h.map fun _ _ => Subtype.eq, fun h =>
+  ⟨fun h => attachWith_map_subtype_val (p := P) (l := l) H ▸ h.map fun _ _ => Subtype.ext, fun h =>
     Nodup.of_map Subtype.val ((attachWith_map_subtype_val (p := P) (l := l) H).symm ▸ h)⟩
 
 theorem List.flatMap_singleton_cast_eq_map {α : Type*} {β : Type*} [c : Coe α β] (l : List α) : l.flatMap (fun x => [c.coe x]) = map (fun x => c.coe x) l := by

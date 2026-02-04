@@ -54,10 +54,24 @@ theorem toVal_one [Field R] [LinearOrder R] [IsStrictOrderedRing R] : toVal (1 :
   delta toVal sign'
   unfold FloatFormat.radix Radix.Binary
   norm_num
-  rw [← @zpow_add' R _ 2]
-  · simp_all only [sub_add_add_cancel, add_neg_cancel, zpow_zero]
-  · simp_all only [ne_eq, OfNat.ofNat_ne_zero, not_false_eq_true, sub_add_add_cancel, add_neg_cancel,
-    not_true_eq_false, false_or, true_or]
+  -- Goal: 2 ^ (FloatFormat.prec.toNat - 1) * 2 ^ (-FloatFormat.prec + 1) = 1
+  -- Convert nat pow to zpow
+  rw [← zpow_natCast (G := R) 2 (FloatFormat.prec.toNat - 1)]
+  -- Now both are zpow, combine exponents
+  rw [← zpow_add₀ (by norm_num : (2 : R) ≠ 0)]
+  -- Simplify the exponent to 0
+  have hprec := FloatFormat.valid_prec
+  have h_prec_nat : (FloatFormat.prec.toNat : ℤ) = FloatFormat.prec :=
+    Int.toNat_of_nonneg (by omega : 0 ≤ FloatFormat.prec)
+  have h_toNat_ge : 1 ≤ FloatFormat.prec.toNat := by
+    have : 2 ≤ FloatFormat.prec.toNat := (Int.le_toNat (by omega)).mpr (by omega)
+    omega
+  have h_exp_zero : (↑(FloatFormat.prec.toNat - 1) : ℤ) + (-FloatFormat.prec + 1) = 0 :=
+    calc (↑(FloatFormat.prec.toNat - 1) : ℤ) + (-FloatFormat.prec + 1)
+        = (FloatFormat.prec.toNat : ℤ) - 1 + (-FloatFormat.prec + 1) := by rw [Nat.cast_sub h_toNat_ge]; norm_num
+      _ = FloatFormat.prec - 1 + (-FloatFormat.prec + 1) := by rw [h_prec_nat]
+      _ = 0 := by ring
+  simp only [h_exp_zero, add_zero, zpow_zero, mul_one]
 
 theorem toVal_mag_one [Field R] [LinearOrder R] [IsStrictOrderedRing R] : toVal_mag (1 : FiniteFp) = (1 : R) := by
   rw [toVal_mag_toVal_abs, toVal_one, abs_one]
@@ -167,7 +181,7 @@ theorem eq_of_toVal_eq [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : 
     rw [div_eq_inv_mul, div_eq_inv_mul] at hv
     rw [mul_eq_mul_left_iff] at hv
     norm_num at hv
-    trivial
+    exact hv.resolve_right (zpow_ne_zero _ (by norm_num : (2 : R) ≠ 0))
     all_goals norm_num
   have he_eq : x.e = y.e := by
     have ha : (x y : FiniteFp) → x.e < y.e →  ↑x.m * 2 ^ x.e = ↑y.m * (2 : R) ^ y.e → False := by
@@ -185,19 +199,23 @@ theorem eq_of_toVal_eq [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : 
         exact_mod_cast hx_re
         norm_num
         linarith
-      have hx_too_large : 2^FloatFormat.prec ≤ x.m := by
+      have hx_too_large : 2^FloatFormat.prec.toNat ≤ x.m := by
         have hy_normal : _root_.isNormal y.m := by
           apply valid_min_exp_lt_imp_isNormal
           linarith [x.valid.left]
-        calc 2^FloatFormat.prec
-          _ = 2^(FloatFormat.prec - 1 + 1) := by rw [Nat.sub_add_cancel (by fomega)]
-          _ = 2^(FloatFormat.prec - 1) * 2 := by rw [Nat.pow_add_one]
-          _ ≤ y.m * 2 := by omega
+        have hprec := FloatFormat.valid_prec
+        calc 2^FloatFormat.prec.toNat
+          _ = 2^((FloatFormat.prec - 1).toNat + 1) := by congr 1; omega
+          _ = 2^(FloatFormat.prec - 1).toNat * 2 := by rw [Nat.pow_add_one]
+          _ ≤ y.m * 2 := by
+              have := hy_normal.left
+              omega
           _ ≤ y.m * 2^((y.e - x.e).natAbs) := by
             gcongr
             apply le_self_pow₀ (by norm_num) (by omega)
           _ = x.m := by omega
-      linarith [x.valid.right.right.left]
+      have := x.valid.right.right.left
+      omega
 
     rcases lt_trichotomy x.e y.e with h_lt | h_eq | h_gt
     · exfalso

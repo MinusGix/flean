@@ -5,7 +5,7 @@ import Mathlib.Tactic.Linarith
 import Mathlib.Data.Real.Basic
 import Mathlib.Analysis.SpecialFunctions.Log.Base
 import Mathlib.Analysis.SpecialFunctions.Pow.Real
-import Mathlib.Data.Real.Irrational
+import Mathlib.NumberTheory.Real.Irrational
 
 import Flean.Basic
 import Flean.Ulp
@@ -43,6 +43,7 @@ def roundSubnormalDown (x : R) (h : isSubnormalRange x) : FiniteFp :=
       rw [abs_of_pos kpos]
       apply Int.floor_le_iff.mpr
       norm_num
+      rw [FloatFormat.pow_toNat_sub_one_eq_zpow_sub_one]
       exact isSubnormalRange_div_binade_upper h
     FiniteFp.mk false FloatFormat.min_exp k.natAbs vf
 
@@ -50,7 +51,7 @@ def roundSubnormalDown (x : R) (h : isSubnormalRange x) : FiniteFp :=
 def roundSubnormalUp (x : R) (h : isSubnormalRange x) : FiniteFp :=
   -- In subnormal range, spacing is uniform: 2^(min_exp - prec + 1)
   let k := ⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉
-  if hk : k ≥ 2^(FloatFormat.prec - 1) then
+  if hk : k ≥ (2 : ℤ)^(FloatFormat.prec - 1).toNat then
     -- Transition to normal range
     FiniteFp.smallestPosNormal
   else
@@ -109,7 +110,7 @@ lemma roundSubnormalUp_ge (x : R) (hsr : isSubnormalRange x) (f : FiniteFp)
   (h : roundSubnormalUp x hsr = f) : x ≤ f.toVal := by
   unfold roundSubnormalUp at h
   let k := ⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉
-  by_cases hk : k ≥ 2^(FloatFormat.prec - 1)
+  by_cases hk : k ≥ (2 : ℤ)^(FloatFormat.prec - 1).toNat
   · -- Case: k ≥ 2^(prec-1), transition to normal range
     unfold k at hk
     simp only [ge_iff_le, hk, ↓reduceDIte, Fp.finite.injEq] at h

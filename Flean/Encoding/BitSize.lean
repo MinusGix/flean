@@ -19,12 +19,12 @@ def FloatFormat.signBits : ℕ := 1
 
 @[reducible]
 def FloatFormat.significandBits [FloatFormat] : ℕ :=
-  FloatFormat.prec - 1
+  (FloatFormat.prec - 1).toNat
 
 theorem FloatFormat.significandBits_ge_one [FloatFormat] :
   FloatFormat.significandBits ≥ 1 := by
   unfold FloatFormat.significandBits
-  have := FloatFormat.valid_prec
+  have := FloatFormat.prec_sub_one_pos
   omega
 
 theorem FloatFormat.significandBits_pos [FloatFormat] :

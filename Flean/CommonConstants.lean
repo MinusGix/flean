@@ -18,12 +18,8 @@ theorem smallestPosSubnormal_toVal {R : Type*} [Field R] : smallestPosSubnormal.
   norm_num
 
 theorem smallestPosSubnormal_isSubnormal : smallestPosSubnormal.isSubnormal := by
-  have := FloatFormat.prec_pred_pow_le (R := ℕ)
-  apply And.intro
-  · rfl
-  · unfold smallestPosSubnormal
-    norm_num
-    omega
+  unfold smallestPosSubnormal
+  exact isSubnormal.min_exp_one
 
 theorem smallestPosSubnormal_lt_minExp {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] :
   smallestPosSubnormal.toVal < (2 : R) ^ FloatFormat.min_exp := by
@@ -53,7 +49,7 @@ theorem smallestPosSubnormal_half_lt_zpow_min_exp {R : Type*} [Field R] [LinearO
 def smallestPosNormal : FiniteFp := ⟨
   false,
   FloatFormat.min_exp,
-  2^(FloatFormat.prec - 1),
+  2^(FloatFormat.prec - 1).toNat,
   IsValidFiniteVal.smallestPosNormal
  ⟩
 
@@ -61,15 +57,15 @@ theorem smallestPosNormal_toVal {R : Type*} [Field R] [LinearOrder R] [IsStrictO
   unfold smallestPosNormal FiniteFp.toVal FiniteFp.sign'
   rw [FloatFormat.radix_val_eq_two]
   norm_num
-  rw [← zpow_add₀]
-  simp only [sub_add_add_cancel, add_sub_cancel]
-  norm_num
-
-theorem smallestPosNormal_isNormal : smallestPosNormal.isNormal := by
+  -- Convert nat pow to zpow
+  rw [← zpow_natCast (G := R) 2 (FloatFormat.prec.toNat - 1)]
+  rw [← zpow_add₀ (by norm_num : (2 : R) ≠ 0)]
+  congr 1
   have := FloatFormat.valid_prec
-  apply And.intro
-  · apply pow_le_pow_right₀ (by norm_num) (by omega)
-  · apply pow_lt_pow_right₀ (by norm_num) (by omega)
+  omega
+
+theorem smallestPosNormal_isNormal : smallestPosNormal.isNormal :=
+  isNormal.sig_msb
 
 theorem smallestPosNormal_toVal_pos {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : (0 : R) < smallestPosNormal.toVal := by
   rw [smallestPosNormal_toVal]
@@ -78,22 +74,24 @@ theorem smallestPosNormal_toVal_pos {R : Type*} [Field R] [LinearOrder R] [IsStr
 def largestFiniteFloat : FiniteFp := ⟨
   false,
   FloatFormat.max_exp,
-  2^(FloatFormat.prec) - 1,
+  2^FloatFormat.prec.toNat - 1,
   IsValidFiniteVal.largestFiniteFloat
 ⟩
 
 theorem largestFiniteFloat_toVal {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : largestFiniteFloat.toVal = (2 : R)^(FloatFormat.max_exp) * ((2 : R) - (2 : R)^(-(FloatFormat.prec : ℤ) + 1)) := by
   unfold largestFiniteFloat FiniteFp.toVal FiniteFp.sign'
   have := FloatFormat.valid_prec
+  have h2ne : (2 : R) ≠ 0 := by norm_num
   rw [FloatFormat.radix_val_eq_two]
   norm_num
   rw [mul_comm, mul_sub, mul_one]
-  rw [FloatFormat.pow_prec_nat_int]
-  rw [sub_add, zpow_sub₀, zpow_sub₀]
+  -- Convert nat pow to zpow
+  rw [← zpow_natCast (G := R) 2 FloatFormat.prec.toNat, FloatFormat.prec_toNat_eq]
+  rw [sub_add, zpow_sub₀ h2ne, zpow_sub₀ h2ne]
 
   ring_nf
   rw [mul_comm _ 2, mul_assoc]
-  rw [mul_inv_cancel₀, mul_one]
+  rw [mul_inv_cancel₀ (zpow_ne_zero _ h2ne), mul_one]
   have : (2 : R) ^ FloatFormat.max_exp * (2 ^ (FloatFormat.prec : ℤ))⁻¹ = 2 ^ FloatFormat.max_exp / (2 ^ (FloatFormat.prec : ℤ)) := by
     field_simp
   rw [this]
@@ -109,9 +107,8 @@ theorem largestFiniteFloat_toVal {R : Type*} [Field R] [LinearOrder R] [IsStrict
   rw [← mul_assoc]
   rw [mul_comm 2 _, mul_assoc, mul_sub, mul_one]
   rw [show (2 : R) * (2 : R) ^ (-(FloatFormat.prec : ℤ)) = (2 : R)^(1 : ℤ) * (2 : R) ^ (-(FloatFormat.prec : ℤ)) by ring]
-  rw [← zpow_add₀, ← sub_eq_add_neg]
+  rw [← zpow_add₀ h2ne, ← sub_eq_add_neg]
   rw [← mul_sub]
-  all_goals norm_num
 
 theorem largestFiniteFloat_toVal_pos {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : largestFiniteFloat.toVal > (0 : R) := by
   rw [largestFiniteFloat_toVal]
@@ -174,16 +171,21 @@ theorem finite_pos_le_largest {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
   have h_valid := f.valid
   unfold IsValidFiniteVal at h_valid
   have h_e_bound : f.e ≤ FloatFormat.max_exp := h_valid.2.1
-  have h_m_bound : f.m < 2^FloatFormat.prec := h_valid.2.2.1
+  have h_m_bound : f.m < 2^FloatFormat.prec.toNat := h_valid.2.2.1
 
   by_cases h_e : f.e = FloatFormat.max_exp
   · -- Case: f.e = max_exp, need f.m ≤ 2^prec - 1
     rw [h_e]
     apply mul_le_mul_of_nonneg_right
-    · -- f.m ≤ 2^prec - 1
-      rw [FloatFormat.natCast_pow_prec_pred]
-      norm_cast
-      omega
+    · -- f.m ≤ 2^prec - 1, we have f.m < 2^prec.toNat
+      have h_nat_le : f.m ≤ 2^FloatFormat.prec.toNat - 1 := Nat.le_sub_one_of_lt h_m_bound
+      -- Goal: ↑f.m ≤ (2 : R) ^ prec.toNat - 1 (already has toNat from the definition)
+      have h4 := FloatFormat.nat_four_le_two_pow_prec
+      have h_sub : (2 : R) ^ FloatFormat.prec.toNat - 1 = ((2 ^ FloatFormat.prec.toNat - 1 : ℕ) : R) := by
+        rw [Nat.cast_sub (by omega : 1 ≤ 2 ^ FloatFormat.prec.toNat)]
+        simp
+      rw [h_sub]
+      exact_mod_cast h_nat_le
     · exact zpow_nonneg (by norm_num) _
   · -- Case: f.e < max_exp
     have h_lt : f.e < FloatFormat.max_exp := lt_of_le_of_ne h_e_bound h_e
@@ -192,11 +194,21 @@ theorem finite_pos_le_largest {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
       apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
       omega
     have h_m_le : (f.m : R) ≤ (2 : R) ^ FloatFormat.prec - 1 := by
-      rw [FloatFormat.natCast_pow_prec_pred]
-      norm_cast
-      omega
+      have h_nat_le : f.m ≤ 2^FloatFormat.prec.toNat - 1 := Nat.le_sub_one_of_lt h_m_bound
+      have h_pow_eq : (2 : R) ^ FloatFormat.prec = (2 : R) ^ FloatFormat.prec.toNat := by
+        rw [← zpow_natCast]; congr 1; exact FloatFormat.prec_toNat_eq.symm
+      rw [h_pow_eq]
+      have h4 := FloatFormat.nat_four_le_two_pow_prec
+      have h_sub : (2 : R) ^ FloatFormat.prec.toNat - 1 = ((2 ^ FloatFormat.prec.toNat - 1 : ℕ) : R) := by
+        rw [Nat.cast_sub (by omega : 1 ≤ 2 ^ FloatFormat.prec.toNat)]
+        simp
+      rw [h_sub]
+      exact_mod_cast h_nat_le
 
     rw [Int.cast_two]
+    -- Connect 2^prec (zpow) to 2^prec.toNat (pow)
+    have h_prec_eq : (2 : R) ^ FloatFormat.prec = (2 : R) ^ FloatFormat.prec.toNat := by
+      rw [← zpow_natCast]; congr 1; exact FloatFormat.prec_toNat_eq.symm
     calc (f.m : R) * ((2 : R) ^ (f.e - (FloatFormat.prec : ℤ) + 1) : R)
        ≤ ((2 : R) ^ FloatFormat.prec - 1) * ((2 : R) ^ (f.e - (FloatFormat.prec : ℤ) + 1) : R) := by {
          apply mul_le_mul_of_nonneg_right h_m_le
@@ -205,7 +217,12 @@ theorem finite_pos_le_largest {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
          apply mul_le_mul_of_nonneg_left h_pow_le
          simp only [sub_nonneg]
          apply le_trans (by norm_num : (1 : R) ≤ 4)
-         exact FloatFormat.prec_pow_le }
+         have h_prec_zpow : (2 : R) ^ FloatFormat.prec = (2 : R) ^ FloatFormat.prec.toNat := by
+           rw [← zpow_natCast]; congr 1; exact FloatFormat.prec_toNat_eq.symm
+         rw [h_prec_zpow]
+         exact FloatFormat.prec_pow_le (R := R) }
+     _ = ((2 : R) ^ FloatFormat.prec.toNat - 1) * ((2 : R) ^ (FloatFormat.max_exp - (FloatFormat.prec : ℤ) + 1) : R) := by {
+         rw [h_prec_eq] }
 
 -- Main theorem: largestFiniteFloat is indeed the largest
 theorem finite_le_largestFiniteFloat {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
@@ -221,7 +238,7 @@ section Finiteness
 
 def normalFiniteEm : List (ℤ × ℕ) :=
   let e := List.range ((FloatFormat.max_exp - FloatFormat.min_exp + 1).natAbs) |> List.map (· + FloatFormat.min_exp)
-  let m := List.range (2^FloatFormat.prec - 2^(FloatFormat.prec-1)) |> List.map (· + 2^(FloatFormat.prec-1))
+  let m := List.range (2^FloatFormat.prec.toNat - 2^(FloatFormat.prec-1).toNat) |> List.map (· + 2^(FloatFormat.prec-1).toNat)
   e ×ˢ m
 
 theorem normalFiniteEm_isNormal : ∀ e m, (e, m) ∈ normalFiniteEm → _root_.isNormal m := by
@@ -235,17 +252,16 @@ theorem normalFiniteEm_isNormal : ∀ e m, (e, m) ∈ normalFiniteEm → _root_.
   rw [List.mem_map] at hin
   rcases hin with ⟨a, har, hmeq⟩
   rw [List.mem_range] at har
-  have har' : a + 2 ^ (FloatFormat.prec - 1) < 2 ^ FloatFormat.prec := by
-    rw [← add_lt_add_iff_right (a := 2 ^ (FloatFormat.prec - 1))] at har
+  have har' : a + 2 ^ (FloatFormat.prec - 1).toNat < 2 ^ FloatFormat.prec.toNat := by
+    rw [← add_lt_add_iff_right (a := 2 ^ (FloatFormat.prec - 1).toNat)] at har
     rw [Nat.sub_add_cancel] at har
     trivial
-    gcongr
-    norm_num
-    fomega
+    have := FloatFormat.nat_two_pow_prec_sub_one_lt_two_pow_prec
+    omega
   rw [← hmeq]
   split_ands
-  · linarith
-  · trivial
+  · have := FloatFormat.one_le_prec_sub_one_toNat; omega
+  · exact har'
 
 theorem normalFiniteEm_isValidFiniteVal : ∀ e m, (e, m) ∈ normalFiniteEm → IsValidFiniteVal e m := by
   intro e m hin
@@ -271,7 +287,8 @@ theorem normalFiniteEm_isValidFiniteVal : ∀ e m, (e, m) ∈ normalFiniteEm →
   · zify at hcr
     rw [abs_of_pos] at hcr
     linarith
-    flinarith
+    have := FloatFormat.exp_order
+    omega
   · simp_all
   · left
     trivial
@@ -280,7 +297,7 @@ def normalFiniteEmv : List { (e, m) : ℤ × ℕ | IsValidFiniteVal e m } :=
   normalFiniteEm.attachWith (λ em => IsValidFiniteVal em.1 em.2) (λ em => normalFiniteEm_isValidFiniteVal em.1 em.2)
 
 def subnormalFiniteEm : List (ℤ × ℕ) :=
-  List.range (2^(FloatFormat.prec-1)) |> List.map (FloatFormat.min_exp, ·)
+  List.range (2^(FloatFormat.prec-1).toNat) |> List.map (FloatFormat.min_exp, ·)
 
 theorem subnormalFiniteEm_isSubnormal : ∀ e m, (e, m) ∈ subnormalFiniteEm → _root_.isSubnormal e m := by
   intro e m hin
@@ -303,8 +320,8 @@ theorem subnormalFiniteEm_isValidFiniteVal : ∀ e m, (e, m) ∈ subnormalFinite
   rw [List.mem_range] at har
   split_ands
   · grind
-  · fomega
-  · fomega
+  · have := FloatFormat.exp_order; omega
+  · have := FloatFormat.nat_two_pow_prec_sub_one_lt_two_pow_prec; omega
   · right
     trivial
 
@@ -355,16 +372,36 @@ theorem in_allFiniteFps (f : FiniteFp) : f ∈ allFiniteFps := by
         · zify
           rw [abs_of_nonneg]
           omega
-      · use m - 2^(FloatFormat.prec - 1)
+      · -- Normalize (prec - 1).toNat to prec.toNat - 1 throughout
+        have hpow_eq : (2 : ℕ) ^ (FloatFormat.prec - 1).toNat = 2 ^ (FloatFormat.prec.toNat - 1) := by
+          rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
+        -- h1 : isNormal m means 2^(prec-1).toNat ≤ m < 2^prec.toNat
+        unfold _root_.isNormal at h1
+        rw [hpow_eq] at h1
+        use m - 2^(FloatFormat.prec.toNat - 1)
         norm_num
+        have hpow_lt := FloatFormat.nat_two_pow_prec_sub_one_lt_two_pow_prec
+        have hpow_ge := FloatFormat.nat_two_le_two_pow_prec_sub_one
+        -- Help omega understand 2^prec = 2 * 2^(prec-1)
+        have hpow_double : (2 : ℕ) ^ FloatFormat.prec.toNat = 2 * 2 ^ (FloatFormat.prec.toNat - 1) := by
+          have hp := FloatFormat.prec_toNat_pos
+          conv_rhs => rw [mul_comm, ← Nat.pow_succ, Nat.succ_eq_add_one, Nat.sub_add_cancel hp]
+        obtain ⟨h1_lb, h1_ub⟩ := h1
         omega
     · right -- Subnormal
       unfold subnormalFiniteEm
       rw [List.mem_map]
       norm_num
+      -- Normalize (prec - 1).toNat to prec.toNat - 1
+      have hpow_eq : (2 : ℕ) ^ (FloatFormat.prec - 1).toNat = 2 ^ (FloatFormat.prec.toNat - 1) := by
+        rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
       unfold _root_.isSubnormal at h1
+      rw [hpow_eq] at h1
+      -- Help omega with power bound
+      have hpow_ge := FloatFormat.nat_two_le_two_pow_prec_sub_one
+      simp only [FloatFormat.prec_sub_one_toNat_eq_toNat_sub] at hpow_ge
       split_ands
-      · fomega
+      · have := FloatFormat.exp_order; omega
       · omega
   if s = false then
     grind
@@ -429,7 +466,7 @@ instance : Finite (FiniteFp) := inferInstance
 theorem univ_def : Finset.univ = allFiniteFps.toFinset := by rfl
 
 -- TODO: Define individual sizes for normal/subnormal
-theorem card_def : Fintype.card FiniteFp = 2 * ((FloatFormat.max_exp - FloatFormat.min_exp + 1) * (2^(FloatFormat.prec - 1)) + 2^(FloatFormat.prec - 1)) := by
+theorem card_def : Fintype.card FiniteFp = 2 * ((FloatFormat.max_exp - FloatFormat.min_exp + 1).toNat * (2^(FloatFormat.prec - 1).toNat) + 2^(FloatFormat.prec - 1).toNat) := by
   unfold Fintype.card
   rw [univ_def]
   rw [List.toFinset_card_of_nodup allFiniteFps_no_dup]
@@ -442,20 +479,28 @@ theorem card_def : Fintype.card FiniteFp = 2 * ((FloatFormat.max_exp - FloatForm
   norm_num
   unfold ml
   rw [List.length_map, List.length_range]
-  rw [abs_of_nonneg]
-  rw [Nat.cast_sub, Nat.cast_pow, Nat.cast_pow, Nat.cast_two]
-  -- apply (mul_eq_mul_iff_eq_and_eq_of_pos ?_ ?_ ?_ ?_).mpr
-  have : ((2 : ℤ) ^ FloatFormat.prec - 2 ^ (FloatFormat.prec - 1)) = 2 ^(FloatFormat.prec - 1) := by
-    -- rw [show (2 : ℤ)^FloatFormat.prec = (2 : ℤ)^(FloatFormat.prec - 1 + 1) by later]
-    have : (2 : ℤ)^FloatFormat.prec = (2 : ℤ)^(FloatFormat.prec - 1 + 1) := by
-      congr
-      fomega
-    rw [this]
-    rw [pow_add, pow_one]
-    ring
-  rw [this]
-  fomega
-  fomega
+  -- natAbs = toNat for nonnegative integers
+  have hnatabs_eq : (FloatFormat.max_exp - FloatFormat.min_exp + 1).natAbs =
+      (FloatFormat.max_exp - FloatFormat.min_exp + 1).toNat := by
+    have hn : 0 ≤ FloatFormat.max_exp - FloatFormat.min_exp + 1 := by
+      have := FloatFormat.exp_order; omega
+    apply Int.ofNat_injective
+    calc (↑(FloatFormat.max_exp - FloatFormat.min_exp + 1).natAbs : ℤ)
+        = FloatFormat.max_exp - FloatFormat.min_exp + 1 := (Int.eq_natAbs_of_nonneg hn).symm
+      _ = ↑(FloatFormat.max_exp - FloatFormat.min_exp + 1).toNat := (Int.toNat_of_nonneg hn).symm
+  -- Normalize (prec - 1).toNat to prec.toNat - 1
+  have hpow_eq : (2 : ℕ) ^ (FloatFormat.prec - 1).toNat = 2 ^ (FloatFormat.prec.toNat - 1) := by
+    rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
+  rw [hnatabs_eq, hpow_eq]
+  -- Goal is now in ℕ: n * (2^p - 2^(p-1)) = n * 2^(p-1)
+  -- Key: 2^p - 2^(p-1) = 2^(p-1) when p ≥ 1
+  have hpow_sub : (2 : ℕ) ^ FloatFormat.prec.toNat - 2 ^ (FloatFormat.prec.toNat - 1) =
+      2 ^ (FloatFormat.prec.toNat - 1) := by
+    have hp := FloatFormat.prec_toNat_pos
+    have : (2 : ℕ) ^ FloatFormat.prec.toNat = 2 * 2 ^ (FloatFormat.prec.toNat - 1) := by
+      conv_rhs => rw [mul_comm, ← Nat.pow_succ, Nat.succ_eq_add_one, Nat.sub_add_cancel hp]
+    omega
+  rw [hpow_sub]
 
 
 end Finiteness

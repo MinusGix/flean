@@ -62,7 +62,7 @@ end Radix
 
 class FloatFormat where
   -- radix : Radix
-  prec : ℕ
+  prec : ℤ
   min_exp : ℤ
   max_exp : ℤ
   valid_prec : prec ≥ 2
@@ -74,6 +74,137 @@ attribute [simp] FloatFormat.valid_prec
 attribute [simp] FloatFormat.exp_order
 attribute [simp] FloatFormat.max_exp_pos
 attribute [simp] FloatFormat.min_exp_nonpos
+
+-- Derived positivity lemmas for prec
+theorem FloatFormat.prec_pos [FloatFormat] : 0 < FloatFormat.prec := by
+  have := FloatFormat.valid_prec; omega
+
+theorem FloatFormat.one_le_prec [FloatFormat] : 1 ≤ FloatFormat.prec := by
+  have := FloatFormat.valid_prec; omega
+
+theorem FloatFormat.one_lt_prec [FloatFormat] : 1 < FloatFormat.prec := by
+  have := FloatFormat.valid_prec; omega
+
+theorem FloatFormat.prec_sub_one_pos [FloatFormat] : 0 < FloatFormat.prec - 1 := by
+  have := FloatFormat.valid_prec; omega
+
+theorem FloatFormat.prec_sub_one_nonneg [FloatFormat] : 0 ≤ FloatFormat.prec - 1 := by
+  have := FloatFormat.valid_prec; omega
+
+attribute [simp] FloatFormat.prec_pos FloatFormat.one_le_prec FloatFormat.one_lt_prec
+attribute [simp] FloatFormat.prec_sub_one_pos FloatFormat.prec_sub_one_nonneg
+
+-- ℕ-specific lemmas for working with toNat
+theorem FloatFormat.prec_toNat_pos [FloatFormat] : 0 < FloatFormat.prec.toNat := by
+  have := FloatFormat.prec_pos
+  omega
+
+theorem FloatFormat.prec_sub_one_toNat_pos [FloatFormat] : 0 < (FloatFormat.prec - 1).toNat := by
+  have := FloatFormat.prec_sub_one_pos
+  omega
+
+@[simp]
+theorem FloatFormat.prec_toNat_eq [FloatFormat] : (FloatFormat.prec.toNat : ℤ) = FloatFormat.prec := by
+  have := FloatFormat.prec_pos
+  omega
+
+@[simp]
+theorem FloatFormat.prec_sub_one_toNat_eq [FloatFormat] : ((FloatFormat.prec - 1).toNat : ℤ) = FloatFormat.prec - 1 := by
+  have := FloatFormat.prec_sub_one_pos
+  omega
+
+theorem FloatFormat.two_le_prec_toNat [FloatFormat] : 2 ≤ FloatFormat.prec.toNat := by
+  have := FloatFormat.valid_prec
+  omega
+
+theorem FloatFormat.one_le_prec_sub_one_toNat [FloatFormat] : 1 ≤ (FloatFormat.prec - 1).toNat := by
+  have := FloatFormat.prec_sub_one_pos
+  omega
+
+-- Connecting (prec - 1).toNat with prec.toNat - 1
+@[simp]
+theorem FloatFormat.prec_sub_one_toNat_eq_toNat_sub [FloatFormat] :
+    (FloatFormat.prec - 1).toNat = FloatFormat.prec.toNat - 1 := by
+  have := FloatFormat.valid_prec
+  omega
+
+-- ℕ power lemmas using toNat
+-- Naming convention: nat_<lhs>_<relation>_<rhs> where "two_pow" means "2^"
+theorem FloatFormat.nat_two_pow_prec_sub_one_lt_two_pow_prec [FloatFormat] :
+    2^(FloatFormat.prec - 1).toNat < 2^FloatFormat.prec.toNat := by
+  have := FloatFormat.valid_prec
+  apply Nat.pow_lt_pow_right (by norm_num)
+  omega
+
+theorem FloatFormat.nat_two_le_two_pow_prec_sub_one [FloatFormat] :
+    2 ≤ 2^(FloatFormat.prec - 1).toNat := by
+  have := FloatFormat.one_le_prec_sub_one_toNat
+  calc 2 = 2^1 := by norm_num
+    _ ≤ 2^(FloatFormat.prec - 1).toNat := Nat.pow_le_pow_right (by norm_num) this
+
+theorem FloatFormat.nat_four_le_two_pow_prec [FloatFormat] :
+    4 ≤ 2^FloatFormat.prec.toNat := by
+  have := FloatFormat.two_le_prec_toNat
+  calc 4 = 2^2 := by norm_num
+    _ ≤ 2^FloatFormat.prec.toNat := Nat.pow_le_pow_right (by norm_num) this
+
+-- Generic R versions of power bounds (used by other files)
+-- Uses ℕ cast to work around type class issues
+-- Note: IsStrictOrderedRing implies CharZero
+theorem FloatFormat.prec_pred_pow_le [FloatFormat] {R : Type*} [Semiring R] [PartialOrder R] [IsStrictOrderedRing R] :
+    (2 : R) ≤ (2 : R) ^ (FloatFormat.prec - 1).toNat := by
+  have h := FloatFormat.one_le_prec_sub_one_toNat
+  have hnat : (2 : ℕ) ≤ 2 ^ (FloatFormat.prec - 1).toNat :=
+    calc (2 : ℕ) = 2^1 := by norm_num
+      _ ≤ 2^(FloatFormat.prec - 1).toNat := Nat.pow_le_pow_right (by norm_num) h
+  exact_mod_cast hnat
+
+theorem FloatFormat.prec_pow_le [FloatFormat] {R : Type*} [Semiring R] [PartialOrder R] [IsStrictOrderedRing R] :
+    (4 : R) ≤ (2 : R) ^ FloatFormat.prec.toNat := by
+  have h := FloatFormat.two_le_prec_toNat
+  have hnat : (4 : ℕ) ≤ 2 ^ FloatFormat.prec.toNat :=
+    calc (4 : ℕ) = 2^2 := by norm_num
+      _ ≤ 2^FloatFormat.prec.toNat := Nat.pow_le_pow_right (by norm_num) h
+  exact_mod_cast hnat
+
+theorem FloatFormat.pow_prec_pred_lt [FloatFormat] {R : Type*} [Semiring R] [PartialOrder R] [IsStrictOrderedRing R] :
+    (2 : R) ^ (FloatFormat.prec - 1).toNat < (2 : R) ^ FloatFormat.prec.toNat := by
+  have := FloatFormat.valid_prec
+  have hnat : (2 : ℕ) ^ (FloatFormat.prec - 1).toNat < 2 ^ FloatFormat.prec.toNat :=
+    Nat.pow_lt_pow_right (by norm_num) (by omega)
+  exact_mod_cast hnat
+
+-- Casting lemmas for working with pow to zpow conversions
+
+/-- Convert `(2 : ℤ) ^ n` to `↑((2 : ℕ) ^ n)` for omega compatibility.
+    This is the reverse direction of Nat.cast_pow.
+    Note: Not marked @[simp] because it conflicts with Nat.cast_pow. -/
+theorem Int.two_pow_eq_nat_cast (n : ℕ) : (2 : ℤ) ^ n = ↑((2 : ℕ) ^ n) := by
+  simp only [Nat.cast_pow, Nat.cast_ofNat]
+
+theorem FloatFormat.natCast_pow_prec_pred [FloatFormat] {R : Type*} [DivisionRing R] :
+    ((2 : ℕ) ^ (FloatFormat.prec - 1).toNat : R) = (2 : R) ^ (FloatFormat.prec - 1) := by
+  rw [← zpow_natCast]
+  congr 1
+  exact FloatFormat.prec_sub_one_toNat_eq
+
+theorem FloatFormat.natCast_pow_prec [FloatFormat] {R : Type*} [DivisionRing R] :
+    ((2 : ℕ) ^ FloatFormat.prec.toNat : R) = (2 : R) ^ FloatFormat.prec := by
+  rw [← zpow_natCast]
+  congr 1
+  exact FloatFormat.prec_toNat_eq
+
+-- Relates pow with (prec.toNat - 1) (ℕ subtraction) to zpow with (prec - 1) (ℤ subtraction)
+theorem FloatFormat.pow_toNat_sub_one_eq_zpow_sub_one [FloatFormat] {R : Type*} [DivisionRing R] :
+    (2 : R) ^ (FloatFormat.prec.toNat - 1) = (2 : R) ^ (FloatFormat.prec - 1) := by
+  rw [← zpow_natCast]
+  congr 1
+  have hp := FloatFormat.valid_prec
+  have h1 : (FloatFormat.prec.toNat : ℤ) = FloatFormat.prec := Int.toNat_of_nonneg (by omega)
+  have h2 : FloatFormat.prec.toNat ≥ 1 := by
+    have : 2 ≤ FloatFormat.prec.toNat := (Int.le_toNat (by omega)).mpr hp
+    omega
+  omega
 
 namespace FloatFormat
 
@@ -263,46 +394,33 @@ def TF32 : StdFloatFormat := {
 theorem exp_order_le [FloatFormat] : min_exp ≤ max_exp := FloatFormat.exp_order.le
 
 @[simp]
-theorem prec_pow_le [FloatFormat] {R : Type*} [Semiring R] [LinearOrder R] [IsStrictOrderedRing R] : (4 : R) ≤ (2 : R)^FloatFormat.prec := by
-  rw [show (4 : R) = (2 : R)^(2 : ℕ) by norm_num]
-  apply pow_le_pow_right₀ (by norm_num) FloatFormat.valid_prec
+theorem zpow_prec_ge_four [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : (4 : R) ≤ (2 : R)^FloatFormat.prec := by
+  have hp := FloatFormat.valid_prec
+  calc (4 : R) = (2 : R)^(2 : ℤ) := by norm_num
+    _ ≤ (2 : R)^FloatFormat.prec := by
+        apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+        omega
 
-theorem prec_pred_pow_le [FloatFormat] {R : Type*} [Semiring R] [LinearOrder R] [IsStrictOrderedRing R] : (2 : R) ≤ (2 : R)^(FloatFormat.prec - 1) := by
-  conv_lhs => rw [show (2 : R) = (2 : R)^(1 : ℕ) by norm_num]
-  have := FloatFormat.valid_prec
-  gcongr
-  norm_num
+theorem zpow_prec_sub_one_ge_two [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : (2 : R) ≤ (2 : R)^(FloatFormat.prec - 1) := by
+  have hp := FloatFormat.valid_prec
+  calc (2 : R) = (2 : R)^(1 : ℤ) := by norm_num
+    _ ≤ (2 : R)^(FloatFormat.prec - 1) := by
+        apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+        omega
+
+@[simp]
+theorem zpow_prec_pred_lt [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : (2 : R)^(FloatFormat.prec - 1) < (2 : R)^FloatFormat.prec := by
+  have hp := FloatFormat.valid_prec
+  apply zpow_lt_zpow_right₀ (by norm_num : (1 : R) < 2)
   omega
 
-@[simp]
-theorem pow_prec_pred_lt [FloatFormat] : 2^(FloatFormat.prec - 1) < 2^FloatFormat.prec := by
-  have := FloatFormat.valid_prec
-  apply pow_lt_pow_right₀ (by norm_num) (by omega)
-
-theorem pow_prec_pred_lt' [FloatFormat] {R : Type*} [Semiring R] [LinearOrder R] [IsStrictOrderedRing R] : (2 : R)^(FloatFormat.prec - 1) < (2 : R)^FloatFormat.prec := by
-  have := FloatFormat.valid_prec
-  apply pow_lt_pow_right₀ (by norm_num) (by omega)
-
-theorem zpow_prec_pred_lt' [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : (2 : R)^((FloatFormat.prec : ℤ) - 1) < (2 : R)^(FloatFormat.prec) := by
-  have := FloatFormat.valid_prec
-  rw [zpow_sub_one₀ (by norm_num)]
-  norm_num
-
 theorem zpow_neg_prec_plus_one_le_two [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
-  : (2 : R)^(-(FloatFormat.prec : ℤ) + 1) ≤ (2 : R) := by
-  conv_rhs => rw [← zpow_one (2 : R)]
-  gcongr
-  <;> norm_num
-
-/-- 2^(prec - 1) where the power is nat is equivalent to 2^(prec - 1) as integers
-This is somehow annoying to work with otherwise, Lean's existing casting facilities are too simplistic.
-This being simp makes it somehow used by norm_num? -/
-@[simp]
-theorem pow_prec_sub_one_nat_int [FloatFormat] {R : Type*} [Field R]
-  : (2 : R)^(FloatFormat.prec - 1) = (2 : R)^((FloatFormat.prec : ℤ) - 1) := by
-  have := FloatFormat.valid_prec
-  have h : (FloatFormat.prec : ℤ) - 1 = ((FloatFormat.prec - 1 : ℕ) : ℤ) := by omega
-  rw [h, zpow_natCast]
+  : (2 : R)^(-FloatFormat.prec + 1) ≤ (2 : R) := by
+  have hp := FloatFormat.valid_prec
+  calc (2 : R)^(-FloatFormat.prec + 1) ≤ (2 : R)^(1 : ℤ) := by
+        apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+        omega
+    _ = 2 := by norm_num
 
 
 theorem zpow_min_exp_prec_plus_one_le_zpow_min_exp_sub_one
@@ -310,9 +428,8 @@ theorem zpow_min_exp_prec_plus_one_le_zpow_min_exp_sub_one
   [Field R] [LinearOrder R] [IsStrictOrderedRing R]
   [FloatFormat] : (2 : R)^(FloatFormat.min_exp - FloatFormat.prec + 1) ≤ (2 : R)^(FloatFormat.min_exp - 1) := by
   have h := FloatFormat.valid_prec
-  have h2 : (2 : ℤ) ≤ (FloatFormat.prec : ℤ) := Nat.cast_le.mpr h
   apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
-  linarith
+  omega
 
 theorem zpow_min_exp_prec_plus_one_le_zpow_min_exp
   {R : Type*}
@@ -320,49 +437,27 @@ theorem zpow_min_exp_prec_plus_one_le_zpow_min_exp
   [FloatFormat] : (2 : R)^(FloatFormat.min_exp - FloatFormat.prec + 1) ≤ (2 : R)^(FloatFormat.min_exp) := by
   have := zpow_min_exp_prec_plus_one_le_zpow_min_exp_sub_one (R := R)
   apply le_trans this
-  simp only [Nat.one_lt_ofNat, zpow_le_zpow_iff_right₀, tsub_le_iff_right, le_add_iff_nonneg_right,
-    zero_le_one]
-
--- @[simp high]
-theorem pow_prec_nat_int [FloatFormat] {R : Type*} [Field R]
-  : (2 : R)^(FloatFormat.prec) = (2 : R)^((FloatFormat.prec : ℤ)) := by
-  rw [zpow_natCast]
-
-theorem natCast_pow_prec [FloatFormat] {R : Type*} [Field R]
-  : (2 : R)^FloatFormat.prec = ↑((2 : ℕ) ^ FloatFormat.prec) := by norm_cast
-
-theorem natCast_pow_prec_pred [FloatFormat] {R : Type*} [Field R]
-  : (2 : R)^FloatFormat.prec - (1 : R) = ↑((2 : ℕ)^FloatFormat.prec - (1 : ℕ)) := by
-  rw [Nat.cast_sub]
-  norm_cast
-  apply one_le_pow₀ (by norm_num)
-
-theorem natCast_pow_prec_msb [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
-  : (2 : R)^(FloatFormat.prec - 1) = ↑((2 : ℕ)^FloatFormat.prec) * 2⁻¹ := by
-  -- zify
-  rw [← zpow_natCast, Int.natCast_sub, Int.natCast_one]
-  rw [zpow_natCast_sub_one₀]
-  rw [div_eq_mul_inv]
-  norm_num
-  norm_num
-  have := FloatFormat.valid_prec
+  apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
   omega
 
-theorem natCast_pow_prec_msb' [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
-  : (2 : R)^(FloatFormat.prec - 1) = ↑((2 : ℕ)^(FloatFormat.prec - 1)) := by
-  simp only [pow_prec_sub_one_nat_int, Nat.cast_pow, Nat.cast_ofNat]
+theorem zpow_prec_eq_natpow [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+  : (2 : R)^FloatFormat.prec = (2 : R)^FloatFormat.prec.toNat := by
+  have hp := FloatFormat.prec_pos
+  rw [← zpow_natCast (2 : R) FloatFormat.prec.toNat, Int.toNat_of_nonneg (le_of_lt hp)]
 
-namespace Const
+theorem zpow_prec_sub_one_eq_natpow [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+  : (2 : R)^(FloatFormat.prec - 1) = (2 : R)^(FloatFormat.prec - 1).toNat := by
+  have hp := FloatFormat.prec_sub_one_pos
+  rw [← zpow_natCast (2 : R) (FloatFormat.prec - 1).toNat, Int.toNat_of_nonneg (le_of_lt hp)]
 
-theorem const_pow_le_pow_prec [FloatFormat] : 2^2 ≤ 2^FloatFormat.prec := by
-  gcongr
-  norm_num
-  exact FloatFormat.valid_prec
+@[simp]
+theorem pow_prec_sub_one_nat_int [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+  : (2 : R)^(FloatFormat.prec - 1).toNat = (2 : R)^(FloatFormat.prec - 1) := by
+  exact zpow_prec_sub_one_eq_natpow.symm
 
-theorem const_le_pow_prec [FloatFormat] : 4 ≤ 2^FloatFormat.prec := by
-  simp only [prec_pow_le]
-
-end Const
+theorem zpow_prec_msb [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+  : (2 : R)^(FloatFormat.prec - 1) = (2 : R)^FloatFormat.prec * 2⁻¹ := by
+  rw [zpow_sub_one₀ (by norm_num : (2 : R) ≠ 0)]
 
 -- def Decimal32 : FloatFormat := {
 --   radix := Radix.Decimal,
@@ -550,15 +645,17 @@ elab_rules : tactic
     -- Build the list of lemmas for linarith.
     let mut allTerms : Array (TSyntax `term) :=
       #[← `(FloatFormat.valid_prec), ← `(FloatFormat.exp_order),
-        ← `(FloatFormat.max_exp_pos), ← `(FloatFormat.min_exp_nonpos), ← `(FloatFormat.pow_prec_pred_lt)]
+        ← `(FloatFormat.max_exp_pos), ← `(FloatFormat.min_exp_nonpos)]
 
     -- Add generic lemmas, specializing them if we have a type for R.
     match R_opt with
     | some r =>
       trace[linarith] "r: {r}"
       allTerms := allTerms.push (← `(FloatFormat.prec_pred_pow_le (R := $r)))
+      allTerms := allTerms.push (← `(FloatFormat.pow_prec_pred_lt (R := $r)))
     | none =>
       allTerms := allTerms.push (← `(FloatFormat.prec_pred_pow_le))
+      allTerms := allTerms.push (← `(FloatFormat.pow_prec_pred_lt))
 
     -- Append any additional lemmas provided by the user.
     if let some userArgs := args then
@@ -611,15 +708,17 @@ elab_rules : tactic
     -- Build the list of lemmas for linarith.
     let mut allTerms : Array (TSyntax `term) :=
       #[← `(FloatFormat.valid_prec), ← `(FloatFormat.exp_order),
-        ← `(FloatFormat.max_exp_pos), ← `(FloatFormat.min_exp_nonpos), ← `(FloatFormat.pow_prec_pred_lt)]
+        ← `(FloatFormat.max_exp_pos), ← `(FloatFormat.min_exp_nonpos)]
 
     -- Add generic lemmas, specializing them if we have a type for R.
     match R_opt with
     | some r =>
       trace[linarith] "r: {r}"
       allTerms := allTerms.push (← `(FloatFormat.prec_pred_pow_le (R := $r)))
+      allTerms := allTerms.push (← `(FloatFormat.pow_prec_pred_lt (R := $r)))
     | none =>
       allTerms := allTerms.push (← `(FloatFormat.prec_pred_pow_le))
+      allTerms := allTerms.push (← `(FloatFormat.pow_prec_pred_lt))
 
     -- Append any additional lemmas provided by the user.
     if let some userArgs := args then
@@ -650,7 +749,7 @@ elab_rules : tactic
         ← `(FloatFormat.max_exp_pos),
         ← `(FloatFormat.min_exp_nonpos),
         ← `(FloatFormat.prec_pred_pow_le (R := ℕ)),
-        ← `(FloatFormat.pow_prec_pred_lt)
+        ← `(FloatFormat.pow_prec_pred_lt (R := ℕ))
       ]
 
       -- 2. Combine the default lemmas with any lemmas provided by the user.

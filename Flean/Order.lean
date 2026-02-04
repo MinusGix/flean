@@ -318,11 +318,17 @@ theorem toVal_le (R : Type*) [Field R] [LinearOrder R] [IsStrictOrderedRing R]
     have := valid_min_exp_lt_imp_isNormal (by linarith [y.valid_min_exp])
     unfold isNormal at this
     have yvf := y.valid.right.right.left
-    have y_m_too_large : 2^(FloatFormat.prec) ≤ y.m := by
-      calc 2^FloatFormat.prec
-        _ = 2^(FloatFormat.prec - 1 + 1) := by rw[Nat.sub_add_cancel (by fomega)]
-        _ = 2^(FloatFormat.prec - 1) * 2 := by rw [Nat.pow_add_one]
-        _ ≤ x.m * 2 := by omega
+    have y_m_too_large : (2 : ℕ)^FloatFormat.prec.toNat ≤ y.m := by
+      have hprec := FloatFormat.valid_prec
+      have hprecm1 : (FloatFormat.prec - 1).toNat = FloatFormat.prec.toNat - 1 :=
+        FloatFormat.prec_sub_one_toNat_eq_toNat_sub
+      calc (2 : ℕ)^FloatFormat.prec.toNat
+        _ = 2^(FloatFormat.prec.toNat - 1 + 1) := by
+          congr 1
+          have hp := FloatFormat.prec_toNat_pos
+          omega
+        _ = 2^(FloatFormat.prec.toNat - 1) * 2 := by rw [Nat.pow_add_one]
+        _ ≤ x.m * 2 := by rw [← hprecm1]; omega
         _ ≤ x.m * 2^((x.e - y.e).natAbs) := by
           gcongr
           apply le_self_pow₀ (by norm_num) (by omega)
@@ -354,11 +360,17 @@ theorem toVal_le (R : Type*) [Field R] [LinearOrder R] [IsStrictOrderedRing R]
       intro heq
       have := x.valid.right.right.left
       have is_normal_y : _root_.isNormal y.m := valid_min_exp_lt_imp_isNormal (by linarith [x.valid_min_exp])
-      have xm_too_large : 2^FloatFormat.prec ≤ x.m := by
-        calc 2^FloatFormat.prec
-          _ = 2^(FloatFormat.prec - 1 + 1) := by rw[Nat.sub_add_cancel (by fomega)]
-          _ = 2^(FloatFormat.prec - 1) * 2 := by rw [Nat.pow_add_one]
-          _ ≤ y.m * 2 := by omega
+      have xm_too_large : (2 : ℕ)^FloatFormat.prec.toNat ≤ x.m := by
+        have hprec := FloatFormat.valid_prec
+        have hprecm1 : (FloatFormat.prec - 1).toNat = FloatFormat.prec.toNat - 1 :=
+          FloatFormat.prec_sub_one_toNat_eq_toNat_sub
+        calc (2 : ℕ)^FloatFormat.prec.toNat
+          _ = 2^(FloatFormat.prec.toNat - 1 + 1) := by
+            congr 1
+            have hp := FloatFormat.prec_toNat_pos
+            omega
+          _ = 2^(FloatFormat.prec.toNat - 1) * 2 := by rw [Nat.pow_add_one]
+          _ ≤ y.m * 2 := by rw [← hprecm1]; omega
           _ ≤ y.m * 2^((y.e - x.e).natAbs) := by
             gcongr
             apply le_self_pow₀ (by norm_num) (by omega)

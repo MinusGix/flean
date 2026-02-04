@@ -5,7 +5,7 @@ import Mathlib.Tactic.Linarith
 import Mathlib.Data.Real.Basic
 import Mathlib.Analysis.SpecialFunctions.Log.Base
 import Mathlib.Analysis.SpecialFunctions.Pow.Real
-import Mathlib.Data.Real.Irrational
+import Mathlib.NumberTheory.Real.Irrational
 
 import Flean.Basic
 import Flean.Ulp

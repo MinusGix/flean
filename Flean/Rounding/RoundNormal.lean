@@ -5,7 +5,7 @@ import Mathlib.Tactic.Linarith
 import Mathlib.Data.Real.Basic
 import Mathlib.Analysis.SpecialFunctions.Log.Base
 import Mathlib.Analysis.SpecialFunctions.Pow.Real
-import Mathlib.Data.Real.Irrational
+import Mathlib.NumberTheory.Real.Irrational
 
 import Flean.Basic
 import Flean.Ulp
@@ -31,7 +31,8 @@ theorem floor_scaled_normal_pos (x : R) (hx : isNormalRange x) :
   apply Int.floor_pos.mpr
   apply one_le_mul_of_one_le_of_one_le
   · exact (findExponentDown_div_binade_normal hx).left
-  · apply one_le_pow₀ (by norm_num : (1 : R) ≤ 2)
+  · have hp := FloatFormat.prec_sub_one_pos
+    exact one_le_zpow₀ (by norm_num : (1 : R) ≤ 2) (by omega)
 
 /-- Scaling preserves inequalities in the same binade -/
 theorem scaled_le_of_le {x y : R} (e : ℤ) (h : x ≤ y) :
@@ -40,7 +41,75 @@ theorem scaled_le_of_le {x y : R} (e : ℤ) (h : x ≤ y) :
   apply mul_le_mul_of_nonneg_right
   · apply div_le_div_of_nonneg_right h
     exact le_of_lt (zpow_pos (by norm_num : (0 : R) < 2) _)
-  · exact pow_nonneg (by norm_num : (0 : R) ≤ 2) _
+  · have hp := FloatFormat.prec_sub_one_pos
+    exact zpow_nonneg (by norm_num : (0 : R) ≤ 2) _
+
+/-! ## Int/Nat power bounds for omega
+
+These helper lemmas convert ℤ power inequalities to ℕ inequalities that omega can solve.
+The key pattern is: `(2 : ℤ)^n.toNat = ↑((2 : ℕ)^n.toNat)` via Int.two_pow_eq_nat_cast,
+then omega can compare natural numbers directly. -/
+
+/-- Convert a lower bound from ℤ power to ℕ for omega -/
+theorem int_pow_le_natAbs_of_nonneg {m : ℤ} (hm_pos : 0 < m) (n : ℕ)
+    (h : (2 : ℤ)^n ≤ m) : 2^n ≤ m.natAbs := by
+  have hnatAbs_eq : (m.natAbs : ℤ) = m := Int.natAbs_of_nonneg (le_of_lt hm_pos)
+  have h1 : (2 : ℤ)^n ≤ m.natAbs := by rw [hnatAbs_eq]; exact h
+  simp only [Int.two_pow_eq_nat_cast] at h1
+  omega
+
+/-- Convert an upper bound from ℤ power to ℕ for omega -/
+theorem natAbs_lt_int_pow_of_nonneg {m : ℤ} (hm_pos : 0 < m) (n : ℕ)
+    (h : m < (2 : ℤ)^n) : m.natAbs < 2^n := by
+  have hnatAbs_eq : (m.natAbs : ℤ) = m := Int.natAbs_of_nonneg (le_of_lt hm_pos)
+  have h1 : (m.natAbs : ℤ) < (2 : ℤ)^n := by rw [hnatAbs_eq]; exact h
+  simp only [Int.two_pow_eq_nat_cast] at h1
+  omega
+
+/-- A positive integer floor is normal if it satisfies the scaled bounds -/
+theorem floor_isNormal_of_bounds (x : R) (hx : isNormalRange x) :
+    let e := findExponentDown x
+    let m := ⌊x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1)⌋
+    let hb := findExponentDown_div_binade_normal hx
+    isNormal m.natAbs := by
+  intro e m hb
+  have mpos := floor_scaled_normal_pos x hx
+  have hnatAbs_eq : (m.natAbs : ℤ) = m := Int.natAbs_of_nonneg (le_of_lt mpos)
+  -- Lower bound
+  have hm_lb_R : (2 : R)^(FloatFormat.prec - 1) ≤ x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1) := by
+    calc (2 : R)^(FloatFormat.prec - 1)
+        = 1 * (2 : R)^(FloatFormat.prec - 1) := by rw [one_mul]
+      _ ≤ (x / 2 ^ e) * (2 : R)^(FloatFormat.prec - 1) := by
+          apply mul_le_mul_of_nonneg_right hb.left
+          exact zpow_nonneg (by norm_num) _
+  have hm_lb_int : (2 : ℤ)^(FloatFormat.prec - 1).toNat ≤ m := by
+    apply Int.le_floor.mpr
+    simp only [Int.cast_pow, Int.cast_ofNat]
+    calc (2 : R)^(FloatFormat.prec - 1).toNat
+        = (2 : R)^(FloatFormat.prec - 1) := FloatFormat.natCast_pow_prec_pred
+      _ ≤ x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1) := hm_lb_R
+  -- Upper bound
+  have hm_ub_R : x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1) < (2 : R)^FloatFormat.prec := by
+    have hpow_eq : (2 : R)^(FloatFormat.prec - 1) = (2 : R)^FloatFormat.prec / 2 := by
+      rw [zpow_sub_one₀ (by norm_num : (2 : R) ≠ 0), div_eq_mul_inv]
+    calc x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1)
+        = x / 2 ^ e * ((2 : R)^FloatFormat.prec / 2) := by rw [hpow_eq]
+      _ < 2 * ((2 : R)^FloatFormat.prec / 2) := by
+          apply mul_lt_mul_of_pos_right hb.right
+          apply div_pos (zpow_pos (by norm_num) _) (by norm_num)
+      _ = (2 : R)^FloatFormat.prec := by ring
+  have hm_ub_int : m < (2 : ℤ)^FloatFormat.prec.toNat := by
+    apply Int.floor_lt.mpr
+    simp only [Int.cast_pow, Int.cast_ofNat]
+    have hp := FloatFormat.prec_pos
+    calc (x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1) : R) < (2 : R)^FloatFormat.prec := hm_ub_R
+      _ = (2 : R)^FloatFormat.prec.toNat := by
+          rw [← zpow_natCast]; congr 1
+          exact (Int.toNat_of_nonneg (by omega)).symm
+  -- Convert to ℕ
+  constructor
+  · exact int_pow_le_natAbs_of_nonneg mpos _ hm_lb_int
+  · exact natAbs_lt_int_pow_of_nonneg mpos _ hm_ub_int
 
 /-- Round a positive normal value down -/
 def roundNormalDown (x : R) (h : isNormalRange x) : FiniteFp :=
@@ -53,24 +122,8 @@ def roundNormalDown (x : R) (h : isNormalRange x) : FiniteFp :=
   let m_scaled := scaled * (2 : R) ^ (FloatFormat.prec - 1)
   let m := ⌊m_scaled⌋
   have mpos : m > 0 := floor_scaled_normal_pos x h
-  have vf : IsValidFiniteVal e m.natAbs := by
-    have hb := findExponentDown_div_binade_normal h
-    apply findExponentDown_IsValidFiniteVal_normal
-    split_ands
-    <;> zify
-    <;> rw [abs_of_pos mpos]
-    · apply Int.le_floor.mpr
-      zify
-      conv_lhs => rw [← one_mul (2 ^ (FloatFormat.prec - 1))]
-      rw [mul_le_mul_iff_of_pos_right]
-      · exact hb.left
-      · linearize
-    · apply Int.floor_lt.mpr
-      unfold m_scaled scaled binade_base e
-      rw [FloatFormat.natCast_pow_prec_msb, mul_comm, mul_assoc]
-      norm_num
-      rw [← lt_div_iff₀' (by norm_num)]
-      linarith
+  have vf : IsValidFiniteVal e m.natAbs :=
+    findExponentDown_IsValidFiniteVal_normal x m.natAbs (floor_isNormal_of_bounds x h)
   FiniteFp.mk false e m.natAbs vf
 
 /-- A rounded down x bounds the resulting finite float from above -/
@@ -116,12 +169,14 @@ theorem roundNormalDown_pos (x : R) (h : isNormalRange x) : (0 : R) < (roundNorm
   · apply one_le_mul_of_one_le_of_one_le
     trivial
     apply one_le_zpow₀ (by norm_num)
-    flinarith
+    have := FloatFormat.valid_prec
+    omega
   · apply Int.floor_pos.mpr
     apply one_le_mul_of_one_le_of_one_le
     trivial
     apply one_le_zpow₀ (by norm_num)
-    flinarith
+    have := FloatFormat.valid_prec
+    omega
   · rw [FloatFormat.radix_val_eq_two]
     norm_num
     linearize
@@ -148,13 +203,15 @@ theorem roundNormalDown_ge_zpow_exp (y : R) (h : isNormalRange y) :
           positivity
   have hfloor_pos : 0 < ⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ := by
     apply Int.floor_pos.mpr
-    calc (1 : R) ≤ (2 : R) ^ (FloatFormat.prec - 1) := one_le_pow₀ (by norm_num : (1 : R) ≤ 2)
+    calc (1 : R) ≤ (2 : R) ^ (FloatFormat.prec - 1) := one_le_zpow₀ (by norm_num : (1 : R) ≤ 2) (by omega)
       _ ≤ y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1) := hscaled_ge
   -- floor(...) ≥ 2^(prec-1) as integers
-  have hfloor_lb_int : (2 : ℤ) ^ (FloatFormat.prec - 1) ≤ ⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ := by
+  have hfloor_lb_int : (2 : ℤ) ^ (FloatFormat.prec - 1).toNat ≤ ⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ := by
     rw [Int.le_floor]
     simp only [Int.cast_pow, Int.cast_ofNat]
-    exact hscaled_ge
+    calc (2 : R)^(FloatFormat.prec - 1).toNat
+        = (2 : R)^(FloatFormat.prec - 1) := FloatFormat.natCast_pow_prec_pred
+      _ ≤ y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1) := hscaled_ge
   -- Simplify the goal: natAbs of floor = floor since floor is positive
   have hfloor_cast_eq : (↑(⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋.natAbs) : R) =
       (⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ : R) := by
@@ -171,15 +228,13 @@ theorem roundNormalDown_ge_zpow_exp (y : R) (h : isNormalRange y) :
   have hexp_eq2 : findExponentDown y - (FloatFormat.prec - 1 : ℤ) = findExponentDown y - ↑FloatFormat.prec + 1 := by ring
   -- Convert the integer floor bound to R using zpow
   have hfloor_lb : (2 : R) ^ (FloatFormat.prec - 1 : ℤ) ≤ ⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ := by
-    have hp : (FloatFormat.prec - 1 : ℤ) = ((FloatFormat.prec - 1 : ℕ) : ℤ) := by omega
-    -- From hfloor_lb_int: (2 : ℤ)^n ≤ ⌊...⌋ in ℤ, cast to R
+    -- From hfloor_lb_int: (2 : ℤ)^(prec-1).toNat ≤ ⌊...⌋ in ℤ, cast to R
     have h_cast := (@Int.cast_mono R _ _ _ _) hfloor_lb_int
     -- h_cast : ↑((2 : ℤ)^n) ≤ ↑⌊...⌋, simp to get (2 : R)^n
     simp only [Int.cast_pow, Int.cast_ofNat] at h_cast
-    -- h_cast : (2 : R) ^ (FloatFormat.prec - 1 : ℕ) ≤ ↑⌊...⌋
+    -- h_cast : (2 : R) ^ (FloatFormat.prec - 1).toNat ≤ ↑⌊...⌋
     calc (2 : R) ^ (FloatFormat.prec - 1 : ℤ)
-        = (2 : R) ^ ((FloatFormat.prec - 1 : ℕ) : ℤ) := by rw [hp]
-      _ = (2 : R) ^ (FloatFormat.prec - 1 : ℕ) := zpow_natCast (2 : R) (FloatFormat.prec - 1)
+        = (2 : R) ^ (FloatFormat.prec - 1).toNat := FloatFormat.natCast_pow_prec_pred.symm
       _ ≤ ⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ := h_cast
   have hmain : (2 : R) ^ findExponentDown y ≤
       ↑⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ *
@@ -272,25 +327,30 @@ def roundNormalUp (x : R) (h : isNormalRange x) : Fp :=
     all_goals linearize
 
   -- Handle overflow within the binade
-  if hm : 2^FloatFormat.prec ≤ m then
+  if hm : (2 : ℤ)^FloatFormat.prec.toNat ≤ m then
     -- Need to move to next binade
     if he : e + 1 > FloatFormat.max_exp then
       -- Overflow to infinity
       Fp.infinite false
     else
-      have vf : IsValidFiniteVal (e + 1) (2^(FloatFormat.prec - 1)) := by
+      have vf : IsValidFiniteVal (e + 1) (2^(FloatFormat.prec - 1).toNat) := by
         norm_num at he
         unfold e at ⊢ he
         split_ands
         · have := findExponentDown_min x
           linarith
         · exact he
-        · flinarith
+        · have hp := FloatFormat.valid_prec
+          have hpow_lt := FloatFormat.nat_two_pow_prec_sub_one_lt_two_pow_prec
+          omega
         · left
           split_ands
-          · rfl
-          · flinarith
-      Fp.finite (FiniteFp.mk false (e + 1) (2^(FloatFormat.prec - 1)) vf)
+          · -- 2^(prec-1).toNat ≤ 2^(prec-1).toNat is reflexive
+            rfl
+          · have hp := FloatFormat.valid_prec
+            have hpow_lt := FloatFormat.nat_two_pow_prec_sub_one_lt_two_pow_prec
+            omega
+      Fp.finite (FiniteFp.mk false (e + 1) (2^(FloatFormat.prec - 1).toNat) vf)
   else
     have vf : IsValidFiniteVal e m.natAbs := by
       norm_num at hm
@@ -301,16 +361,30 @@ def roundNormalUp (x : R) (h : isNormalRange x) : Fp :=
       unfold m m_scaled scaled binade_base at ⊢ hm
       have hx := findExponentDown_div_binade_normal h
       split_ands
-      · apply Int.le_ceil_iff.mpr
-        -- TODO: it'd be cool to have a tactic to say a simple "replace this value with the worst case lower bound from this other hypothesis"
-        have j : 2^(FloatFormat.prec - 1) ≤ x / 2^e * 2^(FloatFormat.prec - 1) := by
+      · -- Goal: 2^(prec-1).toNat ≤ ⌈m_scaled⌉ as ℤ
+        -- We use Int.le_ceil_iff: z ≤ ⌈a⌉ ↔ (z : R) - 1 < a
+        apply Int.le_ceil_iff.mpr
+        -- Goal involves double cast ℕ → ℤ → R
+        have j : (2 : R)^(FloatFormat.prec - 1) ≤ x / 2^e * 2^(FloatFormat.prec - 1) := by
           unfold e
-          conv_lhs => rw [← one_mul (2^(FloatFormat.prec - 1))]
-          rw [mul_le_mul_iff_of_pos_right] -- why is linarith not smart enough to use this
+          conv_lhs => rw [← one_mul ((2 : R)^(FloatFormat.prec - 1))]
+          rw [mul_le_mul_iff_of_pos_right]
           linarith
           linearize
-        apply lt_of_le_of_lt' j
-        norm_num
+        have hprec_pos := FloatFormat.prec_sub_one_pos
+        have hpow_ge_one : (1 : R) ≤ (2 : R)^(FloatFormat.prec - 1) :=
+          one_le_zpow₀ (by norm_num : (1 : R) ≤ 2) (by omega)
+        -- Use push_cast to simplify the double cast and power
+        push_cast
+        -- The goal is now (2 : R)^n - 1 < m_scaled where n = (prec-1).toNat
+        have hpow_nat_eq : (2 : R)^(FloatFormat.prec - 1).toNat = (2 : R)^(FloatFormat.prec - 1) := by
+          rw [← zpow_natCast]
+          congr 1
+          exact FloatFormat.prec_sub_one_toNat_eq
+        calc (2 : R)^(FloatFormat.prec - 1).toNat - 1
+            = (2 : R)^(FloatFormat.prec - 1) - 1 := by rw [hpow_nat_eq]
+          _ < (2 : R)^(FloatFormat.prec - 1) := by linarith
+          _ ≤ x / 2 ^ e * 2 ^ (FloatFormat.prec - 1) := j
       · exact hm
     Fp.finite (FiniteFp.mk false e m.natAbs vf)
 
@@ -344,7 +418,7 @@ lemma roundNormalUp_ge (x : R) (hnr : isNormalRange x) (f : FiniteFp)
     unfold binade_base
     all_goals linearize
 
-  by_cases hm : 2^FloatFormat.prec ≤ m
+  by_cases hm : (2 : ℤ)^FloatFormat.prec.toNat ≤ m
   · -- Case: overflow within binade
     unfold m m_scaled scaled binade_base e at hm
     by_cases he : e + 1 > FloatFormat.max_exp
@@ -360,8 +434,11 @@ lemma roundNormalUp_ge (x : R) (hnr : isNormalRange x) (f : FiniteFp)
       rw [← h]
       unfold FiniteFp.toVal FiniteFp.sign'
       rw [FloatFormat.radix_val_eq_two]
-      simp
-      -- Goal: x ≤ 2^(prec-1) * 2^(e + 1 - prec + 1) = 2^(e + 1)
+      simp only [Bool.false_eq_true, ↓reduceIte, one_mul, Int.cast_ofNat, ge_iff_le,
+                 Nat.cast_pow, Nat.cast_ofNat]
+      -- Goal: x ≤ (2 : R)^(prec-1).toNat * (2 : R)^(e + 1 - prec + 1)
+      -- Convert the Nat pow to zpow first
+      rw [FloatFormat.pow_prec_sub_one_nat_int]
       rw [← zpow_add₀ (by norm_num : (2 : R) ≠ 0)]
       ring_nf
       -- Goal is x ≤ 2 ^ (e + 1)
@@ -402,7 +479,6 @@ lemma roundNormalUp_ge (x : R) (hnr : isNormalRange x) (f : FiniteFp)
     have h_pos : (0 : R) < (2 : R) ^ ((e : ℤ) - (FloatFormat.prec : ℤ) + 1) := by linearize
     -- Show x ≤ m * 2^(e - prec + 1)
     calc x = x / (2 : R) ^ e * (2 : R) ^ (FloatFormat.prec - 1) / (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ e := by {
-        rw [FloatFormat.pow_prec_sub_one_nat_int]
         rw [mul_div_cancel_right₀, div_mul_cancel₀]
         <;> linearize
       }
@@ -414,11 +490,8 @@ lemma roundNormalUp_ge (x : R) (hnr : isNormalRange x) (f : FiniteFp)
       _ = (m : R) * (2 : R) ^ (e - (FloatFormat.prec : ℤ) + 1) := by
         rw [div_mul_eq_mul_div]
         rw [mul_div_assoc]
-        rw [FloatFormat.pow_prec_sub_one_nat_int]
         rw [← zpow_sub₀ (by norm_num)]
         ring_nf
-    unfold m m_scaled scaled binade_base e
-    simp only [FloatFormat.pow_prec_sub_one_nat_int, le_refl]
 
 theorem roundNormalUp_pos {x : R} {h : isNormalRange x} {f : FiniteFp} (hf : roundNormalUp x h = Fp.finite f): (0 : R) < f.toVal := by
   unfold roundNormalUp at hf

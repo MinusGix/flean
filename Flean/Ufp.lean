@@ -29,16 +29,8 @@ theorem ufp_zero  [Field R] [LinearOrder R] [FloorSemiring R] : ufp (0 : R) = 0 
 
 -- TODO(minor): better name
 theorem ufp_ulp_eq [FloatFormat] [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorSemiring R]
-  (x : R) (xnz : x ≠ 0) (xge : 2^FloatFormat.min_exp ≤ |x|) : ufp x = 2^(FloatFormat.prec - 1) * ulp x := by
+  (x : R) (xnz : x ≠ 0) (xge : 2^FloatFormat.min_exp ≤ |x|) : ufp x = (2 : R)^(FloatFormat.prec - 1) * ulp x := by
   delta ufp ulp
-  -- delta ufp
-  have hz : (2 : R)^(FloatFormat.prec - 1) = (2 : R)^((FloatFormat.prec : ℤ) - 1) := by
-    have h1 : (1 : ℤ) = (1 : ℕ) := rfl
-    have := FloatFormat.valid_prec
-    have hprec : 1 ≤ FloatFormat.prec := by omega
-    rw [show ((FloatFormat.prec : ℤ) - 1) = ((FloatFormat.prec - 1 : ℕ) : ℤ) by omega]
-    rw [zpow_natCast]
-  rw [hz]
   norm_num
   split_ifs with h
   · contradiction

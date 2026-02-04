@@ -5,7 +5,7 @@ import Mathlib.Tactic.Linarith
 import Mathlib.Data.Real.Basic
 import Mathlib.Analysis.SpecialFunctions.Log.Base
 import Mathlib.Analysis.SpecialFunctions.Pow.Real
-import Mathlib.Data.Real.Irrational
+import Mathlib.NumberTheory.Real.Irrational
 
 import Flean.Basic
 import Flean.Ulp
@@ -107,7 +107,8 @@ theorem findExponentDown_overflow (x : R) (h : isOverflow x) : findExponentDown 
   rw [min_eq_right]
   · linarith
   · gsplit min with ha
-    <;> flinarith
+    <;> have := FloatFormat.exp_order
+    <;> omega
   · linearize
 
 theorem findExponentDown_IsValidFiniteVal (x : R) (m : ℕ) (h : isNormal m ∨ isSubnormal (findExponentDown x) m) : IsValidFiniteVal (findExponentDown x) m := by
@@ -118,9 +119,15 @@ theorem findExponentDown_IsValidFiniteVal (x : R) (m : ℕ) (h : isNormal m ∨ 
   · cases h with
     | inl h => exact h.right
     | inr h =>
-      have : 2 ^ (FloatFormat.prec - 1) - 1 < 2 ^ (FloatFormat.prec - 1) := by norm_num
+      have hprec := FloatFormat.valid_prec
+      -- Goal: m < 2^prec.toNat
+      -- From h.right: m ≤ 2^(prec-1).toNat - 1
+      -- We show: 2^(prec-1).toNat - 1 < 2^prec.toNat
       apply lt_of_le_of_lt h.right
-      linarith [FloatFormat.valid_prec, FloatFormat.exp_order, FloatFormat.max_exp_pos, FloatFormat.min_exp_nonpos, FloatFormat.prec_pred_pow_le (R := R), FloatFormat.pow_prec_pred_lt]
+      have hpow_lt := FloatFormat.nat_two_pow_prec_sub_one_lt_two_pow_prec
+      have hpow_pos1 : 0 < (2 : ℕ) ^ (FloatFormat.prec - 1).toNat := Nat.two_pow_pos _
+      have hpow_pos2 : 0 < (2 : ℕ) ^ FloatFormat.prec.toNat := Nat.two_pow_pos _
+      omega
   · exact h
 
 theorem findExponentDown_IsValidFiniteVal_normal (x : R) (m : ℕ) (h : isNormal m) : IsValidFiniteVal (findExponentDown x) m := findExponentDown_IsValidFiniteVal x m (Or.inl h)
