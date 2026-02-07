@@ -14,8 +14,11 @@ import Flean.Rounding.RoundNearest
 
 This module proves the core theorem of floating-point arithmetic:
 rounding introduces at most machine-epsilon relative error.
+For round-to-nearest modes, the tighter bound of half machine epsilon holds.
 
 ## Main results
+
+### Machine epsilon bounds (all rounding modes)
 
 * `roundDown_relativeError_le` — For positive x in the normal range,
   `relativeError x (roundDown x) ≤ 2^(1-prec)` (machine epsilon).
@@ -29,6 +32,13 @@ rounding introduces at most machine-epsilon relative error.
   `relativeError x (roundNearestTiesToEven x) ≤ 2^(1-prec)`.
 * `roundNearestTiesAwayFromZero_relativeError_le` — For positive x in the normal range,
   `relativeError x (roundNearestTiesAwayFromZero x) ≤ 2^(1-prec)`.
+
+### Half machine epsilon bounds (round-to-nearest modes)
+
+* `roundNearestTiesToEven_abs_error_le_ulp_half` — Absolute error ≤ ulp(x)/2.
+* `roundNearestTiesAwayFromZero_abs_error_le_ulp_half` — Absolute error ≤ ulp(x)/2.
+* `roundNearestTiesToEven_relativeError_le_half` — Relative error ≤ 2^(-prec).
+* `roundNearestTiesAwayFromZero_relativeError_le_half` — Relative error ≤ 2^(-prec).
 -/
 
 section Rounding
@@ -158,6 +168,22 @@ theorem roundUp_relativeError_le (x : R) (hx : isNormalRange x) (f : FiniteFp)
   have h := Fp.relativeError_ulp_upper_bound_le x f 1 (by norm_num) h_abs_ge h_le
   linarith
 
+/-- In the normal range, findPredecessorPos reduces to roundNormalDown -/
+private theorem findPredecessorPos_normal_eq (x : R) (hx : isNormalRange x) :
+    findPredecessorPos x (isNormalRange_pos x hx) = roundNormalDown x hx := by
+  unfold findPredecessorPos
+  have h_not_sub : ¬(x < (2 : R) ^ FloatFormat.min_exp) := not_lt.mpr hx.left
+  have h_not_over : x < (2 : R) ^ (FloatFormat.max_exp + 1) := hx.right
+  simp only [h_not_sub, h_not_over, ↓reduceDIte]
+
+/-- In the normal range, findSuccessorPos reduces to roundNormalUp -/
+private theorem findSuccessorPos_normal_eq (x : R) (hx : isNormalRange x) :
+    findSuccessorPos x (isNormalRange_pos x hx) = roundNormalUp x hx := by
+  unfold findSuccessorPos
+  have h_not_sub : ¬(x < (2 : R) ^ FloatFormat.min_exp) := not_lt.mpr hx.left
+  have h_not_over : x < (2 : R) ^ (FloatFormat.max_exp + 1) := hx.right
+  simp only [h_not_sub, h_not_over, ↓reduceDIte]
+
 /-- For positive x in the normal range, roundNearestTiesToEven returns either
     roundDown x or roundUp x (when the result is finite). -/
 theorem roundNearestTiesToEven_is_roundDown_or_roundUp (x : R) (hx : isNormalRange x) (f : FiniteFp)
@@ -249,5 +275,171 @@ theorem roundNearestTiesAwayFromZero_relativeError_le (x : R) (hx : isNormalRang
   rcases roundNearestTiesAwayFromZero_is_roundDown_or_roundUp x hx f hf with h | h
   · exact roundDown_relativeError_le x hx f h
   · exact roundUp_relativeError_le x hx f h
+
+/-! ## Half Machine Epsilon Bounds for Round-Nearest
+
+For roundNearest modes, the result is always the closest floating-point number to x,
+giving absolute error ≤ ulp(x)/2 (half the error of directed rounding).
+This yields the tighter relative error bound of 2^(-prec) (half machine epsilon). -/
+
+/-- For positive x in the normal range, roundNearestTiesToEven has absolute error ≤ ulp(x)/2.
+This is the key property: nearest rounding picks the closer neighbor. -/
+theorem roundNearestTiesToEven_abs_error_le_ulp_half (x : R) (hx : isNormalRange x) (f : FiniteFp)
+    (hf : roundNearestTiesToEven x = Fp.finite f) :
+    |x - f.toVal| ≤ Fp.ulp x / 2 := by
+  have hxpos := isNormalRange_pos x hx
+  have hxne : x ≠ 0 := ne_of_gt hxpos
+  have h_not_small : ¬(|x| < FiniteFp.smallestPosSubnormal.toVal / 2) := by
+    intro h_abs
+    rw [abs_of_pos hxpos] at h_abs
+    have := FiniteFp.smallestPosSubnormal_half_lt_zpow_min_exp (R := R)
+    linarith [hx.left]
+  -- Unfold roundNearestTiesToEven
+  unfold roundNearestTiesToEven at hf
+  rw [if_neg hxne] at hf
+  rw [if_neg h_not_small] at hf
+  by_cases h_overflow : |x| ≥ (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * 2 ^ FloatFormat.max_exp
+  · rw [if_pos h_overflow] at hf; exact absurd hf (by simp)
+  · rw [if_neg h_overflow] at hf
+    simp only [findPredecessor_pos_eq x hxpos, findSuccessor_pos_eq x hxpos] at hf
+    -- pred = findPredecessorPos x, succ = findSuccessorPos x
+    generalize hsucc : findSuccessorPos x hxpos = succ_val at hf
+    cases succ_val with
+    | finite s =>
+      dsimp only at hf
+      -- Key facts: pred ≤ x ≤ succ, gap ≤ ulp
+      have hpred_le : (findPredecessorPos x hxpos).toVal ≤ x := findPredecessorPos_le x hxpos
+      have hsucc_ge : x ≤ s.toVal := findSuccessorPos_ge x hxpos s hsucc
+      -- Connect to roundNormal for the gap bound
+      have hpred_eq : findPredecessorPos x hxpos = roundNormalDown x hx :=
+        findPredecessorPos_normal_eq x hx
+      have hsucc_eq : Fp.finite s = roundNormalUp x hx := by
+        rw [← hsucc]; exact findSuccessorPos_normal_eq x hx
+      have hgap : s.toVal - (findPredecessorPos x hxpos).toVal ≤ Fp.ulp x := by
+        rw [hpred_eq]; exact roundNormalUp_sub_roundNormalDown_le_ulp x hx s hsucc_eq.symm
+      have hulp_pos : (0 : R) < Fp.ulp x := Fp.ulp_pos x
+      split_ifs at hf with h1 h2 h3
+      · -- Case: x < midpoint → result = pred
+        simp only [Fp.finite.injEq] at hf
+        rw [← hf]
+        rw [abs_of_nonneg (by linarith)]
+        -- x - pred ≤ midpoint - pred = (succ - pred) / 2 ≤ ulp / 2
+        have hmid : x < ((findPredecessorPos x hxpos).toVal + s.toVal) / 2 := h1
+        linarith
+      · -- Case: x > midpoint → result = succ
+        simp only [Fp.finite.injEq] at hf
+        rw [← hf]
+        rw [show x - s.toVal = -(s.toVal - x) from by ring, abs_neg, abs_of_nonneg (by linarith)]
+        -- succ - x ≤ succ - midpoint = (succ - pred) / 2 ≤ ulp / 2
+        have hmid : x > ((findPredecessorPos x hxpos).toVal + s.toVal) / 2 := h2
+        linarith
+      · -- Case: tie, isEvenSignificand → result = pred
+        simp only [Fp.finite.injEq] at hf
+        rw [← hf]
+        rw [abs_of_nonneg (by linarith)]
+        -- x = midpoint (from ¬(x < mid) ∧ ¬(x > mid))
+        have hmid_le : ((findPredecessorPos x hxpos).toVal + s.toVal) / 2 ≤ x := by linarith
+        have hmid_ge : x ≤ ((findPredecessorPos x hxpos).toVal + s.toVal) / 2 := by linarith
+        -- x - pred = midpoint - pred = (succ - pred) / 2
+        linarith
+      · -- Case: tie, not isEvenSignificand → result = succ
+        simp only [Fp.finite.injEq] at hf
+        rw [← hf]
+        rw [show x - s.toVal = -(s.toVal - x) from by ring, abs_neg, abs_of_nonneg (by linarith)]
+        have hmid_le : ((findPredecessorPos x hxpos).toVal + s.toVal) / 2 ≤ x := by linarith
+        have hmid_ge : x ≤ ((findPredecessorPos x hxpos).toVal + s.toVal) / 2 := by linarith
+        linarith
+    | infinite b => simp at hf
+    | NaN => simp at hf
+
+/-- For positive x in the normal range, roundNearestTiesAwayFromZero has absolute error ≤ ulp(x)/2. -/
+theorem roundNearestTiesAwayFromZero_abs_error_le_ulp_half (x : R) (hx : isNormalRange x) (f : FiniteFp)
+    (hf : roundNearestTiesAwayFromZero x = Fp.finite f) :
+    |x - f.toVal| ≤ Fp.ulp x / 2 := by
+  have hxpos := isNormalRange_pos x hx
+  have hxne : x ≠ 0 := ne_of_gt hxpos
+  have h_not_small : ¬(|x| < FiniteFp.smallestPosSubnormal.toVal / 2) := by
+    intro h_abs
+    rw [abs_of_pos hxpos] at h_abs
+    have := FiniteFp.smallestPosSubnormal_half_lt_zpow_min_exp (R := R)
+    linarith [hx.left]
+  -- Unfold roundNearestTiesAwayFromZero
+  unfold roundNearestTiesAwayFromZero at hf
+  rw [if_neg hxne] at hf
+  rw [if_neg h_not_small] at hf
+  by_cases h_overflow : |x| ≥ (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * 2 ^ FloatFormat.max_exp
+  · rw [if_pos h_overflow] at hf; exact absurd hf (by simp)
+  · rw [if_neg h_overflow] at hf
+    simp only [findPredecessor_pos_eq x hxpos, findSuccessor_pos_eq x hxpos] at hf
+    generalize hsucc : findSuccessorPos x hxpos = succ_val at hf
+    cases succ_val with
+    | finite s =>
+      dsimp only at hf
+      have hpred_le : (findPredecessorPos x hxpos).toVal ≤ x := findPredecessorPos_le x hxpos
+      have hsucc_ge : x ≤ s.toVal := findSuccessorPos_ge x hxpos s hsucc
+      have hpred_eq : findPredecessorPos x hxpos = roundNormalDown x hx :=
+        findPredecessorPos_normal_eq x hx
+      have hsucc_eq : Fp.finite s = roundNormalUp x hx := by
+        rw [← hsucc]; exact findSuccessorPos_normal_eq x hx
+      have hgap : s.toVal - (findPredecessorPos x hxpos).toVal ≤ Fp.ulp x := by
+        rw [hpred_eq]; exact roundNormalUp_sub_roundNormalDown_le_ulp x hx s hsucc_eq.symm
+      have hulp_pos : (0 : R) < Fp.ulp x := Fp.ulp_pos x
+      -- TiesAwayFromZero: split_ifs auto-resolves x > 0 → 3 cases
+      split_ifs at hf with h1 h2
+      · -- Case: x < midpoint → result = pred
+        simp only [Fp.finite.injEq] at hf
+        rw [← hf]
+        rw [abs_of_nonneg (by linarith)]
+        linarith
+      · -- Case: x > midpoint → result = succ
+        simp only [Fp.finite.injEq] at hf
+        rw [← hf]
+        rw [show x - s.toVal = -(s.toVal - x) from by ring, abs_neg, abs_of_nonneg (by linarith)]
+        linarith
+      · -- Case: tie, x > 0 resolved → result = succ
+        simp only [Fp.finite.injEq] at hf
+        rw [← hf]
+        rw [show x - s.toVal = -(s.toVal - x) from by ring, abs_neg, abs_of_nonneg (by linarith)]
+        have hmid_le : ((findPredecessorPos x hxpos).toVal + s.toVal) / 2 ≤ x := by linarith
+        have hmid_ge : x ≤ ((findPredecessorPos x hxpos).toVal + s.toVal) / 2 := by linarith
+        linarith
+    | infinite b => simp at hf
+    | NaN => simp at hf
+
+/-- **Half Machine Epsilon for Round-Nearest-Ties-to-Even**: For positive x in the normal range,
+the relative error is at most 2^(-prec), half the machine epsilon bound for directed rounding. -/
+theorem roundNearestTiesToEven_relativeError_le_half (x : R) (hx : isNormalRange x) (f : FiniteFp)
+    (hf : roundNearestTiesToEven x = Fp.finite f) :
+    Fp.relativeError x f ≤ 2^(-(FloatFormat.prec : ℤ)) := by
+  have hxpos := isNormalRange_pos x hx
+  have h_abs_err := roundNearestTiesToEven_abs_error_le_ulp_half x hx f hf
+  have h_abs_ge : (2 : R) ^ FloatFormat.min_exp ≤ |x| := by
+    rw [abs_of_pos hxpos]; exact hx.left
+  -- |x - f.toVal| ≤ ulp(x)/2 = (1/2) * ulp(x)
+  have h_le : |x - f.toVal| ≤ (1/2) * Fp.ulp x := by linarith
+  have h := Fp.relativeError_ulp_upper_bound_le x f (1/2) (by norm_num) h_abs_ge h_le
+  -- (1/2) * 2^(1-prec) = 2^(-1) * 2^(1-prec) = 2^(-prec)
+  calc Fp.relativeError x f
+      ≤ 1 / 2 * 2 ^ (1 - (FloatFormat.prec : ℤ)) := h
+    _ = 2 ^ (-(FloatFormat.prec : ℤ)) := by
+        rw [show (1 : R) / 2 = (2 : R) ^ (-1 : ℤ) from by norm_num, two_zpow_mul]
+        congr 1; ring
+
+/-- **Half Machine Epsilon for Round-Nearest-Ties-Away**: For positive x in the normal range,
+the relative error is at most 2^(-prec), half the machine epsilon bound for directed rounding. -/
+theorem roundNearestTiesAwayFromZero_relativeError_le_half (x : R) (hx : isNormalRange x) (f : FiniteFp)
+    (hf : roundNearestTiesAwayFromZero x = Fp.finite f) :
+    Fp.relativeError x f ≤ 2^(-(FloatFormat.prec : ℤ)) := by
+  have hxpos := isNormalRange_pos x hx
+  have h_abs_err := roundNearestTiesAwayFromZero_abs_error_le_ulp_half x hx f hf
+  have h_abs_ge : (2 : R) ^ FloatFormat.min_exp ≤ |x| := by
+    rw [abs_of_pos hxpos]; exact hx.left
+  have h_le : |x - f.toVal| ≤ (1/2) * Fp.ulp x := by linarith
+  have h := Fp.relativeError_ulp_upper_bound_le x f (1/2) (by norm_num) h_abs_ge h_le
+  calc Fp.relativeError x f
+      ≤ 1 / 2 * 2 ^ (1 - (FloatFormat.prec : ℤ)) := h
+    _ = 2 ^ (-(FloatFormat.prec : ℤ)) := by
+        rw [show (1 : R) / 2 = (2 : R) ^ (-1 : ℤ) from by norm_num, two_zpow_mul]
+        congr 1; ring
 
 end Rounding

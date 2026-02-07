@@ -669,4 +669,98 @@ theorem roundNormalUp_error_lt_ulp (x : R) (h : isNormalRange x) (f : FiniteFp)
     rw [ceil_scaled_eq_ceil_div_ulp_step]
     exact ceil_div_mul_sub_lt x (two_zpow_pos' _)
 
+/-- The gap between roundNormalUp and roundNormalDown is at most ulp(x).
+This is the key lemma for half-machine-epsilon bounds on roundNearest. -/
+theorem roundNormalUp_sub_roundNormalDown_le_ulp (x : R) (h : isNormalRange x) (f : FiniteFp)
+    (hf : roundNormalUp x h = Fp.finite f) :
+    (f.toVal : R) - (roundNormalDown x h).toVal ≤ Fp.ulp x := by
+  have hxpos := isNormalRange_pos x h
+  have he := findExponentDown_normal x h
+  -- ulp(x) = 2^(e - prec + 1) in normal range
+  have hulp : Fp.ulp x = (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by
+    unfold Fp.ulp
+    rw [abs_of_pos hxpos, he]
+    have hge : FloatFormat.min_exp ≤ Int.log 2 x := by
+      rw [← he]; exact findExponentDown_min x
+    simp [max_eq_left hge]
+  rw [hulp]
+  -- Unfold roundNormalDown to expose the floor
+  unfold roundNormalDown FiniteFp.toVal FiniteFp.sign'
+  rw [FloatFormat.radix_val_eq_two]
+  simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
+  have hfloor_pos := floor_scaled_normal_pos x h
+  rw [Int.cast_natAbs_of_pos hfloor_pos]
+  -- Unfold roundNormalUp and split on cases
+  unfold roundNormalUp at hf
+  extract_lets e binade_base scaled m_scaled m mpos at hf
+  norm_num at hf
+  split_ifs at hf with hm heover
+  · -- Binade overflow case: f.toVal = 2^(prec-1) * 2^(e+1-prec+1) = 2^(e+1)
+    rw [Fp.finite.injEq] at hf
+    rw [← hf]
+    simp only [FiniteFp.toVal, Bool.false_eq_true, ↓reduceIte, one_mul]
+    push_cast
+    rw [← zpow_natCast (2 : R) (FloatFormat.prec.toNat - 1),
+        show ((FloatFormat.prec.toNat - 1 : ℕ) : ℤ) = FloatFormat.prec - 1
+          from by rw [show (FloatFormat.prec.toNat - 1 : ℕ) = (FloatFormat.prec - 1).toNat
+            from by have := FloatFormat.valid_prec; omega]; exact FloatFormat.prec_sub_one_toNat_eq,
+        two_zpow_mul,
+        show (FloatFormat.prec : ℤ) - 1 + (e + 1 - FloatFormat.prec + 1) = e + 1 from by ring]
+    -- Goal: 2^(e+1) - ⌊x / 2^e * 2^(prec-1)⌋ * 2^(e - prec + 1) ≤ 2^(e - prec + 1)
+    -- The floor ≥ 2^(prec-1), so floor * step ≥ 2^(prec-1) * 2^(e-prec+1) = 2^e
+    -- Also floor < 2^prec (from floor_isNormal_of_bounds), so floor * step < 2^(e+1)
+    -- From ceiling condition: ⌈m_scaled⌉ ≥ 2^prec, and ⌊m_scaled⌋ ≥ ⌈m_scaled⌉ - 1 ≥ 2^prec - 1
+    -- So floor * step ≥ (2^prec - 1) * 2^(e-prec+1) = 2^(e+1) - 2^(e-prec+1)
+    have hceil_lb : (2 : ℤ) ^ FloatFormat.prec.toNat ≤ ⌈m_scaled⌉ := hm
+    have hfloor_from_ceil : (2 : ℤ) ^ FloatFormat.prec.toNat - 1 ≤ ⌊m_scaled⌋ := by
+      calc (2 : ℤ) ^ FloatFormat.prec.toNat - 1
+          ≤ ⌈m_scaled⌉ - 1 := by linarith
+        _ ≤ ⌊m_scaled⌋ := by linarith [Int.ceil_le_floor_add_one m_scaled]
+    -- Cast to R
+    have hfloor_lb_R : (2 : R) ^ FloatFormat.prec.toNat - 1 ≤
+        (⌊x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌋ : R) := by
+      have h_cast := (@Int.cast_mono R _ _ _ _) hfloor_from_ceil
+      simp only [Int.cast_sub, Int.cast_pow, Int.cast_ofNat, Int.cast_one] at h_cast
+      convert h_cast using 1
+    -- Convert nat pow to zpow
+    have hpow_nat_eq : (2 : R) ^ FloatFormat.prec.toNat = (2 : R) ^ (FloatFormat.prec : ℤ) := by
+      rw [← zpow_natCast]; congr 1; exact FloatFormat.prec_toNat_eq
+    rw [hpow_nat_eq] at hfloor_lb_R
+    -- Now: 2^(e+1) - floor * 2^(e-prec+1) ≤ 2^(e-prec+1)
+    -- iff floor * 2^(e-prec+1) ≥ 2^(e+1) - 2^(e-prec+1)
+    -- iff floor ≥ 2^prec - 1 (dividing by 2^(e-prec+1))
+    have hstep_pos : (0 : R) < (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := two_zpow_pos' _
+    -- floor * step ≥ (2^prec - 1) * step
+    have hmul_lb : ((2 : R) ^ (FloatFormat.prec : ℤ) - 1) *
+        (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) ≤
+        (⌊x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌋ : R) *
+        (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by
+      apply mul_le_mul_of_nonneg_right hfloor_lb_R (le_of_lt hstep_pos)
+    -- (2^prec - 1) * step = 2^(e+1) - step
+    have hprod : ((2 : R) ^ (FloatFormat.prec : ℤ) - 1) *
+        (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) =
+        (2 : R) ^ (findExponentDown x + 1) - (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by
+      rw [sub_mul, one_mul, two_zpow_mul]
+      congr 1; ring
+    linarith
+  · -- Normal case: f = ⟨false, e, m.natAbs, vf⟩
+    rw [Fp.finite.injEq] at hf
+    rw [← hf]
+    simp only [FiniteFp.toVal, Bool.false_eq_true, ↓reduceIte, one_mul]
+    rw [Int.cast_natAbs_of_pos mpos]
+    push_cast
+    -- Goal: ⌈m_scaled⌉ * 2^(e-prec+1) - ⌊m_scaled⌋ * 2^(e-prec+1) ≤ 2^(e-prec+1)
+    -- Suffices: ⌈m_scaled⌉ - ⌊m_scaled⌋ ≤ 1 (by Int.ceil_le_floor_add_one)
+    have hgap : ⌈m_scaled⌉ - ⌊m_scaled⌋ ≤ 1 := by linarith [Int.ceil_le_floor_add_one m_scaled]
+    have hstep_pos : (0 : R) < (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := two_zpow_pos' _
+    have hgap_R : (↑⌈m_scaled⌉ : R) - (↑⌊m_scaled⌋ : R) ≤ 1 := by
+      have := (@Int.cast_mono R _ _ _ _) hgap
+      push_cast at this ⊢
+      linarith
+    have : (↑⌈m_scaled⌉ : R) * (2 : R) ^ (e - ↑FloatFormat.prec + 1) -
+        (↑⌊m_scaled⌋ : R) * (2 : R) ^ (findExponentDown x - ↑FloatFormat.prec + 1) =
+        ((↑⌈m_scaled⌉ : R) - (↑⌊m_scaled⌋ : R)) *
+        (2 : R) ^ (findExponentDown x - ↑FloatFormat.prec + 1) := by ring
+    linarith [mul_le_mul_of_nonneg_right hgap_R (le_of_lt hstep_pos)]
+
 end Rounding
