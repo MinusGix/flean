@@ -398,7 +398,7 @@ theorem roundTowardZero_idempotent (f : FiniteFp) (h : f.s = false ∨ 0 < f.m) 
       exact roundUp_idempotent_neg f hs_true hm_pos
 
 /-- Helper: toVal of a nonzero float has |toVal| ≥ smallestPosSubnormal.toVal -/
-private theorem toVal_abs_ge_smallest (f : FiniteFp) (hm : 0 < f.m) :
+theorem toVal_abs_ge_smallest (f : FiniteFp) (hm : 0 < f.m) :
     FiniteFp.smallestPosSubnormal.toVal ≤ |f.toVal (R := R)| := by
   rw [FiniteFp.smallestPosSubnormal_toVal]
   -- smallestPosSubnormal.toVal = 2^(min_exp - prec + 1)
@@ -448,7 +448,7 @@ private theorem toVal_abs_ge_smallest (f : FiniteFp) (hm : 0 < f.m) :
           · exact Nat.cast_nonneg _
 
 /-- Helper: toVal of any finite float has |toVal| < overflow threshold -/
-private theorem toVal_abs_lt_overflow (f : FiniteFp) :
+theorem toVal_abs_lt_overflow (f : FiniteFp) :
     |f.toVal (R := R)| < (2 - (2 : R) ^ (1 - ↑FloatFormat.prec) / 2) * (2 : R) ^ FloatFormat.max_exp := by
   -- |f.toVal| ≤ largestFiniteFloat.toVal < 2^(max_exp+1)
   -- And 2^(max_exp+1) ≤ (2 - eps/2) * 2^max_exp since eps ≤ 1 means 2 - eps/2 ≥ 3/2 > ... actually 2 - eps/2 ≥ 2 - 1/2 = 3/2
@@ -555,5 +555,140 @@ theorem roundNearestTiesAwayFromZero_idempotent (f : FiniteFp) (h : f.s = false 
   have hmid : (f.toVal + f.toVal (R := R)) / 2 = f.toVal := by ring
   simp only [hmid, lt_irrefl, ↓reduceIte]
   split_ifs <;> rfl
+
+/-! ## Rounding Symmetry and Ordering Properties -/
+
+/-- Negation symmetry: rounding down the negation equals negating the round-up.
+    The hypothesis `x ≠ 0` is necessary because `roundDown(0) = +0` but `-(roundUp(0)) = -(+0) = -0`,
+    and `+0 ≠ -0` structurally. -/
+theorem roundDown_neg_eq_neg_roundUp (x : R) (hx : x ≠ 0) :
+    roundDown (-x) = -(roundUp x) := by
+  rcases lt_trichotomy x 0 with hneg | hzero | hpos
+  · -- Case x < 0: -x > 0
+    have hnxpos : 0 < -x := neg_pos.mpr hneg
+    -- roundDown(-x) = findPredecessor(-x) = Fp.finite(findPredecessorPos(-x) _)  [since -x > 0]
+    rw [roundDown, findPredecessor_pos_eq (-x) hnxpos]
+    -- roundUp(x) = findSuccessor(x) = Fp.finite(-findPredecessorPos(-x) _)  [since x < 0]
+    rw [roundUp, findSuccessor_neg_eq x hneg]
+    -- -(Fp.finite(-findPredecessorPos(-x) _)) = Fp.finite(--findPredecessorPos(-x) _)
+    rw [Fp.neg_finite, neg_neg]
+  · exact absurd hzero hx
+  · -- Case x > 0: -x < 0
+    have hnxneg : -x < 0 := neg_lt_zero.mpr hpos
+    -- roundDown(-x) = findPredecessor(-x) = -(findSuccessorPos(--x) _) = -(findSuccessorPos(x) _)
+    rw [roundDown, findPredecessor_neg_eq (-x) hnxneg]
+    -- roundUp(x) = findSuccessor(x) = findSuccessorPos(x) _
+    rw [roundUp, findSuccessor_pos_eq x hpos]
+    -- Both sides equal -(findSuccessorPos x _), just need to match proof terms
+    simp only [neg_neg]
+
+/-- Dual symmetry: rounding up the negation equals negating the round-down. -/
+theorem roundUp_neg_eq_neg_roundDown (x : R) (hx : x ≠ 0) :
+    roundUp (-x) = -(roundDown x) := by
+  have hnx : -x ≠ 0 := neg_ne_zero.mpr hx
+  have h := roundDown_neg_eq_neg_roundUp (-x) hnx
+  rw [neg_neg] at h
+  rw [h, neg_neg]
+
+/-- For any x, roundDown x ≤ roundUp x. -/
+theorem roundDown_le_roundUp (x : R) : roundDown x ≤ roundUp x := by
+  rcases lt_trichotomy x 0 with hneg | hzero | hpos
+  · -- Case x < 0
+    have hnxpos : 0 < -x := neg_pos.mpr hneg
+    -- roundDown(x) = -(findSuccessorPos(-x) _)
+    rw [roundDown, findPredecessor_neg_eq x hneg]
+    -- roundUp(x) = Fp.finite(-findPredecessorPos(-x) _)
+    rw [roundUp, findSuccessor_neg_eq x hneg]
+    -- Need: -(findSuccessorPos(-x) _) ≤ Fp.finite(-findPredecessorPos(-x) _)
+    match hsucc_eq : findSuccessorPos (-x) hnxpos with
+    | Fp.finite g =>
+      rw [Fp.neg_finite, Fp.finite_le_finite_iff]
+      have hpred_le : (findPredecessorPos (-x) hnxpos).toVal (R := R) ≤ -x :=
+        findPredecessorPos_le (-x) hnxpos
+      have hsucc_ge : -x ≤ (g.toVal : R) := findSuccessorPos_ge (-x) hnxpos g hsucc_eq
+      have hval_le : (-g).toVal (R := R) ≤ (-(findPredecessorPos (-x) hnxpos)).toVal := by
+        rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg]
+        linarith
+      apply FiniteFp.toVal_le_handle R hval_le
+      intro ⟨hgz, hpz⟩
+      rw [FiniteFp.isZero_iff] at hgz hpz
+      rcases hgz with hgz1 | hgz2
+      · exfalso
+        rw [FiniteFp.neg_def, FiniteFp.eq_def] at hgz1
+        simp only [FiniteFp.zero_def] at hgz1
+        have hgs : g.s = true := by
+          have := hgz1.left; revert this; cases g.s <;> simp
+        have hgtpos : (0 : R) < g.toVal := lt_of_lt_of_le hnxpos hsucc_ge
+        have : (0 : R) ≤ (-g).toVal :=
+          FiniteFp.toVal_nonneg (-g) (by rw [FiniteFp.neg_def]; simp [hgs])
+        rw [FiniteFp.toVal_neg_eq_neg] at this
+        linarith
+      · rcases hpz with hpz1 | hpz2
+        · exfalso
+          rw [FiniteFp.neg_def, FiniteFp.eq_def] at hpz1
+          simp only [FiniteFp.zero_def] at hpz1
+          have := findPredecessorPos_sign_false (-x) hnxpos
+          rw [this] at hpz1
+          simp at hpz1
+        · rw [hgz2, hpz2]
+    | Fp.infinite b =>
+      have hne := findSuccessorPos_ne_neg_inf (-x) hnxpos
+      rw [hsucc_eq] at hne
+      simp at hne
+      subst hne
+      rw [Fp.le_def]
+      left
+      rfl
+    | Fp.NaN =>
+      exact absurd hsucc_eq (findSuccessorPos_ne_nan (-x) hnxpos)
+  · -- Case x = 0
+    subst hzero
+    rw [roundDown_zero, roundUp_zero]
+    exact Fp.le_refl _
+  · -- Case x > 0
+    -- roundDown(x) = Fp.finite(findPredecessorPos(x) _)
+    rw [roundDown, findPredecessor_pos_eq x hpos]
+    -- roundUp(x) = findSuccessorPos(x) _
+    rw [roundUp, findSuccessor_pos_eq x hpos]
+    -- Case split on whether findSuccessorPos returns finite or infinite
+    match hsucc_eq : findSuccessorPos x hpos with
+    | Fp.finite g =>
+      -- Both sides finite
+      rw [Fp.finite_le_finite_iff]
+      have hpred_le : (findPredecessorPos x hpos).toVal (R := R) ≤ x := findPredecessorPos_le x hpos
+      have hsucc_ge : x ≤ (g.toVal : R) := findSuccessorPos_ge x hpos g hsucc_eq
+      have hval_le : (findPredecessorPos x hpos).toVal (R := R) ≤ g.toVal := le_trans hpred_le hsucc_ge
+      apply FiniteFp.toVal_le_handle R hval_le
+      intro ⟨hpz, hgz⟩
+      have hps := findPredecessorPos_sign_false x hpos
+      rw [FiniteFp.isZero_iff] at hpz hgz
+      rcases hpz with hpz1 | hpz2
+      · rcases hgz with hgz1 | hgz2
+        · rw [hpz1, hgz1]
+        · exfalso
+          rw [FiniteFp.neg_def, FiniteFp.eq_def] at hgz2
+          simp only [FiniteFp.zero_def] at hgz2
+          have hgtpos : (0 : R) < g.toVal := lt_of_lt_of_le hpos hsucc_ge
+          have hgs : g.s = true := by
+            have := hgz2.left; revert this; cases g.s <;> simp
+          have : (0 : R) ≤ (-g).toVal :=
+            FiniteFp.toVal_nonneg (-g) (by rw [FiniteFp.neg_def]; simp [hgs])
+          rw [FiniteFp.toVal_neg_eq_neg] at this
+          linarith
+      · exfalso
+        rw [FiniteFp.neg_def, FiniteFp.eq_def] at hpz2
+        simp only [FiniteFp.zero_def, Bool.not_false] at hpz2
+        rw [hps] at hpz2
+        simp at hpz2
+    | Fp.infinite b =>
+      have hne := findSuccessorPos_ne_neg_inf x hpos
+      rw [hsucc_eq] at hne
+      simp at hne
+      subst hne
+      rw [Fp.le_def]
+      left
+      rfl
+    | Fp.NaN =>
+      exact absurd hsucc_eq (findSuccessorPos_ne_nan x hpos)
 
 end Rounding
