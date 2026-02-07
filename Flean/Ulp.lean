@@ -142,6 +142,53 @@ theorem Int.zpow_log_le_abs_self {b : ℕ} {r : R} (hb : 1 < b) (rnz : r ≠ 0) 
       norm_num
       simp_all only [abs_eq_neg_self, inv_nonpos]
 
+/-- In the normal range (|x| ≥ 2^min_exp), the ulp simplifies because the max with min_exp is trivial. -/
+theorem ulp_normal_eq [FloatFormat] (x : R) (hx : 2^FloatFormat.min_exp ≤ |x|) :
+    ulp x = 2^(Int.log 2 |x| - FloatFormat.prec + 1) := by
+  unfold ulp
+  have xnz : x ≠ 0 := by
+    intro h; rw [h, abs_zero] at hx; linarith [two_zpow_pos' (R := R) FloatFormat.min_exp]
+  have hge : FloatFormat.min_exp ≤ Int.log 2 |x| := by
+    apply (Int.zpow_le_iff_le_log _ _).mp
+    · exact_mod_cast hx
+    · norm_num
+    · exact abs_pos.mpr xnz
+  simp [max_eq_left hge]
+
+/-- For |x| ≥ 2^min_exp, the ratio ulp(x)/|x| ≤ 2^(1-prec) (machine epsilon).
+This is the key bridge between ULP-based and relative error bounds. -/
+theorem ulp_div_abs_le [FloatFormat] (x : R) (hx : 2^FloatFormat.min_exp ≤ |x|) :
+    ulp x / |x| ≤ 2^(1 - (FloatFormat.prec : ℤ)) := by
+  have xnz : x ≠ 0 := by
+    intro h; rw [h, abs_zero] at hx; linarith [two_zpow_pos' (R := R) FloatFormat.min_exp]
+  have xabspos : 0 < |x| := abs_pos.mpr xnz
+  rw [ulp_normal_eq x hx, div_le_iff₀ xabspos]
+  -- Goal: 2^(log 2 |x| - prec + 1) ≤ 2^(1-prec) * |x|
+  -- Rewrite LHS: 2^(log - prec + 1) = 2^(log) * 2^(1-prec)
+  rw [show Int.log 2 |x| - FloatFormat.prec + 1 = Int.log 2 |x| + (1 - FloatFormat.prec) from by ring]
+  rw [← two_zpow_mul, mul_comm]
+  apply mul_le_mul_of_nonneg_left (Int.zpow_log_le_self (by norm_num) xabspos)
+  positivity
+
+/-- Like `relativeError_ulp_upper_bound` but with ≤ instead of = for the absolute error.
+For |x - y| ≤ α * ulp(x), the relative error is at most α * 2^(1-prec). -/
+theorem relativeError_ulp_upper_bound_le [FloatFormat] (x : R) (y : FiniteFp) (α : R)
+    (hα : 0 ≤ α) (xge : 2^FloatFormat.min_exp ≤ |x|) (hdiff : |x - y.toVal| ≤ α * ulp x) :
+    relativeError x y ≤ α * 2^(1 - (FloatFormat.prec : ℤ)) := by
+  have xnz : x ≠ 0 := by
+    intro h; rw [h, abs_zero] at xge; linarith [two_zpow_pos' (R := R) FloatFormat.min_exp]
+  have xabspos : 0 < |x| := abs_pos.mpr xnz
+  unfold relativeError
+  rw [abs_div]
+  apply div_le_of_le_mul₀ (le_of_lt xabspos) (by positivity)
+  calc |x - y.toVal| ≤ α * ulp x := hdiff
+    _ = α * (ulp x / |x| * |x|) := by rw [div_mul_cancel₀ _ (ne_of_gt xabspos)]
+    _ ≤ α * (2^(1 - (FloatFormat.prec : ℤ)) * |x|) := by
+        apply mul_le_mul_of_nonneg_left _ hα
+        apply mul_le_mul_of_nonneg_right (ulp_div_abs_le x xge)
+        exact le_of_lt xabspos
+    _ = α * 2 ^ (1 - (FloatFormat.prec : ℤ)) * |x| := by ring
+
 /-- Given a floating point number `y` and a real number `x` in the normal range (≥ 2^min_exp),
 there is a bound on the relative error between them in terms of (multiples of) ULP.
 Specifically, if the absolute error is `α * ulp x`, then the relative error is at most
@@ -150,10 +197,7 @@ theorem relativeError_ulp_upper_bound [FloatFormat] (x : R) (y : FiniteFp) (α :
   delta relativeError
   delta ulp at hdiff
   norm_num at hdiff
-  have xabspos : 0 < |x| := by
-    apply lt_of_le_of_lt'
-    exact xge
-    apply zpow_pos (by norm_num : (0 : R) < 2)
+  have xabspos : 0 < |x| := lt_of_le_of_lt' xge (two_zpow_pos' _)
   have xnz : x ≠ 0 := by simp_all only [abs_pos, ne_eq, not_false_eq_true]
   have xge' : FloatFormat.min_exp ≤ Int.log 2 |x| := by
     apply (Int.zpow_le_iff_le_log _ _).mp
@@ -173,7 +217,7 @@ theorem relativeError_ulp_upper_bound [FloatFormat] (x : R) (y : FiniteFp) (α :
     rw [zero_mul]
     rw [← hdiff]
     apply abs_nonneg
-    apply zpow_pos (by norm_num)
+    exact two_zpow_pos' _
     exact (Ne.symm hαz)
 
   rw [← mul_div, max_eq_left xge']
@@ -189,7 +233,7 @@ theorem relativeError_ulp_upper_bound [FloatFormat] (x : R) (y : FiniteFp) (α :
 
   -- Now we have the two simple branches where one is positive and the other is negative.
   all_goals apply (mul_le_mul_iff_of_pos_left hα).mpr -- get rid of the α
-  all_goals rw [sub_add, zpow_sub₀ (by norm_num)]
+  all_goals rw [sub_add, zpow_sub₀ (by norm_num : (2 : R) ≠ 0)]
 
   all_goals rw [div_eq_mul_inv, div_eq_mul_inv, mul_comm, ← mul_assoc, mul_comm x⁻¹, ← div_eq_mul_inv _ x, ← inv_zpow, inv_zpow', neg_sub]
 
@@ -223,10 +267,7 @@ theorem abs_error_relativeError_ulp_upper_bound [FloatFormat] (x : R) (y : Finit
   delta relativeError ulp
   -- norm_num
   -- TODO: Do we have to assume that x is in normal range?
-  have xabspos : 0 < |x| := by
-    apply lt_of_le_of_lt'
-    exact xge
-    apply zpow_pos (by norm_num : (0 : R) < 2)
+  have xabspos : 0 < |x| := lt_of_le_of_lt' xge (two_zpow_pos' _)
   have xnz : x ≠ 0 := by simp_all only [abs_pos, ne_eq, not_false_eq_true]
   have xge' : FloatFormat.min_exp ≤ Int.log 2 |x| := by
     apply (Int.zpow_le_iff_le_log _ _).mp
@@ -238,11 +279,10 @@ theorem abs_error_relativeError_ulp_upper_bound [FloatFormat] (x : R) (y : Finit
   rw [show |x - y.toVal| * |x|⁻¹ * 2 ^ (FloatFormat.prec : ℤ) * 2 ^ (Int.log 2 |x| ⊔ FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) = |x - y.toVal| * (|x|⁻¹ * (2 ^ (FloatFormat.prec : ℤ) * 2 ^ (Int.log 2 |x| ⊔ FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1))) by ring]
 
   by_cases h : |x - y.toVal| = 0
-  · rw [h]
-    rw [zero_mul]
+  · rw [h, zero_mul]
   · apply (le_mul_iff_one_le_right (by positivity)).mpr
     apply (one_le_inv_mul₀ (by positivity)).mpr
-    rw [← zpow_add₀ (by norm_num)]
+    rw [two_zpow_mul]
     ring_nf
     rw [max_eq_left xge', add_comm]
     apply le_of_lt

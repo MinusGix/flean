@@ -223,8 +223,7 @@ theorem roundNormalDown_ge_zpow_exp (y : R) (h : isNormalRange y) :
   -- 2^e = 2^(prec-1) * 2^(e - prec + 1) ≤ floor(...) * 2^(e - prec + 1)
   have hpow_split : (2 : R) ^ findExponentDown y =
       (2 : R) ^ (FloatFormat.prec - 1 : ℤ) * (2 : R) ^ (findExponentDown y - (FloatFormat.prec - 1 : ℤ)) := by
-    rw [← zpow_add₀ (by norm_num : (2 : R) ≠ 0)]
-    congr 1; ring
+    rw [two_zpow_mul]; congr 1; ring
   have hexp_eq2 : findExponentDown y - (FloatFormat.prec - 1 : ℤ) = findExponentDown y - ↑FloatFormat.prec + 1 := by ring
   -- Convert the integer floor bound to R using zpow
   have hfloor_lb : (2 : R) ^ (FloatFormat.prec - 1 : ℤ) ≤ ⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ := by
@@ -439,7 +438,7 @@ lemma roundNormalUp_ge (x : R) (hnr : isNormalRange x) (f : FiniteFp)
       -- Goal: x ≤ (2 : R)^(prec-1).toNat * (2 : R)^(e + 1 - prec + 1)
       -- Convert the Nat pow to zpow first
       rw [FloatFormat.pow_prec_sub_one_nat_int]
-      rw [← zpow_add₀ (by norm_num : (2 : R) ≠ 0)]
+      rw [two_zpow_mul]
       ring_nf
       -- Goal is x ≤ 2 ^ (e + 1)
       -- Use that findExponentDown gives us e such that 2^e ≤ x < 2^(e+1) in normal range
@@ -488,9 +487,7 @@ lemma roundNormalUp_ge (x : R) (hnr : isNormalRange x) (f : FiniteFp)
         exact Int.le_ceil _
         all_goals linearize
       _ = (m : R) * (2 : R) ^ (e - (FloatFormat.prec : ℤ) + 1) := by
-        rw [div_mul_eq_mul_div]
-        rw [mul_div_assoc]
-        rw [← zpow_sub₀ (by norm_num)]
+        rw [div_two_zpow_mul_two_zpow]
         ring_nf
 
 theorem roundNormalUp_pos {x : R} {h : isNormalRange x} {f : FiniteFp} (hf : roundNormalUp x h = Fp.finite f): (0 : R) < f.toVal := by
@@ -517,5 +514,159 @@ theorem roundNormalUp_pos {x : R} {h : isNormalRange x} {f : FiniteFp} (hf : rou
     · linearize
 
 theorem roundNormalUp_nonneg {x : R} {h : isNormalRange x} {f : FiniteFp} (hf : roundNormalUp x h = Fp.finite f): (0 : R) ≤ f.toVal := le_of_lt (roundNormalUp_pos hf)
+
+/-- The key scaling identity: ⌊x / 2^e * 2^(prec-1)⌋ = ⌊x / 2^(e - prec + 1)⌋.
+This connects the way roundNormalDown computes the significand with the ULP grid. -/
+private theorem floor_scaled_eq_floor_div_ulp_step (x : R) (e : ℤ) :
+    ⌊x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1)⌋ = ⌊x / (2 : R) ^ (e - FloatFormat.prec + 1)⌋ := by
+  congr 1
+  have : (2 : R) ^ e = (2 : R) ^ (e - FloatFormat.prec + 1) * (2 : R) ^ (FloatFormat.prec - 1) := by
+    rw [two_zpow_mul]; congr 1; ring
+  rw [this, div_mul_eq_div_div, div_mul_cancel₀ _ (two_zpow_ne_zero _)]
+
+/-- The absolute error of rounding a normal value down is strictly less than ulp(x).
+This is the fundamental property: x - roundNormalDown(x).toVal < ulp(x). -/
+theorem roundNormalDown_error_lt_ulp (x : R) (h : isNormalRange x) :
+    x - (roundNormalDown x h).toVal < Fp.ulp x := by
+  -- Step 1: Unfold roundNormalDown to expose the floor
+  unfold roundNormalDown
+  simp only
+  unfold FiniteFp.toVal FiniteFp.sign'
+  rw [FloatFormat.radix_val_eq_two]
+  simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
+  -- Step 2: Simplify natAbs since the floor is positive
+  have hfloor_pos := floor_scaled_normal_pos x h
+  rw [Int.cast_natAbs_of_pos hfloor_pos]
+  -- Step 3: In normal range, findExponentDown x = Int.log 2 x, so ulp simplifies
+  have hxpos := isNormalRange_pos x h
+  have he := findExponentDown_normal x h
+  -- Step 4: Show ulp x = 2^(e - prec + 1) where e = findExponentDown x
+  have hulp : Fp.ulp x = (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by
+    unfold Fp.ulp
+    rw [abs_of_pos hxpos, he]
+    have hge : FloatFormat.min_exp ≤ Int.log 2 x := by
+      rw [← he]; exact findExponentDown_min x
+    simp [max_eq_left hge]
+  rw [hulp]
+  -- Step 5: Rewrite the floor using the scaling identity
+  rw [floor_scaled_eq_floor_div_ulp_step]
+  -- Step 6: The radix cast ↑2 needs to match (2 : R)
+  -- The goal has ↑⌊x / 2^(...)⌋ * ↑2^(...) but we need ↑⌊x / 2^(...)⌋ * 2^(...)
+  -- After the rewrite, sub_floor_div_mul_lt gives us what we need
+  have h_step := Int.sub_floor_div_mul_lt x (two_zpow_pos' (findExponentDown x - FloatFormat.prec + 1))
+  -- h_step : x - ↑⌊x / 2^(e-p+1)⌋ * 2^(e-p+1) < 2^(e-p+1)
+  -- The FloatFormat.radix is 2, so ↑2 = (2 : R) which should unify
+  push_cast at h_step ⊢
+  linarith
+
+/-- The absolute error of rounding a normal value down is nonneg: 0 ≤ x - roundNormalDown(x).toVal -/
+theorem roundNormalDown_error_nonneg (x : R) (h : isNormalRange x) :
+    0 ≤ x - (roundNormalDown x h).toVal := by
+  linarith [roundNormalDown_le x h]
+
+/-- Ceiling scaling identity: ⌈x / 2^e * 2^(prec-1)⌉ = ⌈x / 2^(e - prec + 1)⌉.
+Ceiling analog of `floor_scaled_eq_floor_div_ulp_step`. -/
+private theorem ceil_scaled_eq_ceil_div_ulp_step (x : R) (e : ℤ) :
+    ⌈x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1)⌉ = ⌈x / (2 : R) ^ (e - FloatFormat.prec + 1)⌉ := by
+  congr 1
+  have : (2 : R) ^ e = (2 : R) ^ (e - FloatFormat.prec + 1) * (2 : R) ^ (FloatFormat.prec - 1) := by
+    rw [two_zpow_mul]; congr 1; ring
+  rw [this, div_mul_eq_div_div, div_mul_cancel₀ _ (two_zpow_ne_zero _)]
+
+/-- For b > 0, ⌈a/b⌉ * b - a < b. Ceiling analog of `Int.sub_floor_div_mul_lt`. -/
+private theorem ceil_div_mul_sub_lt (a : R) {b : R} (hb : 0 < b) :
+    (↑⌈a / b⌉ : R) * b - a < b := by
+  have hb_ne : b ≠ 0 := ne_of_gt hb
+  have h := Int.ceil_lt_add_one (a / b)
+  have : (↑⌈a / b⌉ : R) * b < (a / b + 1) * b :=
+    mul_lt_mul_of_pos_right h hb
+  rw [add_mul, div_mul_cancel₀ _ hb_ne, one_mul] at this
+  linarith
+
+/-- The absolute error of rounding a normal value up is nonneg: 0 ≤ f.toVal - x -/
+theorem roundNormalUp_error_nonneg (x : R) (h : isNormalRange x) (f : FiniteFp)
+    (hf : roundNormalUp x h = Fp.finite f) :
+    0 ≤ (f.toVal : R) - x := by
+  linarith [roundNormalUp_ge x h f hf]
+
+/-- The absolute error of rounding a normal value up is strictly less than ulp(x).
+This is the fundamental property: f.toVal - x < ulp(x) for roundNormalUp. -/
+theorem roundNormalUp_error_lt_ulp (x : R) (h : isNormalRange x) (f : FiniteFp)
+    (hf : roundNormalUp x h = Fp.finite f) :
+    (f.toVal : R) - x < Fp.ulp x := by
+  have hxpos := isNormalRange_pos x h
+  have he := findExponentDown_normal x h
+  -- ulp(x) = 2^(e - prec + 1) in normal range
+  have hulp : Fp.ulp x = (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by
+    unfold Fp.ulp
+    rw [abs_of_pos hxpos, he]
+    have hge : FloatFormat.min_exp ≤ Int.log 2 x := by
+      rw [← he]; exact findExponentDown_min x
+    simp [max_eq_left hge]
+  rw [hulp]
+  -- Unfold roundNormalUp and split on cases (overflow case auto-closed by norm_num)
+  unfold roundNormalUp at hf
+  extract_lets e binade_base scaled m_scaled m mpos at hf
+  norm_num at hf
+  split_ifs at hf with hm heover
+  · -- Binade overflow case
+    rw [Fp.finite.injEq] at hf
+    rw [← hf]
+    unfold FiniteFp.toVal FiniteFp.sign'
+    rw [FloatFormat.radix_val_eq_two]
+    simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
+    push_cast
+    -- Goal: (2:R)^(prec.toNat-1) * (2:R)^(e+1-prec+1) - x < (2:R)^(findExponentDown x - prec+1)
+    -- Convert npow (2:R)^(prec.toNat-1) to zpow
+    have hprec_nat : (FloatFormat.prec.toNat - 1 : ℕ) = (FloatFormat.prec - 1).toNat := by
+      have := FloatFormat.valid_prec; omega
+    rw [← zpow_natCast (2 : R) (FloatFormat.prec.toNat - 1),
+        show ((FloatFormat.prec.toNat - 1 : ℕ) : ℤ) = FloatFormat.prec - 1
+          from by rw [hprec_nat]; exact FloatFormat.prec_sub_one_toNat_eq,
+        two_zpow_mul,
+        show (FloatFormat.prec : ℤ) - 1 + (e + 1 - FloatFormat.prec + 1) = e + 1 from by ring]
+    -- Goal: (2:R)^(e+1) - x < (2:R)^(e - prec + 1)
+    -- From ceiling condition: m_scaled > 2^prec - 1
+    have hceil := Int.le_ceil_iff.mp hm
+    push_cast at hceil
+    rw [← zpow_natCast (2 : R) FloatFormat.prec.toNat, FloatFormat.prec_toNat_eq] at hceil
+    -- hceil: (2:R)^prec - 1 < m_scaled
+    -- Factor m_scaled = x / 2^(e-prec+1)
+    have hfactor : m_scaled = x / (2 : R) ^ (e - FloatFormat.prec + 1) := by
+      show x / (2 : R) ^ e * (2 : R) ^ (FloatFormat.prec - 1) =
+          x / (2 : R) ^ (e - FloatFormat.prec + 1)
+      have : (2 : R) ^ e =
+          (2 : R) ^ (e - FloatFormat.prec + 1) * (2 : R) ^ (FloatFormat.prec - 1) := by
+        rw [two_zpow_mul]; congr 1; ring
+      rw [this, div_mul_eq_div_div, div_mul_cancel₀ _ (two_zpow_ne_zero _)]
+    rw [hfactor] at hceil
+    -- Multiply: x > (2^prec - 1) * 2^(e-prec+1) = 2^(e+1) - 2^(e-prec+1)
+    have hstep_pos : (0 : R) < (2 : R) ^ (e - FloatFormat.prec + 1) := two_zpow_pos' _
+    have hx_lb : ((2 : R) ^ (FloatFormat.prec : ℤ) - 1) *
+        (2 : R) ^ (e - FloatFormat.prec + 1) < x := by
+      rwa [lt_div_iff₀ hstep_pos] at hceil
+    have hpow_prod : (2 : R) ^ (FloatFormat.prec : ℤ) *
+        (2 : R) ^ (e - FloatFormat.prec + 1) = (2 : R) ^ (e + 1) := by
+      rw [two_zpow_mul]; congr 1; ring
+    linarith
+  · -- Normal case: f = ⟨false, e, m.natAbs, vf⟩
+    rw [Fp.finite.injEq] at hf
+    rw [← hf]
+    unfold FiniteFp.toVal FiniteFp.sign'
+    rw [FloatFormat.radix_val_eq_two]
+    simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
+    rw [Int.cast_natAbs_of_pos mpos]
+    push_cast
+    -- Goal: (↑m : R) * (2:R)^(e-prec+1) - x < (2:R)^(findExponentDown x - prec+1)
+    -- Unfold m to ⌈m_scaled⌉ = ⌈x / 2^e * 2^(prec-1)⌉ and use scaling identity
+    change (↑⌈m_scaled⌉ : R) * (2 : R) ^ (e - FloatFormat.prec + 1) - x <
+        (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1)
+    -- m_scaled = x / 2^e * 2^(prec-1) by definition
+    -- Use ceiling scaling identity: ⌈x / 2^e * 2^(prec-1)⌉ = ⌈x / 2^(e-prec+1)⌉
+    show (↑⌈x / (2 : R) ^ e * (2 : R) ^ (FloatFormat.prec - 1)⌉ : R) *
+        (2 : R) ^ (e - FloatFormat.prec + 1) - x <
+        (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1)
+    rw [ceil_scaled_eq_ceil_div_ulp_step]
+    exact ceil_div_mul_sub_lt x (two_zpow_pos' _)
 
 end Rounding

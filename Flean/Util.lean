@@ -56,6 +56,41 @@ theorem Int.ceil_ne_zero_pos {R : Type*} [Field R] [LinearOrder R] [FloorRing R]
   norm_num at this
   linarith
 
+/-! ### Base-2 zpow simplification lemmas
+
+These pre-discharge the `(2 : R) ≠ 0` obligation that `zpow_add₀`/`zpow_sub₀` require,
+making zpow arithmetic with base 2 work with `simp`. -/
+
+section ZpowTwo
+
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+
+theorem two_zpow_mul (a b : ℤ) : (2 : R) ^ a * (2 : R) ^ b = (2 : R) ^ (a + b) :=
+  (zpow_add₀ (by norm_num : (2 : R) ≠ 0) a b).symm
+
+theorem two_zpow_div (a b : ℤ) : (2 : R) ^ a / (2 : R) ^ b = (2 : R) ^ (a - b) :=
+  (zpow_sub₀ (by norm_num : (2 : R) ≠ 0) a b).symm
+
+theorem mul_two_zpow_right (x : R) (a b : ℤ) :
+    x * (2 : R) ^ a * (2 : R) ^ b = x * (2 : R) ^ (a + b) := by
+  rw [mul_assoc, two_zpow_mul]
+
+theorem div_two_zpow_mul_two_zpow (x : R) (a b : ℤ) :
+    x / (2 : R) ^ a * (2 : R) ^ b = x * (2 : R) ^ (b - a) := by
+  rw [div_mul_eq_mul_div, ← two_zpow_div, mul_div_assoc]
+
+theorem mul_two_zpow_div_two_zpow (x : R) (a b : ℤ) :
+    x * (2 : R) ^ a / (2 : R) ^ b = x * (2 : R) ^ (a - b) := by
+  rw [mul_div_assoc, two_zpow_div]
+
+theorem two_zpow_ne_zero (n : ℤ) : (2 : R) ^ n ≠ 0 :=
+  zpow_ne_zero n (by norm_num : (2 : R) ≠ 0)
+
+theorem two_zpow_pos' (n : ℤ) : (0 : R) < (2 : R) ^ n :=
+  zpow_pos (by norm_num : (0 : R) < 2) n
+
+end ZpowTwo
+
 -- Connecting `zpow` and `pow` of a sort
 theorem zpow_natAbs_nonneg_eq_zpow {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] {a : R} {n : ℤ} :
   0 < a → 0 ≤ n → (a ^ n.natAbs : R) = a ^ n := by

@@ -28,4 +28,13 @@ theorem relativeError_toVal_eq (x : R) (y : FiniteFp) : x = y.toVal → relative
   delta relativeError
   rw [h, sub_self, zero_div, abs_zero]
 
+theorem relativeError_neg (x : R) (f : FiniteFp) :
+    relativeError x f = relativeError (-x) (-f) := by
+  unfold relativeError
+  rw [FiniteFp.toVal_neg_eq_neg]
+  simp only [abs_div, abs_neg]
+  congr 1
+  have : (-x : R) - -(f.toVal : R) = -(x - (f.toVal : R)) := by ring
+  rw [this, abs_neg]
+
 end Fp
