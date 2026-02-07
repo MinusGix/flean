@@ -293,6 +293,37 @@ theorem imp_toVal_ne [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : Fi
   rw [this] at hxy
   grind
 
+/-- toVal is injective on non-negative-zero floats.
+    The hypothesis excludes negative zero, which is the only case where
+    two distinct floats can have the same toVal (since (+0).toVal = (-0).toVal = 0). -/
+theorem toVal_injective [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : FiniteFp}
+    (hx : x.s = false ∨ 0 < x.m) (hy : y.s = false ∨ 0 < y.m)
+    (hv : x.toVal (R := R) = y.toVal (R := R)) : x = y := by
+  by_cases hxm : 0 < x.m
+  · -- x is nonzero, so ¬x.isZero
+    exact eq_of_toVal_eq' (Or.inl (by unfold isZero; omega)) hv
+  · by_cases hym : 0 < y.m
+    · -- y is nonzero, so ¬y.isZero
+      exact eq_of_toVal_eq' (Or.inr (by unfold isZero; omega)) hv
+    · -- Both have m = 0
+      push_neg at hxm hym
+      have hxm0 : x.m = 0 := by omega
+      have hym0 : y.m = 0 := by omega
+      -- From hypotheses: s = false ∨ 0 < 0, so s = false
+      have hxs : x.s = false := by rcases hx with hs | hm <;> [exact hs; omega]
+      have hys : y.s = false := by rcases hy with hs | hm <;> [exact hs; omega]
+      -- From validity: m = 0 → not normal → subnormal → e = min_exp
+      have hxe : x.e = FloatFormat.min_exp := by
+        have := x.valid.2.2.2
+        rw [hxm0] at this
+        exact isSubnormal.zero_iff.mp (this.resolve_left (by simp [_root_.isNormal]))
+      have hye : y.e = FloatFormat.min_exp := by
+        have := y.valid.2.2.2
+        rw [hym0] at this
+        exact isSubnormal.zero_iff.mp (this.resolve_left (by simp [_root_.isNormal]))
+      rw [eq_def]
+      exact ⟨by rw [hxs, hys], by rw [hxe, hye], by rw [hxm0, hym0]⟩
+
 def toRat (x : FiniteFp) : ℚ := x.toVal
 
 noncomputable
