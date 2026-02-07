@@ -37,6 +37,24 @@ def is_lt (x y : FiniteFp) : Prop :=
   (!x.s ∧ !y.s ∧ x.is_mag_lt y) ∨
   (x.s ∧ y.s ∧ y.is_mag_lt x)
 
+/-- is_mag_lt with zero left operand: 0 < y iff y.m > 0 -/
+theorem is_mag_lt_zero_left {x y : FiniteFp} (hx : x.m = 0) (hy : 0 < y.m) : x.is_mag_lt y := by
+  unfold is_mag_lt; split_ifs <;> simp_all <;> omega
+
+/-- is_mag_lt into zero right operand is impossible -/
+theorem not_is_mag_lt_zero_right {x y : FiniteFp} (hy : y.m = 0) : ¬x.is_mag_lt y := by
+  unfold is_mag_lt; split_ifs <;> simp_all <;> omega
+
+/-- is_mag_lt from zero right operand is impossible -/
+theorem not_is_mag_lt_into_zero {x y : FiniteFp} (hx : x.m = 0) (hy : y.m = 0) : ¬x.is_mag_lt y := by
+  unfold is_mag_lt; split_ifs <;> simp_all <;> omega
+
+/-- If x.is_mag_lt y, then y.m > 0 -/
+theorem is_mag_lt_imp_right_pos {x y : FiniteFp} (h : x.is_mag_lt y) : 0 < y.m := by
+  by_contra hc; push_neg at hc
+  have : y.m = 0 := by omega
+  exact not_is_mag_lt_zero_right this h
+
 instance : LT FiniteFp := ⟨is_lt⟩
 
 @[reducible]
@@ -826,19 +844,61 @@ theorem stdLe_stdEquiv {x y z : FiniteFp} (hnz : ¬y.isZero ∨ ¬z.isZero) (hxy
     grind
 
 theorem stdLe_trans {x y z : FiniteFp} (hxy : x.stdLe y) (hyz : y.stdLe z) : x.stdLe z := by
-  have h1 := @stdLt_trans
-  have h2 := @stdEquiv_trans
   unfold stdLe at hxy hyz ⊢
-  cases' hxy with h1 h1
-  <;> cases' hyz with h2 h2
-  · left
-    apply stdLt_trans h1 h2
-  · apply @stdLe_stdEquiv _ x y z
-    · sorry
-    · grind
-    · grind
-  · sorry
-  · grind
+  cases' hxy with hxy_lt hxy_eq
+  <;> cases' hyz with hyz_lt hyz_eq
+  · -- stdLt ∘ stdLt → stdLt
+    left; exact stdLt_trans hxy_lt hyz_lt
+  · -- stdLt x y, stdEquiv y z → stdLe x z
+    rcases hyz_eq with ⟨hy0, hz0⟩ | rfl
+    · -- y, z both zero. x.stdLt y with y zero.
+      -- Derive x is nonzero negative from stdLt analysis
+      have hxm_pos : 0 < x.m := by
+        unfold stdLt at hxy_lt
+        rcases hxy_lt with ⟨_, hnz⟩ | ⟨_, _, hmag⟩ | ⟨_, _, hmag⟩
+        · simp only [isZero] at hnz; rcases hnz with h | h <;> [exact Nat.pos_of_ne_zero h; exact absurd hy0 h]
+        · exfalso; exact not_is_mag_lt_zero_right (show y.m = 0 from hy0) hmag
+        · have := is_mag_lt_imp_right_pos hmag; omega
+      have hxs : x.s = true := by
+        unfold stdLt at hxy_lt
+        rcases hxy_lt with ⟨⟨hxs, _⟩, _⟩ | ⟨hxs, _, hmag⟩ | ⟨hxs, _, _⟩
+        · revert hxs; cases x.s <;> simp
+        · exfalso; exact not_is_mag_lt_zero_right (show y.m = 0 from hy0) hmag
+        · revert hxs; cases x.s <;> simp
+      -- x is negative nonzero, z is zero. Show stdLt x z.
+      left; unfold stdLt
+      by_cases hzs : z.s
+      · right; right; exact ⟨by simp [hxs], by simp [hzs], is_mag_lt_zero_left hz0 hxm_pos⟩
+      · left; exact ⟨⟨by simp [hxs], by simp [hzs]⟩, Or.inl (by unfold isZero; omega)⟩
+    · left; exact hxy_lt
+  · -- stdEquiv x y, stdLt y z → stdLe x z
+    rcases hxy_eq with ⟨hx0, hy0⟩ | rfl
+    · -- x, y both zero. y.stdLt z with y zero.
+      -- Derive z is nonzero positive from stdLt analysis
+      have hzm_pos : 0 < z.m := by
+        unfold stdLt at hyz_lt
+        rcases hyz_lt with ⟨_, hnz⟩ | ⟨_, _, hmag⟩ | ⟨_, _, hmag⟩
+        · simp only [isZero] at hnz; rcases hnz with h | h <;> [exact absurd hy0 h; exact Nat.pos_of_ne_zero h]
+        · exact is_mag_lt_imp_right_pos hmag
+        · exfalso; exact not_is_mag_lt_zero_right (show y.m = 0 from hy0) hmag
+      have hzs_not_true : z.s = false := by
+        unfold stdLt at hyz_lt
+        rcases hyz_lt with ⟨⟨_, hzs⟩, _⟩ | ⟨_, hzs, _⟩ | ⟨_, hzs, hmag⟩
+        · revert hzs; cases z.s <;> simp
+        · revert hzs; cases z.s <;> simp
+        · -- y.s, z.s, z.is_mag_lt y: y zero → impossible
+          exfalso; exact not_is_mag_lt_zero_right (show y.m = 0 from hy0) hmag
+      -- x is zero, z is positive nonzero. Show stdLt x z.
+      left; unfold stdLt
+      by_cases hxs : x.s
+      · left; exact ⟨⟨by simp [hxs], by simp [hzs_not_true]⟩, Or.inr (by unfold isZero; omega)⟩
+      · right; left
+        have hxs' : (!x.s) = true := by revert hxs; cases x.s <;> simp
+        have hzs' : (!z.s) = true := by simp [hzs_not_true]
+        exact ⟨hxs', hzs', is_mag_lt_zero_left hx0 hzm_pos⟩
+    · left; exact hyz_lt
+  · -- stdEquiv ∘ stdEquiv → stdEquiv
+    right; exact stdEquiv_trans hxy_eq hyz_eq
 
 
 end StdLe
