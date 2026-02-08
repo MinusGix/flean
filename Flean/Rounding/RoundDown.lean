@@ -203,6 +203,190 @@ theorem roundDown_pos_imp_pos [FloatFormat] (x : R) (hs : FiniteFp.smallestPosSu
     rw [← h']
     apply findPredecessorPos_pos hs
 
+/-- Key bridge lemma: `roundDown` of a positive value `mag * 2^e_base` produces a float with
+significand `⌊val / 2^e_ulp⌋` and stored exponent `e_ulp + prec - 1`, where `e_ulp` is the
+ULP exponent computed by `roundIntSig`. This bridges `roundIntSig`'s Nat division with
+`roundDown`'s floor computation.
+
+The hypotheses mirror the non-overflow, inexact case of `roundIntSig`:
+- `hmag`: mag ≠ 0
+- `hval_pos`: val > 0
+- `hval_lt`: val < 2^(max_exp + 1) (non-overflow)
+- `hfloor`: the floor of val / 2^e_ulp equals q
+- `hint_log`: Int.log 2 val = Nat.log2 mag + e_base
+- `he_ulp_ge_sub`: e_ulp ≥ min_exp - prec + 1
+- `he_stored_le`: e_ulp + prec - 1 ≤ max_exp
+- `hr_pos`: the remainder is positive (inexact)
+-/
+theorem roundDown_nat_mul_zpow [FloatFormat]
+    (mag : ℕ) (e_base e_ulp : ℤ) (q : ℕ)
+    (hmag : mag ≠ 0)
+    (hval_pos : (0 : R) < (mag : R) * (2 : R) ^ e_base)
+    (hval_lt : (mag : R) * (2 : R) ^ e_base < (2 : R) ^ (FloatFormat.max_exp + 1))
+    (hfloor : ⌊(mag : R) * (2 : R) ^ e_base / (2 : R) ^ e_ulp⌋ = (q : ℤ))
+    (hint_log : Int.log 2 ((mag : R) * (2 : R) ^ e_base) = (Nat.log2 mag : ℤ) + e_base)
+    (he_ulp_ge_sub : e_ulp ≥ FloatFormat.min_exp - FloatFormat.prec + 1)
+    (he_stored_le : e_ulp + FloatFormat.prec - 1 ≤ FloatFormat.max_exp)
+    (hq_bound : q < 2 ^ FloatFormat.prec.toNat)
+    (hq_pos_or_zero : True) -- placeholder, q can be 0
+    (h_e_ulp_eq_normal_or_sub : e_ulp = max (e_base + ↑(Nat.log2 mag + 1) - FloatFormat.prec)
+        (FloatFormat.min_exp - FloatFormat.prec + 1)) :
+    roundDown ((mag : R) * (2 : R) ^ e_base) =
+      Fp.finite ⟨false, e_ulp + FloatFormat.prec - 1, q,
+        ⟨by omega, by omega, hq_bound, by
+          -- Need: isNormal q ∨ isSubnormal (e_ulp + prec - 1) q
+          by_cases hn : 2 ^ (FloatFormat.prec - 1).toNat ≤ q
+          · left; exact ⟨hn, hq_bound⟩
+          · right
+            push_neg at hn
+            constructor
+            · -- e_ulp + prec - 1 = min_exp when subnormal
+              -- If e_ulp > min_exp - prec + 1, then e_ulp = e_base + bits - prec (normal dominates)
+              -- In normal case, q ≥ 2^(prec-1) (from floor of a normal value), contradicting hn.
+              -- So e_ulp = min_exp - prec + 1 and stored exp = min_exp.
+              by_contra h_ne
+              have h_gt : e_ulp + FloatFormat.prec - 1 > FloatFormat.min_exp := by omega
+              -- This means the normal branch dominates
+              have h_normal : e_ulp = e_base + ↑(Nat.log2 mag + 1) - FloatFormat.prec := by
+                rw [h_e_ulp_eq_normal_or_sub]; apply max_eq_left; omega
+              -- In normal case, q ≥ 2^(prec-1): from hfloor and the properties of Int.log
+              -- val / 2^e_ulp = val / 2^(e - prec + 1) where e = Int.log 2 val
+              -- val ≥ 2^e, so val / 2^(e-prec+1) ≥ 2^(prec-1)
+              -- Thus ⌊val / 2^e_ulp⌋ ≥ 2^(prec-1)
+              have he_eq : e_ulp = (Nat.log2 mag : ℤ) + e_base - FloatFormat.prec + 1 := by
+                push_cast at h_normal ⊢; omega
+              have hval_ge_binade : (2 : R) ^ ((Nat.log2 mag : ℤ) + e_base) ≤
+                  (mag : R) * (2 : R) ^ e_base := by
+                rw [← two_zpow_mul, zpow_natCast]
+                apply mul_le_mul_of_nonneg_right _ (zpow_nonneg (by norm_num) _)
+                rw [← Nat.cast_ofNat, ← Nat.cast_pow]
+                exact_mod_cast Nat.log2_self_le hmag
+              have hq_ge_prec : (2 : R) ^ (FloatFormat.prec - 1) ≤
+                  (mag : R) * (2 : R) ^ e_base / (2 : R) ^ e_ulp := by
+                rw [le_div_iff₀ (zpow_pos (by norm_num) _)]
+                calc (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ e_ulp
+                    = (2 : R) ^ ((FloatFormat.prec - 1) + e_ulp) := by rw [two_zpow_mul]
+                  _ = (2 : R) ^ ((Nat.log2 mag : ℤ) + e_base) := by
+                      congr 1; rw [he_eq]; ring
+                  _ ≤ (mag : R) * (2 : R) ^ e_base := hval_ge_binade
+              have : (q : ℤ) ≥ (2 : ℤ) ^ (FloatFormat.prec - 1).toNat := by
+                rw [← hfloor]
+                exact Int.le_floor.mpr (by
+                  push_cast
+                  rw [← zpow_natCast (2 : R) (FloatFormat.prec - 1).toNat,
+                    FloatFormat.prec_sub_one_toNat_eq]
+                  exact hq_ge_prec)
+              have hq_ge_nat : 2 ^ (FloatFormat.prec - 1).toNat ≤ q := by
+                zify at hn ⊢; exact this
+              omega
+            · omega⟩⟩ := by
+  unfold roundDown findPredecessor
+  simp [ne_of_gt hval_pos, hval_pos]
+  unfold findPredecessorPos
+  -- Case split on subnormal vs normal vs overflow
+  by_cases h_sub : (mag : R) * (2 : R) ^ e_base < (2 : R) ^ FloatFormat.min_exp
+  · -- SUBNORMAL CASE
+    simp [h_sub]
+    -- roundSubnormalDown computes ⌊val / 2^(min_exp - prec + 1)⌋
+    -- and e_ulp = min_exp - prec + 1 (subnormal dominates)
+    unfold roundSubnormalDown
+    -- Need: e_ulp = min_exp - prec + 1 in subnormal case
+    -- Since val < 2^min_exp, Int.log 2 val < min_exp
+    -- So e_base + bits - prec < min_exp - prec + 1, meaning subnormal dominates
+    have he_ulp_sub : e_ulp = FloatFormat.min_exp - FloatFormat.prec + 1 := by
+      rw [h_e_ulp_eq_normal_or_sub]
+      apply max_eq_right
+      -- Need: e_base + bits - prec ≤ min_exp - prec + 1
+      -- i.e., e_base + bits ≤ min_exp + 1
+      -- From hint_log: Int.log 2 val = Nat.log2 mag + e_base
+      -- From val < 2^min_exp: Int.log 2 val < min_exp
+      have h_log_lt : (Nat.log2 mag : ℤ) + e_base < FloatFormat.min_exp := by
+        rw [← hint_log]
+        exact (Int.lt_zpow_iff_log_lt (by norm_num : 1 < (2:ℕ)) hval_pos).mp
+          (by rwa [show (↑(2:ℕ) : R) = (2:R) from by push_cast; ring])
+      omega
+    -- The floor computation: ⌊val / 2^(min_exp - prec + 1)⌋ = q
+    have hfloor_sub : ⌊(mag : R) * (2 : R) ^ e_base /
+        (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1)⌋ = (q : ℤ) := by
+      rw [← he_ulp_sub]; exact hfloor
+    -- Need to match FiniteFp.mk equality
+    -- roundSubnormalDown returns ⟨false, min_exp, k.natAbs⟩ where k = ⌊val / ulp⌋
+    -- We need to show this equals ⟨false, e_ulp + prec - 1, q⟩
+    -- Since e_ulp + prec - 1 = (min_exp - prec + 1) + prec - 1 = min_exp ✓
+    -- And k.natAbs = q ✓ (from hfloor_sub: k = (q : ℤ), so k.natAbs = q)
+    -- Establish key facts
+    have hk_eq : ⌊(mag : R) * (2 : R) ^ e_base /
+        (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1)⌋ = (q : ℤ) := hfloor_sub
+    have he_stored : e_ulp + FloatFormat.prec - 1 = FloatFormat.min_exp := by rw [he_ulp_sub]; ring
+    have hnatabs : (⌊(mag : R) * (2 : R) ^ e_base /
+        (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1)⌋).natAbs = q := by
+      rw [hk_eq]; exact Int.natAbs_natCast q
+    -- The roundSubnormalDown unfolds to: if k = 0 then 0 else ⟨false, min_exp, k.natAbs, _⟩
+    -- We need to show this = ⟨false, e_ulp + prec - 1, q, _⟩
+    -- Both k=0 and k≠0 cases yield the same result once we rewrite
+    -- Use congr to handle validity proof differences
+    by_cases hk0 : ⌊(mag : R) * (2 : R) ^ e_base /
+        (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1)⌋ = 0
+    · -- k = 0 means q = 0
+      have hq0 : q = 0 := by exact_mod_cast (show (q : ℤ) = 0 from by rw [← hfloor_sub, hk0])
+      simp only [hk0, ↓reduceDIte]
+      -- Now goal: Fp.finite 0 = Fp.finite ⟨false, e_ulp + prec - 1, q, _⟩
+      -- Goal: Fp.finite 0 = Fp.finite ⟨false, e_ulp + prec - 1, q, _⟩
+      -- Both are Fp.finite of the zero FiniteFp
+      congr 1
+      rw [FiniteFp.eq_def, FiniteFp.zero_def]
+      exact ⟨rfl, he_stored.symm, hq0.symm⟩
+    · -- k ≠ 0
+      simp only [hk0, ↓reduceDIte]
+      -- Goal: Fp.finite ⟨false, min_exp, k.natAbs, _⟩ = Fp.finite ⟨false, e_ulp+prec-1, q, _⟩
+      -- congr 1 decomposes through Fp.finite and FiniteFp into field goals
+      congr 1; exact he_stored.symm
+  · -- NOT SUBNORMAL: normal or overflow
+    push_neg at h_sub
+    by_cases h_normal : (mag : R) * (2 : R) ^ e_base < (2 : R) ^ (FloatFormat.max_exp + 1)
+    · -- NORMAL CASE
+      simp [not_lt.mpr h_sub, h_normal]
+      -- roundNormalDown computes ⌊val / 2^e * 2^(prec-1)⌋ = ⌊val / 2^(e-prec+1)⌋
+      -- where e = findExponentDown val
+      unfold roundNormalDown
+      simp only
+      -- findExponentDown val = Int.log 2 val (in normal range, since val ∈ [2^min_exp, 2^(max_exp+1)))
+      -- From hint_log: Int.log 2 val = Nat.log2 mag + e_base
+      have h_nr : isNormalRange ((mag : R) * (2 : R) ^ e_base) := ⟨h_sub, h_normal⟩
+      have h_fed : findExponentDown ((mag : R) * (2 : R) ^ e_base) =
+          (Nat.log2 mag : ℤ) + e_base := by
+        rw [findExponentDown_normal _ h_nr, hint_log]
+      -- e_ulp = e_base + bits - prec (normal dominates since val ≥ 2^min_exp)
+      have he_ulp_normal : e_ulp = e_base + ↑(Nat.log2 mag + 1) - FloatFormat.prec := by
+        rw [h_e_ulp_eq_normal_or_sub]
+        apply max_eq_left
+        -- Need: min_exp - prec + 1 ≤ e_base + bits - prec
+        -- i.e., min_exp + 1 ≤ e_base + bits
+        -- From val ≥ 2^min_exp: Int.log 2 val ≥ min_exp
+        have h_log_ge : FloatFormat.min_exp ≤ (Nat.log2 mag : ℤ) + e_base := by
+          rw [← hint_log]
+          exact (Int.zpow_le_iff_le_log (by norm_num : 1 < (2:ℕ)) hval_pos).mp
+            (by rwa [show (↑(2:ℕ) : R) = (2:R) from by push_cast; ring])
+        omega
+      -- findExponentDown val - prec + 1 = e_ulp
+      have h_fed_ulp : findExponentDown ((mag : R) * (2 : R) ^ e_base) -
+          FloatFormat.prec + 1 = e_ulp := by
+        rw [h_fed, he_ulp_normal]; push_cast; ring
+      -- The floor via floor_scaled_eq_floor_div_ulp_step
+      have hfloor_normal : ⌊(mag : R) * (2 : R) ^ e_base /
+          (2 : R) ^ ((Nat.log2 mag : ℤ) + e_base - FloatFormat.prec + 1)⌋ = (q : ℤ) := by
+        have : (Nat.log2 mag : ℤ) + e_base - FloatFormat.prec + 1 = e_ulp := by
+          rw [he_ulp_normal]; push_cast; ring
+        rw [this]; exact hfloor
+      congr 1
+      · -- e: findExponentDown val = e_ulp + prec - 1
+        rw [h_fed, he_ulp_normal]; push_cast; ring
+      · -- m: floor_scaled.natAbs = q
+        rw [h_fed, floor_scaled_eq_floor_div_ulp_step, hfloor_normal]
+        exact Int.natAbs_natCast q
+    · -- OVERFLOW: contradiction with hval_lt
+      exfalso; linarith
+
 end RoundDown
 
 end Rounding

@@ -143,6 +143,45 @@ theorem List.flatMap_singleton_natCast_eq_map {l : List ℕ} : flatMap (fun x =>
   | nil => simp
   | cons x xs ih => aesop
 
+/-- `Int.log 2` of a scaled natural number: `Int.log 2 ((mag : R) * 2^e_base) = Nat.log2 mag + e_base`.
+This bridges the `Nat.log2` used in `roundIntSig` with the `Int.log 2` used in `findExponentDown`. -/
+theorem int_log_nat_mul_zpow {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    (mag : ℕ) (e_base : ℤ) (hmag : mag ≠ 0) :
+    Int.log 2 ((mag : R) * (2 : R) ^ e_base) = (Nat.log2 mag : ℤ) + e_base := by
+  have hmag_pos : (0 : R) < (mag : R) := Nat.cast_pos.mpr (Nat.pos_of_ne_zero hmag)
+  have hx_pos : (0 : R) < (mag : R) * (2 : R) ^ e_base :=
+    mul_pos hmag_pos (zpow_pos (by norm_num : (0:R) < 2) _)
+  -- Lower bound: 2^(Nat.log2 mag + e_base) ≤ mag * 2^e_base
+  have hle : (2 : R) ^ ((Nat.log2 mag : ℤ) + e_base) ≤ (mag : R) * (2 : R) ^ e_base := by
+    rw [← two_zpow_mul, zpow_natCast]
+    apply mul_le_mul_of_nonneg_right _ (zpow_nonneg (by norm_num : (0:R) ≤ 2) _)
+    rw [← Nat.cast_ofNat, ← Nat.cast_pow]
+    exact_mod_cast Nat.log2_self_le hmag
+  -- Upper bound: mag * 2^e_base < 2^(Nat.log2 mag + e_base + 1)
+  have hlt : (mag : R) * (2 : R) ^ e_base <
+      (2 : R) ^ ((Nat.log2 mag : ℤ) + e_base + 1) := by
+    have hmag_lt_bits : (mag : R) < (2 : R) ^ ((Nat.log2 mag + 1 : ℕ) : ℤ) := by
+      rw [zpow_natCast, ← Nat.cast_ofNat, ← Nat.cast_pow]
+      exact_mod_cast @Nat.lt_log2_self mag
+    calc (mag : R) * (2 : R) ^ e_base
+        < (2 : R) ^ ((Nat.log2 mag + 1 : ℕ) : ℤ) * (2 : R) ^ e_base :=
+          mul_lt_mul_of_pos_right hmag_lt_bits (zpow_pos (by norm_num) _)
+      _ = (2 : R) ^ ((Nat.log2 mag : ℤ) + e_base + 1) := by
+          rw [two_zpow_mul]; congr 1; push_cast; ring
+  -- Conclude from characterization of Int.log
+  have h1 : (Nat.log2 mag : ℤ) + e_base ≤ Int.log 2 ((mag : R) * (2 : R) ^ e_base) :=
+    (Int.zpow_le_iff_le_log (by norm_num : 1 < (2 : ℕ)) hx_pos).mp hle
+  have h2 : Int.log 2 ((mag : R) * (2 : R) ^ e_base) ≤ (Nat.log2 mag : ℤ) + e_base := by
+    by_contra h
+    push_neg at h
+    have h' : (Nat.log2 mag : ℤ) + e_base + 1 ≤
+        Int.log 2 ((mag : R) * (2 : R) ^ e_base) := by omega
+    have hle' := (Int.zpow_le_iff_le_log (by norm_num : 1 < (2 : ℕ)) hx_pos).mpr h'
+    -- hle' : ↑2 ^ (...) ≤ mag * 2^e_base, but ↑2 = (2 : R)
+    rw [show (↑(2 : ℕ) : R) = (2 : R) from by push_cast; ring] at hle'
+    linarith
+  omega
+
 theorem List.pairwise_disjoint_range {n : ℕ} : List.Pairwise (fun a b => a ≠ b) (List.range n) := by
   induction n with
   | zero => simp
