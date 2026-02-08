@@ -68,8 +68,17 @@ theorem all_rounding_modes_preserve_zero [FloatFormat] (mode : RoundingMode) :
 theorem rounding_mode_total [FloatFormat] (mode : RoundingMode) (x : R) :
   ∃ y : Fp, mode.round x = y := ⟨mode.round x, rfl⟩
 
--- TODO: Add monotonicity properties once we define an ordering on Fp
--- This would be useful for proving that rounding preserves order relations
+/-- Rounding a negated value equals negating the conjugate round.
+    Down(-x) = -(Up(x)), Up(-x) = -(Down(x)), and the symmetric modes
+    commute with negation. -/
+theorem RoundingMode.round_neg [FloatFormat] (mode : RoundingMode) (x : R) (hx : x ≠ 0) :
+    mode.round (-x) = -(mode.conjugate.round x) := by
+  cases mode with
+  | Down => exact roundDown_neg_eq_neg_roundUp x hx
+  | Up => exact roundUp_neg_eq_neg_roundDown x hx
+  | TowardZero => exact roundTowardZero_neg_eq_neg x hx
+  | NearestTiesToEven => exact rnEven_neg_eq_neg x hx
+  | NearestTiesAwayFromZero => exact rnAway_neg_eq_neg x hx
 
 end RoundingModes
 
