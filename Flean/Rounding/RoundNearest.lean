@@ -284,6 +284,92 @@ theorem rnAway_pos_unfold [FloatFormat]
   dsimp only
   rw [hpred_fp_eq]
 
+/-! ### Midpoint decision lemmas for positive values
+
+These lemmas directly give the rounding result based on the value's position relative to
+the midpoint between adjacent floats. They are key building blocks for proving that
+`roundIntSig` matches `mode.round`. -/
+
+/-- TiesToEven: value above midpoint → rounds up -/
+theorem rnEven_above_mid_eq_roundUp [FloatFormat]
+    (val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid : val > ((pred_fp.toVal : R) + succ_fp.toVal) / 2) :
+    roundNearestTiesToEven val = roundUp val := by
+  rw [rnEven_pos_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrU]
+  dsimp only
+  rw [if_neg (not_lt.mpr (le_of_lt hmid)), if_pos hmid]
+
+/-- TiesToEven: value below midpoint → rounds down -/
+theorem rnEven_below_mid_eq_roundDown [FloatFormat]
+    (val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid : val < ((pred_fp.toVal : R) + succ_fp.toVal) / 2) :
+    roundNearestTiesToEven val = roundDown val := by
+  rw [rnEven_pos_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrD]
+  dsimp only; rw [if_pos hmid]
+
+/-- TiesToEven: at midpoint with odd predecessor → rounds up -/
+theorem rnEven_at_mid_odd_eq_roundUp [FloatFormat]
+    (val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid : val = ((pred_fp.toVal : R) + succ_fp.toVal) / 2)
+    (hodd : isEvenSignificand pred_fp = false) :
+    roundNearestTiesToEven val = roundUp val := by
+  rw [rnEven_pos_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrU]
+  dsimp only
+  rw [if_neg (not_lt.mpr hmid.ge), if_neg (not_lt.mpr hmid.le), hodd]; simp
+
+/-- TiesToEven: at midpoint with even predecessor → rounds down -/
+theorem rnEven_at_mid_even_eq_roundDown [FloatFormat]
+    (val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid : val = ((pred_fp.toVal : R) + succ_fp.toVal) / 2)
+    (heven : isEvenSignificand pred_fp = true) :
+    roundNearestTiesToEven val = roundDown val := by
+  rw [rnEven_pos_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrD]
+  dsimp only
+  rw [if_neg (not_lt.mpr hmid.ge), if_neg (not_lt.mpr hmid.le), heven]; simp
+
+/-- TiesAway: value at or above midpoint → rounds up -/
+theorem rnAway_ge_mid_eq_roundUp [FloatFormat]
+    (val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid : val ≥ ((pred_fp.toVal : R) + succ_fp.toVal) / 2) :
+    roundNearestTiesAwayFromZero val = roundUp val := by
+  rw [rnAway_pos_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrU]
+  dsimp only
+  by_cases hgt : val > ((pred_fp.toVal : R) + succ_fp.toVal) / 2
+  · rw [if_neg (not_lt.mpr (le_of_lt hgt)), if_pos hgt]
+  · rw [if_neg (not_lt.mpr hmid), if_neg hgt, if_pos hval_pos]
+
+/-- TiesAway: value below midpoint → rounds down -/
+theorem rnAway_lt_mid_eq_roundDown [FloatFormat]
+    (val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid : val < ((pred_fp.toVal : R) + succ_fp.toVal) / 2) :
+    roundNearestTiesAwayFromZero val = roundDown val := by
+  rw [rnAway_pos_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrD]
+  dsimp only; rw [if_pos hmid]
+
 /-- Similar unfolding for roundNearestTiesToEven on negative values (-val where val > 0). -/
 theorem rnEven_neg_unfold [FloatFormat]
     (val : R) (pred_fp succ_fp : FiniteFp)
@@ -371,6 +457,255 @@ theorem rnAway_neg_unfold [FloatFormat]
   -- tie: -val > 0 is false since hval_pos : 0 < val → -val < 0
   have h_neg_not_pos : ¬(-val > 0) := by linarith
   simp [h_neg_not_pos]
+
+/-! ### Midpoint decision lemmas for negative values (-val where val > 0) -/
+
+/-- TiesToEven neg: value above midpoint → result is -(roundUp val) -/
+theorem rnEven_neg_above_mid [FloatFormat]
+    (val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid : val > ((pred_fp.toVal : R) + succ_fp.toVal) / 2) :
+    roundNearestTiesToEven (-val) = -(roundUp val) := by
+  rw [rnEven_neg_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrU]
+  dsimp only; rw [if_pos hmid]
+
+/-- TiesToEven neg: value below midpoint → result is -(roundDown val) -/
+theorem rnEven_neg_below_mid [FloatFormat]
+    (val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid : val < ((pred_fp.toVal : R) + succ_fp.toVal) / 2) :
+    roundNearestTiesToEven (-val) = -(roundDown val) := by
+  rw [rnEven_neg_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrD]
+  dsimp only
+  rw [if_neg (not_lt.mpr (le_of_lt hmid)), if_pos hmid]
+
+/-- TiesToEven neg: at midpoint with even successor → result is -(roundUp val) -/
+theorem rnEven_neg_at_mid_even_succ [FloatFormat]
+    (val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid : val = ((pred_fp.toVal : R) + succ_fp.toVal) / 2)
+    (heven : isEvenSignificand succ_fp = true) :
+    roundNearestTiesToEven (-val) = -(roundUp val) := by
+  rw [rnEven_neg_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrU]
+  dsimp only
+  rw [if_neg (not_lt.mpr hmid.le), if_neg (not_lt.mpr hmid.ge), heven]; simp
+
+/-- TiesToEven neg: at midpoint with odd successor → result is -(roundDown val) -/
+theorem rnEven_neg_at_mid_odd_succ [FloatFormat]
+    (val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid : val = ((pred_fp.toVal : R) + succ_fp.toVal) / 2)
+    (hodd : isEvenSignificand succ_fp = false) :
+    roundNearestTiesToEven (-val) = -(roundDown val) := by
+  rw [rnEven_neg_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrD]
+  dsimp only
+  rw [if_neg (not_lt.mpr hmid.le), if_neg (not_lt.mpr hmid.ge), hodd]; simp
+
+/-- TiesAway neg: value at or above midpoint → result is -(roundUp val) -/
+theorem rnAway_neg_ge_mid [FloatFormat]
+    (val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid : val ≥ ((pred_fp.toVal : R) + succ_fp.toVal) / 2) :
+    roundNearestTiesAwayFromZero (-val) = -(roundUp val) := by
+  rw [rnAway_neg_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrU]
+  dsimp only
+  by_cases hgt : val > ((pred_fp.toVal : R) + succ_fp.toVal) / 2
+  · rw [if_pos hgt]
+  · rw [if_neg hgt, if_neg (not_lt.mpr hmid)]
+
+/-- TiesAway neg: value below midpoint → result is -(roundDown val) -/
+theorem rnAway_neg_lt_mid [FloatFormat]
+    (val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid : val < ((pred_fp.toVal : R) + succ_fp.toVal) / 2) :
+    roundNearestTiesAwayFromZero (-val) = -(roundDown val) := by
+  rw [rnAway_neg_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrD]
+  dsimp only
+  rw [if_neg (not_lt.mpr (le_of_lt hmid)), if_pos hmid]
+
+/-! ### Midpoint lemma wrappers with explicit mid_val parameter
+
+These variants take `mid_val` and a proof `hmid_eq : (pred + succ) / 2 = mid_val`
+as separate arguments, so callers can provide the midpoint bridge and the comparison
+as independent terms without inline tactic blocks. -/
+
+/-- rnEven above midpoint → roundUp (with explicit mid_val) -/
+theorem rnEven_above_mid_roundUp [FloatFormat]
+    (val mid_val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
+    (hmid : val > mid_val) :
+    roundNearestTiesToEven val = roundUp val :=
+  rnEven_above_mid_eq_roundUp val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
+    (by rw [hmid_eq]; exact hmid)
+
+/-- rnEven below midpoint → roundDown (with explicit mid_val) -/
+theorem rnEven_below_mid_roundDown [FloatFormat]
+    (val mid_val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
+    (hmid : val < mid_val) :
+    roundNearestTiesToEven val = roundDown val :=
+  rnEven_below_mid_eq_roundDown val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
+    (by rw [hmid_eq]; exact hmid)
+
+/-- rnEven at midpoint, odd predecessor → roundUp (with explicit mid_val) -/
+theorem rnEven_at_mid_odd_roundUp [FloatFormat]
+    (val mid_val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
+    (hmid : val = mid_val)
+    (hodd : isEvenSignificand pred_fp = false) :
+    roundNearestTiesToEven val = roundUp val :=
+  rnEven_at_mid_odd_eq_roundUp val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
+    (by rw [hmid_eq]; exact hmid) hodd
+
+/-- rnEven at midpoint, even predecessor → roundDown (with explicit mid_val) -/
+theorem rnEven_at_mid_even_roundDown [FloatFormat]
+    (val mid_val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
+    (hmid : val = mid_val)
+    (heven : isEvenSignificand pred_fp = true) :
+    roundNearestTiesToEven val = roundDown val :=
+  rnEven_at_mid_even_eq_roundDown val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
+    (by rw [hmid_eq]; exact hmid) heven
+
+/-- rnAway at or above midpoint → roundUp (with explicit mid_val) -/
+theorem rnAway_ge_mid_roundUp [FloatFormat]
+    (val mid_val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
+    (hmid : val ≥ mid_val) :
+    roundNearestTiesAwayFromZero val = roundUp val :=
+  rnAway_ge_mid_eq_roundUp val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
+    (by rw [hmid_eq]; exact hmid)
+
+/-- rnAway below midpoint → roundDown (with explicit mid_val) -/
+theorem rnAway_lt_mid_roundDown [FloatFormat]
+    (val mid_val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
+    (hmid : val < mid_val) :
+    roundNearestTiesAwayFromZero val = roundDown val :=
+  rnAway_lt_mid_eq_roundDown val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
+    (by rw [hmid_eq]; exact hmid)
+
+/-- rnEven neg above midpoint (with explicit mid_val) -/
+theorem rnEven_neg_above_mid' [FloatFormat]
+    (val mid_val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
+    (hmid : val > mid_val) :
+    roundNearestTiesToEven (-val) = -(roundUp val) :=
+  rnEven_neg_above_mid val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
+    (by rw [hmid_eq]; exact hmid)
+
+/-- rnEven neg below midpoint (with explicit mid_val) -/
+theorem rnEven_neg_below_mid' [FloatFormat]
+    (val mid_val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
+    (hmid : val < mid_val) :
+    roundNearestTiesToEven (-val) = -(roundDown val) :=
+  rnEven_neg_below_mid val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
+    (by rw [hmid_eq]; exact hmid)
+
+/-- rnEven neg at midpoint, even successor (with explicit mid_val) -/
+theorem rnEven_neg_at_mid_even_succ' [FloatFormat]
+    (val mid_val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
+    (hmid : val = mid_val)
+    (heven : isEvenSignificand succ_fp = true) :
+    roundNearestTiesToEven (-val) = -(roundUp val) :=
+  rnEven_neg_at_mid_even_succ val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
+    (by rw [hmid_eq]; exact hmid) heven
+
+/-- rnEven neg at midpoint, odd successor (with explicit mid_val) -/
+theorem rnEven_neg_at_mid_odd_succ' [FloatFormat]
+    (val mid_val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
+    (hmid : val = mid_val)
+    (hodd : isEvenSignificand succ_fp = false) :
+    roundNearestTiesToEven (-val) = -(roundDown val) :=
+  rnEven_neg_at_mid_odd_succ val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
+    (by rw [hmid_eq]; exact hmid) hodd
+
+/-- rnAway neg at or above midpoint (with explicit mid_val) -/
+theorem rnAway_neg_ge_mid' [FloatFormat]
+    (val mid_val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
+    (hmid : val ≥ mid_val) :
+    roundNearestTiesAwayFromZero (-val) = -(roundUp val) :=
+  rnAway_neg_ge_mid val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
+    (by rw [hmid_eq]; exact hmid)
+
+/-- rnAway neg below midpoint (with explicit mid_val) -/
+theorem rnAway_neg_lt_mid' [FloatFormat]
+    (val mid_val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal)
+    (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
+    (hmid : val < mid_val) :
+    roundNearestTiesAwayFromZero (-val) = -(roundDown val) :=
+  rnAway_neg_lt_mid val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
+    (by rw [hmid_eq]; exact hmid)
 
 theorem largestFiniteFloat_lt_overflow_threshold [FloatFormat] :
     FiniteFp.largestFiniteFloat.toVal <

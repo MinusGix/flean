@@ -36,6 +36,13 @@ inductive RoundingMode
   | NearestTiesAwayFromZero
 deriving DecidableEq
 
+/-- Conjugate rounding mode: swaps Down ↔ Up, keeps symmetric modes.
+    Key property: `mode.round(-x) = -(mode.conjugate.round x)` for `x ≠ 0`. -/
+def RoundingMode.conjugate : RoundingMode → RoundingMode
+  | .Down => .Up
+  | .Up => .Down
+  | m => m
+
 def RoundingMode.toRoundingFunction [FloatFormat] (mode : RoundingMode) : R → Fp :=
   match mode with
   | .Down => roundDown

@@ -278,6 +278,26 @@ theorem roundTowardZero_pos [FloatFormat] (x : R) (f : FiniteFp) :
       linarith
 
 
+/-- Negation symmetry: roundTowardZero(-x) = -(roundTowardZero x) for x ≠ 0. -/
+theorem roundTowardZero_neg_eq_neg [FloatFormat] (x : R) (hx : x ≠ 0) :
+    roundTowardZero (-x) = -(roundTowardZero x) := by
+  rcases lt_trichotomy x 0 with hneg | hzero | hpos
+  · -- x < 0, -x > 0: roundTowardZero(x) = roundUp(x), roundTowardZero(-x) = roundDown(-x)
+    rw [roundTowardZero_neg_eq x hneg, roundTowardZero_pos_eq (-x) (neg_pos.mpr hneg)]
+    -- roundDown(-x) = findPredecessor(-x), roundUp(x) = findSuccessor(x)
+    -- For x < 0: findSuccessor(x) = Fp.finite(-findPredecessorPos(-x))
+    -- For -x > 0: findPredecessor(-x) = Fp.finite(findPredecessorPos(-x))
+    rw [roundDown, findPredecessor_pos_eq (-x) (neg_pos.mpr hneg)]
+    rw [roundUp, findSuccessor_neg_eq x hneg, Fp.neg_finite, neg_neg]
+  · exact absurd hzero hx
+  · -- x > 0, -x < 0: roundTowardZero(x) = roundDown(x), roundTowardZero(-x) = roundUp(-x)
+    rw [roundTowardZero_pos_eq x hpos, roundTowardZero_neg_eq (-x) (neg_lt_zero.mpr hpos)]
+    -- For x > 0: findPredecessor(x) = Fp.finite(findPredecessorPos(x))
+    -- For -x < 0: findSuccessor(-x) = Fp.finite(-findPredecessorPos(--x)) = Fp.finite(-findPredecessorPos(x))
+    rw [roundDown, findPredecessor_pos_eq x hpos]
+    rw [roundUp, findSuccessor_neg_eq (-x) (neg_lt_zero.mpr hpos)]
+    simp only [neg_neg, Fp.neg_finite]
+
 end RoundTowardZero
 
 end Rounding

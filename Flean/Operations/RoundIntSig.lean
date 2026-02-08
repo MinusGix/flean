@@ -1045,40 +1045,33 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
               · -- NearestTiesToEven (carry, sign=false, shouldRoundUp=true)
                 rw [show 2 ^ (shift_nat - 1) = half from rfl] at hru_val
                 simp only [hm_bridge.symm]
-                rw [rnEven_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                    hroundDown_eq hroundUp_carry]
-                dsimp only
-                rw [hmid_unfold _ (carry_float_toVal (R := R) q e_ulp (by omega) _ rfl rfl rfl)]
                 by_cases hr_gt : r > half
-                · rw [if_neg (not_lt.mpr (le_of_lt (hr_gt_mid hr_gt))),
-                      if_pos (hr_gt_mid hr_gt)]
+                · rw [rnEven_above_mid_roundUp _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                      hroundDown_eq hroundUp_carry (hmid_unfold _ (carry_float_toVal (R := R) q e_ulp (by omega) _ rfl rfl rfl)) (hr_gt_mid hr_gt)]
+                  exact hroundUp_carry.symm
                 · have hr_eq : r = half := by
                     by_contra h_ne; have hlt : r < half := by omega
                     simp only [show ¬(r > half) from hr_gt, ite_false, hlt, ite_true] at hru_val
                     exact absurd hru_val (by decide)
-                  rw [if_neg (not_lt.mpr (hr_eq_mid hr_eq).ge),
-                      if_neg (show ¬(_ > _) from not_lt.mpr (hr_eq_mid hr_eq).le)]
                   have hq_odd : q % 2 ≠ 0 := by
                     simp only [show ¬(r > half) from hr_gt, ite_false,
                       show ¬(r < half) from by omega, ite_false] at hru_val
                     revert hru_val; simp [decide_eq_true_eq]
-                  rw [hpred_even, show decide (q % 2 = 0) = false from by simp [hq_odd]]; simp
+                  rw [rnEven_at_mid_odd_roundUp _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                      hroundDown_eq hroundUp_carry (hmid_unfold _ (carry_float_toVal (R := R) q e_ulp (by omega) _ rfl rfl rfl)) (hr_eq_mid hr_eq)
+                      (by rw [hpred_even]; simp [hq_odd])]
+                  exact hroundUp_carry.symm
               · -- NearestTiesAwayFromZero (carry, sign=false, shouldRoundUp=true)
                 rw [show 2 ^ (shift_nat - 1) = half from rfl] at hru_val
                 simp only [hm_bridge.symm]
-                rw [rnAway_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                    hroundDown_eq hroundUp_carry]
-                dsimp only
-                rw [hmid_unfold _ (carry_float_toVal (R := R) q e_ulp (by omega) _ rfl rfl rfl)]
                 have hge_half : r ≥ half := by
                   revert hru_val; simp [decide_eq_true_eq, Nat.not_lt]
-                by_cases hr_gt : r > half
-                · rw [if_neg (not_lt.mpr (le_of_lt (hr_gt_mid hr_gt))),
-                      if_pos (hr_gt_mid hr_gt)]
-                · have hr_eq : r = half := by omega
-                  rw [if_neg (not_lt.mpr (hr_eq_mid hr_eq).ge),
-                      if_neg (show ¬(_ > _) from not_lt.mpr (hr_eq_mid hr_eq).le),
-                      if_pos hval_pos]
+                rw [rnAway_ge_mid_roundUp _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                    hroundDown_eq hroundUp_carry (hmid_unfold _ (carry_float_toVal (R := R) q e_ulp (by omega) _ rfl rfl rfl))
+                    (by rcases Nat.eq_or_lt_of_le hge_half with h | h
+                        · exact (hr_eq_mid h.symm).ge
+                        · exact le_of_lt (hr_gt_mid h))]
+                exact hroundUp_carry.symm
             · -- sign = true
               simp only [intSigVal, Bool.true_eq_false, ↓reduceIte]
               unfold shouldRoundUp at hru_val
@@ -1095,47 +1088,35 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 rw [show 2 ^ (shift_nat - 1) = half from rfl] at hru_val
                 have hval_lt_thresh := val_lt_thresh_of_roundUp_finite _ _ hval_pos hroundUp_carry
                 simp only [hm_bridge.symm]
-                rw [neg_mul, rnEven_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                    hroundDown_eq hroundUp_carry]
-                dsimp only
-                rw [hmid_unfold _ (carry_float_toVal (R := R) q e_ulp (by omega) _ rfl rfl rfl)]
                 by_cases hr_gt : r > half
-                · rw [if_pos (hr_gt_mid hr_gt), Fp.neg_finite]
-                  simp [FiniteFp.neg_def]
+                · rw [neg_mul, rnEven_neg_above_mid' _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                      hroundDown_eq hroundUp_carry (hmid_unfold _ (carry_float_toVal (R := R) q e_ulp (by omega) _ rfl rfl rfl)) (hr_gt_mid hr_gt),
+                    hroundUp_carry, Fp.neg_finite]; simp [FiniteFp.neg_def]
                 · have hr_eq : r = half := by
                     by_contra h_ne; have hlt : r < half := by omega
                     simp only [show ¬(r > half) from hr_gt, ite_false, hlt, ite_true] at hru_val
                     exact absurd hru_val (by decide)
-                  rw [if_neg (show ¬(_ > _) from not_lt.mpr (hr_eq_mid hr_eq).le),
-                      if_neg (not_lt.mpr (hr_eq_mid hr_eq).ge)]
-                  -- q odd → q+1=2^prec → succ m = 2^(prec-1) which is even (prec ≥ 2)
                   have hq_odd : q % 2 ≠ 0 := by
                     simp only [show ¬(r > half) from hr_gt, ite_false,
                       show ¬(r < half) from by omega, ite_false] at hru_val
                     revert hru_val; simp [decide_eq_true_eq]
-                  simp only [isEvenSignificand, hm_bridge,
-                    show 2 ^ (FloatFormat.prec.toNat - 1) % 2 = 0 from by
-                      rw [Nat.pow_mod]; simp [show FloatFormat.prec.toNat - 1 ≠ 0 from by
-                        have := FloatFormat.valid_prec; omega],
-                    decide_true, ↓reduceIte, Fp.neg_finite]
-                  simp [FiniteFp.neg_def]
+                  rw [neg_mul, rnEven_neg_at_mid_even_succ' _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                      hroundDown_eq hroundUp_carry
+                      (hmid_unfold _ (carry_float_toVal (R := R) q e_ulp (by omega) _ rfl rfl rfl)) (hr_eq_mid hr_eq)
+                      (by simp [isEvenSignificand, hm_bridge, show 2 ^ (FloatFormat.prec.toNat - 1) % 2 = 0 from by rw [Nat.pow_mod]; simp [show FloatFormat.prec.toNat - 1 ≠ 0 from by have := FloatFormat.valid_prec; omega]]),
+                    hroundUp_carry, Fp.neg_finite]; simp [FiniteFp.neg_def]
               · -- NearestTiesAwayFromZero (carry, sign=true, shouldRoundUp=true)
                 rw [show 2 ^ (shift_nat - 1) = half from rfl] at hru_val
                 have hval_lt_thresh := val_lt_thresh_of_roundUp_finite _ _ hval_pos hroundUp_carry
                 simp only [hm_bridge.symm]
-                rw [neg_mul, rnAway_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                    hroundDown_eq hroundUp_carry]
-                dsimp only
-                rw [hmid_unfold _ (carry_float_toVal (R := R) q e_ulp (by omega) _ rfl rfl rfl)]
                 have hge_half : r ≥ half := by
                   revert hru_val; simp [decide_eq_true_eq, Nat.not_lt]
-                by_cases hr_gt : r > half
-                · rw [if_pos (hr_gt_mid hr_gt), Fp.neg_finite]
-                  simp [FiniteFp.neg_def]
-                · have hr_eq : r = half := by omega
-                  rw [if_neg (show ¬(_ > _) from not_lt.mpr (hr_eq_mid hr_eq).le),
-                      if_neg (not_lt.mpr (hr_eq_mid hr_eq).ge), Fp.neg_finite]
-                  simp [FiniteFp.neg_def]
+                rw [neg_mul, rnAway_neg_ge_mid' _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                    hroundDown_eq hroundUp_carry (hmid_unfold _ (carry_float_toVal (R := R) q e_ulp (by omega) _ rfl rfl rfl))
+                    (by rcases Nat.eq_or_lt_of_le hge_half with h | h
+                        · exact (hr_eq_mid h.symm).ge
+                        · exact le_of_lt (hr_gt_mid h)),
+                  hroundUp_carry, Fp.neg_finite]; simp [FiniteFp.neg_def]
           · -- NO-CARRY CASE: q + 1 < 2^prec
             push_neg at hcarry
             have hq1_bound : q + 1 < 2 ^ FloatFormat.prec.toNat := by omega
@@ -1166,43 +1147,33 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
               · exact hroundUp_eq.symm  -- Up
               · simp at hru_val  -- TowardZero: impossible (positive val, roundUp ≠ roundTowardZero)
               · -- NearestTiesToEven (no-carry, sign=false, shouldRoundUp=true)
-                -- hru_val uses 2^(shift_nat-1), rewrite to use half
                 rw [show 2 ^ (shift_nat - 1) = half from rfl] at hru_val
-                rw [rnEven_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                    hroundDown_eq hroundUp_eq]
-                dsimp only
-                rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
                 by_cases hr_gt : r > half
-                · rw [if_neg (not_lt.mpr (le_of_lt (hr_gt_mid hr_gt))),
-                      if_pos (hr_gt_mid hr_gt)]
-                · -- r ≤ half, shouldRoundUp=true → r = half ∧ q odd
-                  have hr_eq : r = half := by
+                · rw [rnEven_above_mid_roundUp _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                      hroundDown_eq hroundUp_eq (hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)) (hr_gt_mid hr_gt)]
+                  exact hroundUp_eq.symm
+                · have hr_eq : r = half := by
                     by_contra h_ne; have hlt : r < half := by omega
                     simp only [show ¬(r > half) from hr_gt, ite_false, hlt, ite_true] at hru_val
                     exact absurd hru_val (by decide)
-                  rw [if_neg (not_lt.mpr (hr_eq_mid hr_eq).ge),
-                      if_neg (show ¬(_ > _) from not_lt.mpr (hr_eq_mid hr_eq).le)]
                   have hq_odd : q % 2 ≠ 0 := by
                     simp only [show ¬(r > half) from hr_gt, ite_false,
                       show ¬(r < half) from by omega, ite_false] at hru_val
                     revert hru_val; simp [decide_eq_true_eq]
-                  rw [hpred_even, show decide (q % 2 = 0) = false from by simp [hq_odd]]; simp
+                  rw [rnEven_at_mid_odd_roundUp _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                      hroundDown_eq hroundUp_eq (hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)) (hr_eq_mid hr_eq)
+                      (by rw [hpred_even]; simp [hq_odd])]
+                  exact hroundUp_eq.symm
               · -- NearestTiesAwayFromZero (no-carry, sign=false, shouldRoundUp=true)
                 rw [show 2 ^ (shift_nat - 1) = half from rfl] at hru_val
-                rw [rnAway_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                    hroundDown_eq hroundUp_eq]
-                dsimp only
-                rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
-                -- hru_val : decide (half ≤ r) = true → r ≥ half
                 have hge_half : r ≥ half := by
                   revert hru_val; simp [decide_eq_true_eq, Nat.not_lt]
-                by_cases hr_gt : r > half
-                · rw [if_neg (not_lt.mpr (le_of_lt (hr_gt_mid hr_gt))),
-                      if_pos (hr_gt_mid hr_gt)]
-                · have hr_eq : r = half := by omega
-                  rw [if_neg (not_lt.mpr (hr_eq_mid hr_eq).ge),
-                      if_neg (show ¬(_ > _) from not_lt.mpr (hr_eq_mid hr_eq).le),
-                      if_pos hval_pos]
+                rw [rnAway_ge_mid_roundUp _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                    hroundDown_eq hroundUp_eq (hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl))
+                    (by rcases Nat.eq_or_lt_of_le hge_half with h | h
+                        · exact (hr_eq_mid h.symm).ge
+                        · exact le_of_lt (hr_gt_mid h))]
+                exact hroundUp_eq.symm
             · -- sign = true
               simp only [intSigVal, Bool.true_eq_false, ↓reduceIte]
               unfold shouldRoundUp at hru_val
@@ -1217,45 +1188,33 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
               · simp at hru_val  -- TowardZero: impossible
               · -- NearestTiesToEven (no-carry, sign=true, shouldRoundUp=true)
                 rw [show 2 ^ (shift_nat - 1) = half from rfl] at hru_val
-                rw [neg_mul, rnEven_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                    hroundDown_eq hroundUp_eq]
-                dsimp only
-                rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
                 by_cases hr_gt : r > half
-                · -- val > mid → -(Fp.finite succ_fp) = Fp.finite ⟨true,...,q+1,...⟩
-                  rw [if_pos (hr_gt_mid hr_gt), Fp.neg_finite]
-                  simp [FiniteFp.neg_def]
+                · rw [neg_mul, rnEven_neg_above_mid' _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                      hroundDown_eq hroundUp_eq (hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)) (hr_gt_mid hr_gt),
+                    hroundUp_eq, Fp.neg_finite]; simp [FiniteFp.neg_def]
                 · have hr_eq : r = half := by
                     by_contra h_ne; have hlt : r < half := by omega
                     simp only [show ¬(r > half) from hr_gt, ite_false, hlt, ite_true] at hru_val
                     exact absurd hru_val (by decide)
-                  -- val = mid, isEvenSignificand succ_fp check
-                  rw [if_neg (show ¬(_ > _) from not_lt.mpr (hr_eq_mid hr_eq).le),
-                      if_neg (not_lt.mpr (hr_eq_mid hr_eq).ge)]
-                  -- q odd → q+1 even → isEvenSignificand succ_fp = true → -(Fp.finite succ_fp)
                   have hq_odd : q % 2 ≠ 0 := by
                     simp only [show ¬(r > half) from hr_gt, ite_false,
                       show ¬(r < half) from by omega, ite_false] at hru_val
                     revert hru_val; simp [decide_eq_true_eq]
-                  -- isEvenSignificand checks m % 2 = 0. succ_fp.m = q+1, q odd → q+1 even.
-                  simp only [isEvenSignificand, show (q + 1) % 2 = 0 from by omega,
-                    decide_true, ↓reduceIte, Fp.neg_finite]
-                  simp [FiniteFp.neg_def]
+                  rw [neg_mul, rnEven_neg_at_mid_even_succ' _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                      hroundDown_eq hroundUp_eq
+                      (hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)) (hr_eq_mid hr_eq)
+                      (by simp [isEvenSignificand, show (q + 1) % 2 = 0 from by omega]),
+                    hroundUp_eq, Fp.neg_finite]; simp [FiniteFp.neg_def]
               · -- NearestTiesAwayFromZero (no-carry, sign=true, shouldRoundUp=true)
                 rw [show 2 ^ (shift_nat - 1) = half from rfl] at hru_val
-                rw [neg_mul, rnAway_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                    hroundDown_eq hroundUp_eq]
-                dsimp only
-                rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
                 have hge_half : r ≥ half := by
                   revert hru_val; simp [decide_eq_true_eq, Nat.not_lt]
-                by_cases hr_gt : r > half
-                · rw [if_pos (hr_gt_mid hr_gt), Fp.neg_finite]
-                  simp [FiniteFp.neg_def]
-                · have hr_eq : r = half := by omega
-                  rw [if_neg (show ¬(_ > _) from not_lt.mpr (hr_eq_mid hr_eq).le),
-                      if_neg (not_lt.mpr (hr_eq_mid hr_eq).ge), Fp.neg_finite]
-                  simp [FiniteFp.neg_def]
+                rw [neg_mul, rnAway_neg_ge_mid' _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                    hroundDown_eq hroundUp_eq (hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl))
+                    (by rcases Nat.eq_or_lt_of_le hge_half with h | h
+                        · exact (hr_eq_mid h.symm).ge
+                        · exact le_of_lt (hr_gt_mid h)),
+                  hroundUp_eq, Fp.neg_finite]; simp [FiniteFp.neg_def]
         · -- shouldRoundUp = false → m_rounded = q → roundDown direction
           simp only [Bool.not_eq_true] at hru
           have hm_eq : m_rounded = q := by rw [hm_rounded_def]; simp [hru]
@@ -1289,11 +1248,9 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                     hmag hval_pos hval_lt_overflow hceil_bridge hint_log (by omega)
                     he_stored_le_inner hq1 h_e_ulp_eq
                   have hval_lt_thresh := val_lt_thresh_of_roundUp_finite _ _ hval_pos hroundUp_eq
-                  rw [rnEven_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                      hroundDown_eq hroundUp_eq]
-                  dsimp only
-                  rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
-                  rw [if_pos (hr_lt_mid hr_lt)]
+                  rw [rnEven_below_mid_roundDown _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                      hroundDown_eq hroundUp_eq (hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)) (hr_lt_mid hr_lt)]
+                  exact hroundDown_eq.symm
                 · -- carry + r < half (TiesToEven, sign=false)
                   push_neg at hq1
                   have hq_eq : q + 1 = 2 ^ FloatFormat.prec.toNat := by omega
@@ -1302,13 +1259,9 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                       hmag hval_pos hval_lt_overflow hceil_bridge hint_log (by omega)
                       he_carry hq_eq h_e_ulp_eq
                     have hval_lt_thresh := val_lt_thresh_of_roundUp_finite _ _ hval_pos hroundUp_carry
-                    have hm_bridge : 2 ^ (FloatFormat.prec - 1).toNat = 2 ^ (FloatFormat.prec.toNat - 1) := by
-                      rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
-                    rw [rnEven_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                        hroundDown_eq hroundUp_carry]
-                    dsimp only
-                    rw [hmid_unfold _ (carry_float_toVal (R := R) q e_ulp hq_eq _ rfl rfl rfl)]
-                    rw [if_pos (hr_lt_mid hr_lt)]
+                    rw [rnEven_below_mid_roundDown _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                        hroundDown_eq hroundUp_carry (hmid_unfold _ (carry_float_toVal (R := R) q e_ulp hq_eq _ rfl rfl rfl)) (hr_lt_mid hr_lt)]
+                    exact hroundDown_eq.symm
                   · push_neg at he_carry
                     obtain ⟨_, _, hroundUp_inf⟩ :=
                       carry_overflow_pred_lff_roundUp_inf (R := R) mag e_base e_ulp q r hq_eq
@@ -1340,14 +1293,11 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                   hmag hval_pos hval_lt_overflow hceil_bridge hint_log (by omega)
                   he_stored_le_inner hq1_bound h_e_ulp_eq
                 have hval_lt_thresh := val_lt_thresh_of_roundUp_finite _ _ hval_pos hroundUp_eq
-                rw [rnEven_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                    hroundDown_eq hroundUp_eq]
-                dsimp only
-                rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
-                rw [if_neg (not_lt.mpr (hr_eq_mid hr_eq).ge),
-                    if_neg (show ¬(_ > _) from not_lt.mpr (hr_eq_mid hr_eq).le)]
-                rw [hpred_even, show decide (q % 2 = 0) = true from by simp [hq_even]]
-                exact Eq.symm (if_pos rfl)
+                rw [rnEven_at_mid_even_roundDown _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                    hroundDown_eq hroundUp_eq
+                    (hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)) (hr_eq_mid hr_eq)
+                    (by rw [hpred_even]; simp [hq_even])]
+                exact hroundDown_eq.symm
             · -- NearestTiesAwayFromZero (shouldRoundUp=false, sign=false)
               rw [show 2 ^ (shift_nat - 1) = half from rfl] at hru_val
               have hr_lt : r < half := by
@@ -1357,11 +1307,9 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                   hmag hval_pos hval_lt_overflow hceil_bridge hint_log (by omega)
                   he_stored_le_inner hq1 h_e_ulp_eq
                 have hval_lt_thresh := val_lt_thresh_of_roundUp_finite _ _ hval_pos hroundUp_eq
-                rw [rnAway_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                    hroundDown_eq hroundUp_eq]
-                dsimp only
-                rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
-                rw [if_pos (hr_lt_mid hr_lt)]
+                rw [rnAway_lt_mid_roundDown _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                    hroundDown_eq hroundUp_eq (hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)) (hr_lt_mid hr_lt)]
+                exact hroundDown_eq.symm
               · -- carry + r < half (TiesAwayFromZero, sign=false)
                 push_neg at hq1
                 have hq_eq : q + 1 = 2 ^ FloatFormat.prec.toNat := by omega
@@ -1370,13 +1318,9 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                     hmag hval_pos hval_lt_overflow hceil_bridge hint_log (by omega)
                     he_carry hq_eq h_e_ulp_eq
                   have hval_lt_thresh := val_lt_thresh_of_roundUp_finite _ _ hval_pos hroundUp_carry
-                  have hm_bridge : 2 ^ (FloatFormat.prec - 1).toNat = 2 ^ (FloatFormat.prec.toNat - 1) := by
-                    rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
-                  rw [rnAway_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                      hroundDown_eq hroundUp_carry]
-                  dsimp only
-                  rw [hmid_unfold _ (carry_float_toVal (R := R) q e_ulp hq_eq _ rfl rfl rfl)]
-                  rw [if_pos (hr_lt_mid hr_lt)]
+                  rw [rnAway_lt_mid_roundDown _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                      hroundDown_eq hroundUp_carry (hmid_unfold _ (carry_float_toVal (R := R) q e_ulp hq_eq _ rfl rfl rfl)) (hr_lt_mid hr_lt)]
+                  exact hroundDown_eq.symm
                 · push_neg at he_carry
                   obtain ⟨_, _, hroundUp_inf⟩ :=
                     carry_overflow_pred_lff_roundUp_inf (R := R) mag e_base e_ulp q r hq_eq
@@ -1417,13 +1361,9 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                     hmag hval_pos hval_lt_overflow hceil_bridge hint_log (by omega)
                     he_stored_le_inner hq1 h_e_ulp_eq
                   have hval_lt_thresh := val_lt_thresh_of_roundUp_finite _ _ hval_pos hroundUp_eq
-                  rw [neg_mul, rnEven_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                      hroundDown_eq hroundUp_eq]
-                  dsimp only
-                  rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
-                  rw [if_neg (show ¬(_ > _) from not_lt.mpr (le_of_lt (hr_lt_mid hr_lt))),
-                      if_pos (hr_lt_mid hr_lt), Fp.neg_finite]
-                  simp [FiniteFp.neg_def, hpred_fp_def]
+                  rw [neg_mul, rnEven_neg_below_mid' _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                      hroundDown_eq hroundUp_eq (hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)) (hr_lt_mid hr_lt),
+                    hroundDown_eq, Fp.neg_finite]; simp [FiniteFp.neg_def, hpred_fp_def]
                 · -- carry + r < half (TiesToEven, sign=true)
                   push_neg at hq1
                   have hq_eq : q + 1 = 2 ^ FloatFormat.prec.toNat := by omega
@@ -1432,15 +1372,9 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                       hmag hval_pos hval_lt_overflow hceil_bridge hint_log (by omega)
                       he_carry hq_eq h_e_ulp_eq
                     have hval_lt_thresh := val_lt_thresh_of_roundUp_finite _ _ hval_pos hroundUp_carry
-                    have hm_bridge : 2 ^ (FloatFormat.prec - 1).toNat = 2 ^ (FloatFormat.prec.toNat - 1) := by
-                      rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
-                    rw [neg_mul, rnEven_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                        hroundDown_eq hroundUp_carry]
-                    dsimp only
-                    rw [hmid_unfold _ (carry_float_toVal (R := R) q e_ulp hq_eq _ rfl rfl rfl)]
-                    rw [if_neg (show ¬(_ > _) from not_lt.mpr (le_of_lt (hr_lt_mid hr_lt))),
-                        if_pos (hr_lt_mid hr_lt), Fp.neg_finite]
-                    simp [FiniteFp.neg_def, hpred_fp_def]
+                    rw [neg_mul, rnEven_neg_below_mid' _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                        hroundDown_eq hroundUp_carry (hmid_unfold _ (carry_float_toVal (R := R) q e_ulp hq_eq _ rfl rfl rfl)) (hr_lt_mid hr_lt),
+                      hroundDown_eq, Fp.neg_finite]; simp [FiniteFp.neg_def, hpred_fp_def]
                   · push_neg at he_carry
                     obtain ⟨hpred_is_lff, _, hroundUp_inf⟩ :=
                       carry_overflow_pred_lff_roundUp_inf (R := R) mag e_base e_ulp q r hq_eq
@@ -1473,16 +1407,11 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                   hmag hval_pos hval_lt_overflow hceil_bridge hint_log (by omega)
                   he_stored_le_inner hq1_bound h_e_ulp_eq
                 have hval_lt_thresh := val_lt_thresh_of_roundUp_finite _ _ hval_pos hroundUp_eq
-                rw [neg_mul, rnEven_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                    hroundDown_eq hroundUp_eq]
-                dsimp only
-                rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
-                -- At midpoint, neg unfold checks isEvenSignificand succ_fp
-                -- q even → q+1 odd → isEvenSignificand = false → returns -(pred)
-                rw [if_neg (show ¬(_ > _) from not_lt.mpr (hr_eq_mid hr_eq).le),
-                    if_neg (not_lt.mpr (hr_eq_mid hr_eq).ge)]
-                simp only [isEvenSignificand, show (q + 1) % 2 = 1 from by omega,
-                  ↓reduceIte, Fp.neg_finite]
+                rw [neg_mul, rnEven_neg_at_mid_odd_succ' _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                    hroundDown_eq hroundUp_eq
+                    (hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)) (hr_eq_mid hr_eq)
+                    (by simp [isEvenSignificand, show (q + 1) % 2 = 1 from by omega]),
+                  hroundDown_eq, Fp.neg_finite]
                 simp [FiniteFp.neg_def, hpred_fp_def]
             · -- NearestTiesAwayFromZero (shouldRoundUp=false, sign=true)
               rw [show 2 ^ (shift_nat - 1) = half from rfl] at hru_val
@@ -1493,13 +1422,9 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                   hmag hval_pos hval_lt_overflow hceil_bridge hint_log (by omega)
                   he_stored_le_inner hq1 h_e_ulp_eq
                 have hval_lt_thresh := val_lt_thresh_of_roundUp_finite _ _ hval_pos hroundUp_eq
-                rw [neg_mul, rnAway_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                    hroundDown_eq hroundUp_eq]
-                dsimp only
-                rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
-                rw [if_neg (show ¬(_ > _) from not_lt.mpr (le_of_lt (hr_lt_mid hr_lt))),
-                    if_pos (hr_lt_mid hr_lt), Fp.neg_finite]
-                simp [FiniteFp.neg_def, hpred_fp_def]
+                rw [neg_mul, rnAway_neg_lt_mid' _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                    hroundDown_eq hroundUp_eq (hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)) (hr_lt_mid hr_lt),
+                  hroundDown_eq, Fp.neg_finite]; simp [FiniteFp.neg_def, hpred_fp_def]
               · -- carry + r < half (TiesAwayFromZero, sign=true)
                 push_neg at hq1
                 have hq_eq : q + 1 = 2 ^ FloatFormat.prec.toNat := by omega
@@ -1508,15 +1433,9 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                     hmag hval_pos hval_lt_overflow hceil_bridge hint_log (by omega)
                     he_carry hq_eq h_e_ulp_eq
                   have hval_lt_thresh := val_lt_thresh_of_roundUp_finite _ _ hval_pos hroundUp_carry
-                  have hm_bridge : 2 ^ (FloatFormat.prec - 1).toNat = 2 ^ (FloatFormat.prec.toNat - 1) := by
-                    rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
-                  rw [neg_mul, rnAway_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
-                      hroundDown_eq hroundUp_carry]
-                  dsimp only
-                  rw [hmid_unfold _ (carry_float_toVal (R := R) q e_ulp hq_eq _ rfl rfl rfl)]
-                  rw [if_neg (show ¬(_ > _) from not_lt.mpr (le_of_lt (hr_lt_mid hr_lt))),
-                      if_pos (hr_lt_mid hr_lt), Fp.neg_finite]
-                  simp [FiniteFp.neg_def, hpred_fp_def]
+                  rw [neg_mul, rnAway_neg_lt_mid' _ mid_val pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
+                      hroundDown_eq hroundUp_carry (hmid_unfold _ (carry_float_toVal (R := R) q e_ulp hq_eq _ rfl rfl rfl)) (hr_lt_mid hr_lt),
+                    hroundDown_eq, Fp.neg_finite]; simp [FiniteFp.neg_def, hpred_fp_def]
                 · push_neg at he_carry
                   obtain ⟨hpred_is_lff, _, hroundUp_inf⟩ :=
                     carry_overflow_pred_lff_roundUp_inf (R := R) mag e_base e_ulp q r hq_eq
