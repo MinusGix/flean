@@ -353,6 +353,117 @@ private theorem round_idempotent (mode : RoundingMode) (f : FiniteFp)
   | NearestTiesToEven => exact roundNearestTiesToEven_idempotent f h
   | NearestTiesAwayFromZero => exact roundNearestTiesAwayFromZero_idempotent f h
 
+/-- When the predecessor significand is `2^prec - 1` at the maximum exponent,
+the midpoint between the predecessor and its (overflowing) successor equals the
+nearest-mode overflow threshold `(2 - 2^(1-prec)/2) * 2^max_exp`. -/
+private theorem mid_val_eq_overflow_threshold (q : ℕ) (e_ulp : ℤ)
+    (hq_eq : q + 1 = 2 ^ FloatFormat.prec.toNat)
+    (he_ulp : e_ulp = FloatFormat.max_exp - FloatFormat.prec + 1) :
+    (q : R) * (2 : R) ^ e_ulp + (2 : R) ^ (e_ulp - 1) =
+    (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp := by
+  have h2ne : (2 : R) ≠ 0 := by norm_num
+  -- (q+1) * 2^e_ulp = 2^(max_exp+1)
+  have h_zpow1 : (2 : R) ^ FloatFormat.prec.toNat * (2 : R) ^ e_ulp =
+      (2 : R) ^ (FloatFormat.max_exp + 1) := by
+    rw [← zpow_natCast (2 : R) FloatFormat.prec.toNat, two_zpow_mul]
+    congr 1; rw [FloatFormat.prec_toNat_eq]; omega
+  have h_zpow2 : (2 : R) ^ e_ulp = 2 * (2 : R) ^ (e_ulp - 1) := by
+    rw [show e_ulp = e_ulp - 1 + 1 from by omega, zpow_add₀ h2ne, zpow_one]; ring
+  have h_zpow3 : (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) *
+      (2 : R) ^ FloatFormat.max_exp = (2 : R) ^ e_ulp := by
+    rw [two_zpow_mul]; congr 1; omega
+  have h_zpow4 : 2 * (2 : R) ^ FloatFormat.max_exp =
+      (2 : R) ^ (FloatFormat.max_exp + 1) := by
+    rw [zpow_add₀ h2ne, zpow_one]; ring
+  have h_prod : (q : R) * (2 : R) ^ e_ulp + (2 : R) ^ e_ulp =
+      (2 : R) ^ (FloatFormat.max_exp + 1) := by
+    have hq1 : (q : R) + 1 = (2 : R) ^ FloatFormat.prec.toNat := by
+      exact_mod_cast hq_eq
+    have : (q : R) * (2 : R) ^ e_ulp + (2 : R) ^ e_ulp =
+        ((q : R) + 1) * (2 : R) ^ e_ulp := by ring
+    rw [this, hq1, h_zpow1]
+  linarith [h_prod, h_zpow2, h_zpow3, h_zpow4]
+
+/-- The carry float from `roundUp_nat_mul_zpow_carry` has `toVal = (q+1) * 2^e_ulp`.
+
+When `q + 1 = 2^prec`, the carry float `⟨false, e_ulp + prec, 2^(prec-1), _⟩`
+has value `2^prec * 2^(e_ulp+1) / 2 = (q+1) * 2^e_ulp`. -/
+private theorem carry_float_toVal {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (q : ℕ) (e_ulp : ℤ) (hq_eq : q + 1 = 2 ^ FloatFormat.prec.toNat)
+    (f : FiniteFp) (hf_s : f.s = false)
+    (hf_e : f.e = e_ulp + FloatFormat.prec)
+    (hf_m : f.m = 2 ^ (FloatFormat.prec - 1).toNat) :
+    (f.toVal : R) = ((q : R) + 1) * (2 : R) ^ e_ulp := by
+  unfold FiniteFp.toVal FiniteFp.sign'
+  rw [FloatFormat.radix_val_eq_two, hf_s, hf_e, hf_m]
+  simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
+  rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub,
+      show e_ulp + FloatFormat.prec - FloatFormat.prec + 1 = e_ulp + 1 from by omega]
+  push_cast
+  rw [show (q : R) + 1 = (2 : R) ^ FloatFormat.prec.toNat from by exact_mod_cast hq_eq,
+      ← zpow_natCast (2 : R) (FloatFormat.prec.toNat - 1),
+      ← zpow_natCast (2 : R) FloatFormat.prec.toNat,
+      two_zpow_mul, two_zpow_mul]
+  congr 1
+  rw [Nat.cast_sub (show 1 ≤ FloatFormat.prec.toNat from by
+        have := FloatFormat.valid_prec; omega)]
+  omega
+
+/-- The no-carry succ float from `roundUp_nat_mul_zpow` has `toVal = (q+1) * 2^e_ulp`.
+
+The float `⟨false, e_ulp + prec - 1, q + 1, _⟩` has value `(q+1) * 2^(e_ulp+prec-1-prec+1) = (q+1) * 2^e_ulp`. -/
+private theorem no_carry_succ_toVal {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (q : ℕ) (e_ulp : ℤ)
+    (f : FiniteFp) (hf_s : f.s = false)
+    (hf_e : f.e = e_ulp + FloatFormat.prec - 1) (hf_m : f.m = q + 1) :
+    (f.toVal : R) = ((q : R) + 1) * (2 : R) ^ e_ulp := by
+  unfold FiniteFp.toVal FiniteFp.sign'
+  rw [FloatFormat.radix_val_eq_two, hf_s, hf_e, hf_m]
+  simp only [Bool.false_eq_true, ↓reduceIte, one_mul, Nat.cast_add, Nat.cast_one]
+  congr 1; ring_nf
+
+/-- When `q + 1 = 2^prec` and `e_ulp + prec > max_exp`, the roundDown predecessor
+is the largest finite float and roundUp overflows to infinity.
+
+This is the "carry overflow" scenario in nearest-mode rounding for `roundIntSig`:
+the value is just past the largest finite float, roundUp overflows, and the
+nearest-mode tie-breaking logic determines the result. -/
+private theorem carry_overflow_pred_lff_roundUp_inf
+    {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    (mag : ℕ) (e_base e_ulp : ℤ) (q r : ℕ)
+    (hq_eq : q + 1 = 2 ^ FloatFormat.prec.toNat)
+    (he_stored_le : e_ulp + FloatFormat.prec - 1 ≤ FloatFormat.max_exp)
+    (he_overflow : e_ulp + FloatFormat.prec > FloatFormat.max_exp)
+    (hval_pos : (mag : R) * (2 : R) ^ e_base > 0)
+    (hval_decomp : (mag : R) * (2:R)^e_base = (q : R) * (2:R)^e_ulp + (r : R) * (2:R)^e_base)
+    (hr_pos : r > 0)
+    (pred_fp : FiniteFp)
+    (hpred_s : pred_fp.s = false)
+    (hpred_e : pred_fp.e = e_ulp + FloatFormat.prec - 1)
+    (hpred_m : pred_fp.m = q) :
+    pred_fp = FiniteFp.largestFiniteFloat ∧
+    (mag : R) * (2 : R) ^ e_base > (FiniteFp.largestFiniteFloat.toVal : R) ∧
+    roundUp ((mag : R) * (2 : R) ^ e_base) = Fp.infinite false := by
+  have hpred_toVal : (pred_fp.toVal : R) = (q : R) * (2 : R) ^ e_ulp := by
+    unfold FiniteFp.toVal FiniteFp.sign'
+    rw [FloatFormat.radix_val_eq_two, hpred_s, hpred_e, hpred_m]
+    simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
+    congr 1; ring_nf
+  have hpred_is_lff : pred_fp = FiniteFp.largestFiniteFloat := by
+    have he : e_ulp + FloatFormat.prec - 1 = FloatFormat.max_exp := by omega
+    have hq : q = 2 ^ FloatFormat.prec.toNat - 1 := by omega
+    ext
+    · exact hpred_s
+    · rw [hpred_e, he]; rfl
+    · rw [hpred_m, hq]; rfl
+  have hval_gt_lff : (mag : R) * (2 : R) ^ e_base >
+      FiniteFp.largestFiniteFloat.toVal := by
+    rw [← hpred_is_lff, hpred_toVal, hval_decomp]
+    linarith [mul_pos (Nat.cast_pos.mpr hr_pos)
+      (zpow_pos (show (0:R) < 2 from by norm_num) e_base)]
+  exact ⟨hpred_is_lff, hval_gt_lff,
+    roundUp_gt_largestFiniteFloat _ hval_pos hval_gt_lff⟩
+
 set_option maxHeartbeats 800000 in
 /-- `roundIntSig` correctly rounds the value `±mag × 2^e_base` according to the given rounding mode.
 
@@ -590,65 +701,19 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
           have hmag_ge_thresh_of_half (hr_half : r ≥ 2 ^ (shift_nat - 1)) :
               (mag : R) * (2 : R) ^ e_base ≥
               (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp := by
-            have hmag_ge_sum : mag ≥ 2 ^ shift_nat * q + 2 ^ (shift_nat - 1) := by omega
-            have hmag_ge_r : (mag : R) ≥ (q : R) * (2 : R) ^ (shift_nat : ℕ) + (2 : R) ^ ((shift_nat - 1 : ℕ) : ℤ) := by
-              have : (2 ^ shift_nat * q + 2 ^ (shift_nat - 1) : ℕ) ≤ mag := hmag_ge_sum
-              have h := (Nat.cast_le (α := R)).mpr this
-              simp only [Nat.cast_add, Nat.cast_mul, Nat.cast_pow, Nat.cast_ofNat] at h
-              rw [zpow_natCast]; linarith
-            have hshift_ge_one : shift_nat ≥ 1 := by omega
-            suffices (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp ≤
-                ((q : R) * (2 : R) ^ (shift_nat : ℕ) + (2 : R) ^ ((shift_nat - 1 : ℕ) : ℤ)) * (2 : R) ^ e_base by
-              calc (mag : R) * (2:R)^e_base
-                  ≥ ((q : R) * (2 : R) ^ (shift_nat : ℕ) + (2 : R) ^ ((shift_nat - 1 : ℕ) : ℤ)) * (2:R)^e_base :=
-                    mul_le_mul_of_nonneg_right hmag_ge_r (by positivity)
-                _ ≥ _ := this
-            have hrhs : ((q : R) * (2 : R) ^ (shift_nat : ℕ) + (2 : R) ^ ((shift_nat - 1 : ℕ) : ℤ)) * (2 : R) ^ e_base =
-                (q : R) * (2 : R) ^ e_ulp + (2 : R) ^ (e_ulp - 1) := by
-              have hexp1 : (2 : R) ^ (shift_nat : ℕ) * (2 : R) ^ e_base = (2 : R) ^ e_ulp := by
-                rw [← zpow_natCast (2:R) shift_nat, hshift_nat_eq, two_zpow_mul]
-                congr 1; omega
-              have hexp2 : (2 : R) ^ ((shift_nat - 1 : ℕ) : ℤ) * (2 : R) ^ e_base = (2 : R) ^ (e_ulp - 1) := by
-                rw [two_zpow_mul]; congr 1; omega
-              rw [add_mul, mul_assoc, hexp1, hexp2]
-            rw [hrhs, he_ulp_eq]
-            -- Both sides equal 2^(me+1) - 2^(me-p)
-            -- LHS = (2 - 2^(1-p)/2) * 2^me
-            -- RHS = q * 2^(me-p+1) + 2^(me-p) = (2^p - 1) * 2^(me-p+1) + 2^(me-p)
-            -- Show they're equal by reducing both to the same expression
-            suffices h : (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp =
-                (q : R) * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) + (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1 - 1) by
-              exact le_of_eq h
-            -- Both sides = 2^(me+1) - 2^(me-p).
-            -- We prove this by reducing both to the same expression using zpow arithmetic.
-            have hq_cast : (q : R) = (2 : R) ^ FloatFormat.prec - 1 := by
-              rw [hq_eq, Nat.cast_sub (Nat.one_le_two_pow), Nat.cast_pow, Nat.cast_ofNat,
-                  ← zpow_natCast (2 : R) FloatFormat.prec.toNat, FloatFormat.prec_toNat_eq]
-              simp
-            -- Key zpow identities
-            have h_step : (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) =
-                2 * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec) := by
-              rw [show FloatFormat.max_exp - FloatFormat.prec + 1 = 1 + (FloatFormat.max_exp - FloatFormat.prec) from by ring,
-                  ← two_zpow_mul, zpow_one]
-            have h_prec_step : (2 : R) ^ FloatFormat.prec * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) =
-                2 * (2 : R) ^ FloatFormat.max_exp := by
-              rw [two_zpow_mul,
-                  show FloatFormat.prec + (FloatFormat.max_exp - FloatFormat.prec + 1) = FloatFormat.max_exp + 1 from by ring,
-                  show FloatFormat.max_exp + 1 = 1 + FloatFormat.max_exp from by ring,
-                  ← two_zpow_mul, zpow_one]
-            have h_eps : (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2 * (2 : R) ^ FloatFormat.max_exp =
-                (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec) := by
-              rw [div_mul_eq_mul_div, two_zpow_mul,
-                  show 1 - FloatFormat.prec + FloatFormat.max_exp = FloatFormat.max_exp - FloatFormat.prec + 1 from by ring,
-                  h_step, mul_div_cancel_left₀ _ (two_ne_zero)]
-            -- Bridge: me-p+1-1 = me-p
-            have h_exp_eq : FloatFormat.max_exp - FloatFormat.prec + 1 - 1 = FloatFormat.max_exp - FloatFormat.prec := by ring
-            rw [h_exp_eq]
-            -- Expand LHS
-            rw [sub_mul, h_eps]
-            -- Expand RHS
-            rw [hq_cast, sub_mul, one_mul, h_prec_step, h_step]
-            ring
+            -- mid_val = threshold
+            have hmid_eq := mid_val_eq_overflow_threshold (R := R) q e_ulp
+              (show q + 1 = 2 ^ FloatFormat.prec.toNat from by omega) he_ulp_eq
+            -- val ≥ mid_val: r * 2^e_base ≥ 2^(shift_nat-1) * 2^e_base = 2^(e_ulp-1)
+            have hr_cast : (r : R) ≥ (2^(shift_nat - 1) : ℕ) := by exact_mod_cast hr_half
+            have h_half_zpow : (2:R)^((shift_nat - 1 : ℕ) : ℤ) * (2:R)^e_base = (2:R)^(e_ulp - 1) := by
+              rw [two_zpow_mul]; congr 1
+              have : shift_nat ≥ 1 := by omega
+              omega
+            have h_nat_zpow : ((2^(shift_nat - 1) : ℕ) : R) = (2:R)^((shift_nat - 1 : ℕ) : ℤ) := by
+              rw [zpow_natCast, Nat.cast_pow, Nat.cast_ofNat]
+            -- val = q * 2^e_ulp + r * 2^e_base ≥ q * 2^e_ulp + 2^(e_ulp-1) = threshold
+            nlinarith [hval_decomp, zpow_pos (show (0:R) < 2 by norm_num) e_base]
           -- Now dispatch per mode
           cases sign
           · -- sign = false (positive)
@@ -983,22 +1048,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 rw [rnEven_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                     hroundDown_eq hroundUp_carry]
                 dsimp only
-                rw [hmid_unfold _ (by
-                  simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                    Bool.false_eq_true, ↓reduceIte, one_mul]
-                  rw [hm_bridge,
-                      show e_ulp + FloatFormat.prec - FloatFormat.prec + 1 = e_ulp + 1
-                        from by omega]
-                  push_cast
-                  rw [show (q : R) + 1 = (2 : R) ^ FloatFormat.prec.toNat from by
-                        exact_mod_cast (show q + 1 = 2 ^ FloatFormat.prec.toNat from by omega),
-                      ← zpow_natCast (2 : R) (FloatFormat.prec.toNat - 1),
-                      ← zpow_natCast (2 : R) FloatFormat.prec.toNat,
-                      two_zpow_mul, two_zpow_mul]
-                  congr 1
-                  rw [Nat.cast_sub (show 1 ≤ FloatFormat.prec.toNat from by
-                        have := FloatFormat.valid_prec; omega)]
-                  omega)]
+                rw [hmid_unfold _ (carry_float_toVal (R := R) q e_ulp (by omega) _ rfl rfl rfl)]
                 by_cases hr_gt : r > half
                 · rw [if_neg (not_lt.mpr (le_of_lt (hr_gt_mid hr_gt))),
                       if_pos (hr_gt_mid hr_gt)]
@@ -1019,22 +1069,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 rw [rnAway_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                     hroundDown_eq hroundUp_carry]
                 dsimp only
-                rw [hmid_unfold _ (by
-                  simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                    Bool.false_eq_true, ↓reduceIte, one_mul]
-                  rw [hm_bridge,
-                      show e_ulp + FloatFormat.prec - FloatFormat.prec + 1 = e_ulp + 1
-                        from by omega]
-                  push_cast
-                  rw [show (q : R) + 1 = (2 : R) ^ FloatFormat.prec.toNat from by
-                        exact_mod_cast (show q + 1 = 2 ^ FloatFormat.prec.toNat from by omega),
-                      ← zpow_natCast (2 : R) (FloatFormat.prec.toNat - 1),
-                      ← zpow_natCast (2 : R) FloatFormat.prec.toNat,
-                      two_zpow_mul, two_zpow_mul]
-                  congr 1
-                  rw [Nat.cast_sub (show 1 ≤ FloatFormat.prec.toNat from by
-                        have := FloatFormat.valid_prec; omega)]
-                  omega)]
+                rw [hmid_unfold _ (carry_float_toVal (R := R) q e_ulp (by omega) _ rfl rfl rfl)]
                 have hge_half : r ≥ half := by
                   revert hru_val; simp [decide_eq_true_eq, Nat.not_lt]
                 by_cases hr_gt : r > half
@@ -1063,22 +1098,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 rw [neg_mul, rnEven_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                     hroundDown_eq hroundUp_carry]
                 dsimp only
-                rw [hmid_unfold _ (by
-                  simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                    Bool.false_eq_true, ↓reduceIte, one_mul]
-                  rw [hm_bridge,
-                      show e_ulp + FloatFormat.prec - FloatFormat.prec + 1 = e_ulp + 1
-                        from by omega]
-                  push_cast
-                  rw [show (q : R) + 1 = (2 : R) ^ FloatFormat.prec.toNat from by
-                        exact_mod_cast (show q + 1 = 2 ^ FloatFormat.prec.toNat from by omega),
-                      ← zpow_natCast (2 : R) (FloatFormat.prec.toNat - 1),
-                      ← zpow_natCast (2 : R) FloatFormat.prec.toNat,
-                      two_zpow_mul, two_zpow_mul]
-                  congr 1
-                  rw [Nat.cast_sub (show 1 ≤ FloatFormat.prec.toNat from by
-                        have := FloatFormat.valid_prec; omega)]
-                  omega)]
+                rw [hmid_unfold _ (carry_float_toVal (R := R) q e_ulp (by omega) _ rfl rfl rfl)]
                 by_cases hr_gt : r > half
                 · rw [if_pos (hr_gt_mid hr_gt), Fp.neg_finite]
                   simp [FiniteFp.neg_def]
@@ -1106,22 +1126,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 rw [neg_mul, rnAway_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                     hroundDown_eq hroundUp_carry]
                 dsimp only
-                rw [hmid_unfold _ (by
-                  simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                    Bool.false_eq_true, ↓reduceIte, one_mul]
-                  rw [hm_bridge,
-                      show e_ulp + FloatFormat.prec - FloatFormat.prec + 1 = e_ulp + 1
-                        from by omega]
-                  push_cast
-                  rw [show (q : R) + 1 = (2 : R) ^ FloatFormat.prec.toNat from by
-                        exact_mod_cast (show q + 1 = 2 ^ FloatFormat.prec.toNat from by omega),
-                      ← zpow_natCast (2 : R) (FloatFormat.prec.toNat - 1),
-                      ← zpow_natCast (2 : R) FloatFormat.prec.toNat,
-                      two_zpow_mul, two_zpow_mul]
-                  congr 1
-                  rw [Nat.cast_sub (show 1 ≤ FloatFormat.prec.toNat from by
-                        have := FloatFormat.valid_prec; omega)]
-                  omega)]
+                rw [hmid_unfold _ (carry_float_toVal (R := R) q e_ulp (by omega) _ rfl rfl rfl)]
                 have hge_half : r ≥ half := by
                   revert hru_val; simp [decide_eq_true_eq, Nat.not_lt]
                 by_cases hr_gt : r > half
@@ -1166,10 +1171,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 rw [rnEven_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                     hroundDown_eq hroundUp_eq]
                 dsimp only
-                rw [hmid_unfold _ (by
-                  simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                    Bool.false_eq_true, ↓reduceIte, one_mul, Nat.cast_add, Nat.cast_one]
-                  congr 1; ring_nf)]
+                rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
                 by_cases hr_gt : r > half
                 · rw [if_neg (not_lt.mpr (le_of_lt (hr_gt_mid hr_gt))),
                       if_pos (hr_gt_mid hr_gt)]
@@ -1190,10 +1192,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 rw [rnAway_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                     hroundDown_eq hroundUp_eq]
                 dsimp only
-                rw [hmid_unfold _ (by
-                  simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                    Bool.false_eq_true, ↓reduceIte, one_mul, Nat.cast_add, Nat.cast_one]
-                  congr 1; ring_nf)]
+                rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
                 -- hru_val : decide (half ≤ r) = true → r ≥ half
                 have hge_half : r ≥ half := by
                   revert hru_val; simp [decide_eq_true_eq, Nat.not_lt]
@@ -1221,10 +1220,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 rw [neg_mul, rnEven_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                     hroundDown_eq hroundUp_eq]
                 dsimp only
-                rw [hmid_unfold _ (by
-                  simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                    Bool.false_eq_true, ↓reduceIte, one_mul, Nat.cast_add, Nat.cast_one]
-                  congr 1; ring_nf)]
+                rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
                 by_cases hr_gt : r > half
                 · -- val > mid → -(Fp.finite succ_fp) = Fp.finite ⟨true,...,q+1,...⟩
                   rw [if_pos (hr_gt_mid hr_gt), Fp.neg_finite]
@@ -1250,10 +1246,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 rw [neg_mul, rnAway_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                     hroundDown_eq hroundUp_eq]
                 dsimp only
-                rw [hmid_unfold _ (by
-                  simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                    Bool.false_eq_true, ↓reduceIte, one_mul, Nat.cast_add, Nat.cast_one]
-                  congr 1; ring_nf)]
+                rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
                 have hge_half : r ≥ half := by
                   revert hru_val; simp [decide_eq_true_eq, Nat.not_lt]
                 by_cases hr_gt : r > half
@@ -1299,10 +1292,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                   rw [rnEven_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                       hroundDown_eq hroundUp_eq]
                   dsimp only
-                  rw [hmid_unfold _ (by
-                    simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                      Bool.false_eq_true, ↓reduceIte, one_mul, Nat.cast_add, Nat.cast_one]
-                    congr 1; ring_nf)]
+                  rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
                   rw [if_pos (hr_lt_mid hr_lt)]
                 · -- carry + r < half (TiesToEven, sign=false)
                   push_neg at hq1
@@ -1317,72 +1307,19 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                     rw [rnEven_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                         hroundDown_eq hroundUp_carry]
                     dsimp only
-                    rw [hmid_unfold _ (by
-                      simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                        Bool.false_eq_true, ↓reduceIte, one_mul]
-                      rw [hm_bridge,
-                          show e_ulp + FloatFormat.prec - FloatFormat.prec + 1 = e_ulp + 1
-                            from by omega]
-                      push_cast
-                      rw [show (q : R) + 1 = (2 : R) ^ FloatFormat.prec.toNat from by
-                            exact_mod_cast hq_eq,
-                          ← zpow_natCast (2 : R) (FloatFormat.prec.toNat - 1),
-                          ← zpow_natCast (2 : R) FloatFormat.prec.toNat,
-                          two_zpow_mul, two_zpow_mul]
-                      congr 1
-                      rw [Nat.cast_sub (show 1 ≤ FloatFormat.prec.toNat from by
-                            have := FloatFormat.valid_prec; omega)]
-                      omega)]
+                    rw [hmid_unfold _ (carry_float_toVal (R := R) q e_ulp hq_eq _ rfl rfl rfl)]
                     rw [if_pos (hr_lt_mid hr_lt)]
                   · push_neg at he_carry
-                    have h2ne : (2 : R) ≠ 0 := by norm_num
-                    have hpred_is_lff : pred_fp = FiniteFp.largestFiniteFloat := by
-                      rw [hpred_fp_def]; ext <;> simp [FiniteFp.largestFiniteFloat,
-                        show e_ulp + FloatFormat.prec - 1 = FloatFormat.max_exp from by omega,
-                        show q = 2 ^ FloatFormat.prec.toNat - 1 from by omega]
-                    have hval_gt_lff : (mag : R) * (2 : R) ^ e_base >
-                        FiniteFp.largestFiniteFloat.toVal := by
-                      rw [← hpred_is_lff, hpred_toVal, hval_decomp]
-                      linarith [mul_pos (Nat.cast_pos.mpr hr_pos)
-                        (zpow_pos (show (0:R) < 2 from by norm_num) e_base)]
-                    have hroundUp_inf := roundUp_gt_largestFiniteFloat _ hval_pos hval_gt_lff
-                    -- zpow building blocks for mid_val = threshold
-                    have h_zpow1 : (2 : R) ^ FloatFormat.prec.toNat * (2 : R) ^ e_ulp =
-                        (2 : R) ^ (FloatFormat.max_exp + 1) := by
-                      rw [← zpow_natCast (2 : R) FloatFormat.prec.toNat, two_zpow_mul]
-                      congr 1; rw [FloatFormat.prec_toNat_eq]; omega
-                    have h_zpow2 : (2 : R) ^ e_ulp = 2 * (2 : R) ^ (e_ulp - 1) := by
-                      rw [show e_ulp = e_ulp - 1 + 1 from by omega, zpow_add₀ h2ne, zpow_one]
-                      ring
-                    have h_zpow3 : (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) *
-                        (2 : R) ^ FloatFormat.max_exp = (2 : R) ^ e_ulp := by
-                      rw [two_zpow_mul]; congr 1; omega
-                    have h_zpow4 : 2 * (2 : R) ^ FloatFormat.max_exp =
-                        (2 : R) ^ (FloatFormat.max_exp + 1) := by
-                      rw [zpow_add₀ h2ne, zpow_one]; ring
-                    have h_prod : (q : R) * (2 : R) ^ e_ulp + (2 : R) ^ e_ulp =
-                        (2 : R) ^ (FloatFormat.max_exp + 1) := by
-                      have hq1 : (q : R) + 1 = (2 : R) ^ FloatFormat.prec.toNat := by
-                        exact_mod_cast show q + 1 = 2 ^ FloatFormat.prec.toNat from by omega
-                      have : (q : R) * (2 : R) ^ e_ulp + (2 : R) ^ e_ulp =
-                          ((q : R) + 1) * (2 : R) ^ e_ulp := by ring
-                      rw [this, hq1, h_zpow1]
+                    obtain ⟨_, _, hroundUp_inf⟩ :=
+                      carry_overflow_pred_lff_roundUp_inf (R := R) mag e_base e_ulp q r hq_eq
+                        he_stored_le_inner (by omega) hval_pos hval_decomp hr_pos pred_fp
+                        (by rw [hpred_fp_def]) (by rw [hpred_fp_def]) (by rw [hpred_fp_def])
                     have hval_lt_thresh : (mag : R) * (2 : R) ^ e_base <
                         (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) *
                         (2 : R) ^ FloatFormat.max_exp := by
-                      suffices hmid_le : mid_val ≤ (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) *
-                          (2 : R) ^ FloatFormat.max_exp from
-                        lt_of_lt_of_le (hr_lt_mid hr_lt) hmid_le
-                      suffices hmid_eq : mid_val = (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) *
-                          (2 : R) ^ FloatFormat.max_exp from le_of_eq hmid_eq
-                      calc mid_val
-                          = (q : R) * (2 : R) ^ e_ulp + (2 : R) ^ (e_ulp - 1) := hmid_val_def
-                        _ = (2 : R) ^ (FloatFormat.max_exp + 1) - (2 : R) ^ (e_ulp - 1) := by
-                            linarith [h_prod, h_zpow2]
-                        _ = (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) *
-                            (2 : R) ^ FloatFormat.max_exp := by
-                            rw [sub_mul, div_mul_eq_mul_div, h_zpow3, h_zpow2,
-                                mul_div_cancel_left₀ _ h2ne, h_zpow4]
+                      linarith [hr_lt_mid hr_lt,
+                        (mid_val_eq_overflow_threshold (R := R) q e_ulp (by omega) (by omega)).symm
+                          ▸ hmid_val_def]
                     exact (rnEven_pos_succ_overflow _ pred_fp hval_pos hval_ge_ssps
                       hval_lt_thresh hroundDown_eq hroundUp_inf).symm
               · -- r ≥ half: r = half ∧ q even → at midpoint, pred is even → returns pred
@@ -1406,10 +1343,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 rw [rnEven_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                     hroundDown_eq hroundUp_eq]
                 dsimp only
-                rw [hmid_unfold _ (by
-                  simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                    Bool.false_eq_true, ↓reduceIte, one_mul, Nat.cast_add, Nat.cast_one]
-                  congr 1; ring_nf)]
+                rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
                 rw [if_neg (not_lt.mpr (hr_eq_mid hr_eq).ge),
                     if_neg (show ¬(_ > _) from not_lt.mpr (hr_eq_mid hr_eq).le)]
                 rw [hpred_even, show decide (q % 2 = 0) = true from by simp [hq_even]]
@@ -1426,10 +1360,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 rw [rnAway_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                     hroundDown_eq hroundUp_eq]
                 dsimp only
-                rw [hmid_unfold _ (by
-                  simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                    Bool.false_eq_true, ↓reduceIte, one_mul, Nat.cast_add, Nat.cast_one]
-                  congr 1; ring_nf)]
+                rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
                 rw [if_pos (hr_lt_mid hr_lt)]
               · -- carry + r < half (TiesAwayFromZero, sign=false)
                 push_neg at hq1
@@ -1444,71 +1375,19 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                   rw [rnAway_pos_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                       hroundDown_eq hroundUp_carry]
                   dsimp only
-                  rw [hmid_unfold _ (by
-                    simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                      Bool.false_eq_true, ↓reduceIte, one_mul]
-                    rw [hm_bridge,
-                        show e_ulp + FloatFormat.prec - FloatFormat.prec + 1 = e_ulp + 1
-                          from by omega]
-                    push_cast
-                    rw [show (q : R) + 1 = (2 : R) ^ FloatFormat.prec.toNat from by
-                          exact_mod_cast hq_eq,
-                        ← zpow_natCast (2 : R) (FloatFormat.prec.toNat - 1),
-                        ← zpow_natCast (2 : R) FloatFormat.prec.toNat,
-                        two_zpow_mul, two_zpow_mul]
-                    congr 1
-                    rw [Nat.cast_sub (show 1 ≤ FloatFormat.prec.toNat from by
-                          have := FloatFormat.valid_prec; omega)]
-                    omega)]
+                  rw [hmid_unfold _ (carry_float_toVal (R := R) q e_ulp hq_eq _ rfl rfl rfl)]
                   rw [if_pos (hr_lt_mid hr_lt)]
                 · push_neg at he_carry
-                  have h2ne : (2 : R) ≠ 0 := by norm_num
-                  have hpred_is_lff : pred_fp = FiniteFp.largestFiniteFloat := by
-                    rw [hpred_fp_def]; ext <;> simp [FiniteFp.largestFiniteFloat,
-                      show e_ulp + FloatFormat.prec - 1 = FloatFormat.max_exp from by omega,
-                      show q = 2 ^ FloatFormat.prec.toNat - 1 from by omega]
-                  have hval_gt_lff : (mag : R) * (2 : R) ^ e_base >
-                      FiniteFp.largestFiniteFloat.toVal := by
-                    rw [← hpred_is_lff, hpred_toVal, hval_decomp]
-                    linarith [mul_pos (Nat.cast_pos.mpr hr_pos)
-                      (zpow_pos (show (0:R) < 2 from by norm_num) e_base)]
-                  have hroundUp_inf := roundUp_gt_largestFiniteFloat _ hval_pos hval_gt_lff
-                  have h_zpow1 : (2 : R) ^ FloatFormat.prec.toNat * (2 : R) ^ e_ulp =
-                      (2 : R) ^ (FloatFormat.max_exp + 1) := by
-                    rw [← zpow_natCast (2 : R) FloatFormat.prec.toNat, two_zpow_mul]
-                    congr 1; rw [FloatFormat.prec_toNat_eq]; omega
-                  have h_zpow2 : (2 : R) ^ e_ulp = 2 * (2 : R) ^ (e_ulp - 1) := by
-                    rw [show e_ulp = e_ulp - 1 + 1 from by omega, zpow_add₀ h2ne, zpow_one]
-                    ring
-                  have h_zpow3 : (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) *
-                      (2 : R) ^ FloatFormat.max_exp = (2 : R) ^ e_ulp := by
-                    rw [two_zpow_mul]; congr 1; omega
-                  have h_zpow4 : 2 * (2 : R) ^ FloatFormat.max_exp =
-                      (2 : R) ^ (FloatFormat.max_exp + 1) := by
-                    rw [zpow_add₀ h2ne, zpow_one]; ring
-                  have h_prod : (q : R) * (2 : R) ^ e_ulp + (2 : R) ^ e_ulp =
-                      (2 : R) ^ (FloatFormat.max_exp + 1) := by
-                    have hq1r : (q : R) + 1 = (2 : R) ^ FloatFormat.prec.toNat := by
-                      exact_mod_cast show q + 1 = 2 ^ FloatFormat.prec.toNat from by omega
-                    have : (q : R) * (2 : R) ^ e_ulp + (2 : R) ^ e_ulp =
-                        ((q : R) + 1) * (2 : R) ^ e_ulp := by ring
-                    rw [this, hq1r, h_zpow1]
+                  obtain ⟨_, _, hroundUp_inf⟩ :=
+                    carry_overflow_pred_lff_roundUp_inf (R := R) mag e_base e_ulp q r hq_eq
+                      he_stored_le_inner (by omega) hval_pos hval_decomp hr_pos pred_fp
+                      (by rw [hpred_fp_def]) (by rw [hpred_fp_def]) (by rw [hpred_fp_def])
                   have hval_lt_thresh : (mag : R) * (2 : R) ^ e_base <
                       (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) *
                       (2 : R) ^ FloatFormat.max_exp := by
-                    suffices hmid_le : mid_val ≤ (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) *
-                        (2 : R) ^ FloatFormat.max_exp from
-                      lt_of_lt_of_le (hr_lt_mid hr_lt) hmid_le
-                    suffices hmid_eq : mid_val = (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) *
-                        (2 : R) ^ FloatFormat.max_exp from le_of_eq hmid_eq
-                    calc mid_val
-                        = (q : R) * (2 : R) ^ e_ulp + (2 : R) ^ (e_ulp - 1) := hmid_val_def
-                      _ = (2 : R) ^ (FloatFormat.max_exp + 1) - (2 : R) ^ (e_ulp - 1) := by
-                          linarith [h_prod, h_zpow2]
-                      _ = (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) *
-                          (2 : R) ^ FloatFormat.max_exp := by
-                          rw [sub_mul, div_mul_eq_mul_div, h_zpow3, h_zpow2,
-                              mul_div_cancel_left₀ _ h2ne, h_zpow4]
+                    linarith [hr_lt_mid hr_lt,
+                      (mid_val_eq_overflow_threshold (R := R) q e_ulp (by omega) (by omega)).symm
+                        ▸ hmid_val_def]
                   exact (rnAway_pos_succ_overflow _ pred_fp hval_pos hval_ge_ssps
                     hval_lt_thresh hroundDown_eq hroundUp_inf).symm
           · -- sign = true
@@ -1541,10 +1420,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                   rw [neg_mul, rnEven_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                       hroundDown_eq hroundUp_eq]
                   dsimp only
-                  rw [hmid_unfold _ (by
-                    simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                      Bool.false_eq_true, ↓reduceIte, one_mul, Nat.cast_add, Nat.cast_one]
-                    congr 1; ring_nf)]
+                  rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
                   rw [if_neg (show ¬(_ > _) from not_lt.mpr (le_of_lt (hr_lt_mid hr_lt))),
                       if_pos (hr_lt_mid hr_lt), Fp.neg_finite]
                   simp [FiniteFp.neg_def, hpred_fp_def]
@@ -1561,73 +1437,21 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                     rw [neg_mul, rnEven_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                         hroundDown_eq hroundUp_carry]
                     dsimp only
-                    rw [hmid_unfold _ (by
-                      simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                        Bool.false_eq_true, ↓reduceIte, one_mul]
-                      rw [hm_bridge,
-                          show e_ulp + FloatFormat.prec - FloatFormat.prec + 1 = e_ulp + 1
-                            from by omega]
-                      push_cast
-                      rw [show (q : R) + 1 = (2 : R) ^ FloatFormat.prec.toNat from by
-                            exact_mod_cast hq_eq,
-                          ← zpow_natCast (2 : R) (FloatFormat.prec.toNat - 1),
-                          ← zpow_natCast (2 : R) FloatFormat.prec.toNat,
-                          two_zpow_mul, two_zpow_mul]
-                      congr 1
-                      rw [Nat.cast_sub (show 1 ≤ FloatFormat.prec.toNat from by
-                            have := FloatFormat.valid_prec; omega)]
-                      omega)]
+                    rw [hmid_unfold _ (carry_float_toVal (R := R) q e_ulp hq_eq _ rfl rfl rfl)]
                     rw [if_neg (show ¬(_ > _) from not_lt.mpr (le_of_lt (hr_lt_mid hr_lt))),
                         if_pos (hr_lt_mid hr_lt), Fp.neg_finite]
                     simp [FiniteFp.neg_def, hpred_fp_def]
                   · push_neg at he_carry
-                    have h2ne : (2 : R) ≠ 0 := by norm_num
-                    have hpred_is_lff : pred_fp = FiniteFp.largestFiniteFloat := by
-                      rw [hpred_fp_def]; ext <;> simp [FiniteFp.largestFiniteFloat,
-                        show e_ulp + FloatFormat.prec - 1 = FloatFormat.max_exp from by omega,
-                        show q = 2 ^ FloatFormat.prec.toNat - 1 from by omega]
-                    have hval_gt_lff : (mag : R) * (2 : R) ^ e_base >
-                        FiniteFp.largestFiniteFloat.toVal := by
-                      rw [← hpred_is_lff, hpred_toVal, hval_decomp]
-                      linarith [mul_pos (Nat.cast_pos.mpr hr_pos)
-                        (zpow_pos (show (0:R) < 2 from by norm_num) e_base)]
-                    have hroundUp_inf := roundUp_gt_largestFiniteFloat _ hval_pos hval_gt_lff
-                    have h_zpow1 : (2 : R) ^ FloatFormat.prec.toNat * (2 : R) ^ e_ulp =
-                        (2 : R) ^ (FloatFormat.max_exp + 1) := by
-                      rw [← zpow_natCast (2 : R) FloatFormat.prec.toNat, two_zpow_mul]
-                      congr 1; rw [FloatFormat.prec_toNat_eq]; omega
-                    have h_zpow2 : (2 : R) ^ e_ulp = 2 * (2 : R) ^ (e_ulp - 1) := by
-                      rw [show e_ulp = e_ulp - 1 + 1 from by omega, zpow_add₀ h2ne, zpow_one]
-                      ring
-                    have h_zpow3 : (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) *
-                        (2 : R) ^ FloatFormat.max_exp = (2 : R) ^ e_ulp := by
-                      rw [two_zpow_mul]; congr 1; omega
-                    have h_zpow4 : 2 * (2 : R) ^ FloatFormat.max_exp =
-                        (2 : R) ^ (FloatFormat.max_exp + 1) := by
-                      rw [zpow_add₀ h2ne, zpow_one]; ring
-                    have h_prod : (q : R) * (2 : R) ^ e_ulp + (2 : R) ^ e_ulp =
-                        (2 : R) ^ (FloatFormat.max_exp + 1) := by
-                      have hq1r : (q : R) + 1 = (2 : R) ^ FloatFormat.prec.toNat := by
-                        exact_mod_cast show q + 1 = 2 ^ FloatFormat.prec.toNat from by omega
-                      have : (q : R) * (2 : R) ^ e_ulp + (2 : R) ^ e_ulp =
-                          ((q : R) + 1) * (2 : R) ^ e_ulp := by ring
-                      rw [this, hq1r, h_zpow1]
+                    obtain ⟨hpred_is_lff, _, hroundUp_inf⟩ :=
+                      carry_overflow_pred_lff_roundUp_inf (R := R) mag e_base e_ulp q r hq_eq
+                        he_stored_le_inner (by omega) hval_pos hval_decomp hr_pos pred_fp
+                        (by rw [hpred_fp_def]) (by rw [hpred_fp_def]) (by rw [hpred_fp_def])
                     have hval_lt_thresh : (mag : R) * (2 : R) ^ e_base <
                         (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) *
                         (2 : R) ^ FloatFormat.max_exp := by
-                      suffices hmid_le : mid_val ≤ (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) *
-                          (2 : R) ^ FloatFormat.max_exp from
-                        lt_of_lt_of_le (hr_lt_mid hr_lt) hmid_le
-                      suffices hmid_eq : mid_val = (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) *
-                          (2 : R) ^ FloatFormat.max_exp from le_of_eq hmid_eq
-                      calc mid_val
-                          = (q : R) * (2 : R) ^ e_ulp + (2 : R) ^ (e_ulp - 1) := hmid_val_def
-                        _ = (2 : R) ^ (FloatFormat.max_exp + 1) - (2 : R) ^ (e_ulp - 1) := by
-                            linarith [h_prod, h_zpow2]
-                        _ = (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) *
-                            (2 : R) ^ FloatFormat.max_exp := by
-                            rw [sub_mul, div_mul_eq_mul_div, h_zpow3, h_zpow2,
-                                mul_div_cancel_left₀ _ h2ne, h_zpow4]
+                      linarith [hr_lt_mid hr_lt,
+                        (mid_val_eq_overflow_threshold (R := R) q e_ulp (by omega) (by omega)).symm
+                          ▸ hmid_val_def]
                     rw [neg_mul, (rnEven_neg_succ_overflow _ pred_fp hval_pos hval_ge_ssps
                         hval_lt_thresh hroundDown_eq hroundUp_inf)]
                     simp [FiniteFp.neg_def, hpred_fp_def]
@@ -1652,10 +1476,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 rw [neg_mul, rnEven_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                     hroundDown_eq hroundUp_eq]
                 dsimp only
-                rw [hmid_unfold _ (by
-                  simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                    Bool.false_eq_true, ↓reduceIte, one_mul, Nat.cast_add, Nat.cast_one]
-                  congr 1; ring_nf)]
+                rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
                 -- At midpoint, neg unfold checks isEvenSignificand succ_fp
                 -- q even → q+1 odd → isEvenSignificand = false → returns -(pred)
                 rw [if_neg (show ¬(_ > _) from not_lt.mpr (hr_eq_mid hr_eq).le),
@@ -1675,10 +1496,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 rw [neg_mul, rnAway_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                     hroundDown_eq hroundUp_eq]
                 dsimp only
-                rw [hmid_unfold _ (by
-                  simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                    Bool.false_eq_true, ↓reduceIte, one_mul, Nat.cast_add, Nat.cast_one]
-                  congr 1; ring_nf)]
+                rw [hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl)]
                 rw [if_neg (show ¬(_ > _) from not_lt.mpr (le_of_lt (hr_lt_mid hr_lt))),
                     if_pos (hr_lt_mid hr_lt), Fp.neg_finite]
                 simp [FiniteFp.neg_def, hpred_fp_def]
@@ -1695,73 +1513,21 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                   rw [neg_mul, rnAway_neg_unfold _ pred_fp _ hval_pos hval_ge_ssps hval_lt_thresh
                       hroundDown_eq hroundUp_carry]
                   dsimp only
-                  rw [hmid_unfold _ (by
-                    simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
-                      Bool.false_eq_true, ↓reduceIte, one_mul]
-                    rw [hm_bridge,
-                        show e_ulp + FloatFormat.prec - FloatFormat.prec + 1 = e_ulp + 1
-                          from by omega]
-                    push_cast
-                    rw [show (q : R) + 1 = (2 : R) ^ FloatFormat.prec.toNat from by
-                          exact_mod_cast hq_eq,
-                        ← zpow_natCast (2 : R) (FloatFormat.prec.toNat - 1),
-                        ← zpow_natCast (2 : R) FloatFormat.prec.toNat,
-                        two_zpow_mul, two_zpow_mul]
-                    congr 1
-                    rw [Nat.cast_sub (show 1 ≤ FloatFormat.prec.toNat from by
-                          have := FloatFormat.valid_prec; omega)]
-                    omega)]
+                  rw [hmid_unfold _ (carry_float_toVal (R := R) q e_ulp hq_eq _ rfl rfl rfl)]
                   rw [if_neg (show ¬(_ > _) from not_lt.mpr (le_of_lt (hr_lt_mid hr_lt))),
                       if_pos (hr_lt_mid hr_lt), Fp.neg_finite]
                   simp [FiniteFp.neg_def, hpred_fp_def]
                 · push_neg at he_carry
-                  have h2ne : (2 : R) ≠ 0 := by norm_num
-                  have hpred_is_lff : pred_fp = FiniteFp.largestFiniteFloat := by
-                    rw [hpred_fp_def]; ext <;> simp [FiniteFp.largestFiniteFloat,
-                      show e_ulp + FloatFormat.prec - 1 = FloatFormat.max_exp from by omega,
-                      show q = 2 ^ FloatFormat.prec.toNat - 1 from by omega]
-                  have hval_gt_lff : (mag : R) * (2 : R) ^ e_base >
-                      FiniteFp.largestFiniteFloat.toVal := by
-                    rw [← hpred_is_lff, hpred_toVal, hval_decomp]
-                    linarith [mul_pos (Nat.cast_pos.mpr hr_pos)
-                      (zpow_pos (show (0:R) < 2 from by norm_num) e_base)]
-                  have hroundUp_inf := roundUp_gt_largestFiniteFloat _ hval_pos hval_gt_lff
-                  have h_zpow1 : (2 : R) ^ FloatFormat.prec.toNat * (2 : R) ^ e_ulp =
-                      (2 : R) ^ (FloatFormat.max_exp + 1) := by
-                    rw [← zpow_natCast (2 : R) FloatFormat.prec.toNat, two_zpow_mul]
-                    congr 1; rw [FloatFormat.prec_toNat_eq]; omega
-                  have h_zpow2 : (2 : R) ^ e_ulp = 2 * (2 : R) ^ (e_ulp - 1) := by
-                    rw [show e_ulp = e_ulp - 1 + 1 from by omega, zpow_add₀ h2ne, zpow_one]
-                    ring
-                  have h_zpow3 : (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) *
-                      (2 : R) ^ FloatFormat.max_exp = (2 : R) ^ e_ulp := by
-                    rw [two_zpow_mul]; congr 1; omega
-                  have h_zpow4 : 2 * (2 : R) ^ FloatFormat.max_exp =
-                      (2 : R) ^ (FloatFormat.max_exp + 1) := by
-                    rw [zpow_add₀ h2ne, zpow_one]; ring
-                  have h_prod : (q : R) * (2 : R) ^ e_ulp + (2 : R) ^ e_ulp =
-                      (2 : R) ^ (FloatFormat.max_exp + 1) := by
-                    have hq1r : (q : R) + 1 = (2 : R) ^ FloatFormat.prec.toNat := by
-                      exact_mod_cast show q + 1 = 2 ^ FloatFormat.prec.toNat from by omega
-                    have : (q : R) * (2 : R) ^ e_ulp + (2 : R) ^ e_ulp =
-                        ((q : R) + 1) * (2 : R) ^ e_ulp := by ring
-                    rw [this, hq1r, h_zpow1]
+                  obtain ⟨hpred_is_lff, _, hroundUp_inf⟩ :=
+                    carry_overflow_pred_lff_roundUp_inf (R := R) mag e_base e_ulp q r hq_eq
+                      he_stored_le_inner (by omega) hval_pos hval_decomp hr_pos pred_fp
+                      (by rw [hpred_fp_def]) (by rw [hpred_fp_def]) (by rw [hpred_fp_def])
                   have hval_lt_thresh : (mag : R) * (2 : R) ^ e_base <
                       (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) *
                       (2 : R) ^ FloatFormat.max_exp := by
-                    suffices hmid_le : mid_val ≤ (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) *
-                        (2 : R) ^ FloatFormat.max_exp from
-                      lt_of_lt_of_le (hr_lt_mid hr_lt) hmid_le
-                    suffices hmid_eq : mid_val = (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) *
-                        (2 : R) ^ FloatFormat.max_exp from le_of_eq hmid_eq
-                    calc mid_val
-                        = (q : R) * (2 : R) ^ e_ulp + (2 : R) ^ (e_ulp - 1) := hmid_val_def
-                      _ = (2 : R) ^ (FloatFormat.max_exp + 1) - (2 : R) ^ (e_ulp - 1) := by
-                          linarith [h_prod, h_zpow2]
-                      _ = (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) *
-                          (2 : R) ^ FloatFormat.max_exp := by
-                          rw [sub_mul, div_mul_eq_mul_div, h_zpow3, h_zpow2,
-                              mul_div_cancel_left₀ _ h2ne, h_zpow4]
+                    linarith [hr_lt_mid hr_lt,
+                      (mid_val_eq_overflow_threshold (R := R) q e_ulp (by omega) (by omega)).symm
+                        ▸ hmid_val_def]
                   rw [neg_mul, (rnAway_neg_succ_overflow _ pred_fp hval_pos hval_ge_ssps
                       hval_lt_thresh hroundDown_eq hroundUp_inf)]
                   simp [FiniteFp.neg_def, hpred_fp_def]
