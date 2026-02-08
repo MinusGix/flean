@@ -10,3 +10,4 @@ import «Flean».Linearize.Linearize
 import «Flean».Gsplit.Gsplit
 import «Flean».ENNRat
 import «Flean».ERat
+import «Flean».Operations

@@ -219,8 +219,16 @@ theorem roundNearestTiesToEven_is_roundDown_or_roundUp (x : R) (hx : isNormalRan
       · right; unfold roundUp; rw [findSuccessor_pos_eq x hxpos, hsucc, Fp.finite.injEq]; exact hf
       · left; unfold roundDown; rw [findPredecessor_pos_eq x hxpos, Fp.finite.injEq]; exact hf
       · right; unfold roundUp; rw [findSuccessor_pos_eq x hxpos, hsucc, Fp.finite.injEq]; exact hf
-    | infinite b => simp at hf
-    | NaN => simp at hf
+    | infinite b =>
+      dsimp only at hf
+      have hf' : findPredecessorPos x hxpos = f := Fp.finite.inj hf
+      left
+      unfold roundDown
+      rw [findPredecessor_pos_eq x hxpos, Fp.finite.injEq]
+      exact hf'
+    | NaN =>
+      exfalso
+      exact findSuccessorPos_ne_nan x hxpos (by simpa [hsucc])
 
 /-- **Machine Epsilon Bound for Round-Nearest-Ties-to-Even**: For positive x in the normal range,
 the relative error of rounding to nearest (ties to even) is at most 2^(1-prec) (machine epsilon). -/
@@ -264,8 +272,16 @@ theorem roundNearestTiesAwayFromZero_is_roundDown_or_roundUp (x : R) (hx : isNor
       · -- tie (x = midpoint), x > 0 resolved automatically → roundUp
         right; unfold roundUp; rw [findSuccessor_pos_eq x hxpos, hsucc, Fp.finite.injEq]
         simp only [Fp.finite.injEq] at hf; exact hf
-    | infinite b => simp at hf
-    | NaN => simp at hf
+    | infinite b =>
+      dsimp only at hf
+      have hf' : findPredecessorPos x hxpos = f := Fp.finite.inj hf
+      left
+      unfold roundDown
+      rw [findPredecessor_pos_eq x hxpos, Fp.finite.injEq]
+      exact hf'
+    | NaN =>
+      exfalso
+      exact findSuccessorPos_ne_nan x hxpos (by simpa [hsucc])
 
 /-- **Machine Epsilon Bound for Round-Nearest-Ties-Away**: For positive x in the normal range,
 the relative error of rounding to nearest (ties away from zero) is at most 2^(1-prec) (machine epsilon). -/
@@ -349,8 +365,119 @@ theorem roundNearestTiesToEven_abs_error_le_ulp_half (x : R) (hx : isNormalRange
         have hmid_le : ((findPredecessorPos x hxpos).toVal + s.toVal) / 2 ≤ x := by linarith
         have hmid_ge : x ≤ ((findPredecessorPos x hxpos).toVal + s.toVal) / 2 := by linarith
         linarith
-    | infinite b => simp at hf
-    | NaN => simp at hf
+    | infinite b =>
+      dsimp only at hf
+      have hf' : findPredecessorPos x hxpos = f := Fp.finite.inj hf
+      -- In this branch, roundNearestTiesToEven returns predecessor directly.
+      have hsucc_norm : roundNormalUp x hx = Fp.infinite b := by
+        rw [← findSuccessorPos_normal_eq x hx, hsucc]
+      -- Extract overflow facts from roundNormalUp.
+      unfold roundNormalUp at hsucc_norm
+      extract_lets e binade_base scaled m_scaled m mpos at hsucc_norm
+      split_ifs at hsucc_norm with hm he
+      · have hb : b = false := by simpa using hsucc_norm
+        have he_le : e ≤ FloatFormat.max_exp := by
+          unfold e
+          exact findExponentDown_max x
+        have he_eq : e = FloatFormat.max_exp := by omega
+        -- hm gives x strictly above largestFiniteFloat.
+        have hm_scaled : ((2 : ℤ) ^ FloatFormat.prec.toNat : R) - 1 <
+            x / (2 : R) ^ e * (2 : R) ^ (FloatFormat.prec - 1) := by
+          have htmp : (((2 : ℤ) ^ FloatFormat.prec.toNat : ℤ) : R) - 1 < m_scaled := Int.le_ceil_iff.mp hm
+          unfold m_scaled scaled binade_base at htmp
+          simpa using htmp
+        have hm_scaled' : (2 : R) ^ FloatFormat.prec - 1 <
+            x / (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (FloatFormat.prec - 1) := by
+          have hm_scaled_nat0 : ((2 : ℕ) ^ FloatFormat.prec.toNat : R) - 1 <
+              x / (2 : R) ^ e * (2 : R) ^ (FloatFormat.prec - 1) := by
+            simpa [Int.two_pow_eq_nat_cast] using hm_scaled
+          calc
+            (2 : R) ^ FloatFormat.prec - 1 = ((2 : ℕ) ^ FloatFormat.prec.toNat : R) - 1 := by
+              rw [← FloatFormat.natCast_pow_prec (R := R)]
+            _ < x / (2 : R) ^ e * (2 : R) ^ (FloatFormat.prec - 1) := hm_scaled_nat0
+            _ = x / (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (FloatFormat.prec - 1) := by
+              simp [he_eq]
+        have hstep_pos : (0 : R) < (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) :=
+          zpow_pos (by norm_num) _
+        have hlff_eq : (FiniteFp.largestFiniteFloat.toVal : R) =
+            ((2 : R) ^ FloatFormat.prec - 1) * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
+          rw [FiniteFp.largestFiniteFloat_toVal, sub_mul]
+          rw [mul_sub]
+          have h1 : (2 : R) ^ FloatFormat.max_exp * 2 =
+              (2 : R) ^ FloatFormat.prec * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
+            rw [mul_comm, show (2 : R) * (2 : R) ^ FloatFormat.max_exp = (2 : R) ^ (FloatFormat.max_exp + 1) from by
+              rw [show FloatFormat.max_exp + 1 = 1 + FloatFormat.max_exp from by ring, ← two_zpow_mul, zpow_one]]
+            rw [two_zpow_mul]; congr 1; ring
+          have h2 : (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) =
+              1 * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
+            rw [one_mul, two_zpow_mul]; congr 1; ring
+          rw [h1, h2]
+        have hdiv_lb : (2 : R) ^ FloatFormat.prec - 1 <
+            x / (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
+          have hrhs :
+              x / (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (FloatFormat.prec - 1) =
+              x / (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
+            have : (2 : R) ^ FloatFormat.max_exp =
+                (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) * (2 : R) ^ (FloatFormat.prec - 1) := by
+              rw [two_zpow_mul]; congr 1; ring
+            rw [this, div_mul_eq_div_div, div_mul_cancel₀ _ (two_zpow_ne_zero _)]
+          simpa [hrhs] using hm_scaled'
+        have hgt_lff : (FiniteFp.largestFiniteFloat.toVal : R) < x := by
+          have hmul : ((2 : R) ^ FloatFormat.prec - 1) *
+              (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) < x := by
+            exact (lt_div_iff₀ hstep_pos).mp hdiv_lb
+          simpa [hlff_eq] using hmul
+        have hrd_lff : roundDown x = Fp.finite FiniteFp.largestFiniteFloat :=
+          roundDown_gt_lff x hxpos hgt_lff
+        have hrd_f : roundDown x = Fp.finite f := by
+          unfold roundDown
+          rw [findPredecessor_pos_eq x hxpos, hf']
+        have hf_lff : f = FiniteFp.largestFiniteFloat := by
+          have hff : Fp.finite f = Fp.finite FiniteFp.largestFiniteFloat := by
+            calc
+              Fp.finite f = roundDown x := by simpa [hrd_f]
+              _ = Fp.finite FiniteFp.largestFiniteFloat := hrd_lff
+          exact Fp.finite.inj hff
+        -- Convert overflow-threshold bound into half-ulp bound at top exponent.
+        have hx_lt_thresh : x < (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp := by
+          rw [abs_of_pos hxpos] at h_overflow
+          exact lt_of_not_ge h_overflow
+        have he_find : findExponentDown x = FloatFormat.max_exp := by
+          unfold e at he_eq
+          simpa using he_eq
+        have hlog : Int.log 2 x = FloatFormat.max_exp := by
+          rw [← findExponentDown_normal x hx, he_find]
+        have hulp : Fp.ulp x = (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
+          unfold Fp.ulp
+          rw [abs_of_pos hxpos, hlog]
+          have hge : FloatFormat.min_exp ≤ Int.log 2 x := by rw [hlog]; exact FloatFormat.exp_order_le
+          simp [max_eq_left hge]
+        rw [hf_lff]
+        rw [abs_of_nonneg (by linarith)]
+        have hbound : x - FiniteFp.largestFiniteFloat.toVal <
+            (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp
+              - FiniteFp.largestFiniteFloat.toVal := by
+          linarith
+        have hpow :
+            (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) =
+            (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
+          rw [two_zpow_mul]
+          congr 1
+          ring
+        have hhalf :
+            (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp
+              - FiniteFp.largestFiniteFloat.toVal
+            = Fp.ulp x / 2 := by
+          rw [FiniteFp.largestFiniteFloat_toVal, hulp]
+          have hneg : (-(FloatFormat.prec : ℤ) + 1) = 1 - (FloatFormat.prec : ℤ) := by ring
+          rw [hneg]
+          nlinarith [hpow]
+        have hbound' : x - FiniteFp.largestFiniteFloat.toVal < Fp.ulp x / 2 := by
+          simpa [hhalf] using hbound
+        linarith
+    | NaN =>
+      exfalso
+      exact findSuccessorPos_ne_nan x hxpos (by simpa [hsucc])
 
 /-- For positive x in the normal range, roundNearestTiesAwayFromZero has absolute error ≤ ulp(x)/2. -/
 theorem roundNearestTiesAwayFromZero_abs_error_le_ulp_half (x : R) (hx : isNormalRange x) (f : FiniteFp)
@@ -403,8 +530,119 @@ theorem roundNearestTiesAwayFromZero_abs_error_le_ulp_half (x : R) (hx : isNorma
         have hmid_le : ((findPredecessorPos x hxpos).toVal + s.toVal) / 2 ≤ x := by linarith
         have hmid_ge : x ≤ ((findPredecessorPos x hxpos).toVal + s.toVal) / 2 := by linarith
         linarith
-    | infinite b => simp at hf
-    | NaN => simp at hf
+    | infinite b =>
+      dsimp only at hf
+      have hf' : findPredecessorPos x hxpos = f := Fp.finite.inj hf
+      -- In this branch, roundNearestTiesAwayFromZero returns predecessor directly.
+      have hsucc_norm : roundNormalUp x hx = Fp.infinite b := by
+        rw [← findSuccessorPos_normal_eq x hx, hsucc]
+      -- Extract overflow facts from roundNormalUp.
+      unfold roundNormalUp at hsucc_norm
+      extract_lets e binade_base scaled m_scaled m mpos at hsucc_norm
+      split_ifs at hsucc_norm with hm he
+      · have hb : b = false := by simpa using hsucc_norm
+        have he_le : e ≤ FloatFormat.max_exp := by
+          unfold e
+          exact findExponentDown_max x
+        have he_eq : e = FloatFormat.max_exp := by omega
+        -- hm gives x strictly above largestFiniteFloat.
+        have hm_scaled : ((2 : ℤ) ^ FloatFormat.prec.toNat : R) - 1 <
+            x / (2 : R) ^ e * (2 : R) ^ (FloatFormat.prec - 1) := by
+          have htmp : (((2 : ℤ) ^ FloatFormat.prec.toNat : ℤ) : R) - 1 < m_scaled := Int.le_ceil_iff.mp hm
+          unfold m_scaled scaled binade_base at htmp
+          simpa using htmp
+        have hm_scaled' : (2 : R) ^ FloatFormat.prec - 1 <
+            x / (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (FloatFormat.prec - 1) := by
+          have hm_scaled_nat0 : ((2 : ℕ) ^ FloatFormat.prec.toNat : R) - 1 <
+              x / (2 : R) ^ e * (2 : R) ^ (FloatFormat.prec - 1) := by
+            simpa [Int.two_pow_eq_nat_cast] using hm_scaled
+          calc
+            (2 : R) ^ FloatFormat.prec - 1 = ((2 : ℕ) ^ FloatFormat.prec.toNat : R) - 1 := by
+              rw [← FloatFormat.natCast_pow_prec (R := R)]
+            _ < x / (2 : R) ^ e * (2 : R) ^ (FloatFormat.prec - 1) := hm_scaled_nat0
+            _ = x / (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (FloatFormat.prec - 1) := by
+              simp [he_eq]
+        have hstep_pos : (0 : R) < (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) :=
+          zpow_pos (by norm_num) _
+        have hlff_eq : (FiniteFp.largestFiniteFloat.toVal : R) =
+            ((2 : R) ^ FloatFormat.prec - 1) * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
+          rw [FiniteFp.largestFiniteFloat_toVal, sub_mul]
+          rw [mul_sub]
+          have h1 : (2 : R) ^ FloatFormat.max_exp * 2 =
+              (2 : R) ^ FloatFormat.prec * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
+            rw [mul_comm, show (2 : R) * (2 : R) ^ FloatFormat.max_exp = (2 : R) ^ (FloatFormat.max_exp + 1) from by
+              rw [show FloatFormat.max_exp + 1 = 1 + FloatFormat.max_exp from by ring, ← two_zpow_mul, zpow_one]]
+            rw [two_zpow_mul]; congr 1; ring
+          have h2 : (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) =
+              1 * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
+            rw [one_mul, two_zpow_mul]; congr 1; ring
+          rw [h1, h2]
+        have hdiv_lb : (2 : R) ^ FloatFormat.prec - 1 <
+            x / (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
+          have hrhs :
+              x / (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (FloatFormat.prec - 1) =
+              x / (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
+            have : (2 : R) ^ FloatFormat.max_exp =
+                (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) * (2 : R) ^ (FloatFormat.prec - 1) := by
+              rw [two_zpow_mul]; congr 1; ring
+            rw [this, div_mul_eq_div_div, div_mul_cancel₀ _ (two_zpow_ne_zero _)]
+          simpa [hrhs] using hm_scaled'
+        have hgt_lff : (FiniteFp.largestFiniteFloat.toVal : R) < x := by
+          have hmul : ((2 : R) ^ FloatFormat.prec - 1) *
+              (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) < x := by
+            exact (lt_div_iff₀ hstep_pos).mp hdiv_lb
+          simpa [hlff_eq] using hmul
+        have hrd_lff : roundDown x = Fp.finite FiniteFp.largestFiniteFloat :=
+          roundDown_gt_lff x hxpos hgt_lff
+        have hrd_f : roundDown x = Fp.finite f := by
+          unfold roundDown
+          rw [findPredecessor_pos_eq x hxpos, hf']
+        have hf_lff : f = FiniteFp.largestFiniteFloat := by
+          have hff : Fp.finite f = Fp.finite FiniteFp.largestFiniteFloat := by
+            calc
+              Fp.finite f = roundDown x := by simpa [hrd_f]
+              _ = Fp.finite FiniteFp.largestFiniteFloat := hrd_lff
+          exact Fp.finite.inj hff
+        -- Convert overflow-threshold bound into half-ulp bound at top exponent.
+        have hx_lt_thresh : x < (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp := by
+          rw [abs_of_pos hxpos] at h_overflow
+          exact lt_of_not_ge h_overflow
+        have he_find : findExponentDown x = FloatFormat.max_exp := by
+          unfold e at he_eq
+          simpa using he_eq
+        have hlog : Int.log 2 x = FloatFormat.max_exp := by
+          rw [← findExponentDown_normal x hx, he_find]
+        have hulp : Fp.ulp x = (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
+          unfold Fp.ulp
+          rw [abs_of_pos hxpos, hlog]
+          have hge : FloatFormat.min_exp ≤ Int.log 2 x := by rw [hlog]; exact FloatFormat.exp_order_le
+          simp [max_eq_left hge]
+        rw [hf_lff]
+        rw [abs_of_nonneg (by linarith)]
+        have hbound : x - FiniteFp.largestFiniteFloat.toVal <
+            (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp
+              - FiniteFp.largestFiniteFloat.toVal := by
+          linarith
+        have hpow :
+            (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) =
+            (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
+          rw [two_zpow_mul]
+          congr 1
+          ring
+        have hhalf :
+            (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp
+              - FiniteFp.largestFiniteFloat.toVal
+            = Fp.ulp x / 2 := by
+          rw [FiniteFp.largestFiniteFloat_toVal, hulp]
+          have hneg : (-(FloatFormat.prec : ℤ) + 1) = 1 - (FloatFormat.prec : ℤ) := by ring
+          rw [hneg]
+          nlinarith [hpow]
+        have hbound' : x - FiniteFp.largestFiniteFloat.toVal < Fp.ulp x / 2 := by
+          simpa [hhalf] using hbound
+        linarith
+    | NaN =>
+      exfalso
+      exact findSuccessorPos_ne_nan x hxpos (by simpa [hsucc])
 
 /-- **Half Machine Epsilon for Round-Nearest-Ties-to-Even**: For positive x in the normal range,
 the relative error is at most 2^(-prec), half the machine epsilon bound for directed rounding. -/

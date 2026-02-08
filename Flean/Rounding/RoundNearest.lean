@@ -29,7 +29,8 @@ section RoundNearestTiesToEven
 /-- Round to nearest, ties to even -/
 def roundNearestTiesToEven [FloatFormat] (x : R) : Fp :=
   if x = 0 then Fp.finite 0
-  else if |x| < FiniteFp.smallestPosSubnormal.toVal / 2 then Fp.finite 0
+  else if |x| < FiniteFp.smallestPosSubnormal.toVal / 2 then
+    if x < 0 then Fp.finite (-0) else Fp.finite 0
   else if |x| ≥ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp then Fp.infinite (x < 0)
   else
     let pred := findPredecessor x
@@ -41,7 +42,9 @@ def roundNearestTiesToEven [FloatFormat] (x : R) : Fp :=
       else if x > midpoint then succ
       else  -- x is exactly at midpoint, round to even
         if isEvenSignificand p then pred else succ
-    | _, _ => Fp.NaN  -- Should not happen in normal range
+    | Fp.finite _, _ => pred
+    | _, Fp.finite _ => succ
+    | _, _ => Fp.NaN
 
 /-- roundNearestTiesToEven returns 0 when input is 0 -/
 theorem roundNearestTiesToEven_zero [FloatFormat] : roundNearestTiesToEven (0 : R) = Fp.finite 0 := by
@@ -51,13 +54,12 @@ theorem roundNearestTiesToEven_zero [FloatFormat] : roundNearestTiesToEven (0 : 
 theorem rnEven_le_half_subnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < FiniteFp.smallestPosSubnormal.toVal / 2) :
   roundNearestTiesToEven x = Fp.finite 0 := by
   unfold roundNearestTiesToEven
-  -- Check the conditions
-  simp [ne_of_gt hn]
   -- Need to show |x| < smallestPosSubnormal / 2
   have h_abs : |x| < FiniteFp.smallestPosSubnormal.toVal / 2 := by
     rw [abs_of_pos hn]
     exact hs
-  simp [h_abs]
+  have h_not_neg : ¬x < 0 := not_lt.mpr (le_of_lt hn)
+  simp [ne_of_gt hn, h_abs, h_not_neg]
 
 -- TODO: negative values?
 -- TODO: better name.
@@ -70,19 +72,20 @@ theorem rnEven_ge_inf [FloatFormat] (x : R) (hx : x ≥ (2 - 2^(1 - (FloatFormat
   -- x is positive since threshold is positive
   have hx_pos : 0 < x := lt_of_lt_of_le hthresh_pos hx
   have hx_ne : x ≠ 0 := ne_of_gt hx_pos
-  have habs : |x| = x := abs_of_pos hx_pos
-  have habs_ge : |x| ≥ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := by rw [habs]; exact hx
   -- smallestPosSubnormal / 2 < threshold (chain through 2^min_exp and 2^max_exp)
   have hsmall_lt : (FiniteFp.smallestPosSubnormal.toVal : R) / 2 < (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp :=
     calc (FiniteFp.smallestPosSubnormal.toVal : R) / 2
         < (2 : R) ^ FloatFormat.min_exp := FiniteFp.smallestPosSubnormal_half_lt_zpow_min_exp
       _ < (2 : R) ^ FloatFormat.max_exp := zpow_lt_zpow_right₀ (by norm_num) FloatFormat.exp_order
       _ ≤ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := FloatFormat.zpow_max_exp_le_overflow_threshold
-  -- Now the main split_ifs
-  split_ifs with h1 h2
-  · exact absurd h1 hx_ne
-  · rw [habs] at h2; linarith
-  · congr 1; simp only [decide_eq_false_iff_not, not_lt]; exact le_of_lt hx_pos
+  have h_not_small : ¬|x| < FiniteFp.smallestPosSubnormal.toVal / 2 := by
+    rw [abs_of_pos hx_pos]
+    linarith
+  have h_overflow : |x| ≥ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := by
+    rw [abs_of_pos hx_pos]
+    exact hx
+  have h_not_neg : ¬x < 0 := not_lt.mpr (le_of_lt hx_pos)
+  simp [hx_ne, h_not_small, h_overflow, h_not_neg]
 
 end RoundNearestTiesToEven
 
@@ -92,7 +95,8 @@ section RoundNearestTiesAwayFromZero
 /-- Round to nearest, ties away from zero -/
 def roundNearestTiesAwayFromZero [FloatFormat] (x : R) : Fp :=
   if x = 0 then Fp.finite 0
-  else if |x| < FiniteFp.smallestPosSubnormal.toVal / 2 then Fp.finite 0
+  else if |x| < FiniteFp.smallestPosSubnormal.toVal / 2 then
+    if x < 0 then Fp.finite (-0) else Fp.finite 0
   else if |x| ≥ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp then Fp.infinite (x < 0)
   else
     let pred := findPredecessor x
@@ -104,7 +108,9 @@ def roundNearestTiesAwayFromZero [FloatFormat] (x : R) : Fp :=
       else if x > midpoint then succ
       else  -- x is exactly at midpoint, round away from zero
         if x > 0 then succ else pred
-    | _, _ => Fp.NaN  -- Should not happen in normal range
+    | Fp.finite _, _ => pred
+    | _, Fp.finite _ => succ
+    | _, _ => Fp.NaN
 
 /-- roundNearestTiesAwayFromZero returns 0 when input is 0 -/
 theorem roundNearestTiesAwayFromZero_zero [FloatFormat] : roundNearestTiesAwayFromZero (0 : R) = Fp.finite 0 := by
@@ -114,34 +120,31 @@ theorem roundNearestTiesAwayFromZero_zero [FloatFormat] : roundNearestTiesAwayFr
 theorem rnAway_lt_half_subnormal [FloatFormat] (x : R) (hn : 0 < x) (hs : x < FiniteFp.smallestPosSubnormal.toVal / 2) :
   roundNearestTiesAwayFromZero x = Fp.finite 0 := by
   unfold roundNearestTiesAwayFromZero
-  -- Check the conditions - same logic as rnEven
-  simp [ne_of_gt hn]
   have h_abs : |x| < FiniteFp.smallestPosSubnormal.toVal / 2 := by
     rw [abs_of_pos hn]
     exact hs
-  simp [h_abs]
+  have h_not_neg : ¬x < 0 := not_lt.mpr (le_of_lt hn)
+  simp [ne_of_gt hn, h_abs, h_not_neg]
 
 theorem rnAway_ge_inf [FloatFormat] (x : R) (hx : x ≥ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp) :
   roundNearestTiesAwayFromZero x = Fp.infinite false := by
   unfold roundNearestTiesAwayFromZero
-  -- Use helper lemmas from FloatFormat
   have hthresh_pos := FloatFormat.overflow_threshold_pos (R := R)
-  -- x is positive since threshold is positive
   have hx_pos : 0 < x := lt_of_lt_of_le hthresh_pos hx
   have hx_ne : x ≠ 0 := ne_of_gt hx_pos
-  have habs : |x| = x := abs_of_pos hx_pos
-  have habs_ge : |x| ≥ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := by rw [habs]; exact hx
-  -- smallestPosSubnormal / 2 < threshold (chain through 2^min_exp and 2^max_exp)
   have hsmall_lt : (FiniteFp.smallestPosSubnormal.toVal : R) / 2 < (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp :=
     calc (FiniteFp.smallestPosSubnormal.toVal : R) / 2
         < (2 : R) ^ FloatFormat.min_exp := FiniteFp.smallestPosSubnormal_half_lt_zpow_min_exp
       _ < (2 : R) ^ FloatFormat.max_exp := zpow_lt_zpow_right₀ (by norm_num) FloatFormat.exp_order
       _ ≤ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := FloatFormat.zpow_max_exp_le_overflow_threshold
-  -- Now the main split_ifs
-  split_ifs with h1 h2
-  · exact absurd h1 hx_ne
-  · rw [habs] at h2; linarith
-  · congr 1; simp only [decide_eq_false_iff_not, not_lt]; exact le_of_lt hx_pos
+  have h_not_small : ¬|x| < FiniteFp.smallestPosSubnormal.toVal / 2 := by
+    rw [abs_of_pos hx_pos]
+    linarith
+  have h_overflow : |x| ≥ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := by
+    rw [abs_of_pos hx_pos]
+    exact hx
+  have h_not_neg : ¬x < 0 := not_lt.mpr (le_of_lt hx_pos)
+  simp [hx_ne, h_not_small, h_overflow, h_not_neg]
 
 end RoundNearestTiesAwayFromZero
 

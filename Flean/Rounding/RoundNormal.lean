@@ -517,7 +517,7 @@ theorem roundNormalUp_nonneg {x : R} {h : isNormalRange x} {f : FiniteFp} (hf : 
 
 /-- The key scaling identity: ⌊x / 2^e * 2^(prec-1)⌋ = ⌊x / 2^(e - prec + 1)⌋.
 This connects the way roundNormalDown computes the significand with the ULP grid. -/
-private theorem floor_scaled_eq_floor_div_ulp_step (x : R) (e : ℤ) :
+theorem floor_scaled_eq_floor_div_ulp_step (x : R) (e : ℤ) :
     ⌊x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1)⌋ = ⌊x / (2 : R) ^ (e - FloatFormat.prec + 1)⌋ := by
   congr 1
   have : (2 : R) ^ e = (2 : R) ^ (e - FloatFormat.prec + 1) * (2 : R) ^ (FloatFormat.prec - 1) := by
@@ -566,7 +566,7 @@ theorem roundNormalDown_error_nonneg (x : R) (h : isNormalRange x) :
 
 /-- Ceiling scaling identity: ⌈x / 2^e * 2^(prec-1)⌉ = ⌈x / 2^(e - prec + 1)⌉.
 Ceiling analog of `floor_scaled_eq_floor_div_ulp_step`. -/
-private theorem ceil_scaled_eq_ceil_div_ulp_step (x : R) (e : ℤ) :
+theorem ceil_scaled_eq_ceil_div_ulp_step (x : R) (e : ℤ) :
     ⌈x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1)⌉ = ⌈x / (2 : R) ^ (e - FloatFormat.prec + 1)⌉ := by
   congr 1
   have : (2 : R) ^ e = (2 : R) ^ (e - FloatFormat.prec + 1) * (2 : R) ^ (FloatFormat.prec - 1) := by

@@ -34,6 +34,7 @@ inductive RoundingMode
   | TowardZero
   | NearestTiesToEven
   | NearestTiesAwayFromZero
+deriving DecidableEq
 
 def RoundingMode.toRoundingFunction [FloatFormat] (mode : RoundingMode) : R → Fp :=
   match mode with
