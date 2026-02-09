@@ -239,6 +239,206 @@ theorem findSuccessorPos_pos {x : R} {hpos : 0 < x} {f : FiniteFp} (hf : findSuc
     apply roundSubnormalUp_pos
   · exact roundNormalUp_pos hf
 
+/-- Helper: any Fp.finite value ≤ Fp.infinite false (positive infinity) -/
+private theorem Fp.finite_le_pos_inf (f : FiniteFp) : Fp.finite f ≤ Fp.infinite false := by
+  rw [Fp.le_def]; left; simp
+
+/-- Helper: roundSubnormalUp result toVal ≤ 2^min_exp -/
+private theorem roundSubnormalUp_toVal_le_min_exp (x : R) (hx : isSubnormalRange x) :
+    (roundSubnormalUp x hx).toVal (R := R) ≤ (2 : R) ^ FloatFormat.min_exp := by
+  have hulp_pos : (0 : R) < (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by linearize
+  have hk_pos : 0 < ⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉ :=
+    Int.ceil_div_pos hx.left hulp_pos
+  by_cases hk_ge : (2 : ℤ) ^ (FloatFormat.prec - 1).toNat ≤
+      ⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉
+  · -- Transition case: result is smallestPosNormal, toVal = 2^min_exp
+    have hrx : roundSubnormalUp x hx = FiniteFp.smallestPosNormal := by
+      unfold roundSubnormalUp; simp only [ge_iff_le, hk_ge, ↓reduceDIte]
+    rw [hrx, FiniteFp.smallestPosNormal_toVal]
+  · -- Stays subnormal: result = ⟨false, min_exp, k.natAbs, _⟩
+    push_neg at hk_ge
+    have hnatabs_bound : (⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉).natAbs <
+        2 ^ (FloatFormat.prec - 1).toNat := by
+      zify [Nat.one_le_two_pow]; rw [abs_of_nonneg (le_of_lt hk_pos)]; omega
+    have hval_eq : (roundSubnormalUp x hx).toVal (R := R) =
+        (⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉).natAbs *
+        (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1) := by
+      unfold roundSubnormalUp
+      simp only [ge_iff_le, not_le.mpr hk_ge, ↓reduceDIte]
+      unfold FiniteFp.toVal FiniteFp.sign'
+      simp [FloatFormat.radix_val_eq_two]
+    rw [hval_eq]
+    apply le_of_lt
+    calc ((⌈x / (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1)⌉).natAbs : R) *
+            (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1)
+        < (2 ^ (FloatFormat.prec - 1).toNat : R) * (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1) := by
+          apply mul_lt_mul_of_pos_right (by exact_mod_cast hnatabs_bound) hulp_pos
+      _ = (2 : R) ^ FloatFormat.min_exp := by
+          rw [← zpow_natCast (2 : R), FloatFormat.prec_sub_one_toNat_eq, two_zpow_mul]; congr 1; ring
+
+/-- Helper: if roundNormalUp x = +∞ for normal x, then x > largestFiniteFloat.toVal -/
+private theorem roundNormalUp_inf_imp_gt_lff (x : R) (hx : isNormalRange x) (b : Bool)
+    (h : roundNormalUp x hx = Fp.infinite b) : x > FiniteFp.largestFiniteFloat.toVal := by
+  by_contra h_le
+  push_neg at h_le
+  unfold roundNormalUp at h
+  extract_lets e binade_base scaled m_scaled m mpos at h
+  norm_num at h
+  split_ifs at h with hm he
+  · -- hm : 2^prec ≤ m, he : e + 1 > max_exp
+    -- e = findExponentDown x = max_exp
+    have he_eq : e = FloatFormat.max_exp := by
+      have hfed := findExponentDown_normal x hx
+      have hlog_lt : Int.log 2 x < FloatFormat.max_exp + 1 :=
+        (Int.lt_zpow_iff_log_lt (by norm_num : 1 < 2) (isNormalRange_pos x hx)).mp hx.right
+      show findExponentDown x = FloatFormat.max_exp
+      rw [hfed]; omega
+    -- m = ⌈m_scaled⌉ ≥ 2^prec means m_scaled > 2^prec - 1
+    have hms_gt := Int.lt_ceil.mp (show (2 : ℤ) ^ FloatFormat.prec.toNat - 1 < m from by omega)
+    -- hms_gt : ↑(2^prec - 1) < m_scaled
+    unfold m_scaled scaled binade_base at hms_gt
+    rw [he_eq] at hms_gt
+    -- hms_gt : ↑(2^prec - 1) < x / 2^max_exp * 2^(prec-1)
+    -- Multiply both sides by 2^max_exp to get ↑(2^prec-1) * 2^max_exp < x * 2^(prec-1)
+    have hbb_pos : (0 : R) < (2 : R) ^ FloatFormat.max_exp := by linearize
+    have hms_rearr : (((2 : ℤ) ^ FloatFormat.prec.toNat - 1 : ℤ) : R) * (2 : R) ^ FloatFormat.max_exp <
+        x * (2 : R) ^ (FloatFormat.prec - 1) := by
+      have h1 := mul_lt_mul_of_pos_right hms_gt hbb_pos
+      rwa [div_mul_eq_mul_div, div_mul_cancel₀ _ (ne_of_gt hbb_pos)] at h1
+    -- hms_gt : ↑(2^prec - 1) * 2^max_exp < x * 2^(prec-1)
+    -- Rewrite lff.toVal as (2^prec - 1) * 2^(max_exp - prec + 1) and show contradiction
+    rw [FiniteFp.largestFiniteFloat_toVal] at h_le
+    have hlff_eq : (2 : R) ^ FloatFormat.max_exp * (2 - (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1)) =
+        (((2 : ℤ) ^ FloatFormat.prec.toNat - 1 : ℤ) : R) * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
+      -- LHS = 2^(max_exp+1) - 2^(max_exp - prec + 1)
+      -- RHS = (2^prec - 1) * 2^(max_exp - prec + 1) = 2^prec * 2^(max_exp-prec+1) - 2^(max_exp-prec+1)
+      --     = 2^(max_exp+1) - 2^(max_exp-prec+1)
+      rw [mul_sub, show (2 : R) ^ FloatFormat.max_exp * 2 = (2 : R) ^ (FloatFormat.max_exp + 1) from by
+        rw [← zpow_add_one₀ (show (2:R) ≠ 0 by norm_num)],
+        show (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) =
+             (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) from by
+        rw [two_zpow_mul]; congr 1; ring]
+      push_cast [sub_mul]
+      rw [← zpow_natCast (2 : R) FloatFormat.prec.toNat, FloatFormat.prec_toNat_eq, two_zpow_mul]
+      simp only [one_mul]
+      congr 1; ring
+    -- h_le : x ≤ ↑(2^prec - 1) * 2^(max_exp - prec + 1)
+    -- So x * 2^(prec-1) ≤ ↑(2^prec - 1) * 2^(max_exp - prec + 1) * 2^(prec-1) = ↑(2^prec - 1) * 2^max_exp
+    have hprec_pos : (0 : R) < (2 : R) ^ (FloatFormat.prec - 1) := by linearize
+    have hle2 : x * (2 : R) ^ (FloatFormat.prec - 1) ≤
+        (((2 : ℤ) ^ FloatFormat.prec.toNat - 1 : ℤ) : R) * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) *
+        (2 : R) ^ (FloatFormat.prec - 1) := by
+      apply mul_le_mul_of_nonneg_right (by linarith [hlff_eq]) (le_of_lt hprec_pos)
+    have hcollapse : (((2 : ℤ) ^ FloatFormat.prec.toNat - 1 : ℤ) : R) * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) *
+        (2 : R) ^ (FloatFormat.prec - 1) =
+        (((2 : ℤ) ^ FloatFormat.prec.toNat - 1 : ℤ) : R) * (2 : R) ^ FloatFormat.max_exp := by
+      rw [mul_assoc, two_zpow_mul]; congr 1; ring
+    linarith [hcollapse, hms_rearr]
+  -- All other branches return Fp.finite, contradicting h : ... = Fp.infinite b
+  all_goals (first | exact absurd h (by simp) | cases h)
+
+/-- findSuccessorPos is monotone: if 0 < x ≤ y then findSuccessorPos x ≤ findSuccessorPos y.
+    The ceiling analogue of findPredecessorPos_toVal_mono / findPredecessorPos_mono. -/
+theorem findSuccessorPos_mono {x y : R} (hx : 0 < x) (hy : 0 < y) (h : x ≤ y) :
+    findSuccessorPos x hx ≤ findSuccessorPos y hy := by
+  unfold findSuccessorPos
+  -- Helper to dispatch isZero contradictions for roundSubnormalUp
+  have hzero_absurd : ∀ (hsr : isSubnormalRange x), ¬(roundSubnormalUp x hsr).isZero := by
+    intro hsr hz
+    have hpos := roundSubnormalUp_pos (hsr := hsr)
+    rw [FiniteFp.isZero_iff] at hz
+    rcases hz with h1 | h2
+    · rw [h1, FiniteFp.toVal_zero] at hpos; linarith
+    · rw [h2, FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_zero] at hpos; linarith
+  by_cases hx_sub : x < (2 : R) ^ FloatFormat.min_exp
+  · -- x is in subnormal range
+    simp only [hx_sub, ↓reduceDIte]
+    by_cases hy_sub : y < (2 : R) ^ FloatFormat.min_exp
+    · -- Both subnormal
+      simp only [hy_sub, ↓reduceDIte]
+      rw [Fp.finite_le_finite_iff]
+      exact FiniteFp.toVal_le_handle R (roundSubnormalUp_toVal_mono ⟨hx, hx_sub⟩ ⟨hy, hy_sub⟩ h)
+        (fun ⟨hz, _⟩ => absurd hz (hzero_absurd ⟨hx, hx_sub⟩))
+    · -- x subnormal, y not subnormal
+      simp only [hy_sub, ↓reduceDIte]
+      by_cases hy_nor : y < (2 : R) ^ (FloatFormat.max_exp + 1)
+      · -- x subnormal, y normal
+        simp only [hy_nor, ↓reduceDIte]
+        have hynr : isNormalRange y := ⟨le_of_not_gt hy_sub, hy_nor⟩
+        match hrU : roundNormalUp y hynr with
+        | Fp.finite g =>
+          rw [Fp.finite_le_finite_iff]
+          exact FiniteFp.toVal_le_handle R
+            (calc (roundSubnormalUp x ⟨hx, hx_sub⟩).toVal (R := R)
+                  ≤ (2 : R) ^ FloatFormat.min_exp := roundSubnormalUp_toVal_le_min_exp x ⟨hx, hx_sub⟩
+                _ ≤ y := le_of_not_gt hy_sub
+                _ ≤ g.toVal := roundNormalUp_ge y hynr g hrU)
+            (fun ⟨hz, _⟩ => absurd hz (hzero_absurd ⟨hx, hx_sub⟩))
+        | Fp.infinite b =>
+          have := roundNormalUp_ne_neg_infinite y hynr; rw [hrU] at this; simp at this; subst this
+          exact Fp.finite_le_pos_inf _
+        | Fp.NaN => exact absurd hrU (roundNormalUp_ne_nan y _)
+      · -- x subnormal, y overflow
+        simp only [hy_nor, ↓reduceDIte]
+        exact Fp.finite_le_pos_inf _
+  · -- x normal or overflow
+    push_neg at hx_sub
+    simp only [not_lt.mpr hx_sub, ↓reduceDIte]
+    have hy_not_sub : ¬(y < (2 : R) ^ FloatFormat.min_exp) := not_lt.mpr (le_trans hx_sub h)
+    simp only [hy_not_sub, ↓reduceDIte]
+    by_cases hx_nor : x < (2 : R) ^ (FloatFormat.max_exp + 1)
+    · simp only [hx_nor, ↓reduceDIte]
+      by_cases hy_nor : y < (2 : R) ^ (FloatFormat.max_exp + 1)
+      · -- Both normal
+        simp only [hy_nor, ↓reduceDIte]
+        have hxnr : isNormalRange x := ⟨hx_sub, hx_nor⟩
+        have hynr : isNormalRange y := ⟨le_of_not_gt hy_not_sub, hy_nor⟩
+        match hrUx : roundNormalUp x hxnr with
+        | Fp.finite gx =>
+          match hrUy : roundNormalUp y hynr with
+          | Fp.finite gy =>
+            rw [Fp.finite_le_finite_iff]
+            apply FiniteFp.toVal_le_handle R
+            · exact roundNormalUp_toVal_mono hxnr hynr hrUx hrUy h
+            · intro ⟨hzx, _⟩
+              exfalso
+              have := roundNormalUp_pos hrUx
+              rw [FiniteFp.isZero_iff] at hzx
+              rcases hzx with h1 | h2
+              · rw [h1, FiniteFp.toVal_zero] at this; linarith
+              · rw [h2, FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_zero] at this; linarith
+          | Fp.infinite b =>
+            have := roundNormalUp_ne_neg_infinite y hynr; rw [hrUy] at this; simp at this; subst this
+            exact Fp.finite_le_pos_inf _
+          | Fp.NaN => exact absurd hrUy (roundNormalUp_ne_nan y _)
+        | Fp.infinite bx =>
+          have := roundNormalUp_ne_neg_infinite x hxnr; rw [hrUx] at this; simp at this; subst this
+          have hx_gt := roundNormalUp_inf_imp_gt_lff x hxnr false hrUx
+          have hy_gt : y > FiniteFp.largestFiniteFloat.toVal := lt_of_lt_of_le hx_gt h
+          match hrUy : roundNormalUp y hynr with
+          | Fp.finite gy =>
+            exfalso
+            linarith [FiniteFp.finite_le_largestFiniteFloat (R := R) gy,
+                       roundNormalUp_ge y hynr gy hrUy]
+          | Fp.infinite by_ =>
+            have := roundNormalUp_ne_neg_infinite y hynr; rw [hrUy] at this; simp at this; subst this
+            exact Fp.le_refl _
+          | Fp.NaN => exact absurd hrUy (roundNormalUp_ne_nan y _)
+        | Fp.NaN => exact absurd hrUx (roundNormalUp_ne_nan x _)
+      · -- x normal, y overflow
+        simp only [hy_nor, ↓reduceDIte]
+        match hrU : roundNormalUp x ⟨hx_sub, hx_nor⟩ with
+        | Fp.finite g => exact Fp.finite_le_pos_inf _
+        | Fp.infinite b =>
+          have := roundNormalUp_ne_neg_infinite x ⟨hx_sub, hx_nor⟩; rw [hrU] at this; simp at this; subst this
+          exact Fp.le_refl _
+        | Fp.NaN => exact absurd hrU (roundNormalUp_ne_nan x _)
+    · -- x overflow
+      simp only [hx_nor, ↓reduceDIte]
+      have hy_not_nor : ¬(y < (2 : R) ^ (FloatFormat.max_exp + 1)) := not_lt.mpr (le_trans (not_lt.mp hx_nor) h)
+      simp only [hy_not_nor, ↓reduceDIte]
+      exact Fp.le_refl _
+
 end findSuccessorPos
 
 
@@ -270,6 +470,58 @@ theorem findPredecessor_neg_eq (x : R) (hneg : x < 0) :
   have hnz : x ≠ 0 := by linarith
   have hnpos : ¬0 < x := by linarith
   simp [findPredecessor, hneg, hnz, hnpos]
+
+/-- findPredecessor is monotone on negative values.
+    For x ≤ y < 0, findPredecessor x ≤ findPredecessor y.
+    This follows from findSuccessorPos_mono by symmetry. -/
+theorem findPredecessor_mono_neg {x y : R} (hx : x < 0) (hy : y < 0) (h : x ≤ y) :
+    findPredecessor x ≤ findPredecessor y := by
+  rw [findPredecessor_neg_eq x hx, findPredecessor_neg_eq y hy]
+  -- Goal: -(findSuccessorPos(-x)) ≤ -(findSuccessorPos(-y))
+  -- From x ≤ y < 0, we get 0 < -y ≤ -x
+  have hny : 0 < -y := neg_pos.mpr hy
+  have hnx : 0 < -x := neg_pos.mpr hx
+  have hyx : -y ≤ -x := neg_le_neg h
+  -- findSuccessorPos(-y) ≤ findSuccessorPos(-x) (larger input → larger output)
+  have hmono := findSuccessorPos_mono hny hnx hyx
+  -- Match on both to handle Fp negation
+  match hfx : findSuccessorPos (-x) hnx, hfy : findSuccessorPos (-y) hny with
+  | Fp.finite fx, Fp.finite fy =>
+    rw [hfx, hfy] at hmono
+    simp only [Fp.neg_finite, Fp.finite_le_finite_iff] at hmono ⊢
+    apply FiniteFp.toVal_le_handle R
+    · rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg]
+      linarith [FiniteFp.le_toVal_le (R := R) hmono]
+    · intro ⟨hxz, _⟩
+      -- -fx is zero means fx.toVal = 0, contradicts findSuccessorPos_pos
+      exfalso
+      have := findSuccessorPos_pos hfx
+      linarith [FiniteFp.toVal_isZero (R := R) hxz, FiniteFp.toVal_neg_eq_neg (R := R) (x := fx)]
+  | Fp.finite _, Fp.infinite b =>
+    rw [hfx, hfy] at hmono
+    -- Fp.infinite b ≤ Fp.finite _, forces b = true (-∞)
+    -- but findSuccessorPos ≠ -∞
+    exfalso
+    rw [Fp.le_def] at hmono
+    cases hmono with
+    | inl hlt =>
+      change (b = true) at hlt
+      rw [hlt] at hfy
+      exact findSuccessorPos_ne_neg_inf (-y) hny hfy
+    | inr heq => simp at heq
+  | Fp.infinite false, Fp.finite fy =>
+    -- findSuccessorPos(-x) = +∞, so -(+∞) = -∞ ≤ anything
+    simp only [Fp.neg_finite, Fp.le_def, Fp.lt_def]
+    left; rfl
+  | Fp.infinite false, Fp.infinite false =>
+    -- Both +∞, both negate to -∞
+    exact Fp.le_refl _
+  | Fp.infinite false, Fp.infinite true =>
+    exfalso; exact findSuccessorPos_ne_neg_inf (-y) hny hfy
+  | Fp.infinite true, _ =>
+    exfalso; exact findSuccessorPos_ne_neg_inf (-x) hnx hfx
+  | Fp.NaN, _ => exact absurd hfx (findSuccessorPos_ne_nan (-x) hnx)
+  | _, Fp.NaN => exact absurd hfy (findSuccessorPos_ne_nan (-y) hny)
 
 end findPredecessor
 

@@ -407,6 +407,89 @@ theorem roundUp_nat_mul_zpow_carry [FloatFormat]
     rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
   simp only [he_eq, hm_eq]
 
+/-- roundUp of a positive value is ≥ Fp.finite 0 -/
+theorem roundUp_zero_le_pos [FloatFormat] (x : R) (hx : 0 < x) :
+    Fp.finite 0 ≤ roundUp x := by
+  unfold roundUp
+  rw [findSuccessor_pos_eq x hx]
+  match hfsp : findSuccessorPos x hx with
+  | Fp.finite f =>
+    rw [Fp.finite_le_finite_iff]
+    have hf_pos := findSuccessorPos_pos hfsp
+    have hnz : ¬f.isZero := by
+      intro hz; have := FiniteFp.toVal_isZero (R := R) hz; linarith
+    exact FiniteFp.toVal_le R (by rw [FiniteFp.toVal_zero]; linarith) (Or.inr hnz)
+  | Fp.infinite b =>
+    rw [Fp.le_def]; left
+    have := findSuccessorPos_ne_neg_inf x hx
+    rw [hfsp] at this; simp at this; subst this; simp
+  | Fp.NaN => exact absurd hfsp (findSuccessorPos_ne_nan x hx)
+
+/-- roundUp of a negative value is ≤ Fp.finite 0 -/
+theorem roundUp_neg_le_zero [FloatFormat] (x : R) (hx : x < 0) :
+    roundUp x ≤ Fp.finite 0 := by
+  unfold roundUp findSuccessor
+  have hne : x ≠ 0 := ne_of_lt hx
+  have hnpos : ¬(0 < x) := not_lt.mpr (le_of_lt hx)
+  simp only [hne, ↓reduceDIte, hnpos]
+  -- Result: Fp.finite (-(findPredecessorPos (-x) _))
+  have hneg_pos : 0 < -x := neg_pos.mpr hx
+  rw [Fp.finite_le_finite_iff]
+  apply FiniteFp.toVal_le_handle R
+  · rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_zero]
+    linarith [findPredecessorPos_nonneg (x := -x) (hpos := hneg_pos)]
+  · intro ⟨hx_zero, _⟩
+    -- (-pred).isZero: m = 0, and (-pred).s = true (since pred has s = false)
+    -- 0 has s = false, so (-pred) < 0 by sign comparison
+    rw [FiniteFp.le_def]; left
+    rw [FiniteFp.lt_def]
+    left
+    unfold FiniteFp.isZero at hx_zero
+    simp [FiniteFp.neg_def] at hx_zero ⊢
+    exact ⟨findPredecessorPos_sign_false (-x) hneg_pos, rfl⟩
+
+/-- roundUp is monotone: x ≤ y → roundUp x ≤ roundUp y -/
+theorem roundUp_mono [FloatFormat] {x y : R} (h : x ≤ y) : roundUp x ≤ roundUp y := by
+  rcases lt_trichotomy x 0 with hx_neg | hx_zero | hx_pos
+  · -- x < 0
+    rcases lt_trichotomy y 0 with hy_neg | hy_zero | hy_pos
+    · -- Both negative: use findSuccessor_mono_neg
+      unfold roundUp
+      exact findSuccessor_mono_neg hx_neg hy_neg h
+    · -- x < 0, y = 0
+      rw [hy_zero, roundUp_zero]
+      exact roundUp_neg_le_zero x hx_neg
+    · -- x < 0 < y: roundUp x ≤ 0 ≤ roundUp y
+      have h1 := roundUp_neg_le_zero x hx_neg
+      have h2 := roundUp_zero_le_pos y hy_pos
+      -- roundUp x is always finite for x < 0
+      unfold roundUp findSuccessor at h1 h2 ⊢
+      simp only [ne_of_lt hx_neg, ↓reduceDIte, not_lt.mpr (le_of_lt hx_neg)] at h1 ⊢
+      simp only [ne_of_gt hy_pos, ↓reduceDIte, hy_pos] at h2 ⊢
+      -- Now goal has Fp.finite (-v) ≤ findSuccessorPos y hy_pos
+      -- h1 : Fp.finite (-v) ≤ Fp.finite 0
+      -- h2 : Fp.finite 0 ≤ findSuccessorPos y hy_pos
+      match hfsp : findSuccessorPos y hy_pos with
+      | Fp.finite fy =>
+        rw [hfsp] at h2
+        exact Fp.finite_le_trans h1 h2
+      | Fp.infinite b =>
+        have := findSuccessorPos_ne_neg_inf y hy_pos
+        rw [hfsp] at this; simp at this; subst this
+        rw [Fp.le_def]; left; simp
+      | Fp.NaN => exact absurd hfsp (findSuccessorPos_ne_nan y hy_pos)
+  · -- x = 0
+    rw [hx_zero, roundUp_zero]
+    rcases lt_trichotomy y 0 with hy_neg | hy_zero | hy_pos
+    · linarith
+    · rw [hy_zero, roundUp_zero]; exact Fp.le_refl _
+    · exact roundUp_zero_le_pos y hy_pos
+  · -- x > 0
+    have hy_pos : 0 < y := lt_of_lt_of_le hx_pos h
+    unfold roundUp
+    rw [findSuccessor_pos_eq x hx_pos, findSuccessor_pos_eq y hy_pos]
+    exact findSuccessorPos_mono hx_pos hy_pos h
+
 end RoundUp
 
 end Rounding

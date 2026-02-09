@@ -387,6 +387,95 @@ theorem roundDown_nat_mul_zpow [FloatFormat]
     · -- OVERFLOW: contradiction with hval_lt
       exfalso; linarith
 
+/-- roundDown of a positive value is ≥ Fp.finite 0 -/
+theorem roundDown_zero_le_pos [FloatFormat] (x : R) (hx : 0 < x) :
+    Fp.finite 0 ≤ roundDown x := by
+  unfold roundDown
+  rw [findPredecessor_pos_eq x hx, Fp.finite_le_finite_iff]
+  apply FiniteFp.toVal_le_handle R
+  · rw [FiniteFp.toVal_zero]; exact findPredecessorPos_nonneg
+  · intro ⟨_, hy⟩
+    unfold FiniteFp.isZero at hy
+    unfold findPredecessorPos at hy ⊢
+    split_ifs at hy ⊢ with h1 h2
+    · simp only [roundSubnormalDown] at hy ⊢
+      split_ifs at hy ⊢ with h3 <;> simp_all
+    · exfalso
+      have hnr : isNormalRange x := ⟨le_of_not_gt h1, h2⟩
+      have hrnpos := roundNormalDown_pos x hnr
+      have hzval := FiniteFp.toVal_isZero (R := R) hy
+      linarith
+    · exfalso; simp [FiniteFp.largestFiniteFloat] at hy
+      have := FloatFormat.nat_four_le_two_pow_prec; omega
+
+/-- roundDown of a negative value is ≤ Fp.finite 0 -/
+theorem roundDown_neg_le_zero [FloatFormat] (x : R) (hx : x < 0) :
+    roundDown x ≤ Fp.finite 0 := by
+  unfold roundDown
+  rw [findPredecessor_neg_eq x hx]
+  have hneg_pos : 0 < -x := neg_pos.mpr hx
+  match hfsp : findSuccessorPos (-x) hneg_pos with
+  | Fp.finite f =>
+    rw [Fp.neg_finite, Fp.finite_le_finite_iff]
+    apply FiniteFp.toVal_le_handle R
+    · rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_zero]
+      linarith [findSuccessorPos_pos hfsp]
+    · intro ⟨hx_zero, _⟩
+      exfalso
+      unfold FiniteFp.isZero at hx_zero
+      simp [FiniteFp.neg_def] at hx_zero
+      have hpos := findSuccessorPos_pos hfsp
+      have hzero : f.toVal (R := R) = 0 := FiniteFp.toVal_isZero hx_zero
+      linarith
+  | Fp.infinite b =>
+    have hne := findSuccessorPos_ne_neg_inf (-x) hneg_pos
+    rw [hfsp] at hne; simp at hne
+    cases b <;> simp_all [Fp.neg_def, Fp.le_def]
+  | Fp.NaN =>
+    exfalso
+    exact findSuccessorPos_ne_nan (-x) hneg_pos (by rw [hfsp])
+
+/-- roundDown is monotone: x ≤ y → roundDown x ≤ roundDown y -/
+theorem roundDown_mono [FloatFormat] {x y : R} (h : x ≤ y) : roundDown x ≤ roundDown y := by
+  rcases lt_trichotomy x 0 with hx_neg | hx_zero | hx_pos
+  · -- x < 0
+    rcases lt_trichotomy y 0 with hy_neg | hy_zero | hy_pos
+    · -- Both negative: use findPredecessor_mono_neg
+      unfold roundDown
+      exact findPredecessor_mono_neg hx_neg hy_neg h
+    · -- x < 0, y = 0
+      rw [hy_zero, roundDown_zero]
+      exact roundDown_neg_le_zero x hx_neg
+    · -- x < 0 < y: roundDown x ≤ 0 ≤ roundDown y
+      have h1 := roundDown_neg_le_zero x hx_neg
+      have h2 := roundDown_zero_le_pos y hy_pos
+      unfold roundDown at h1 h2 ⊢
+      rw [findPredecessor_neg_eq x hx_neg] at h1 ⊢
+      rw [findPredecessor_pos_eq y hy_pos] at h2 ⊢
+      have hnx : 0 < -x := neg_pos.mpr hx_neg
+      match hfsx : findSuccessorPos (-x) hnx with
+      | Fp.finite fx =>
+        rw [hfsx] at h1
+        simp only [Fp.neg_finite] at h1 ⊢
+        exact Fp.finite_le_trans h1 h2
+      | Fp.infinite false =>
+        -- -(+∞) = -∞ ≤ anything
+        show Fp.infinite true ≤ _; rw [Fp.le_def]; left; simp [Fp.lt_def]
+      | Fp.infinite true =>
+        exfalso; exact findSuccessorPos_ne_neg_inf (-x) hnx hfsx
+      | Fp.NaN => exact absurd hfsx (findSuccessorPos_ne_nan (-x) hnx)
+  · -- x = 0
+    rw [hx_zero, roundDown_zero]
+    rcases lt_trichotomy y 0 with hy_neg | hy_zero | hy_pos
+    · linarith
+    · rw [hy_zero, roundDown_zero]; exact Fp.le_refl _
+    · exact roundDown_zero_le_pos y hy_pos
+  · -- Both positive
+    have hy_pos : 0 < y := lt_of_lt_of_le hx_pos h
+    unfold roundDown
+    rw [findPredecessor_pos_eq x hx_pos, findPredecessor_pos_eq y hy_pos]
+    exact (Fp.finite_le_finite_iff _ _).mpr (findPredecessorPos_mono hx_pos hy_pos h)
+
 end RoundDown
 
 end Rounding

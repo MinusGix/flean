@@ -515,6 +515,139 @@ theorem roundNormalUp_pos {x : R} {h : isNormalRange x} {f : FiniteFp} (hf : rou
 
 theorem roundNormalUp_nonneg {x : R} {h : isNormalRange x} {f : FiniteFp} (hf : roundNormalUp x h = Fp.finite f): (0 : R) ≤ f.toVal := le_of_lt (roundNormalUp_pos hf)
 
+/-- roundNormalUp finite result toVal ≤ 2^(e+1) where e = findExponentDown x -/
+theorem roundNormalUp_toVal_le_zpow_succ {x : R} (hx : isNormalRange x) {f : FiniteFp}
+    (hf : roundNormalUp x hx = Fp.finite f) :
+    f.toVal (R := R) ≤ (2 : R) ^ (findExponentDown x + 1) := by
+  -- roundNormalUp returns either:
+  --   (a) ⟨false, e+1, 2^(prec-1), _⟩ when ceiling ≥ 2^prec (binade overflow, finite)
+  --   (b) ⟨false, e, m.natAbs, _⟩ when ceiling < 2^prec
+  -- In case (a): toVal = 2^(e+1). In case (b): toVal = m.natAbs * 2^(e-prec+1) ≤ 2^(e+1)
+  have hpos := isNormalRange_pos x hx
+  -- Upper bound: x < 2^(e+1) so ⌈x/2^e * 2^(prec-1)⌉ ≤ 2^prec (roughly)
+  -- But the ceiling can be exactly 2^prec, that's the overflow case
+  -- In both cases, the result toVal ≤ 2^(e+1)
+  have hge := roundNormalUp_ge x hx f hf
+  -- f.toVal ≥ x, and f is a float with exponent ≤ e+1
+  -- Direct proof: unfold and case-split
+  unfold roundNormalUp at hf
+  simp only at hf
+  split_ifs at hf with hm he
+  · -- Carry overflow: f = ⟨false, e+1, 2^(prec-1), _⟩, toVal = 2^(e+1)
+    rw [Fp.finite.injEq] at hf; rw [← hf]
+    simp only [FiniteFp.toVal, FiniteFp.sign', Bool.false_eq_true, ↓reduceIte, one_mul,
+               FloatFormat.radix_val_eq_two]
+    push_cast
+    rw [← zpow_natCast (2 : R), FloatFormat.prec_sub_one_toNat_eq, two_zpow_mul]
+    -- Goal: 2^(prec-1 + (e+1-prec+1)) ≤ 2^(e+1). Exponents equal by ring.
+    have : FloatFormat.prec - 1 + (findExponentDown x + 1 - FloatFormat.prec + 1) =
+        findExponentDown x + 1 := by ring
+    rw [this]
+  · -- No carry: f = ⟨false, e, m.natAbs, _⟩
+    rw [Fp.finite.injEq] at hf; rw [← hf]
+    simp only [FiniteFp.toVal, FiniteFp.sign', Bool.false_eq_true, ↓reduceIte, one_mul,
+               FloatFormat.radix_val_eq_two]
+    push_neg at hm
+    have hm_pos : 0 < ⌈x / (2 : R) ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌉ := by
+      apply Int.ceil_pos.mpr
+      apply mul_pos (div_pos hpos (by linearize)) (by linearize)
+    -- Normalize the goal with push_cast
+    push_cast
+    -- natAbs bound: natAbs ≤ 2^prec (since ceil < 2^prec and ceil > 0)
+    have hnatabs_le : (⌈x / (2 : R) ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌉.natAbs : R) ≤
+        (2 : R) ^ FloatFormat.prec := by
+      rw [Int.cast_natAbs_pos hm_pos]
+      have hle : ⌈x / (2 : R) ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌉ ≤
+          (2 : ℤ) ^ FloatFormat.prec.toNat := le_of_lt hm
+      calc (⌈x / (2 : R) ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌉ : R)
+          ≤ ((2 : ℤ) ^ FloatFormat.prec.toNat : R) := by exact_mod_cast hle
+        _ = (2 : R) ^ FloatFormat.prec := by
+            push_cast; rw [← zpow_natCast]; exact congrArg _ FloatFormat.prec_toNat_eq
+    calc (⌈x / (2 : R) ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌉.natAbs : R) *
+            (2 : R) ^ (findExponentDown x - ↑FloatFormat.prec + 1)
+        ≤ (2 : R) ^ FloatFormat.prec * (2 : R) ^ (findExponentDown x - ↑FloatFormat.prec + 1) := by
+          apply mul_le_mul_of_nonneg_right hnatabs_le (by linearize)
+      _ = (2 : R) ^ (findExponentDown x + 1) := by
+          rw [two_zpow_mul]; congr 1; ring
+
+/-- roundNormalUp is monotone on toVal for finite results -/
+theorem roundNormalUp_toVal_mono {x y : R} (hx : isNormalRange x) (hy : isNormalRange y)
+    {gx gy : FiniteFp} (hgx : roundNormalUp x hx = Fp.finite gx)
+    (hgy : roundNormalUp y hy = Fp.finite gy) (h : x ≤ y) :
+    gx.toVal (R := R) ≤ gy.toVal (R := R) := by
+  have hex := findExponentDown_normal x hx
+  have hey := findExponentDown_normal y hy
+  by_cases hexp : findExponentDown x = findExponentDown y
+  · -- Same binade: ceiling monotonicity
+    -- Save original hypotheses before unfolding
+    have hgx_orig := hgx
+    have hgy_orig := hgy
+    unfold roundNormalUp at hgx hgy
+    simp only at hgx hgy
+    split_ifs at hgx with hmx hex'
+    · -- x carries
+      split_ifs at hgy with hmy hey'
+      · -- Both carry: both return ⟨false, e+1, 2^(prec-1), _⟩ so same toVal (same binade)
+        rw [Fp.finite.injEq] at hgx hgy; rw [← hgx, ← hgy]
+        have : findExponentDown x = findExponentDown y := hexp
+        simp [this]
+      · -- x carries, y doesn't: since ⌈x_scaled⌉ ≤ ⌈y_scaled⌉ and mx ≥ 2^prec, contradiction
+        exfalso; push_neg at hmy
+        rw [hexp] at hmx
+        have hceil_mono : ⌈x / (2 : R) ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌉ ≤
+               ⌈y / (2 : R) ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌉ := by
+          apply Int.ceil_le_ceil; rw [← hexp]; exact scaled_le_of_le _ h
+        linarith
+    · -- x doesn't carry
+      split_ifs at hgy with hmy hey'
+      · -- x doesn't carry, y carries: gx.toVal ≤ 2^(e+1) = gy.toVal
+        have hgx_le := roundNormalUp_toVal_le_zpow_succ hx hgx_orig
+        -- gy is the carry result with toVal = 2^(ey+1)
+        rw [Fp.finite.injEq] at hgy
+        have hgy_toVal : gy.toVal (R := R) = (2 : R) ^ (findExponentDown y + 1) := by
+          rw [← hgy]; simp only [FiniteFp.toVal, FiniteFp.sign', Bool.false_eq_true, ↓reduceIte,
+                                  one_mul, FloatFormat.radix_val_eq_two]
+          push_cast
+          rw [← zpow_natCast (2 : R), FloatFormat.prec_sub_one_toNat_eq, two_zpow_mul]
+          congr 1; ring
+        rw [hgy_toVal]
+        calc gx.toVal (R := R) ≤ (2 : R) ^ (findExponentDown x + 1) := hgx_le
+          _ = (2 : R) ^ (findExponentDown y + 1) := by rw [hexp]
+      · -- Neither carries: both have same exponent, just compare natAbs
+        rw [Fp.finite.injEq] at hgx hgy; rw [← hgx, ← hgy]
+        simp only [FiniteFp.toVal, FiniteFp.sign', Bool.false_eq_true, ↓reduceIte, one_mul,
+                   FloatFormat.radix_val_eq_two]
+        push_cast
+        rw [show findExponentDown x = findExponentDown y from hexp]
+        apply mul_le_mul_of_nonneg_right _ (by linearize)
+        -- mx.natAbs ≤ my.natAbs since mx, my > 0 and mx ≤ my (ceiling monotonicity)
+        have hceil_mono : ⌈x / (2 : R) ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌉ ≤
+            ⌈y / (2 : R) ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌉ := by
+          rw [← hexp]; apply Int.ceil_le_ceil; exact scaled_le_of_le _ h
+        rw [hexp] at hceil_mono
+        have hmx_pos : 0 < ⌈x / (2 : R) ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌉ := by
+          rw [← hexp]; apply Int.ceil_pos.mpr
+          apply mul_pos (div_pos (isNormalRange_pos x hx) (by linearize)) (by linearize)
+        have hmy_pos : 0 < ⌈y / (2 : R) ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌉ := by
+          apply Int.ceil_pos.mpr
+          apply mul_pos (div_pos (isNormalRange_pos y hy) (by linearize)) (by linearize)
+        simp only [Nat.cast_natAbs, abs_of_nonneg (le_of_lt hmx_pos),
+                   abs_of_nonneg (le_of_lt hmy_pos)]
+        exact_mod_cast hceil_mono
+  · -- Different binades: gx.toVal ≤ 2^(e_x+1) ≤ 2^e_y ≤ y ≤ gy.toVal
+    have hxpos := isNormalRange_pos x hx
+    have hypos := isNormalRange_pos y hy
+    have hmono : findExponentDown x ≤ findExponentDown y := by
+      rw [hex, hey]; exact Int.log_mono_right hxpos h
+    have hexp_lt : findExponentDown x < findExponentDown y := lt_of_le_of_ne hmono hexp
+    have hexp_bound : findExponentDown x + 1 ≤ findExponentDown y := by linarith
+    calc gx.toVal (R := R)
+        ≤ (2 : R) ^ (findExponentDown x + 1) := roundNormalUp_toVal_le_zpow_succ hx hgx
+      _ ≤ (2 : R) ^ findExponentDown y := by
+          apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2) hexp_bound
+      _ ≤ y := by rw [hey]; exact Int.zpow_log_le_self (by norm_num) hypos
+      _ ≤ gy.toVal := roundNormalUp_ge y hy gy hgy
+
 /-- The key scaling identity: ⌊x / 2^e * 2^(prec-1)⌋ = ⌊x / 2^(e - prec + 1)⌋.
 This connects the way roundNormalDown computes the significand with the ULP grid. -/
 theorem floor_scaled_eq_floor_div_ulp_step (x : R) (e : ℤ) :

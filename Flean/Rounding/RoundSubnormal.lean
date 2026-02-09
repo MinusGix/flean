@@ -289,4 +289,103 @@ theorem roundSubnormalDown_toVal_mono {x y : R} (hx : isSubnormalRange x) (hy : 
         Int.floor_nonneg.mpr (div_nonneg (le_of_lt hy.left) (le_of_lt hulp_pos))
       omega
 
+/-- Monotonicity of roundSubnormalUp on toVal: if x ≤ y in the subnormal range, then
+    (roundSubnormalUp x).toVal ≤ (roundSubnormalUp y).toVal -/
+theorem roundSubnormalUp_toVal_mono {x y : R} (hx : isSubnormalRange x) (hy : isSubnormalRange y) (h : x ≤ y) :
+    (roundSubnormalUp x hx).toVal (R := R) ≤ (roundSubnormalUp y hy).toVal (R := R) := by
+  have hulp_pos : (0 : R) < (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by linearize
+  -- Ceiling monotonicity: ⌈x/ulp⌉ ≤ ⌈y/ulp⌉
+  have hcx_le_cy : ⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉ ≤
+                   ⌈y / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉ := by
+    apply Int.ceil_le_ceil
+    apply div_le_div_of_nonneg_right h (le_of_lt hulp_pos)
+  have hkx_pos : 0 < ⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉ :=
+    Int.ceil_div_pos hx.left hulp_pos
+  have hky_pos : 0 < ⌈y / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉ :=
+    Int.ceil_div_pos hy.left hulp_pos
+  -- Case split on whether each hits the transition to normal
+  by_cases hkx_ge : ⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉ ≥
+      (2 : ℤ) ^ (FloatFormat.prec - 1).toNat
+  · -- x transitions to normal: result is smallestPosNormal
+    by_cases hky_ge : ⌈y / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉ ≥
+        (2 : ℤ) ^ (FloatFormat.prec - 1).toNat
+    · -- Both transition: both return smallestPosNormal, equal
+      have hrx : roundSubnormalUp x hx = FiniteFp.smallestPosNormal := by
+        unfold roundSubnormalUp; simp only [ge_iff_le, hkx_ge, ↓reduceDIte]
+      have hry : roundSubnormalUp y hy = FiniteFp.smallestPosNormal := by
+        unfold roundSubnormalUp; simp only [ge_iff_le, hky_ge, ↓reduceDIte]
+      rw [hrx, hry]
+    · -- kx ≥ 2^(prec-1) but ky < 2^(prec-1): contradiction since kx ≤ ky
+      exfalso; push_neg at hky_ge; omega
+  · -- x stays subnormal
+    push_neg at hkx_ge
+    by_cases hky_ge : ⌈y / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉ ≥
+        (2 : ℤ) ^ (FloatFormat.prec - 1).toNat
+    · -- x subnormal, y transitions to normal: roundSubnormalUp x ≤ smallestPosNormal
+      have hry : roundSubnormalUp y hy = FiniteFp.smallestPosNormal := by
+        unfold roundSubnormalUp; simp only [ge_iff_le, hky_ge, ↓reduceDIte]
+      rw [hry]
+      -- Direct unfold of roundSubnormalUp x in the non-transition case
+      show (roundSubnormalUp x hx).toVal (R := R) ≤ FiniteFp.smallestPosNormal.toVal
+      -- The transition case toVal is kx * ulp where kx < 2^(prec-1)
+      -- smallestPosNormal.toVal = 2^min_exp = 2^(prec-1) * ulp
+      -- So kx * ulp ≤ (2^(prec-1)-1) * ulp < 2^(prec-1) * ulp ✓
+      have hnatabs_bound : (⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉).natAbs <
+          2 ^ (FloatFormat.prec - 1).toNat := by
+        zify [Nat.one_le_two_pow]; rw [abs_of_nonneg (le_of_lt hkx_pos)]; omega
+      -- The toVal of the non-transition subnormal up = kx.natAbs * 2^(min_exp - prec + 1)
+      -- Since kx.natAbs < 2^(prec-1), toVal < 2^(prec-1) * 2^(min_exp-prec+1) = 2^min_exp
+      -- And 2^min_exp = smallestPosNormal.toVal
+      apply le_of_lt
+      -- toVal < smallestPosNormal.toVal = 2^min_exp
+      rw [FiniteFp.smallestPosNormal_toVal]
+      -- Now show toVal(roundSubnormalUp x) < 2^min_exp
+      -- Step 1: Get the toVal value by going through FiniteFp.toVal_pos and bounding
+      -- The toVal = sign * m * 2^(e - prec + 1), with sign=1, e=min_exp
+      -- = kx.natAbs * 2^(min_exp - prec + 1)
+      -- We know kx > 0, so kx.natAbs = kx, and kx < 2^(prec-1)
+      have hval_eq : (roundSubnormalUp x hx).toVal (R := R) =
+          (⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉).natAbs *
+          (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1) := by
+        unfold roundSubnormalUp
+        simp only [ge_iff_le, not_le.mpr hkx_ge, ↓reduceDIte]
+        unfold FiniteFp.toVal FiniteFp.sign'
+        simp [FloatFormat.radix_val_eq_two]
+      rw [hval_eq]
+      have h_cast_bound : ((⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉).natAbs : R) <
+          (2 ^ (FloatFormat.prec - 1).toNat : R) := by exact_mod_cast hnatabs_bound
+      calc ((⌈x / (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1)⌉).natAbs : R) *
+              (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1)
+          < (2 ^ (FloatFormat.prec - 1).toNat : R) * (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1) := by
+            apply mul_lt_mul_of_pos_right h_cast_bound (by linearize)
+        _ = (2 : R) ^ FloatFormat.min_exp := by
+            rw [← zpow_natCast (2 : R), FloatFormat.prec_sub_one_toNat_eq,
+              two_zpow_mul]; congr 1; ring
+    · -- Both stay subnormal
+      push_neg at hky_ge
+      -- Both return ⟨false, min_exp, k.natAbs, _⟩: reduce to natAbs monotonicity
+      show (roundSubnormalUp x hx).toVal (R := R) ≤ (roundSubnormalUp y hy).toVal (R := R)
+      -- Unfold to get at the FiniteFp.mk structure
+      have hrx_sign : (roundSubnormalUp x hx).s = false := by
+        unfold roundSubnormalUp; simp only [ge_iff_le, not_le.mpr hkx_ge, ↓reduceDIte]
+      have hry_sign : (roundSubnormalUp y hy).s = false := by
+        unfold roundSubnormalUp; simp only [ge_iff_le, not_le.mpr hky_ge, ↓reduceDIte]
+      have hrx_exp : (roundSubnormalUp x hx).e = FloatFormat.min_exp := by
+        unfold roundSubnormalUp; simp only [ge_iff_le, not_le.mpr hkx_ge, ↓reduceDIte]
+      have hry_exp : (roundSubnormalUp y hy).e = FloatFormat.min_exp := by
+        unfold roundSubnormalUp; simp only [ge_iff_le, not_le.mpr hky_ge, ↓reduceDIte]
+      have hrx_m : (roundSubnormalUp x hx).m =
+          (⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉).natAbs := by
+        unfold roundSubnormalUp; simp only [ge_iff_le, not_le.mpr hkx_ge, ↓reduceDIte]
+      have hry_m : (roundSubnormalUp y hy).m =
+          (⌈y / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉).natAbs := by
+        unfold roundSubnormalUp; simp only [ge_iff_le, not_le.mpr hky_ge, ↓reduceDIte]
+      unfold FiniteFp.toVal FiniteFp.sign'
+      rw [hrx_sign, hry_sign, hrx_exp, hry_exp, FloatFormat.radix_val_eq_two]
+      simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
+      rw [hrx_m, hry_m]
+      gcongr
+      -- natAbs preserves order for positive integers
+      omega
+
 end Rounding

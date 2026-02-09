@@ -928,7 +928,7 @@ variable [FloatFormat]
 def is_total_lt (x y : Fp) : Prop :=
   match (x, y) with
   | (.finite x, .finite y) => x < y
-  | (.infinite b, .infinite c) => b = false && c = true
+  | (.infinite b, .infinite c) => b && !c
   | (.infinite b, .finite _) => b
   | (.finite _, .infinite b) => !b
   | (.NaN, _) => true -- total order has NaN less than everything
@@ -944,7 +944,7 @@ instance : LE Fp := ⟨is_total_le⟩
 
 theorem lt_def (x y : Fp) : x < y ↔ (match (x, y) with
   | (.finite x, .finite y) => x < y
-  | (.infinite b, .infinite c) => b = false && c = true
+  | (.infinite b, .infinite c) => b && !c
   | (.infinite b, .finite _) => b
   | (.finite _, .infinite b) => !b
   | (.NaN, _) => true
@@ -952,7 +952,7 @@ theorem lt_def (x y : Fp) : x < y ↔ (match (x, y) with
 
 theorem le_def (x y : Fp) : x ≤ y ↔ ((match (x, y) with
   | (.finite x, .finite y) => x < y
-  | (.infinite b, .infinite c) => b = false && c = true
+  | (.infinite b, .infinite c) => b && !c
   | (.infinite b, .finite _) => b
   | (.finite _, .infinite b) => !b
   | (.NaN, _) => true
@@ -984,5 +984,27 @@ theorem finite_le_trans {x y z : FiniteFp} (hxy : Fp.finite x ≤ Fp.finite y)
     (hyz : Fp.finite y ≤ Fp.finite z) : Fp.finite x ≤ Fp.finite z := by
   rw [finite_le_finite_iff] at hxy hyz ⊢
   exact FiniteFp.is_le_trans hxy hyz
+
+/-- General transitivity for Fp ordering -/
+theorem le_trans {x y z : Fp} (hxy : x ≤ y) (hyz : y ≤ z) : x ≤ z := by
+  rw [le_def] at hxy hyz ⊢
+  rcases hxy with hlt_xy | heq_xy
+  · rcases hyz with hlt_yz | heq_yz
+    · left
+      cases x <;> cases y <;> cases z <;>
+        first | exact FiniteFp.is_lt_trans hlt_xy hlt_yz | grind
+    · left; subst heq_yz; exact hlt_xy
+  · subst heq_xy; exact hyz
+
+/-- Antisymmetry for Fp ordering -/
+theorem le_antisymm {x y : Fp} (hxy : x ≤ y) (hyx : y ≤ x) : x = y := by
+  rw [le_def] at hxy hyx
+  rcases hxy with hlt_xy | heq_xy
+  · rcases hyx with hlt_yx | heq_yx
+    · -- x < y and y < x: impossible
+      cases x <;> cases y <;>
+        first | exact absurd (FiniteFp.is_lt_trans hlt_xy hlt_yx) (lt_irrefl _) | grind
+    · exact heq_yx.symm
+  · exact heq_xy
 
 end Fp

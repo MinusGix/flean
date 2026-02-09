@@ -691,4 +691,515 @@ theorem roundDown_le_roundUp (x : R) : roundDown x ≤ roundUp x := by
     | Fp.NaN =>
       exact absurd hsucc_eq (findSuccessorPos_ne_nan x hpos)
 
+/-- For positive x, roundNearestTiesToEven equals roundDown or roundUp -/
+theorem rnTE_eq_roundDown_or_roundUp_pos (x : R) (hxpos : 0 < x) :
+    roundNearestTiesToEven x = roundDown x ∨ roundNearestTiesToEven x = roundUp x := by
+  have hxne : x ≠ 0 := ne_of_gt hxpos
+  unfold roundNearestTiesToEven
+  rw [if_neg hxne]
+  by_cases hsmall : |x| < FiniteFp.smallestPosSubnormal.toVal / 2
+  · -- Small: returns Fp.finite 0 = roundDown x
+    rw [if_pos hsmall, if_neg (not_lt.mpr (le_of_lt hxpos))]
+    left
+    have hlt_ssps : x < FiniteFp.smallestPosSubnormal.toVal := by
+      rw [abs_of_pos hxpos] at hsmall
+      linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := R)]
+    exact (roundDown_lt_smallestPosSubnormal x hxpos hlt_ssps).symm
+  · rw [if_neg hsmall]
+    by_cases hoverflow : |x| ≥ (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2:R) ^ FloatFormat.max_exp
+    · -- Overflow: returns Fp.infinite false = roundUp x
+      rw [if_pos hoverflow]
+      have hnotlt : ¬(x < 0) := not_lt.mpr (le_of_lt hxpos)
+      simp only [hnotlt, decide_false]
+      right
+      have hlff : x > FiniteFp.largestFiniteFloat.toVal (R := R) := by
+        rw [abs_of_pos hxpos] at hoverflow
+        exact lt_of_lt_of_le largestFiniteFloat_lt_overflow_threshold hoverflow
+      exact (roundUp_gt_largestFiniteFloat x hxpos hlff).symm
+    · -- Normal range: dispatches to pred or succ
+      rw [if_neg hoverflow]
+      simp only [findPredecessor_pos_eq x hxpos, findSuccessor_pos_eq x hxpos]
+      -- Match on findSuccessorPos result
+      match hfsp : findSuccessorPos x hxpos with
+      | Fp.finite s =>
+        dsimp only
+        split_ifs
+        · left; unfold roundDown; rw [findPredecessor_pos_eq x hxpos]
+        · right; unfold roundUp; rw [findSuccessor_pos_eq x hxpos, hfsp]
+        · left; unfold roundDown; rw [findPredecessor_pos_eq x hxpos]
+        · right; unfold roundUp; rw [findSuccessor_pos_eq x hxpos, hfsp]
+      | Fp.infinite _ =>
+        -- findSuccessorPos returns +∞ (succ case), match falls to Fp.finite p, _ branch
+        dsimp only
+        left; unfold roundDown; rw [findPredecessor_pos_eq x hxpos]
+      | Fp.NaN =>
+        exact absurd hfsp (findSuccessorPos_ne_nan x hxpos)
+
+/-- For positive x, roundNearestTiesAwayFromZero equals roundDown or roundUp -/
+theorem rnTA_eq_roundDown_or_roundUp_pos (x : R) (hxpos : 0 < x) :
+    roundNearestTiesAwayFromZero x = roundDown x ∨ roundNearestTiesAwayFromZero x = roundUp x := by
+  have hxne : x ≠ 0 := ne_of_gt hxpos
+  unfold roundNearestTiesAwayFromZero
+  rw [if_neg hxne]
+  by_cases hsmall : |x| < FiniteFp.smallestPosSubnormal.toVal / 2
+  · rw [if_pos hsmall, if_neg (not_lt.mpr (le_of_lt hxpos))]
+    left
+    have hlt_ssps : x < FiniteFp.smallestPosSubnormal.toVal := by
+      rw [abs_of_pos hxpos] at hsmall
+      linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := R)]
+    exact (roundDown_lt_smallestPosSubnormal x hxpos hlt_ssps).symm
+  · rw [if_neg hsmall]
+    by_cases hoverflow : |x| ≥ (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2:R) ^ FloatFormat.max_exp
+    · rw [if_pos hoverflow]
+      have hnotlt : ¬(x < 0) := not_lt.mpr (le_of_lt hxpos)
+      simp only [hnotlt, decide_false]
+      right
+      have hlff : x > FiniteFp.largestFiniteFloat.toVal (R := R) := by
+        rw [abs_of_pos hxpos] at hoverflow
+        exact lt_of_lt_of_le largestFiniteFloat_lt_overflow_threshold hoverflow
+      exact (roundUp_gt_largestFiniteFloat x hxpos hlff).symm
+    · rw [if_neg hoverflow]
+      simp only [findPredecessor_pos_eq x hxpos, findSuccessor_pos_eq x hxpos]
+      match hfsp : findSuccessorPos x hxpos with
+      | Fp.finite s =>
+        dsimp only
+        split_ifs
+        · left; unfold roundDown; rw [findPredecessor_pos_eq x hxpos]
+        · right; unfold roundUp; rw [findSuccessor_pos_eq x hxpos, hfsp]
+        · right; unfold roundUp; rw [findSuccessor_pos_eq x hxpos, hfsp]
+      | Fp.infinite _ =>
+        dsimp only
+        left; unfold roundDown; rw [findPredecessor_pos_eq x hxpos]
+      | Fp.NaN =>
+        exact absurd hfsp (findSuccessorPos_ne_nan x hxpos)
+
+/-- For non-zero x, roundNearestTiesToEven equals roundDown or roundUp -/
+theorem rnTE_eq_roundDown_or_roundUp (x : R) (hx : x ≠ 0) :
+    roundNearestTiesToEven x = roundDown x ∨ roundNearestTiesToEven x = roundUp x := by
+  rcases lt_trichotomy x 0 with hxneg | hxzero | hxpos
+  · -- x < 0: use negation symmetry
+    have hnx_pos : 0 < -x := neg_pos.mpr hxneg
+    have hnx_ne : (-x : R) ≠ 0 := ne_of_gt hnx_pos
+    have h_neg_sym : roundNearestTiesToEven x = -(roundNearestTiesToEven (-x)) := by
+      have h := rnEven_neg_eq_neg (-x) hnx_ne; simp [neg_neg] at h; exact h
+    rcases rnTE_eq_roundDown_or_roundUp_pos (-x) hnx_pos with hrD | hrU
+    · -- rnTE(-x) = roundDown(-x), so rnTE(x) = -(roundDown(-x)) = roundUp(x)
+      right; rw [h_neg_sym, hrD]
+      have h2 := roundUp_neg_eq_neg_roundDown (-x) hnx_ne; simp [neg_neg] at h2; exact h2.symm
+    · -- rnTE(-x) = roundUp(-x), so rnTE(x) = -(roundUp(-x)) = roundDown(x)
+      left; rw [h_neg_sym, hrU]
+      have h2 := roundDown_neg_eq_neg_roundUp (-x) hnx_ne; simp [neg_neg] at h2; exact h2.symm
+  · exact absurd hxzero hx
+  · exact rnTE_eq_roundDown_or_roundUp_pos x hxpos
+
+/-- roundNearestTiesToEven equals roundDown or roundUp for all x -/
+theorem rnTE_eq_roundDown_or_roundUp' (x : R) :
+    roundNearestTiesToEven x = roundDown x ∨ roundNearestTiesToEven x = roundUp x := by
+  by_cases hx : x = 0
+  · left; rw [hx, roundNearestTiesToEven_zero, roundDown_zero]
+  · exact rnTE_eq_roundDown_or_roundUp x hx
+
+/-- For non-zero x, roundNearestTiesAwayFromZero equals roundDown or roundUp -/
+theorem rnTA_eq_roundDown_or_roundUp (x : R) (hx : x ≠ 0) :
+    roundNearestTiesAwayFromZero x = roundDown x ∨ roundNearestTiesAwayFromZero x = roundUp x := by
+  rcases lt_trichotomy x 0 with hxneg | hxzero | hxpos
+  · have hnx_pos : 0 < -x := neg_pos.mpr hxneg
+    have hnx_ne : (-x : R) ≠ 0 := ne_of_gt hnx_pos
+    have h_neg_sym : roundNearestTiesAwayFromZero x = -(roundNearestTiesAwayFromZero (-x)) := by
+      have h := rnAway_neg_eq_neg (-x) hnx_ne; simp [neg_neg] at h; exact h
+    rcases rnTA_eq_roundDown_or_roundUp_pos (-x) hnx_pos with hrD | hrU
+    · right; rw [h_neg_sym, hrD]
+      have h2 := roundUp_neg_eq_neg_roundDown (-x) hnx_ne; simp [neg_neg] at h2; exact h2.symm
+    · left; rw [h_neg_sym, hrU]
+      have h2 := roundDown_neg_eq_neg_roundUp (-x) hnx_ne; simp [neg_neg] at h2; exact h2.symm
+  · exact absurd hxzero hx
+  · exact rnTA_eq_roundDown_or_roundUp_pos x hxpos
+
+/-- roundNearestTiesAwayFromZero equals roundDown or roundUp for all x -/
+theorem rnTA_eq_roundDown_or_roundUp' (x : R) :
+    roundNearestTiesAwayFromZero x = roundDown x ∨ roundNearestTiesAwayFromZero x = roundUp x := by
+  by_cases hx : x = 0
+  · left; rw [hx, roundNearestTiesAwayFromZero_zero, roundDown_zero]
+  · exact rnTA_eq_roundDown_or_roundUp x hx
+
+/-- roundDown x ≤ roundNearestTiesToEven x for all x -/
+theorem roundDown_le_roundNearestTE (x : R) :
+    roundDown x ≤ roundNearestTiesToEven x := by
+  by_cases hx : x = 0
+  · rw [hx, roundDown_zero, roundNearestTiesToEven_zero]; exact Fp.le_refl _
+  · rcases rnTE_eq_roundDown_or_roundUp x hx with hrD | hrU
+    · rw [hrD]; exact Fp.le_refl _
+    · rw [hrU]; exact roundDown_le_roundUp x
+
+/-- roundNearestTiesToEven x ≤ roundUp x for all x -/
+theorem roundNearestTE_le_roundUp (x : R) :
+    roundNearestTiesToEven x ≤ roundUp x := by
+  by_cases hx : x = 0
+  · rw [hx, roundUp_zero, roundNearestTiesToEven_zero]; exact Fp.le_refl _
+  · rcases rnTE_eq_roundDown_or_roundUp x hx with hrD | hrU
+    · rw [hrD]; exact roundDown_le_roundUp x
+    · rw [hrU]; exact Fp.le_refl _
+
+/-- roundDown x ≤ roundNearestTiesAwayFromZero x for all x -/
+theorem roundDown_le_roundNearestTA (x : R) :
+    roundDown x ≤ roundNearestTiesAwayFromZero x := by
+  by_cases hx : x = 0
+  · rw [hx, roundDown_zero, roundNearestTiesAwayFromZero_zero]; exact Fp.le_refl _
+  · rcases rnTA_eq_roundDown_or_roundUp x hx with hrD | hrU
+    · rw [hrD]; exact Fp.le_refl _
+    · rw [hrU]; exact roundDown_le_roundUp x
+
+/-- roundNearestTiesAwayFromZero x ≤ roundUp x for all x -/
+theorem roundNearestTA_le_roundUp (x : R) :
+    roundNearestTiesAwayFromZero x ≤ roundUp x := by
+  by_cases hx : x = 0
+  · rw [hx, roundUp_zero, roundNearestTiesAwayFromZero_zero]; exact Fp.le_refl _
+  · rcases rnTA_eq_roundDown_or_roundUp x hx with hrD | hrU
+    · rw [hrD]; exact roundDown_le_roundUp x
+    · rw [hrU]; exact Fp.le_refl _
+
+/-- If g is a valid finite FP with g.toVal ≥ x, then roundUp x ≤ Fp.finite g.
+    This is the minimality of roundUp: it's the smallest FP ≥ x. -/
+theorem roundUp_le_of_fp_ge (x : R) (g : FiniteFp) (hg : g.s = false ∨ 0 < g.m)
+    (hge : x ≤ g.toVal) : roundUp x ≤ Fp.finite g := by
+  have hidem : roundUp (g.toVal (R := R)) = Fp.finite g := roundUp_idempotent g hg
+  rw [← hidem]
+  exact roundUp_mono hge
+
+/-- If f is a valid finite FP with f.toVal ≤ y, then Fp.finite f ≤ roundDown y.
+    This is the maximality of roundDown: it's the largest FP ≤ y. -/
+theorem roundDown_ge_of_fp_le (y : R) (f : FiniteFp) (hf : f.s = false ∨ 0 < f.m)
+    (hle : f.toVal ≤ y) : Fp.finite f ≤ roundDown y := by
+  have hidem : roundDown (f.toVal (R := R)) = Fp.finite f := roundDown_idempotent f hf
+  rw [← hidem]
+  exact roundDown_mono hle
+
+/-- If x ≤ y and roundUp(x) = Fp.finite f with f.toVal ≤ y, then roundUp(x) ≤ roundDown(y). -/
+private theorem roundUp_le_roundDown_of_toVal_le {x y : R} (f : FiniteFp)
+    (hfU : roundUp x = Fp.finite f) (hf_le : (f.toVal : R) ≤ y)
+    (hvalid : f.s = false ∨ 0 < f.m) : roundUp x ≤ roundDown y := by
+  rw [hfU]; exact roundDown_ge_of_fp_le y f hvalid hf_le
+
+/-! ### Same-interval and dispatch lemmas for round-to-nearest monotonicity -/
+
+/-- If x < y and roundUp(x) = Fp.finite f with f.toVal > y, then x and y share
+    the same roundDown and roundUp (they're in the same FP interval).
+    Restricted to positive values to avoid ±0 complications. -/
+private theorem same_interval_pos {x y : R} (hx : 0 < x) (hlt : x < y)
+    (f : FiniteFp) (hfU : roundUp x = Fp.finite f) (hval_gt : y < (f.toVal : R)) :
+    roundDown x = roundDown y ∧ roundUp x = roundUp y := by
+  have hfy : (f.toVal : R) > y := hval_gt
+  have hfpos : (0 : R) < f.toVal := lt_of_lt_of_le hx (roundUp_ge x f hfU)
+  have hfs : f.s = false ∨ 0 < f.m := by
+    exact Or.inl (FiniteFp.toVal_pos_iff.mpr hfpos).1
+  constructor
+  · -- roundDown equality
+    apply Fp.le_antisymm
+    · exact roundDown_mono (le_of_lt hlt)
+    · -- roundDown(y) is a float with toVal ≤ y < f.toVal
+      -- If its toVal ≥ x, it would be a float ≥ x smaller than roundUp(x), contradiction
+      -- So its toVal < x, making it ≤ roundDown(x)
+      have hy : 0 < y := lt_trans hx hlt
+      -- Extract g from roundDown(y)
+      have hrDy := roundDown_zero_le_pos y hy
+      -- roundDown(y) is ≥ Fp.finite 0, so it's finite
+      rcases hgD : roundDown y with g | b | _
+      · -- roundDown(y) = Fp.finite g
+        -- Extract g = findPredecessorPos y hy
+        have hg_eq : g = findPredecessorPos y hy := by
+          have hgD' := hgD; unfold roundDown at hgD'
+          rw [findPredecessor_pos_eq y hy] at hgD'
+          exact (Fp.finite.injEq g _).mp hgD'.symm
+        have hgs : g.s = false := by rw [hg_eq]; exact findPredecessorPos_sign_false y hy
+        have hgv : (g.toVal : R) ≤ y := by rw [hg_eq]; exact findPredecessorPos_le y hy
+        have hgvalid : g.s = false ∨ 0 < g.m := Or.inl hgs
+        -- g.toVal ≤ y < f.toVal
+        by_contra hne
+        -- If g.toVal ≥ x, then roundUp(x) ≤ Fp.finite g
+        by_cases hgx : x ≤ (g.toVal : R)
+        · have hUg := roundUp_le_of_fp_ge x g hgvalid hgx
+          -- But Fp.finite f = roundUp(x) ≤ Fp.finite g, so f.toVal ≤ g.toVal
+          rw [hfU] at hUg
+          have hfleg := FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff f g).mp hUg)
+          -- Yet f.toVal ≤ g.toVal ≤ y < f.toVal → contradiction
+          exact absurd hval_gt (not_lt.mpr (le_trans hfleg hgv))
+        · -- g.toVal < x
+          push_neg at hgx
+          have hgle : (g.toVal : R) ≤ x := le_of_lt hgx
+          exact hne (roundDown_ge_of_fp_le x g hgvalid hgle)
+      · -- roundDown(y) = Fp.infinite b: impossible
+        cases b
+        · exact absurd hgD (roundDown_ne_pos_inf y)
+        · rw [hgD] at hrDy; simp [Fp.le_def] at hrDy
+      · -- roundDown(y) = Fp.NaN: impossible
+        rw [hgD] at hrDy; simp [Fp.le_def] at hrDy
+  · -- roundUp equality
+    apply Fp.le_antisymm
+    · exact roundUp_mono (le_of_lt hlt)
+    · rw [hfU]; exact roundUp_le_of_fp_ge y f hfs (le_of_lt hfy)
+
+/-! ### Monotonicity of round-to-nearest modes -/
+
+/-- When roundDown(y) = Fp.finite dy for y < 0, we have dy.toVal ≤ y.
+    This follows because roundDown is the floor function. -/
+private theorem roundDown_neg_toVal_le {y : R} (hy : y < 0) (dy : FiniteFp)
+    (hdy : roundDown y = Fp.finite dy) : (dy.toVal : R) ≤ y := by
+  unfold roundDown at hdy
+  rw [findPredecessor_neg_eq y hy] at hdy
+  rcases hfsp : findSuccessorPos (-y) (neg_pos.mpr hy) with g | b | _
+  · rw [hfsp] at hdy; rw [Fp.neg_finite, Fp.finite.injEq] at hdy
+    have hg_ge := findSuccessorPos_ge (-y) (neg_pos.mpr hy) g hfsp
+    rw [← hdy, FiniteFp.toVal_neg_eq_neg]; linarith
+  · rw [hfsp] at hdy; cases b <;> simp at hdy
+  · exact absurd hfsp (findSuccessorPos_ne_nan (-y) (neg_pos.mpr hy))
+
+/-- Negation reversal for Fp ordering in the rounding context:
+    if -(roundDown y) ≤ -(roundUp x) with x < 0 and y < 0, then roundUp x ≤ roundDown y. -/
+private theorem neg_round_le_imp_round_le {x y : R} (hx_neg : x < 0) (hy_neg : y < 0)
+    (h : -(roundDown y) ≤ -(roundUp x)) : roundUp x ≤ roundDown y := by
+  rcases hux : roundUp x with ux | ub | _
+  · -- roundUp x = Fp.finite ux
+    rw [hux, Fp.neg_finite] at h
+    rcases hdy : roundDown y with dy | db | _
+    · -- Both finite: toVal comparison
+      rw [hdy, Fp.neg_finite, Fp.finite_le_finite_iff] at h
+      rw [Fp.finite_le_finite_iff]
+      apply FiniteFp.toVal_le_handle R
+      · linarith [FiniteFp.le_toVal_le R h,
+          FiniteFp.toVal_neg_eq_neg (R := R) (x := dy),
+          FiniteFp.toVal_neg_eq_neg (R := R) (x := ux)]
+      · intro ⟨_, hdyz⟩
+        exfalso
+        linarith [roundDown_neg_toVal_le hy_neg dy hdy, FiniteFp.toVal_isZero (R := R) hdyz]
+    · cases db with
+      | false => exact absurd hdy (roundDown_ne_pos_inf y)
+      | true => rw [hdy] at h; simp [Fp.neg_def, Fp.le_def] at h
+    · -- roundDown y = NaN: impossible (findPredecessor never returns NaN for y < 0)
+      exfalso
+      have hdy_eq : roundDown y = -(findSuccessorPos (-y) (neg_pos.mpr hy_neg)) := by
+        unfold roundDown; exact findPredecessor_neg_eq y hy_neg
+      rw [hdy] at hdy_eq
+      rcases hfsp : findSuccessorPos (-y) (neg_pos.mpr hy_neg) with g | gb | _
+      · rw [hfsp] at hdy_eq; simp at hdy_eq
+      · rw [hfsp] at hdy_eq; cases gb <;> simp at hdy_eq
+      · exact findSuccessorPos_ne_nan (-y) (neg_pos.mpr hy_neg) hfsp
+  · -- roundUp x = infinite: impossible for x < 0
+    exfalso; cases ub with
+    | true => exact absurd hux (roundUp_ne_neg_inf x)
+    | false =>
+      have := roundUp_neg_le_zero x hx_neg
+      rw [hux] at this; simp [Fp.le_def] at this
+  · -- roundUp x = NaN: impossible for x < 0
+    exfalso
+    have : roundUp x = Fp.finite (-findPredecessorPos (-x) (neg_pos.mpr hx_neg)) := by
+      unfold roundUp; exact findSuccessor_neg_eq x hx_neg
+    rw [hux] at this; simp at this
+
+/-- Helper for TE monotonicity: the hard case where rnTE(x) = roundUp(x) and
+    rnTE(y) = roundDown(y) with 0 < x < y. In this case, either the FP intervals
+    differ (roundUp(x).toVal ≤ y) or they match (midpoint contradiction). -/
+private theorem rnTE_roundUp_le_roundDown_pos {x y : R} (hx : 0 < x) (hxy : x < y)
+    (hrUx : roundNearestTiesToEven x = roundUp x)
+    (hrDy : roundNearestTiesToEven y = roundDown y) :
+    roundUp x ≤ roundDown y := by
+  have hy : 0 < y := lt_trans hx hxy
+  rcases hfU : roundUp x with f | b | _
+  · -- roundUp(x) = Fp.finite f
+    have hfpos : (0 : R) < f.toVal := lt_of_lt_of_le hx (roundUp_ge x f hfU)
+    have hfs : f.s = false ∨ 0 < f.m := Or.inl (FiniteFp.toVal_pos_iff.mpr hfpos).1
+    rcases le_or_gt (f.toVal : R) y with hfle | hfgt
+    · rw [← hfU]; exact roundUp_le_roundDown_of_toVal_le f hfU hfle hfs
+    · -- f.toVal > y: same interval
+      have hsame := same_interval_pos hx hxy f hfU hfgt
+      rcases hsame with ⟨hrD_eq, hrU_eq⟩
+      by_cases hrDU : roundDown x = roundUp x
+      · rw [← hfU, ← hrDU, hrD_eq]; exact Fp.le_refl _
+      · -- Midpoint contradiction
+        exfalso
+        have hrDx : roundDown x = Fp.finite (findPredecessorPos x hx) := by
+          unfold roundDown; rw [findPredecessor_pos_eq]
+        have hval_ge : x ≥ FiniteFp.smallestPosSubnormal.toVal / 2 := by
+          by_contra habs; push_neg at habs
+          have h1 := rnEven_le_half_subnormal x hx habs
+          rw [hrUx, hfU] at h1
+          rw [(Fp.finite.injEq f 0).mp h1] at hfpos
+          exact absurd hfpos (by rw [FiniteFp.toVal_zero]; exact lt_irrefl 0)
+        have hval_lt : x < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp :=
+          calc x ≤ f.toVal := roundUp_ge x f hfU
+            _ ≤ FiniteFp.largestFiniteFloat.toVal := FiniteFp.finite_le_largestFiniteFloat f
+            _ < _ := largestFiniteFloat_lt_overflow_threshold
+        have hrnx_ne_rD : roundNearestTiesToEven x ≠ roundDown x := by
+          rw [hrUx]; exact Ne.symm hrDU
+        have hx_ge_mid : x ≥ ((findPredecessorPos x hx).toVal (R := R) + (f.toVal : R)) / 2 := by
+          by_contra hlt; push_neg at hlt
+          exact hrnx_ne_rD (rnEven_below_mid_eq_roundDown x (findPredecessorPos x hx) f
+            hx hval_ge hval_lt hrDx hfU hlt)
+        have hy_gt_mid : y > ((findPredecessorPos x hx).toVal (R := R) + (f.toVal : R)) / 2 :=
+          lt_of_le_of_lt hx_ge_mid hxy
+        have hrDy_eq : roundDown y = Fp.finite (findPredecessorPos x hx) := hrD_eq ▸ hrDx
+        have hrUy : roundUp y = Fp.finite f := hrU_eq ▸ hfU
+        have rnTE_y_rU := rnEven_above_mid_eq_roundUp y (findPredecessorPos x hx) f hy
+          (le_trans hval_ge (le_of_lt hxy))
+          (calc y < f.toVal := hfgt
+            _ ≤ FiniteFp.largestFiniteFloat.toVal := FiniteFp.finite_le_largestFiniteFloat f
+            _ < _ := largestFiniteFloat_lt_overflow_threshold)
+          hrDy_eq hrUy hy_gt_mid
+        exact hrDU (calc roundDown x = roundDown y := hrD_eq
+          _ = roundUp y := by rw [← hrDy, rnTE_y_rU]
+          _ = roundUp x := hrU_eq.symm)
+  · -- roundUp(x) = Fp.infinite b
+    exfalso
+    cases b with
+    | true => exact absurd hfU (roundUp_ne_neg_inf x)
+    | false =>
+      by_cases hthresh : x ≥ (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp
+      · have := rnEven_ge_inf y (le_of_lt (lt_of_le_of_lt hthresh hxy))
+        rw [hrDy] at this; exact roundDown_ne_pos_inf y this
+      · push_neg at hthresh
+        have hval_ge : x ≥ FiniteFp.smallestPosSubnormal.toVal / 2 := by
+          by_contra habs; push_neg at habs
+          have hsps := FiniteFp.smallestPosSubnormal_toVal_pos (R := R)
+          have := roundUp_lt_smallestPosSubnormal x hx (by linarith)
+          rw [hfU] at this; exact absurd this (by simp)
+        have hrDx : roundDown x = Fp.finite (findPredecessorPos x hx) := by
+          unfold roundDown; rw [findPredecessor_pos_eq]
+        have := rnEven_pos_succ_overflow x (findPredecessorPos x hx) hx hval_ge hthresh hrDx hfU
+        rw [hrUx, hfU] at this; exact absurd this (by simp)
+  · exact absurd hfU (roundUp_pos_not_nan x hx)
+
+/-- Helper for TA monotonicity: same structure as TE but using TA dispatch lemmas. -/
+private theorem rnTA_roundUp_le_roundDown_pos {x y : R} (hx : 0 < x) (hxy : x < y)
+    (hrUx : roundNearestTiesAwayFromZero x = roundUp x)
+    (hrDy : roundNearestTiesAwayFromZero y = roundDown y) :
+    roundUp x ≤ roundDown y := by
+  have hy : 0 < y := lt_trans hx hxy
+  rcases hfU : roundUp x with f | b | _
+  · have hfpos : (0 : R) < f.toVal := lt_of_lt_of_le hx (roundUp_ge x f hfU)
+    have hfs : f.s = false ∨ 0 < f.m := Or.inl (FiniteFp.toVal_pos_iff.mpr hfpos).1
+    rcases le_or_gt (f.toVal : R) y with hfle | hfgt
+    · rw [← hfU]; exact roundUp_le_roundDown_of_toVal_le f hfU hfle hfs
+    · have hsame := same_interval_pos hx hxy f hfU hfgt
+      rcases hsame with ⟨hrD_eq, hrU_eq⟩
+      by_cases hrDU : roundDown x = roundUp x
+      · rw [← hfU, ← hrDU, hrD_eq]; exact Fp.le_refl _
+      · exfalso
+        have hrDx : roundDown x = Fp.finite (findPredecessorPos x hx) := by
+          unfold roundDown; rw [findPredecessor_pos_eq]
+        have hval_ge : x ≥ FiniteFp.smallestPosSubnormal.toVal / 2 := by
+          by_contra habs; push_neg at habs
+          have h1 := rnAway_lt_half_subnormal x hx habs
+          rw [hrUx, hfU] at h1
+          rw [(Fp.finite.injEq f 0).mp h1] at hfpos
+          exact absurd hfpos (by rw [FiniteFp.toVal_zero]; exact lt_irrefl 0)
+        have hval_lt : x < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp :=
+          calc x ≤ f.toVal := roundUp_ge x f hfU
+            _ ≤ FiniteFp.largestFiniteFloat.toVal := FiniteFp.finite_le_largestFiniteFloat f
+            _ < _ := largestFiniteFloat_lt_overflow_threshold
+        have hrnx_ne_rD : roundNearestTiesAwayFromZero x ≠ roundDown x := by
+          rw [hrUx]; exact Ne.symm hrDU
+        have hx_ge_mid : x ≥ ((findPredecessorPos x hx).toVal (R := R) + (f.toVal : R)) / 2 := by
+          by_contra hlt; push_neg at hlt
+          exact hrnx_ne_rD (rnAway_lt_mid_eq_roundDown x (findPredecessorPos x hx) f
+            hx hval_ge hval_lt hrDx hfU hlt)
+        have hy_gt_mid : y > ((findPredecessorPos x hx).toVal (R := R) + (f.toVal : R)) / 2 :=
+          lt_of_le_of_lt hx_ge_mid hxy
+        have hrDy_eq : roundDown y = Fp.finite (findPredecessorPos x hx) := hrD_eq ▸ hrDx
+        have hrUy : roundUp y = Fp.finite f := hrU_eq ▸ hfU
+        have rnTA_y_rU := rnAway_ge_mid_eq_roundUp y (findPredecessorPos x hx) f hy
+          (le_trans hval_ge (le_of_lt hxy))
+          (calc y < f.toVal := hfgt
+            _ ≤ FiniteFp.largestFiniteFloat.toVal := FiniteFp.finite_le_largestFiniteFloat f
+            _ < _ := largestFiniteFloat_lt_overflow_threshold)
+          hrDy_eq hrUy (le_of_lt hy_gt_mid)
+        exact hrDU (calc roundDown x = roundDown y := hrD_eq
+          _ = roundUp y := by rw [← hrDy, rnTA_y_rU]
+          _ = roundUp x := hrU_eq.symm)
+  · exfalso
+    cases b with
+    | true => exact absurd hfU (roundUp_ne_neg_inf x)
+    | false =>
+      by_cases hthresh : x ≥ (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp
+      · have := rnAway_ge_inf y (le_of_lt (lt_of_le_of_lt hthresh hxy))
+        rw [hrDy] at this; exact roundDown_ne_pos_inf y this
+      · push_neg at hthresh
+        have hval_ge : x ≥ FiniteFp.smallestPosSubnormal.toVal / 2 := by
+          by_contra habs; push_neg at habs
+          have hsps := FiniteFp.smallestPosSubnormal_toVal_pos (R := R)
+          have := roundUp_lt_smallestPosSubnormal x hx (by linarith)
+          rw [hfU] at this; exact absurd this (by simp)
+        have hrDx : roundDown x = Fp.finite (findPredecessorPos x hx) := by
+          unfold roundDown; rw [findPredecessor_pos_eq]
+        have := rnAway_pos_succ_overflow x (findPredecessorPos x hx) hx hval_ge hthresh hrDx hfU
+        rw [hrUx, hfU] at this; exact absurd this (by simp)
+  · exact absurd hfU (roundUp_pos_not_nan x hx)
+
+/-- roundNearestTiesToEven is monotone: x ≤ y → rnTE(x) ≤ rnTE(y) -/
+theorem roundNearestTE_mono {x y : R} (h : x ≤ y) :
+    roundNearestTiesToEven x ≤ roundNearestTiesToEven y := by
+  rcases rnTE_eq_roundDown_or_roundUp' x with hrDx | hrUx
+  · -- rnTE(x) = roundDown(x): easy via roundDown_mono
+    rw [hrDx]; exact Fp.le_trans (roundDown_mono h) (roundDown_le_roundNearestTE y)
+  · rcases rnTE_eq_roundDown_or_roundUp' y with hrDy | hrUy
+    · -- Hard case: rnTE(x) = roundUp(x), rnTE(y) = roundDown(y)
+      rw [hrUx, hrDy]
+      rcases eq_or_lt_of_le h with heq | hlt
+      · subst heq; rw [← hrDy, hrUx]; exact Fp.le_refl _
+      · -- x < y
+        rcases le_or_gt 0 x with hx_nonneg | hx_neg
+        · -- 0 ≤ x < y
+          rcases eq_or_lt_of_le hx_nonneg with heq0 | hx_pos
+          · subst heq0; rw [roundUp_zero (R := R), ← roundDown_zero (R := R)]
+            exact roundDown_mono (le_of_lt hlt)
+          · exact rnTE_roundUp_le_roundDown_pos hx_pos hlt hrUx hrDy
+        · rcases le_or_gt 0 y with hy_nonneg | hy_neg
+          · -- x < 0 ≤ y: zero bridge
+            exact Fp.le_trans (roundUp_neg_le_zero x hx_neg)
+              (Fp.le_trans (roundDown_zero (R := R) ▸ Fp.le_refl (Fp.finite 0))
+                (roundDown_mono hy_nonneg))
+          · -- x < y < 0: negation reduction to positive case
+            have hx_ne : (x : R) ≠ 0 := ne_of_lt hx_neg
+            have hy_ne : (y : R) ≠ 0 := ne_of_lt hy_neg
+            have hrnTE_nx : roundNearestTiesToEven (-x) = roundDown (-x) := by
+              rw [rnEven_neg_eq_neg x hx_ne, hrUx, roundDown_neg_eq_neg_roundUp x hx_ne]
+            have hrnTE_ny : roundNearestTiesToEven (-y) = roundUp (-y) := by
+              rw [rnEven_neg_eq_neg y hy_ne, hrDy, roundUp_neg_eq_neg_roundDown y hy_ne]
+            have h_pos := rnTE_roundUp_le_roundDown_pos (neg_pos.mpr hy_neg)
+              (neg_lt_neg_iff.mpr hlt) hrnTE_ny hrnTE_nx
+            rw [roundUp_neg_eq_neg_roundDown y hy_ne,
+                roundDown_neg_eq_neg_roundUp x hx_ne] at h_pos
+            exact neg_round_le_imp_round_le hx_neg hy_neg h_pos
+    · -- rnTE(y) = roundUp(y): easy via roundUp_mono
+      rw [hrUx, hrUy]; exact roundUp_mono h
+
+/-- roundNearestTiesAwayFromZero is monotone: x ≤ y → rnTA(x) ≤ rnTA(y) -/
+theorem roundNearestTA_mono {x y : R} (h : x ≤ y) :
+    roundNearestTiesAwayFromZero x ≤ roundNearestTiesAwayFromZero y := by
+  rcases rnTA_eq_roundDown_or_roundUp' x with hrDx | hrUx
+  · rw [hrDx]; exact Fp.le_trans (roundDown_mono h) (roundDown_le_roundNearestTA y)
+  · rcases rnTA_eq_roundDown_or_roundUp' y with hrDy | hrUy
+    · rw [hrUx, hrDy]
+      rcases eq_or_lt_of_le h with heq | hlt
+      · subst heq; rw [← hrDy, hrUx]; exact Fp.le_refl _
+      · rcases le_or_gt 0 x with hx_nonneg | hx_neg
+        · rcases eq_or_lt_of_le hx_nonneg with heq0 | hx_pos
+          · subst heq0; rw [roundUp_zero (R := R), ← roundDown_zero (R := R)]
+            exact roundDown_mono (le_of_lt hlt)
+          · exact rnTA_roundUp_le_roundDown_pos hx_pos hlt hrUx hrDy
+        · rcases le_or_gt 0 y with hy_nonneg | hy_neg
+          · exact Fp.le_trans (roundUp_neg_le_zero x hx_neg)
+              (Fp.le_trans (roundDown_zero (R := R) ▸ Fp.le_refl (Fp.finite 0))
+                (roundDown_mono hy_nonneg))
+          · have hx_ne : (x : R) ≠ 0 := ne_of_lt hx_neg
+            have hy_ne : (y : R) ≠ 0 := ne_of_lt hy_neg
+            have hrnTA_nx : roundNearestTiesAwayFromZero (-x) = roundDown (-x) := by
+              rw [rnAway_neg_eq_neg x hx_ne, hrUx, roundDown_neg_eq_neg_roundUp x hx_ne]
+            have hrnTA_ny : roundNearestTiesAwayFromZero (-y) = roundUp (-y) := by
+              rw [rnAway_neg_eq_neg y hy_ne, hrDy, roundUp_neg_eq_neg_roundDown y hy_ne]
+            have h_pos := rnTA_roundUp_le_roundDown_pos (neg_pos.mpr hy_neg)
+              (neg_lt_neg_iff.mpr hlt) hrnTA_ny hrnTA_nx
+            rw [roundUp_neg_eq_neg_roundDown y hy_ne,
+                roundDown_neg_eq_neg_roundUp x hx_ne] at h_pos
+            exact neg_round_le_imp_round_le hx_neg hy_neg h_pos
+    · rw [hrUx, hrUy]; exact roundUp_mono h
+
 end Rounding
