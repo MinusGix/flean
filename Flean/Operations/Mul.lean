@@ -70,20 +70,13 @@ theorem fpMulFinite_exact_product {R : Type*} [Field R] [LinearOrder R] [IsStric
 
 /-! ## fpMulFinite Correctness -/
 
-/-- For nonzero products whose magnitude is at least the smallest positive subnormal,
-`fpMulFinite` correctly rounds the exact product.
+/-- For nonzero products, `fpMulFinite` correctly rounds the exact product.
 
 The `hprod ≠ 0` condition excludes the signed-zero case where IEEE 754 prescribes
-`sign = XOR` behavior that differs from `mode.round(0) = +0`.
-
-The `hval_ge_ssps` condition ensures the product is large enough for `roundIntSig_correct`.
-Unlike addition (where operand exponents guarantee this), multiplication of two small
-subnormals can produce values far below the representable range. -/
+`sign = XOR` behavior that differs from `mode.round(0) = +0`. -/
 theorem fpMulFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
     (mode : RoundingMode) (a b : FiniteFp)
-    (hprod : (a.toVal : R) * b.toVal ≠ 0)
-    (hval_ge_ssps : (↑(a.m * b.m) : R) * (2 : R) ^ (a.e + b.e - 2 * FloatFormat.prec + 2) ≥
-        FiniteFp.smallestPosSubnormal.toVal) :
+    (hprod : (a.toVal : R) * b.toVal ≠ 0) :
     fpMulFinite mode a b = mode.round ((a.toVal : R) * b.toVal) := by
   -- Get the exact product representation
   have hexact := fpMulFinite_exact_product (R := R) a b
@@ -92,7 +85,7 @@ theorem fpMulFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
     intro hzero; apply hprod; rw [hexact]; unfold intSigVal; simp [hzero]
   -- Unfold fpMulFinite and apply roundIntSig_correct
   unfold fpMulFinite
-  rw [roundIntSig_correct (R := R) mode _ _ _ hmag_ne hval_ge_ssps]
+  rw [roundIntSig_correct (R := R) mode _ _ _ hmag_ne]
   congr 1; rw [hexact]
 
 /-! ## Commutativity -/

@@ -167,23 +167,7 @@ theorem fpAddFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
   rw [if_neg hsum_ne]
   -- Now apply roundIntSig_correct
   have hmag_ne : isum.natAbs ≠ 0 := by rwa [Int.natAbs_ne_zero]
-  -- val ≥ ssps: |isum| ≥ 1 and e_base = e_min - prec + 1 ≥ min_exp - prec + 1
-  have hval_ge_ssps : (isum.natAbs : R) * (2 : R) ^ (e_min - FloatFormat.prec + 1) ≥
-      FiniteFp.smallestPosSubnormal.toVal := by
-    have hmag_pos : (1 : R) ≤ (isum.natAbs : R) := by
-      rw [← Nat.cast_one]; exact_mod_cast Nat.one_le_iff_ne_zero.mpr hmag_ne
-    have he_base_ge : e_min - FloatFormat.prec + 1 ≥ FloatFormat.min_exp - FloatFormat.prec + 1 := by
-      have ha_ge := a.valid.1  -- a.e ≥ min_exp
-      have hb_ge := b.valid.1  -- b.e ≥ min_exp
-      omega
-    rw [ge_iff_le, FiniteFp.smallestPosSubnormal_toVal]
-    calc (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1)
-      _ ≤ (2 : R) ^ (e_min - FloatFormat.prec + 1) :=
-          zpow_le_zpow_right₀ (by norm_num) he_base_ge
-      _ = 1 * (2 : R) ^ (e_min - FloatFormat.prec + 1) := by ring
-      _ ≤ (isum.natAbs : R) * (2 : R) ^ (e_min - FloatFormat.prec + 1) :=
-          mul_le_mul_of_nonneg_right hmag_pos (by positivity)
-  rw [roundIntSig_correct (R := R) mode _ _ _ hmag_ne hval_ge_ssps]
+  rw [roundIntSig_correct (R := R) mode _ _ _ hmag_ne]
   -- Show the arguments to mode.round are equal
   congr 1
   rw [intSigVal_eq_int_mul (R := R) hsum_ne, hexact]

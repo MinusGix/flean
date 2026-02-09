@@ -1056,14 +1056,9 @@ private theorem rnTE_roundUp_le_roundDown_pos {x y : R} (hx : 0 < x) (hxy : x < 
       · have := rnEven_ge_inf y (le_of_lt (lt_of_le_of_lt hthresh hxy))
         rw [hrDy] at this; exact roundDown_ne_pos_inf y this
       · push_neg at hthresh
-        have hval_ge : x ≥ FiniteFp.smallestPosSubnormal.toVal / 2 := by
-          by_contra habs; push_neg at habs
-          have hsps := FiniteFp.smallestPosSubnormal_toVal_pos (R := R)
-          have := roundUp_lt_smallestPosSubnormal x hx (by linarith)
-          rw [hfU] at this; exact absurd this (by simp)
         have hrDx : roundDown x = Fp.finite (findPredecessorPos x hx) := by
           unfold roundDown; rw [findPredecessor_pos_eq]
-        have := rnEven_pos_succ_overflow x (findPredecessorPos x hx) hx hval_ge hthresh hrDx hfU
+        have := rnEven_pos_succ_overflow x (findPredecessorPos x hx) hx hthresh hrDx hfU
         rw [hrUx, hfU] at this; exact absurd this (by simp)
   · exact absurd hfU (roundUp_pos_not_nan x hx)
 
@@ -1122,14 +1117,9 @@ private theorem rnTA_roundUp_le_roundDown_pos {x y : R} (hx : 0 < x) (hxy : x < 
       · have := rnAway_ge_inf y (le_of_lt (lt_of_le_of_lt hthresh hxy))
         rw [hrDy] at this; exact roundDown_ne_pos_inf y this
       · push_neg at hthresh
-        have hval_ge : x ≥ FiniteFp.smallestPosSubnormal.toVal / 2 := by
-          by_contra habs; push_neg at habs
-          have hsps := FiniteFp.smallestPosSubnormal_toVal_pos (R := R)
-          have := roundUp_lt_smallestPosSubnormal x hx (by linarith)
-          rw [hfU] at this; exact absurd this (by simp)
         have hrDx : roundDown x = Fp.finite (findPredecessorPos x hx) := by
           unfold roundDown; rw [findPredecessor_pos_eq]
-        have := rnAway_pos_succ_overflow x (findPredecessorPos x hx) hx hval_ge hthresh hrDx hfU
+        have := rnAway_pos_succ_overflow x (findPredecessorPos x hx) hx hthresh hrDx hfU
         rw [hrUx, hfU] at this; exact absurd this (by simp)
   · exact absurd hfU (roundUp_pos_not_nan x hx)
 

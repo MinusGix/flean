@@ -541,6 +541,28 @@ theorem rnAway_lt_mid_eq_roundDown [FloatFormat]
   rw [rnAway_pos_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrD]
   dsimp only; rw [if_pos hmid]
 
+/-- When val ≥ midpoint(pred, succ) and both roundDown/roundUp are finite, val ≥ ssps/2.
+
+This is used to eliminate the `hval_ge` precondition from the midpoint wrapper lemmas:
+when val ≥ midpoint, the tiny-value branch is vacuously impossible because the midpoint
+between 0 and ssps is exactly ssps/2. -/
+private lemma val_ge_ssps_half_of_mid_ge [FloatFormat]
+    (val : R) (pred_fp succ_fp : FiniteFp)
+    (hval_pos : 0 < val)
+    (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
+    (hmid_ge : val ≥ ((pred_fp.toVal : R) + succ_fp.toVal) / 2) :
+    val ≥ FiniteFp.smallestPosSubnormal.toVal / 2 := by
+  by_contra hlt
+  push_neg at hlt
+  have hval_lt_ssps : val < FiniteFp.smallestPosSubnormal.toVal := by
+    linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := R)]
+  have hpred_zero : pred_fp = 0 :=
+    Fp.finite.inj (by rw [← hrD]; exact roundDown_lt_smallestPosSubnormal val hval_pos hval_lt_ssps)
+  have hsucc_ssps : succ_fp = FiniteFp.smallestPosSubnormal :=
+    Fp.finite.inj (by rw [← hrU]; exact roundUp_lt_smallestPosSubnormal val hval_pos hval_lt_ssps)
+  rw [hpred_zero, hsucc_ssps, FiniteFp.toVal_zero, zero_add] at hmid_ge
+  linarith
+
 /-! ### Midpoint lemma wrappers with explicit mid_val parameter
 
 These variants take `mid_val` and a proof `hmid_eq : (pred + succ) / 2 = mid_val`
@@ -551,81 +573,103 @@ as independent terms without inline tactic blocks. -/
 theorem rnEven_above_mid_roundUp [FloatFormat]
     (val mid_val : R) (pred_fp succ_fp : FiniteFp)
     (hval_pos : 0 < val)
-    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal / 2)
     (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
     (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
     (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
     (hmid : val > mid_val) :
     roundNearestTiesToEven val = roundUp val :=
-  rnEven_above_mid_eq_roundUp val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
-    (by rw [hmid_eq]; exact hmid)
+  rnEven_above_mid_eq_roundUp val pred_fp succ_fp hval_pos
+    (val_ge_ssps_half_of_mid_ge val pred_fp succ_fp hval_pos hrD hrU
+      (le_of_lt (by rw [hmid_eq]; exact hmid)))
+    hval_lt hrD hrU (by rw [hmid_eq]; exact hmid)
 
 /-- rnEven below midpoint → roundDown (with explicit mid_val) -/
 theorem rnEven_below_mid_roundDown [FloatFormat]
     (val mid_val : R) (pred_fp succ_fp : FiniteFp)
     (hval_pos : 0 < val)
-    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal / 2)
     (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
     (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
     (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
     (hmid : val < mid_val) :
-    roundNearestTiesToEven val = roundDown val :=
-  rnEven_below_mid_eq_roundDown val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
-    (by rw [hmid_eq]; exact hmid)
+    roundNearestTiesToEven val = roundDown val := by
+  by_cases hsmall : |val| < FiniteFp.smallestPosSubnormal.toVal / 2
+  · -- Tiny value: both sides equal Fp.finite 0
+    have hval_lt_ssps : val < FiniteFp.smallestPosSubnormal.toVal := by
+      linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := R),
+        show val < _ from by rwa [abs_of_pos hval_pos] at hsmall]
+    have hLHS : roundNearestTiesToEven val = Fp.finite 0 := by
+      unfold roundNearestTiesToEven
+      rw [if_neg (ne_of_gt hval_pos), if_pos hsmall, if_neg (not_lt.mpr (le_of_lt hval_pos))]
+    rw [hLHS, roundDown_lt_smallestPosSubnormal val hval_pos hval_lt_ssps]
+  · exact rnEven_below_mid_eq_roundDown val pred_fp succ_fp hval_pos
+      (by have := not_lt.mp hsmall; rwa [abs_of_pos hval_pos] at this)
+      hval_lt hrD hrU (by rw [hmid_eq]; exact hmid)
 
 /-- rnEven at midpoint, odd predecessor → roundUp (with explicit mid_val) -/
 theorem rnEven_at_mid_odd_roundUp [FloatFormat]
     (val mid_val : R) (pred_fp succ_fp : FiniteFp)
     (hval_pos : 0 < val)
-    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal / 2)
     (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
     (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
     (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
     (hmid : val = mid_val)
     (hodd : isEvenSignificand pred_fp = false) :
     roundNearestTiesToEven val = roundUp val :=
-  rnEven_at_mid_odd_eq_roundUp val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
-    (by rw [hmid_eq]; exact hmid) hodd
+  rnEven_at_mid_odd_eq_roundUp val pred_fp succ_fp hval_pos
+    (val_ge_ssps_half_of_mid_ge val pred_fp succ_fp hval_pos hrD hrU
+      (by rw [hmid_eq]; exact hmid.ge))
+    hval_lt hrD hrU (by rw [hmid_eq]; exact hmid) hodd
 
 /-- rnEven at midpoint, even predecessor → roundDown (with explicit mid_val) -/
 theorem rnEven_at_mid_even_roundDown [FloatFormat]
     (val mid_val : R) (pred_fp succ_fp : FiniteFp)
     (hval_pos : 0 < val)
-    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal / 2)
     (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
     (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
     (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
     (hmid : val = mid_val)
     (heven : isEvenSignificand pred_fp = true) :
     roundNearestTiesToEven val = roundDown val :=
-  rnEven_at_mid_even_eq_roundDown val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
-    (by rw [hmid_eq]; exact hmid) heven
+  rnEven_at_mid_even_eq_roundDown val pred_fp succ_fp hval_pos
+    (val_ge_ssps_half_of_mid_ge val pred_fp succ_fp hval_pos hrD hrU
+      (by rw [hmid_eq]; exact hmid.ge))
+    hval_lt hrD hrU (by rw [hmid_eq]; exact hmid) heven
 
 /-- rnAway at or above midpoint → roundUp (with explicit mid_val) -/
 theorem rnAway_ge_mid_roundUp [FloatFormat]
     (val mid_val : R) (pred_fp succ_fp : FiniteFp)
     (hval_pos : 0 < val)
-    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal / 2)
     (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
     (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
     (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
     (hmid : val ≥ mid_val) :
     roundNearestTiesAwayFromZero val = roundUp val :=
-  rnAway_ge_mid_eq_roundUp val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
-    (by rw [hmid_eq]; exact hmid)
+  rnAway_ge_mid_eq_roundUp val pred_fp succ_fp hval_pos
+    (val_ge_ssps_half_of_mid_ge val pred_fp succ_fp hval_pos hrD hrU
+      (by rw [hmid_eq]; exact hmid))
+    hval_lt hrD hrU (by rw [hmid_eq]; exact hmid)
 
 /-- rnAway below midpoint → roundDown (with explicit mid_val) -/
 theorem rnAway_lt_mid_roundDown [FloatFormat]
     (val mid_val : R) (pred_fp succ_fp : FiniteFp)
     (hval_pos : 0 < val)
-    (hval_ge : val ≥ FiniteFp.smallestPosSubnormal.toVal / 2)
     (hval_lt : val < (2 - 2^(1-(FloatFormat.prec:ℤ))/2) * 2^FloatFormat.max_exp)
     (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
     (hmid_eq : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 = mid_val)
     (hmid : val < mid_val) :
-    roundNearestTiesAwayFromZero val = roundDown val :=
-  rnAway_lt_mid_eq_roundDown val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU
-    (by rw [hmid_eq]; exact hmid)
+    roundNearestTiesAwayFromZero val = roundDown val := by
+  by_cases hsmall : |val| < FiniteFp.smallestPosSubnormal.toVal / 2
+  · -- Tiny value: both sides equal Fp.finite 0
+    have hval_lt_ssps : val < FiniteFp.smallestPosSubnormal.toVal := by
+      linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := R),
+        show val < _ from by rwa [abs_of_pos hval_pos] at hsmall]
+    have hLHS : roundNearestTiesAwayFromZero val = Fp.finite 0 := by
+      unfold roundNearestTiesAwayFromZero
+      rw [if_neg (ne_of_gt hval_pos), if_pos hsmall, if_neg (not_lt.mpr (le_of_lt hval_pos))]
+    rw [hLHS, roundDown_lt_smallestPosSubnormal val hval_pos hval_lt_ssps]
+  · exact rnAway_lt_mid_eq_roundDown val pred_fp succ_fp hval_pos
+      (by have := not_lt.mp hsmall; rwa [abs_of_pos hval_pos] at this)
+      hval_lt hrD hrU (by rw [hmid_eq]; exact hmid)
 
 theorem largestFiniteFloat_lt_overflow_threshold [FloatFormat] :
     FiniteFp.largestFiniteFloat.toVal <
@@ -651,15 +695,18 @@ theorem val_lt_thresh_of_roundUp_finite [FloatFormat]
 theorem rnEven_pos_succ_overflow [FloatFormat]
     (val : R) (pred_fp : FiniteFp)
     (hval_pos : 0 < val)
-    (hval_ge_ssps : val ≥ FiniteFp.smallestPosSubnormal.toVal / 2)
     (hval_lt_thresh : val < (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2:R) ^ FloatFormat.max_exp)
     (hroundDown : roundDown val = Fp.finite pred_fp)
     (hroundUp_inf : roundUp val = Fp.infinite false) :
     roundNearestTiesToEven val = Fp.finite pred_fp := by
   have hval_ne : val ≠ 0 := ne_of_gt hval_pos
   have h_not_small : ¬(|val| < FiniteFp.smallestPosSubnormal.toVal / 2) := by
-    rw [abs_of_pos hval_pos]; push_neg
-    linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := R)]
+    intro habs
+    have hval_lt_ssps : val < FiniteFp.smallestPosSubnormal.toVal := by
+      linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := R),
+        show val < _ from by rwa [abs_of_pos hval_pos] at habs]
+    have h := roundUp_lt_smallestPosSubnormal val hval_pos hval_lt_ssps
+    rw [hroundUp_inf] at h; exact absurd h (by simp)
   have h_not_overflow : ¬(|val| ≥ (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2:R) ^ FloatFormat.max_exp) := by
     rw [abs_of_pos hval_pos]; push_neg; exact hval_lt_thresh
   unfold roundNearestTiesToEven
@@ -680,15 +727,18 @@ theorem rnEven_pos_succ_overflow [FloatFormat]
 theorem rnAway_pos_succ_overflow [FloatFormat]
     (val : R) (pred_fp : FiniteFp)
     (hval_pos : 0 < val)
-    (hval_ge_ssps : val ≥ FiniteFp.smallestPosSubnormal.toVal / 2)
     (hval_lt_thresh : val < (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2:R) ^ FloatFormat.max_exp)
     (hroundDown : roundDown val = Fp.finite pred_fp)
     (hroundUp_inf : roundUp val = Fp.infinite false) :
     roundNearestTiesAwayFromZero val = Fp.finite pred_fp := by
   have hval_ne : val ≠ 0 := ne_of_gt hval_pos
   have h_not_small : ¬(|val| < FiniteFp.smallestPosSubnormal.toVal / 2) := by
-    rw [abs_of_pos hval_pos]; push_neg
-    linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := R)]
+    intro habs
+    have hval_lt_ssps : val < FiniteFp.smallestPosSubnormal.toVal := by
+      linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := R),
+        show val < _ from by rwa [abs_of_pos hval_pos] at habs]
+    have h := roundUp_lt_smallestPosSubnormal val hval_pos hval_lt_ssps
+    rw [hroundUp_inf] at h; exact absurd h (by simp)
   have h_not_overflow : ¬(|val| ≥ (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2:R) ^ FloatFormat.max_exp) := by
     rw [abs_of_pos hval_pos]; push_neg; exact hval_lt_thresh
   unfold roundNearestTiesAwayFromZero
