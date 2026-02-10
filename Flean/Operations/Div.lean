@@ -653,7 +653,6 @@ private theorem roundNearest_no_crossing {R : Type*} [Field R] [LinearOrder R]
     (hv_pos : 0 < v) (hw_pos : 0 < w)
     (hv_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < v)
     (hv_hi : v < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base)
-    (hw_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < w)
     (hw_hi : w < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base)
     (hno_rep : noRepresentableIn (((n : ℤ) - 1 : R) * (2 : R) ^ e_base)
         (((n : ℤ) + 1 : R) * (2 : R) ^ e_base))
@@ -791,7 +790,6 @@ private theorem rnTE_no_crossing {R : Type*} [Field R] [LinearOrder R]
     (hv_pos : 0 < v) (hw_pos : 0 < w)
     (hv_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < v)
     (hv_hi : v < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base)
-    (hw_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < w)
     (hw_hi : w < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base)
     (hno_rep : noRepresentableIn (((n : ℤ) - 1 : R) * (2 : R) ^ e_base)
         (((n : ℤ) + 1 : R) * (2 : R) ^ e_base))
@@ -800,7 +798,7 @@ private theorem rnTE_no_crossing {R : Type*} [Field R] [LinearOrder R]
     (hrd_ne : roundDown v ≠ roundUp v)
     (hv_rd : roundNearestTiesToEven v = roundDown v)
     (hw_ru : roundNearestTiesToEven w = roundUp w) : False :=
-  roundNearest_no_crossing hn_odd hn_large hv_pos hw_pos hv_lo hv_hi hw_lo hw_hi
+  roundNearest_no_crossing hn_odd hn_large hv_pos hw_pos hv_lo hv_hi hw_hi
     hno_rep hrd_eq hru_eq hrd_ne hv_rd hw_ru
     rnEven_above_mid_roundUp rnEven_below_mid_roundDown
     rnEven_ge_inf rnEven_pos_succ_overflow
@@ -814,7 +812,6 @@ private theorem rnTA_no_crossing {R : Type*} [Field R] [LinearOrder R]
     (hv_pos : 0 < v) (hw_pos : 0 < w)
     (hv_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < v)
     (hv_hi : v < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base)
-    (hw_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < w)
     (hw_hi : w < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base)
     (hno_rep : noRepresentableIn (((n : ℤ) - 1 : R) * (2 : R) ^ e_base)
         (((n : ℤ) + 1 : R) * (2 : R) ^ e_base))
@@ -823,7 +820,7 @@ private theorem rnTA_no_crossing {R : Type*} [Field R] [LinearOrder R]
     (hrd_ne : roundDown v ≠ roundUp v)
     (hv_rd : roundNearestTiesAwayFromZero v = roundDown v)
     (hw_ru : roundNearestTiesAwayFromZero w = roundUp w) : False :=
-  roundNearest_no_crossing hn_odd hn_large hv_pos hw_pos hv_lo hv_hi hw_lo hw_hi
+  roundNearest_no_crossing hn_odd hn_large hv_pos hw_pos hv_lo hv_hi hw_hi
     hno_rep hrd_eq hru_eq hrd_ne hv_rd hw_ru
     (fun x m p s h1 h2 h3 h4 h5 h6 => rnAway_ge_mid_roundUp x m p s h1 h2 h3 h4 h5 h6.le)
     rnAway_lt_mid_roundDown rnAway_ge_inf rnAway_pos_succ_overflow
@@ -887,7 +884,7 @@ theorem round_eq_on_odd_interval {R : Type*} [Field R] [LinearOrder R]
         · exact hrDU.trans hru
         · exfalso; exact rnTE_no_crossing hn_odd hn_large
             (lt_trans hlo_pos hv₁_lo) (lt_trans hlo_pos hv₂_lo)
-            hv₁_lo hv₁_hi hv₂_lo hv₂_hi hno_rep hrd hru hrDU h1 h2
+            hv₁_lo hv₁_hi hv₂_hi hno_rep hrd hru hrDU h1 h2
       · -- v₂ ≤ v₁: mono gives ru₂ ≤ rd₁ → rd = ru
         have hmono := roundNearestTE_mono hle
         rw [h2, h1] at hmono  -- roundUp v₂ ≤ roundDown v₁
@@ -908,7 +905,7 @@ theorem round_eq_on_odd_interval {R : Type*} [Field R] [LinearOrder R]
         · exact hru.trans hrDU.symm
         · exfalso; exact rnTE_no_crossing hn_odd hn_large
             (lt_trans hlo_pos hv₂_lo) (lt_trans hlo_pos hv₁_lo)
-            hv₂_lo hv₂_hi hv₁_lo hv₁_hi hno_rep hrd.symm hru.symm hrDU h2 h1
+            hv₂_lo hv₂_hi hv₁_hi hno_rep hrd.symm hru.symm hrDU h2 h1
     · -- (roundUp, roundUp)
       rw [h1, h2, hru]
   | NearestTiesAwayFromZero =>
@@ -927,7 +924,7 @@ theorem round_eq_on_odd_interval {R : Type*} [Field R] [LinearOrder R]
         · exact hrDU.trans hru
         · exfalso; exact rnTA_no_crossing hn_odd hn_large
             (lt_trans hlo_pos hv₁_lo) (lt_trans hlo_pos hv₂_lo)
-            hv₁_lo hv₁_hi hv₂_lo hv₂_hi hno_rep hrd hru hrDU h1 h2
+            hv₁_lo hv₁_hi hv₂_hi hno_rep hrd hru hrDU h1 h2
       · have hmono := roundNearestTA_mono hle
         rw [h2, h1] at hmono
         rw [hrd] at hmono
@@ -945,7 +942,7 @@ theorem round_eq_on_odd_interval {R : Type*} [Field R] [LinearOrder R]
         · exact hru.trans hrDU.symm
         · exfalso; exact rnTA_no_crossing hn_odd hn_large
             (lt_trans hlo_pos hv₂_lo) (lt_trans hlo_pos hv₁_lo)
-            hv₂_lo hv₂_hi hv₁_lo hv₁_hi hno_rep hrd.symm hru.symm hrDU h2 h1
+            hv₂_lo hv₂_hi hv₁_hi hno_rep hrd.symm hru.symm hrDU h2 h1
     · rw [h1, h2, hru]
 
 /-! ## Full Correctness -/
