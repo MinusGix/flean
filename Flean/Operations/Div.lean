@@ -644,11 +644,11 @@ private theorem le_toVal_of_roundUp_finite {R : Type*} [Field R] [LinearOrder R]
   · exact absurd hfsp (findSuccessorPos_ne_nan x hx_pos)
 
 /-- In an odd interval with no representable float, a crossing from roundDown to roundUp
-    is impossible for roundNearestTiesToEven. This handles the key sorry case in
-    `round_eq_on_odd_interval`. -/
-private theorem rnTE_no_crossing {R : Type*} [Field R] [LinearOrder R]
+    is impossible for any roundNearest mode. Parameterized over 4 mode-specific callbacks. -/
+private theorem roundNearest_no_crossing {R : Type*} [Field R] [LinearOrder R]
     [IsStrictOrderedRing R] [FloorRing R]
     {v w : R} {n : ℕ} {e_base : ℤ}
+    {roundNear : R → Fp}
     (hn_odd : n % 2 = 1) (hn_large : 2 ^ (FloatFormat.prec.toNat + 3) < n)
     (hv_pos : 0 < v) (hw_pos : 0 < w)
     (hv_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < v)
@@ -660,25 +660,38 @@ private theorem rnTE_no_crossing {R : Type*} [Field R] [LinearOrder R]
     (hrd_eq : roundDown v = roundDown w)
     (hru_eq : roundUp v = roundUp w)
     (hrd_ne : roundDown v ≠ roundUp v)
-    (hv_rd : roundNearestTiesToEven v = roundDown v)
-    (hw_ru : roundNearestTiesToEven w = roundUp w) : False := by
-  -- Extract pred_fp from roundDown v
+    (hv_rd : roundNear v = roundDown v)
+    (hw_ru : roundNear w = roundUp w)
+    -- Mode-specific callbacks:
+    (h_above_mid_up : ∀ (x mid_val : R) (pred succ : FiniteFp),
+        0 < x → x < FloatFormat.overflowThreshold R →
+        roundDown x = Fp.finite pred → roundUp x = Fp.finite succ →
+        ((pred.toVal : R) + succ.toVal) / 2 = mid_val → x > mid_val →
+        roundNear x = roundUp x)
+    (h_below_mid_down : ∀ (x mid_val : R) (pred succ : FiniteFp),
+        0 < x → x < FloatFormat.overflowThreshold R →
+        roundDown x = Fp.finite pred → roundUp x = Fp.finite succ →
+        ((pred.toVal : R) + succ.toVal) / 2 = mid_val → x < mid_val →
+        roundNear x = roundDown x)
+    (h_ge_inf : ∀ (x : R), x ≥ FloatFormat.overflowThreshold R →
+        roundNear x = Fp.infinite false)
+    (h_pos_succ_overflow : ∀ (x : R) (pred : FiniteFp),
+        0 < x → x < FloatFormat.overflowThreshold R →
+        roundDown x = Fp.finite pred → roundUp x = Fp.infinite false →
+        roundNear x = Fp.finite pred) : False := by
   have hrd_v : roundDown v = Fp.finite (findPredecessorPos v hv_pos) :=
     by unfold roundDown; exact findPredecessor_pos_eq v hv_pos
   set pred_fp := findPredecessorPos v hv_pos with hpred_def
   have hpred_le_v : (pred_fp.toVal : R) ≤ v := findPredecessorPos_le v hv_pos
   have hpred_s : pred_fp.s = false := findPredecessorPos_sign_false v hv_pos
-  -- Extract succ from roundUp v
   have hru_v : roundUp v = findSuccessorPos v hv_pos :=
     by unfold roundUp; exact findSuccessor_pos_eq v hv_pos
-  -- Rewrite roundUp v everywhere before case-splitting
   rw [hru_v] at hrd_ne hru_eq
   rcases hru_case : findSuccessorPos v hv_pos with succ_fp | b | _
   · -- Case 1: roundUp v = Fp.finite succ_fp
     rw [hrd_v] at hrd_ne hrd_eq
     have hsucc_ge_v : v ≤ (succ_fp.toVal : R) :=
       findSuccessorPos_ge v hv_pos succ_fp hru_case
-    -- succ_fp.s = false (positive since toVal ≥ v > 0)
     have hsucc_s : succ_fp.s = false := by
       by_contra hs
       have hs_t : succ_fp.s = true := by revert hs; cases succ_fp.s <;> simp
@@ -690,171 +703,35 @@ private theorem rnTE_no_crossing {R : Type*} [Field R] [LinearOrder R]
       by_contra h; push_neg at h; have : succ_fp.m = 0 := by omega
       have : (succ_fp.toVal : R) = 0 := by unfold FiniteFp.toVal; rw [this]; simp
       linarith
-    -- succ_fp.toVal ≥ (n+1)*E (otherwise it's representable in interval)
     have hsucc_bound : ((n : ℤ) + 1 : R) * (2 : R) ^ e_base ≤ (succ_fp.toVal : R) := by
       by_contra h; push_neg at h
       exact hno_rep succ_fp hsucc_s hsucc_m ⟨lt_of_lt_of_le hv_lo hsucc_ge_v, h⟩
-    -- pred_fp.m > 0: if m = 0, toVal = 0, but then roundDown_idempotent on
-    -- succ_fp gives roundDown(succ_fp.toVal) = succ_fp, and monotonicity gives
-    -- pred_fp = roundDown v ≤ roundDown(succ_fp.toVal) = succ_fp; but also
-    -- succ_fp.toVal ≥ (n+1)*E and v < (n+1)*E ≤ succ_fp.toVal, so
-    -- roundDown(succ_fp.toVal) ≤ roundDown v wouldn't help. Instead:
-    -- pred_fp.toVal ≤ v and pred_fp.toVal = 0, so v > 0 = pred_fp.toVal.
-    -- No positive representable has toVal ≤ v (since pred is the largest ≤ v and toVal = 0).
-    -- But succ_fp is a positive representable with succ_fp.toVal ≥ v > 0, so succ_fp.toVal > 0.
-    -- Actually we just need pred for midpoint_outside_odd_interval.
-    -- Use: if pred_fp.m = 0, pred_fp.toVal = 0 < (n-1)*E (since n > 8, E > 0).
-    -- midpoint = succ_fp.toVal / 2 ≥ (n+1)*E/2.
-    -- Since n ≥ 9: (n+1)/2 ≤ n-1, so midpoint might be ≤ (n-1)*E. Either way
-    -- this doesn't trivially work for midpoint_outside_odd_interval. So let's
-    -- handle pred_fp.m = 0 separately.
-    by_cases hpred_m : 0 < pred_fp.m
-    · -- Main case: pred_fp.m > 0
-      have hpred_bound : (pred_fp.toVal : R) ≤ ((n : ℤ) - 1 : R) * (2 : R) ^ e_base := by
-        by_contra h; push_neg at h
-        exact hno_rep pred_fp hpred_s hpred_m ⟨h, lt_of_le_of_lt hpred_le_v hv_hi⟩
-      -- pred and succ are adjacent: no representable strictly between them
-      have hadj : ∀ g : FiniteFp, g.s = false → 0 < g.m →
-          (pred_fp.toVal : R) < (g.toVal : R) → (g.toVal : R) < (succ_fp.toVal : R) → False := by
-        intro g hgs hgm hg_gt_pred hg_lt_succ
-        rcases le_or_gt (g.toVal : R) (((n : ℤ) - 1 : R) * (2 : R) ^ e_base) with hg_le_lo | hg_gt_lo
-        · -- g ≤ lo: roundDown_idempotent(g) + roundDown_mono(g ≤ v) gives g ≤ pred
-          have hmono : roundDown (g.toVal : R) ≤ roundDown v :=
-            roundDown_mono (le_trans (le_of_lt (lt_of_le_of_lt hg_le_lo hv_lo)) (le_refl v))
-          rw [hrd_v, roundDown_idempotent (R := R) g (Or.inl hgs)] at hmono
-          exact absurd hg_gt_pred (not_lt.mpr (FiniteFp.le_toVal_le R
-            ((Fp.finite_le_finite_iff g pred_fp).mp hmono)))
-        · rcases lt_or_ge (g.toVal : R) (((n : ℤ) + 1 : R) * (2 : R) ^ e_base) with hg_lt_hi | hg_ge_hi
-          · exact hno_rep g hgs hgm ⟨hg_gt_lo, hg_lt_hi⟩
-          · -- g ≥ hi ≥ succ: contradiction with g < succ
-            have hmono : roundUp v ≤ roundUp (g.toVal : R) :=
-              roundUp_mono (le_trans (le_of_lt hv_hi) hg_ge_hi)
-            rw [hru_v, hru_case, roundUp_idempotent (R := R) g (Or.inl hgs)] at hmono
-            exact absurd hg_lt_succ (not_lt.mpr (FiniteFp.le_toVal_le R
-              ((Fp.finite_le_finite_iff succ_fp g).mp hmono)))
-      -- Apply midpoint_outside_odd_interval
-      -- v, w < overflow threshold (roundUp v = Fp.finite succ_fp, so v ≤ succ_fp ≤ lff < thresh)
-      have hsucc_lt_thresh := finite_toVal_lt_overflowThreshold (R := R) succ_fp
-      have hv_lt_thresh := lt_of_le_of_lt hsucc_ge_v hsucc_lt_thresh
-      have hw_lt_thresh : w < FloatFormat.overflowThreshold R :=
-        lt_of_le_of_lt (le_toVal_of_roundUp_finite hw_pos (hru_eq.symm.trans hru_case))
-          hsucc_lt_thresh
-      have hru_v_eq : roundUp v = Fp.finite succ_fp := hru_v.trans hru_case
-      rcases midpoint_outside_odd_interval hn_odd hn_large pred_fp succ_fp
-        hpred_s hpred_m hsucc_s hsucc_m hpred_bound hsucc_bound hadj with hmid_lo | hmid_hi
-      · -- mid ≤ lo < v: v > mid, so rnTE v = roundUp v, contradicting hv_rd
-        have hv_gt_mid : v > ((pred_fp.toVal : R) + succ_fp.toVal) / 2 := by linarith
-        have hte_up := rnEven_above_mid_roundUp v _ pred_fp succ_fp hv_pos
-          hv_lt_thresh hrd_v hru_v_eq rfl hv_gt_mid
-        -- hte_up : rnTE v = roundUp v, but hv_rd : rnTE v = roundDown v
-        have : roundDown v = roundUp v := hv_rd.symm.trans hte_up
-        rw [hrd_v, hru_v] at this; exact hrd_ne this
-      · -- mid ≥ hi > w: w < mid, so rnTE w = roundDown w, contradicting hw_ru
-        have hw_lt_mid : w < ((pred_fp.toVal : R) + succ_fp.toVal) / 2 := by linarith
-        have hte_down := rnEven_below_mid_roundDown w _ pred_fp succ_fp hw_pos
-          hw_lt_thresh hrd_eq.symm (hru_eq.symm.trans hru_case) rfl hw_lt_mid
-        -- hte_down : rnTE w = roundDown w, but hw_ru : rnTE w = roundUp w
-        have : roundDown w = roundUp w := hte_down.symm.trans hw_ru
-        rw [← hrd_eq, ← hru_eq] at this; exact hrd_ne this
-    · -- Degenerate case: pred_fp.m = 0 → pred_fp.toVal = 0
-      push_neg at hpred_m; have hm0 : pred_fp.m = 0 := by omega
-      have hpred_val : (pred_fp.toVal : R) = 0 := by unfold FiniteFp.toVal; rw [hm0]; simp
-      have hmid_outside := midpoint_zero_pred_outside_odd_interval (R := R)
-        (e_base := e_base) hn_odd hn_large hsucc_s
-      -- Use midpoint position to derive contradiction via rnTE lemmas
-      have hsucc_lt_thresh := finite_toVal_lt_overflowThreshold (R := R) succ_fp
-      have hv_lt_thresh := lt_of_le_of_lt hsucc_ge_v hsucc_lt_thresh
-      have hru_v_eq : roundUp v = Fp.finite succ_fp := hru_v.trans hru_case
-      have hw_lt_thresh : w < FloatFormat.overflowThreshold R :=
-        lt_of_le_of_lt (le_toVal_of_roundUp_finite hw_pos (hru_eq.symm.trans hru_case))
-          hsucc_lt_thresh
+    -- Threshold bounds (shared between main and degenerate cases)
+    have hsucc_lt_thresh := finite_toVal_lt_overflowThreshold (R := R) succ_fp
+    have hv_lt_thresh := lt_of_le_of_lt hsucc_ge_v hsucc_lt_thresh
+    have hw_lt_thresh : w < FloatFormat.overflowThreshold R :=
+      lt_of_le_of_lt (le_toVal_of_roundUp_finite hw_pos (hru_eq.symm.trans hru_case))
+        hsucc_lt_thresh
+    have hru_v_eq : roundUp v = Fp.finite succ_fp := hru_v.trans hru_case
+    -- Midpoint dispatch helper: derive contradiction from hmid_outside
+    suffices hmid_outside : ((pred_fp.toVal : R) + succ_fp.toVal) / 2 ≤
+        ((n : ℤ) - 1 : R) * (2 : R) ^ e_base ∨
+        ((n : ℤ) + 1 : R) * (2 : R) ^ e_base ≤
+        ((pred_fp.toVal : R) + succ_fp.toVal) / 2 by
       rcases hmid_outside with hmid_lo | hmid_hi
-      · have hv_gt_mid : v > ((pred_fp.toVal : R) + succ_fp.toVal) / 2 := by
-          rw [hpred_val]; linarith [hmid_lo]
-        have hte_up := rnEven_above_mid_roundUp v _ pred_fp succ_fp hv_pos
-          hv_lt_thresh hrd_v hru_v_eq rfl hv_gt_mid
-        have : roundDown v = roundUp v := hv_rd.symm.trans hte_up
+      · have hv_gt_mid : v > ((pred_fp.toVal : R) + succ_fp.toVal) / 2 := by linarith
+        have := h_above_mid_up v _ pred_fp succ_fp hv_pos hv_lt_thresh hrd_v hru_v_eq rfl hv_gt_mid
+        have : roundDown v = roundUp v := hv_rd.symm.trans this
         rw [hrd_v, hru_v] at this; exact hrd_ne this
-      · have hw_lt_mid : w < ((pred_fp.toVal : R) + succ_fp.toVal) / 2 := by
-          rw [hpred_val]; linarith [hmid_hi]
-        have hte_down := rnEven_below_mid_roundDown w _ pred_fp succ_fp hw_pos
+      · have hw_lt_mid : w < ((pred_fp.toVal : R) + succ_fp.toVal) / 2 := by linarith
+        have := h_below_mid_down w _ pred_fp succ_fp hw_pos
           hw_lt_thresh hrd_eq.symm (hru_eq.symm.trans hru_case) rfl hw_lt_mid
-        have : roundDown w = roundUp w := hte_down.symm.trans hw_ru
+        have : roundDown w = roundUp w := this.symm.trans hw_ru
         rw [← hrd_eq, ← hru_eq] at this; exact hrd_ne this
-  · -- Case 2: roundUp v = Fp.infinite b (overflow)
-    cases b with
-    | true => exact absurd hru_case (findSuccessorPos_ne_neg_inf v hv_pos)
-    | false =>
-      -- roundUp v = +∞ and roundUp w = +∞
-      have hru_v_inf : roundUp v = Fp.infinite false := hru_v.trans hru_case
-      have hru_w_inf : roundUp w = Fp.infinite false := hru_eq.symm.trans hru_case
-      set OT := FloatFormat.overflowThreshold R
-      -- v < OT (otherwise rnTE v = +∞, contradicting hv_rd = roundDown v which is finite)
-      have hv_lt_OT : v < OT := by
-        by_contra h; push_neg at h
-        have := rnEven_ge_inf v h
-        rw [hv_rd, hrd_v] at this; exact absurd this (by simp)
-      -- w ≥ OT (otherwise rnEven_pos_succ_overflow gives rnTE w = roundDown w, contradicting hw_ru)
-      have hw_ge_OT : OT ≤ w := by
-        by_contra h; push_neg at h
-        have hrd_w : roundDown w = Fp.finite (findPredecessorPos w hw_pos) := by
-          unfold roundDown; exact findPredecessor_pos_eq w hw_pos
-        have hte_w := rnEven_pos_succ_overflow w (findPredecessorPos w hw_pos)
-          hw_pos h hrd_w hru_w_inf
-        rw [hw_ru, hru_w_inf] at hte_w; exact absurd hte_w (by simp)
-      -- OT ∈ ((n-1)*E, (n+1)*E): from v < OT and (n-1)*E < v, and OT ≤ w < (n+1)*E
-      have hOT_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < OT := lt_of_lt_of_le hv_lo hv_lt_OT.le
-      have hOT_hi : OT < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base := lt_of_le_of_lt hw_ge_OT hw_hi
-      exact overflow_threshold_outside_odd_interval hn_odd hn_large hOT_lo hOT_hi
-  · exact absurd hru_case (findSuccessorPos_ne_nan v hv_pos)
-
-/-- In an odd interval, a crossing from roundDown to roundUp is impossible for
-    roundNearestTiesAwayFromZero. -/
-private theorem rnTA_no_crossing {R : Type*} [Field R] [LinearOrder R]
-    [IsStrictOrderedRing R] [FloorRing R]
-    {v w : R} {n : ℕ} {e_base : ℤ}
-    (hn_odd : n % 2 = 1) (hn_large : 2 ^ (FloatFormat.prec.toNat + 3) < n)
-    (hv_pos : 0 < v) (hw_pos : 0 < w)
-    (hv_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < v)
-    (hv_hi : v < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base)
-    (hw_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < w)
-    (hw_hi : w < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base)
-    (hno_rep : noRepresentableIn (((n : ℤ) - 1 : R) * (2 : R) ^ e_base)
-        (((n : ℤ) + 1 : R) * (2 : R) ^ e_base))
-    (hrd_eq : roundDown v = roundDown w)
-    (hru_eq : roundUp v = roundUp w)
-    (hrd_ne : roundDown v ≠ roundUp v)
-    (hv_rd : roundNearestTiesAwayFromZero v = roundDown v)
-    (hw_ru : roundNearestTiesAwayFromZero w = roundUp w) : False := by
-  -- Proof is identical to rnTE_no_crossing with rnAway midpoint lemmas
-  have hrd_v : roundDown v = Fp.finite (findPredecessorPos v hv_pos) :=
-    by unfold roundDown; exact findPredecessor_pos_eq v hv_pos
-  set pred_fp := findPredecessorPos v hv_pos with hpred_def
-  have hpred_le_v : (pred_fp.toVal : R) ≤ v := findPredecessorPos_le v hv_pos
-  have hpred_s : pred_fp.s = false := findPredecessorPos_sign_false v hv_pos
-  have hru_v : roundUp v = findSuccessorPos v hv_pos :=
-    by unfold roundUp; exact findSuccessor_pos_eq v hv_pos
-  rw [hru_v] at hrd_ne hru_eq
-  rcases hru_case : findSuccessorPos v hv_pos with succ_fp | b | _
-  · rw [hrd_v] at hrd_ne hrd_eq
-    have hsucc_ge_v : v ≤ (succ_fp.toVal : R) :=
-      findSuccessorPos_ge v hv_pos succ_fp hru_case
-    have hsucc_s : succ_fp.s = false := by
-      by_contra hs
-      have hs_t : succ_fp.s = true := by revert hs; cases succ_fp.s <;> simp
-      have : (succ_fp.toVal : R) ≤ 0 := by
-        unfold FiniteFp.toVal FiniteFp.sign'; rw [FloatFormat.radix_val_eq_two, hs_t]; simp
-        exact mul_nonneg (by positivity) (zpow_pos (by norm_num : (0:R) < 2) _).le
-      linarith
-    have hsucc_m : 0 < succ_fp.m := by
-      by_contra h; push_neg at h; have : succ_fp.m = 0 := by omega
-      have : (succ_fp.toVal : R) = 0 := by unfold FiniteFp.toVal; rw [this]; simp
-      linarith
-    have hsucc_bound : ((n : ℤ) + 1 : R) * (2 : R) ^ e_base ≤ (succ_fp.toVal : R) := by
-      by_contra h; push_neg at h
-      exact hno_rep succ_fp hsucc_s hsucc_m ⟨lt_of_lt_of_le hv_lo hsucc_ge_v, h⟩
+    -- Prove hmid_outside by cases on pred_fp.m
     by_cases hpred_m : 0 < pred_fp.m
-    · have hpred_bound : (pred_fp.toVal : R) ≤ ((n : ℤ) - 1 : R) * (2 : R) ^ e_base := by
+    · -- Main case: pred_fp.m > 0, use midpoint_outside_odd_interval
+      have hpred_bound : (pred_fp.toVal : R) ≤ ((n : ℤ) - 1 : R) * (2 : R) ^ e_base := by
         by_contra h; push_neg at h
         exact hno_rep pred_fp hpred_s hpred_m ⟨h, lt_of_le_of_lt hpred_le_v hv_hi⟩
       have hadj : ∀ g : FiniteFp, g.s = false → 0 < g.m →
@@ -873,72 +750,83 @@ private theorem rnTA_no_crossing {R : Type*} [Field R] [LinearOrder R]
             rw [hru_v, hru_case, roundUp_idempotent (R := R) g (Or.inl hgs)] at hmono
             exact absurd hg_lt_succ (not_lt.mpr (FiniteFp.le_toVal_le R
               ((Fp.finite_le_finite_iff succ_fp g).mp hmono)))
-      have hsucc_lt_thresh := finite_toVal_lt_overflowThreshold (R := R) succ_fp
-      have hv_lt_thresh := lt_of_le_of_lt hsucc_ge_v hsucc_lt_thresh
-      have hw_lt_thresh : w < FloatFormat.overflowThreshold R :=
-        lt_of_le_of_lt (le_toVal_of_roundUp_finite hw_pos (hru_eq.symm.trans hru_case))
-          hsucc_lt_thresh
-      have hru_v_eq : roundUp v = Fp.finite succ_fp := hru_v.trans hru_case
-      rcases midpoint_outside_odd_interval hn_odd hn_large pred_fp succ_fp
-        hpred_s hpred_m hsucc_s hsucc_m hpred_bound hsucc_bound hadj with hmid_lo | hmid_hi
-      · have hv_ge_mid : v ≥ ((pred_fp.toVal : R) + succ_fp.toVal) / 2 := by linarith
-        have hta_up := rnAway_ge_mid_roundUp v _ pred_fp succ_fp hv_pos
-          hv_lt_thresh hrd_v hru_v_eq rfl hv_ge_mid
-        have : roundDown v = roundUp v := hv_rd.symm.trans hta_up
-        rw [hrd_v, hru_v] at this; exact hrd_ne this
-      · have hw_lt_mid : w < ((pred_fp.toVal : R) + succ_fp.toVal) / 2 := by linarith
-        have hta_down := rnAway_lt_mid_roundDown w _ pred_fp succ_fp hw_pos
-          hw_lt_thresh hrd_eq.symm (hru_eq.symm.trans hru_case) rfl hw_lt_mid
-        have : roundDown w = roundUp w := hta_down.symm.trans hw_ru
-        rw [← hrd_eq, ← hru_eq] at this; exact hrd_ne this
-    · push_neg at hpred_m; have hm0 : pred_fp.m = 0 := by omega
+      exact midpoint_outside_odd_interval hn_odd hn_large pred_fp succ_fp
+        hpred_s hpred_m hsucc_s hsucc_m hpred_bound hsucc_bound hadj
+    · -- Degenerate case: pred_fp.m = 0 → pred_fp.toVal = 0
+      push_neg at hpred_m; have hm0 : pred_fp.m = 0 := by omega
       have hpred_val : (pred_fp.toVal : R) = 0 := by unfold FiniteFp.toVal; rw [hm0]; simp
-      have hmid_outside := midpoint_zero_pred_outside_odd_interval (R := R)
+      have hmid := midpoint_zero_pred_outside_odd_interval (R := R)
         (e_base := e_base) hn_odd hn_large hsucc_s
-      have hsucc_lt_thresh := finite_toVal_lt_overflowThreshold (R := R) succ_fp
-      have hv_lt_thresh := lt_of_le_of_lt hsucc_ge_v hsucc_lt_thresh
-      have hru_v_eq : roundUp v = Fp.finite succ_fp := hru_v.trans hru_case
-      have hw_lt_thresh : w < FloatFormat.overflowThreshold R :=
-        lt_of_le_of_lt (le_toVal_of_roundUp_finite hw_pos (hru_eq.symm.trans hru_case))
-          hsucc_lt_thresh
-      rcases hmid_outside with hmid_lo | hmid_hi
-      · have hv_ge_mid : v ≥ ((pred_fp.toVal : R) + succ_fp.toVal) / 2 := by
-          rw [hpred_val]; linarith [hmid_lo]
-        have hta_up := rnAway_ge_mid_roundUp v _ pred_fp succ_fp hv_pos
-          hv_lt_thresh hrd_v hru_v_eq rfl hv_ge_mid
-        have : roundDown v = roundUp v := hv_rd.symm.trans hta_up
-        rw [hrd_v, hru_v] at this; exact hrd_ne this
-      · have hw_lt_mid : w < ((pred_fp.toVal : R) + succ_fp.toVal) / 2 := by
-          rw [hpred_val]; linarith [hmid_hi]
-        have hta_down := rnAway_lt_mid_roundDown w _ pred_fp succ_fp hw_pos
-          hw_lt_thresh hrd_eq.symm (hru_eq.symm.trans hru_case) rfl hw_lt_mid
-        have : roundDown w = roundUp w := hta_down.symm.trans hw_ru
-        rw [← hrd_eq, ← hru_eq] at this; exact hrd_ne this
-  · cases b with
+      rcases hmid with h | h
+      · left; rw [hpred_val]; linarith
+      · right; rw [hpred_val]; linarith
+  · -- Case 2: roundUp v = Fp.infinite b (overflow)
+    cases b with
     | true => exact absurd hru_case (findSuccessorPos_ne_neg_inf v hv_pos)
     | false =>
-      -- roundUp v = +∞ and roundUp w = +∞
       have hru_v_inf : roundUp v = Fp.infinite false := hru_v.trans hru_case
       have hru_w_inf : roundUp w = Fp.infinite false := hru_eq.symm.trans hru_case
       set OT := FloatFormat.overflowThreshold R
-      -- v < OT (otherwise rnTA v = +∞, contradicting hv_rd = roundDown v which is finite)
       have hv_lt_OT : v < OT := by
         by_contra h; push_neg at h
-        have := rnAway_ge_inf v h
+        have := h_ge_inf v h
         rw [hv_rd, hrd_v] at this; exact absurd this (by simp)
-      -- w ≥ OT (otherwise rnAway_pos_succ_overflow gives rnTA w = roundDown w, contradicting hw_ru)
       have hw_ge_OT : OT ≤ w := by
         by_contra h; push_neg at h
         have hrd_w : roundDown w = Fp.finite (findPredecessorPos w hw_pos) := by
           unfold roundDown; exact findPredecessor_pos_eq w hw_pos
-        have hta_w := rnAway_pos_succ_overflow w (findPredecessorPos w hw_pos)
-          hw_pos h hrd_w hru_w_inf
-        rw [hw_ru, hru_w_inf] at hta_w; exact absurd hta_w (by simp)
-      -- OT ∈ ((n-1)*E, (n+1)*E)
+        have := h_pos_succ_overflow w (findPredecessorPos w hw_pos) hw_pos h hrd_w hru_w_inf
+        rw [hw_ru, hru_w_inf] at this; exact absurd this (by simp)
       have hOT_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < OT := lt_of_lt_of_le hv_lo hv_lt_OT.le
       have hOT_hi : OT < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base := lt_of_le_of_lt hw_ge_OT hw_hi
       exact overflow_threshold_outside_odd_interval hn_odd hn_large hOT_lo hOT_hi
   · exact absurd hru_case (findSuccessorPos_ne_nan v hv_pos)
+
+/-- Crossing from roundDown to roundUp is impossible for roundNearestTiesToEven
+    in an odd interval. -/
+private theorem rnTE_no_crossing {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] [FloorRing R]
+    {v w : R} {n : ℕ} {e_base : ℤ}
+    (hn_odd : n % 2 = 1) (hn_large : 2 ^ (FloatFormat.prec.toNat + 3) < n)
+    (hv_pos : 0 < v) (hw_pos : 0 < w)
+    (hv_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < v)
+    (hv_hi : v < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base)
+    (hw_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < w)
+    (hw_hi : w < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base)
+    (hno_rep : noRepresentableIn (((n : ℤ) - 1 : R) * (2 : R) ^ e_base)
+        (((n : ℤ) + 1 : R) * (2 : R) ^ e_base))
+    (hrd_eq : roundDown v = roundDown w)
+    (hru_eq : roundUp v = roundUp w)
+    (hrd_ne : roundDown v ≠ roundUp v)
+    (hv_rd : roundNearestTiesToEven v = roundDown v)
+    (hw_ru : roundNearestTiesToEven w = roundUp w) : False :=
+  roundNearest_no_crossing hn_odd hn_large hv_pos hw_pos hv_lo hv_hi hw_lo hw_hi
+    hno_rep hrd_eq hru_eq hrd_ne hv_rd hw_ru
+    rnEven_above_mid_roundUp rnEven_below_mid_roundDown
+    rnEven_ge_inf rnEven_pos_succ_overflow
+
+/-- Crossing from roundDown to roundUp is impossible for roundNearestTiesAwayFromZero
+    in an odd interval. -/
+private theorem rnTA_no_crossing {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] [FloorRing R]
+    {v w : R} {n : ℕ} {e_base : ℤ}
+    (hn_odd : n % 2 = 1) (hn_large : 2 ^ (FloatFormat.prec.toNat + 3) < n)
+    (hv_pos : 0 < v) (hw_pos : 0 < w)
+    (hv_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < v)
+    (hv_hi : v < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base)
+    (hw_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < w)
+    (hw_hi : w < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base)
+    (hno_rep : noRepresentableIn (((n : ℤ) - 1 : R) * (2 : R) ^ e_base)
+        (((n : ℤ) + 1 : R) * (2 : R) ^ e_base))
+    (hrd_eq : roundDown v = roundDown w)
+    (hru_eq : roundUp v = roundUp w)
+    (hrd_ne : roundDown v ≠ roundUp v)
+    (hv_rd : roundNearestTiesAwayFromZero v = roundDown v)
+    (hw_ru : roundNearestTiesAwayFromZero w = roundUp w) : False :=
+  roundNearest_no_crossing hn_odd hn_large hv_pos hw_pos hv_lo hv_hi hw_lo hw_hi
+    hno_rep hrd_eq hru_eq hrd_ne hv_rd hw_ru
+    (fun x m p s h1 h2 h3 h4 h5 h6 => rnAway_ge_mid_roundUp x m p s h1 h2 h3 h4 h5 h6.le)
+    rnAway_lt_mid_roundDown rnAway_ge_inf rnAway_pos_succ_overflow
 
 /-- Any rounding mode is constant on an odd interval `((n-1)*E, (n+1)*E)` with
     `n` odd and `n > 2^(prec+3)`. This combines the directional constancy (Steps 1-2)
