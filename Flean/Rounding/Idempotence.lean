@@ -449,7 +449,7 @@ theorem toVal_abs_ge_smallest (f : FiniteFp) (hm : 0 < f.m) :
 
 /-- Helper: toVal of any finite float has |toVal| < overflow threshold -/
 theorem toVal_abs_lt_overflow (f : FiniteFp) :
-    |f.toVal (R := R)| < (2 - (2 : R) ^ (1 - ↑FloatFormat.prec) / 2) * (2 : R) ^ FloatFormat.max_exp := by
+    |f.toVal (R := R)| < FloatFormat.overflowThreshold R := by
   -- |f.toVal| ≤ largestFiniteFloat.toVal < 2^(max_exp+1)
   -- And 2^(max_exp+1) ≤ (2 - eps/2) * 2^max_exp since eps ≤ 1 means 2 - eps/2 ≥ 3/2 > ... actually 2 - eps/2 ≥ 2 - 1/2 = 3/2
   -- Actually (2 - eps/2) * 2^max_exp ≥ 2 * 2^max_exp = 2^(max_exp+1) is what we need
@@ -480,7 +480,7 @@ theorem toVal_abs_lt_overflow (f : FiniteFp) :
       linarith
     · exact FiniteFp.finite_le_largestFiniteFloat f
   have h_largest_lt : FiniteFp.largestFiniteFloat.toVal <
-      (2 - (2 : R) ^ (1 - ↑FloatFormat.prec) / 2) * (2 : R) ^ FloatFormat.max_exp := by
+      FloatFormat.overflowThreshold R := by
     rw [FiniteFp.largestFiniteFloat_toVal]
     -- largest = 2^max_exp * (2 - 2^(-prec+1)) = 2^max_exp * (2 - 2^(1-prec))
     -- threshold = (2 - 2^(1-prec)/2) * 2^max_exp
@@ -488,7 +488,7 @@ theorem toVal_abs_lt_overflow (f : FiniteFp) :
     have h2max_pos : (0 : R) < (2 : R) ^ FloatFormat.max_exp := two_zpow_pos' _
     have h_eps_pos : (0 : R) < (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) := two_zpow_pos' _
     have h_eq : (-(FloatFormat.prec : ℤ) + 1) = (1 - (FloatFormat.prec : ℤ)) := by ring
-    rw [h_eq]
+    rw [h_eq]; unfold FloatFormat.overflowThreshold at *
     nlinarith
   linarith
 
@@ -511,7 +511,7 @@ theorem roundNearestTiesToEven_idempotent (f : FiniteFp) (h : f.s = false ∨ 0 
     linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := R)]
   simp only [habs_ge, ↓reduceIte]
   -- |f.toVal| < overflow threshold
-  have habs_lt : ¬(|f.toVal (R := R)| ≥ (2 - (2 : R) ^ (1 - ↑FloatFormat.prec) / 2) * (2 : R) ^ FloatFormat.max_exp) := by
+  have habs_lt : ¬(|f.toVal (R := R)| ≥ FloatFormat.overflowThreshold R) := by
     push_neg; exact toVal_abs_lt_overflow f
   simp only [habs_lt, ↓reduceIte]
   -- pred = succ = Fp.finite f
@@ -543,7 +543,7 @@ theorem roundNearestTiesAwayFromZero_idempotent (f : FiniteFp) (h : f.s = false 
     have := toVal_abs_ge_smallest (R := R) f hm_pos
     linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := R)]
   simp only [habs_ge, ↓reduceIte]
-  have habs_lt : ¬(|f.toVal (R := R)| ≥ (2 - (2 : R) ^ (1 - ↑FloatFormat.prec) / 2) * (2 : R) ^ FloatFormat.max_exp) := by
+  have habs_lt : ¬(|f.toVal (R := R)| ≥ FloatFormat.overflowThreshold R) := by
     push_neg; exact toVal_abs_lt_overflow f
   simp only [habs_lt, ↓reduceIte]
   have hpred : findPredecessor (f.toVal (R := R)) = Fp.finite f := by
@@ -706,7 +706,7 @@ theorem rnTE_eq_roundDown_or_roundUp_pos (x : R) (hxpos : 0 < x) :
       linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := R)]
     exact (roundDown_lt_smallestPosSubnormal x hxpos hlt_ssps).symm
   · rw [if_neg hsmall]
-    by_cases hoverflow : |x| ≥ (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2:R) ^ FloatFormat.max_exp
+    by_cases hoverflow : |x| ≥ FloatFormat.overflowThreshold R
     · -- Overflow: returns Fp.infinite false = roundUp x
       rw [if_pos hoverflow]
       have hnotlt : ¬(x < 0) := not_lt.mpr (le_of_lt hxpos)
@@ -749,7 +749,7 @@ theorem rnTA_eq_roundDown_or_roundUp_pos (x : R) (hxpos : 0 < x) :
       linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := R)]
     exact (roundDown_lt_smallestPosSubnormal x hxpos hlt_ssps).symm
   · rw [if_neg hsmall]
-    by_cases hoverflow : |x| ≥ (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2:R) ^ FloatFormat.max_exp
+    by_cases hoverflow : |x| ≥ FloatFormat.overflowThreshold R
     · rw [if_pos hoverflow]
       have hnotlt : ¬(x < 0) := not_lt.mpr (le_of_lt hxpos)
       simp only [hnotlt, decide_false]

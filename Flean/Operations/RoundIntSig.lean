@@ -306,14 +306,15 @@ private theorem handleOverflow_eq_round_intSigVal
     mul_pos (Nat.cast_pos.mpr (Nat.pos_of_ne_zero hmag)) (zpow_pos (by norm_num : (0:R) < 2) _)
   have hmag_gt_largest : (mag : R) * (2 : R) ^ e_base > (FiniteFp.largestFiniteFloat.toVal : R) :=
     lt_of_lt_of_le FiniteFp.largestFiniteFloat_lt_maxExp_succ hmag_ge
-  have hthresh_le : (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp ≤
+  have hthresh_le : FloatFormat.overflowThreshold R ≤
       (2 : R) ^ (FloatFormat.max_exp + 1) := by
     rw [show FloatFormat.max_exp + 1 = 1 + FloatFormat.max_exp from by ring,
         ← two_zpow_mul, zpow_one]
+    unfold FloatFormat.overflowThreshold
     nlinarith [zpow_pos (by norm_num : (0:R) < 2) FloatFormat.max_exp,
               show (0:R) < 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2 from by positivity]
   have hmag_ge_thresh : (mag : R) * (2 : R) ^ e_base ≥
-      (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp :=
+      FloatFormat.overflowThreshold R :=
     le_trans hthresh_le hmag_ge
   cases sign
   · -- sign = false (positive)
@@ -706,7 +707,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
           -- Helper for nearest modes: derive threshold bound using r ≥ half
           have hmag_ge_thresh_of_half (hr_half : r ≥ 2 ^ (shift_nat - 1)) :
               (mag : R) * (2 : R) ^ e_base ≥
-              (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp := by
+              FloatFormat.overflowThreshold R := by
             -- mid_val = threshold
             have hmid_eq := mid_val_eq_overflow_threshold (R := R) q e_ulp
               (show q + 1 = 2 ^ FloatFormat.prec.toNat from by omega) he_ulp_eq
@@ -719,6 +720,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
             have h_nat_zpow : ((2^(shift_nat - 1) : ℕ) : R) = (2:R)^((shift_nat - 1 : ℕ) : ℤ) := by
               rw [zpow_natCast, Nat.cast_pow, Nat.cast_ofNat]
             -- val = q * 2^e_ulp + r * 2^e_base ≥ q * 2^e_ulp + 2^(e_ulp-1) = threshold
+            unfold FloatFormat.overflowThreshold at *
             nlinarith [hval_decomp, zpow_pos (show (0:R) < 2 by norm_num) e_base]
           -- Now dispatch per mode
           cases sign

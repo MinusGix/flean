@@ -550,6 +550,11 @@ theorem zpow_one_sub_prec_le_one [FloatFormat] {R : Type*} [Field R] [LinearOrde
   have := FloatFormat.valid_prec
   omega
 
+/-- The overflow threshold `(2 - 2^(1-prec)/2) * 2^max_exp`. Values at or above this
+    round to infinity under nearest rounding modes. -/
+abbrev overflowThreshold [FloatFormat] (R : Type*) [Field R] : R :=
+    (2 - (2 : R)^(1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R)^FloatFormat.max_exp
+
 /-- The coefficient (2 - 2^(1-prec)/2) in the overflow threshold is at least 1 -/
 theorem overflow_coef_ge_one [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] :
     (1 : R) ≤ 2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2 := by
@@ -558,7 +563,7 @@ theorem overflow_coef_ge_one [FloatFormat] {R : Type*} [Field R] [LinearOrder R]
 
 /-- The overflow threshold is positive -/
 theorem overflow_threshold_pos [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] :
-    (0 : R) < (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := by
+    (0 : R) < overflowThreshold R := by
   apply mul_pos
   · have h := overflow_coef_ge_one (R := R)
     linarith
@@ -566,7 +571,8 @@ theorem overflow_threshold_pos [FloatFormat] {R : Type*} [Field R] [LinearOrder 
 
 /-- The overflow threshold is at least 2^max_exp -/
 theorem zpow_max_exp_le_overflow_threshold [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] :
-    (2 : R) ^ FloatFormat.max_exp ≤ (2 - 2^(1 - (FloatFormat.prec : ℤ)) / 2) * 2^FloatFormat.max_exp := by
+    (2 : R) ^ FloatFormat.max_exp ≤ overflowThreshold R := by
+  unfold overflowThreshold
   have h := overflow_coef_ge_one (R := R)
   have hpos : (0 : R) < 2 ^ FloatFormat.max_exp := by positivity
   nlinarith

@@ -201,7 +201,7 @@ theorem roundNearestTiesToEven_is_roundDown_or_roundUp (x : R) (hx : isNormalRan
   rw [if_neg hxne] at hf
   rw [if_neg h_not_small] at hf
   -- Handle the overflow condition
-  by_cases h_overflow : |x| ≥ (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * 2 ^ FloatFormat.max_exp
+  by_cases h_overflow : |x| ≥ FloatFormat.overflowThreshold R
   · rw [if_pos h_overflow] at hf; exact absurd hf (by simp)
   · rw [if_neg h_overflow] at hf
     -- Now in the else branch with let/match
@@ -254,7 +254,7 @@ theorem roundNearestTiesAwayFromZero_is_roundDown_or_roundUp (x : R) (hx : isNor
   unfold roundNearestTiesAwayFromZero at hf
   rw [if_neg hxne] at hf
   rw [if_neg h_not_small] at hf
-  by_cases h_overflow : |x| ≥ (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * 2 ^ FloatFormat.max_exp
+  by_cases h_overflow : |x| ≥ FloatFormat.overflowThreshold R
   · rw [if_pos h_overflow] at hf; exact absurd hf (by simp)
   · rw [if_neg h_overflow] at hf
     simp only [findPredecessor_pos_eq x hxpos, findSuccessor_pos_eq x hxpos] at hf
@@ -314,7 +314,7 @@ theorem roundNearestTiesToEven_abs_error_le_ulp_half (x : R) (hx : isNormalRange
   unfold roundNearestTiesToEven at hf
   rw [if_neg hxne] at hf
   rw [if_neg h_not_small] at hf
-  by_cases h_overflow : |x| ≥ (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * 2 ^ FloatFormat.max_exp
+  by_cases h_overflow : |x| ≥ FloatFormat.overflowThreshold R
   · rw [if_pos h_overflow] at hf; exact absurd hf (by simp)
   · rw [if_neg h_overflow] at hf
     simp only [findPredecessor_pos_eq x hxpos, findSuccessor_pos_eq x hxpos] at hf
@@ -439,7 +439,7 @@ theorem roundNearestTiesToEven_abs_error_le_ulp_half (x : R) (hx : isNormalRange
               _ = Fp.finite FiniteFp.largestFiniteFloat := hrd_lff
           exact Fp.finite.inj hff
         -- Convert overflow-threshold bound into half-ulp bound at top exponent.
-        have hx_lt_thresh : x < (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp := by
+        have hx_lt_thresh : x < FloatFormat.overflowThreshold R := by
           rw [abs_of_pos hxpos] at h_overflow
           exact lt_of_not_ge h_overflow
         have he_find : findExponentDown x = FloatFormat.max_exp := by
@@ -455,7 +455,7 @@ theorem roundNearestTiesToEven_abs_error_le_ulp_half (x : R) (hx : isNormalRange
         rw [hf_lff]
         rw [abs_of_nonneg (by linarith)]
         have hbound : x - FiniteFp.largestFiniteFloat.toVal <
-            (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp
+            FloatFormat.overflowThreshold R
               - FiniteFp.largestFiniteFloat.toVal := by
           linarith
         have hpow :
@@ -465,12 +465,12 @@ theorem roundNearestTiesToEven_abs_error_le_ulp_half (x : R) (hx : isNormalRange
           congr 1
           ring
         have hhalf :
-            (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp
+            FloatFormat.overflowThreshold R
               - FiniteFp.largestFiniteFloat.toVal
             = Fp.ulp x / 2 := by
           rw [FiniteFp.largestFiniteFloat_toVal, hulp]
           have hneg : (-(FloatFormat.prec : ℤ) + 1) = 1 - (FloatFormat.prec : ℤ) := by ring
-          rw [hneg]
+          rw [hneg]; unfold FloatFormat.overflowThreshold at *
           nlinarith [hpow]
         have hbound' : x - FiniteFp.largestFiniteFloat.toVal < Fp.ulp x / 2 := by
           simpa [hhalf] using hbound
@@ -494,7 +494,7 @@ theorem roundNearestTiesAwayFromZero_abs_error_le_ulp_half (x : R) (hx : isNorma
   unfold roundNearestTiesAwayFromZero at hf
   rw [if_neg hxne] at hf
   rw [if_neg h_not_small] at hf
-  by_cases h_overflow : |x| ≥ (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * 2 ^ FloatFormat.max_exp
+  by_cases h_overflow : |x| ≥ FloatFormat.overflowThreshold R
   · rw [if_pos h_overflow] at hf; exact absurd hf (by simp)
   · rw [if_neg h_overflow] at hf
     simp only [findPredecessor_pos_eq x hxpos, findSuccessor_pos_eq x hxpos] at hf
@@ -604,7 +604,7 @@ theorem roundNearestTiesAwayFromZero_abs_error_le_ulp_half (x : R) (hx : isNorma
               _ = Fp.finite FiniteFp.largestFiniteFloat := hrd_lff
           exact Fp.finite.inj hff
         -- Convert overflow-threshold bound into half-ulp bound at top exponent.
-        have hx_lt_thresh : x < (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp := by
+        have hx_lt_thresh : x < FloatFormat.overflowThreshold R := by
           rw [abs_of_pos hxpos] at h_overflow
           exact lt_of_not_ge h_overflow
         have he_find : findExponentDown x = FloatFormat.max_exp := by
@@ -620,7 +620,7 @@ theorem roundNearestTiesAwayFromZero_abs_error_le_ulp_half (x : R) (hx : isNorma
         rw [hf_lff]
         rw [abs_of_nonneg (by linarith)]
         have hbound : x - FiniteFp.largestFiniteFloat.toVal <
-            (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp
+            FloatFormat.overflowThreshold R
               - FiniteFp.largestFiniteFloat.toVal := by
           linarith
         have hpow :
@@ -630,12 +630,12 @@ theorem roundNearestTiesAwayFromZero_abs_error_le_ulp_half (x : R) (hx : isNorma
           congr 1
           ring
         have hhalf :
-            (2 - 2 ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp
+            FloatFormat.overflowThreshold R
               - FiniteFp.largestFiniteFloat.toVal
             = Fp.ulp x / 2 := by
           rw [FiniteFp.largestFiniteFloat_toVal, hulp]
           have hneg : (-(FloatFormat.prec : ℤ) + 1) = 1 - (FloatFormat.prec : ℤ) := by ring
-          rw [hneg]
+          rw [hneg]; unfold FloatFormat.overflowThreshold at *
           nlinarith [hpow]
         have hbound' : x - FiniteFp.largestFiniteFloat.toVal < Fp.ulp x / 2 := by
           simpa [hhalf] using hbound
