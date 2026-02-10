@@ -510,6 +510,10 @@ private theorem midpoint_outside_odd_interval {R : Type*} [Field R] [LinearOrder
       _ ≤ ((k_p + k_s : ℕ) : R) * E / 2 := by gcongr
       _ = ((k_p : R) * E + (k_s : R) * E) / 2 := by push_cast; ring
 
+/-- No positive representable float has `toVal` strictly inside `(lo, hi)`. -/
+abbrev noRepresentableIn [FloatFormat] {R : Type*} [Field R] [LT R] (lo hi : R) : Prop :=
+  ∀ f : FiniteFp, f.s = false → 0 < f.m → ¬(lo < (f.toVal : R) ∧ (f.toVal : R) < hi)
+
 /-- `roundDown` is constant on positive open intervals containing no representable float.
 
     If no positive representable float has `toVal` in `(lo, hi)`, then `roundDown v₁ = roundDown v₂`
@@ -517,8 +521,7 @@ private theorem midpoint_outside_odd_interval {R : Type*} [Field R] [LinearOrder
 theorem roundDown_eq_of_no_representable {R : Type*} [Field R] [LinearOrder R]
     [IsStrictOrderedRing R] [FloorRing R]
     {lo hi : R} (hlo_pos : 0 < lo)
-    (hno_rep : ∀ f : FiniteFp, f.s = false → 0 < f.m →
-      ¬(lo < (f.toVal : R) ∧ (f.toVal : R) < hi))
+    (hno_rep : noRepresentableIn lo hi)
     {v₁ v₂ : R} (hv₁_lo : lo < v₁) (hv₁_hi : v₁ < hi) (hv₂_lo : lo < v₂) (hv₂_hi : v₂ < hi) :
     roundDown v₁ = roundDown v₂ := by
   wlog hle : v₁ ≤ v₂ with H
@@ -549,8 +552,7 @@ theorem roundDown_eq_of_no_representable {R : Type*} [Field R] [LinearOrder R]
 theorem roundUp_eq_of_no_representable {R : Type*} [Field R] [LinearOrder R]
     [IsStrictOrderedRing R] [FloorRing R]
     {lo hi : R} (hlo_pos : 0 < lo)
-    (hno_rep : ∀ f : FiniteFp, f.s = false → 0 < f.m →
-      ¬(lo < (f.toVal : R) ∧ (f.toVal : R) < hi))
+    (hno_rep : noRepresentableIn lo hi)
     {v₁ v₂ : R} (hv₁_lo : lo < v₁) (hv₁_hi : v₁ < hi) (hv₂_lo : lo < v₂) (hv₂_hi : v₂ < hi) :
     roundUp v₁ = roundUp v₂ := by
   wlog hle : v₁ ≤ v₂ with H
@@ -612,8 +614,7 @@ theorem roundUp_eq_of_no_representable {R : Type*} [Field R] [LinearOrder R]
 theorem roundTowardZero_eq_of_no_representable {R : Type*} [Field R] [LinearOrder R]
     [IsStrictOrderedRing R] [FloorRing R]
     {lo hi : R} (hlo_pos : 0 < lo)
-    (hno_rep : ∀ f : FiniteFp, f.s = false → 0 < f.m →
-      ¬(lo < (f.toVal : R) ∧ (f.toVal : R) < hi))
+    (hno_rep : noRepresentableIn lo hi)
     {v₁ v₂ : R} (hv₁_lo : lo < v₁) (hv₁_hi : v₁ < hi) (hv₂_lo : lo < v₂) (hv₂_hi : v₂ < hi) :
     roundTowardZero v₁ = roundTowardZero v₂ := by
   have hv₁_pos : 0 < v₁ := lt_trans hlo_pos hv₁_lo
@@ -633,9 +634,8 @@ private theorem rnTE_no_crossing {R : Type*} [Field R] [LinearOrder R]
     (hv_hi : v < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base)
     (hw_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < w)
     (hw_hi : w < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base)
-    (hno_rep : ∀ f : FiniteFp, f.s = false → 0 < f.m →
-      ¬(((n : ℤ) - 1 : R) * (2 : R) ^ e_base < (f.toVal : R) ∧
-        (f.toVal : R) < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base))
+    (hno_rep : noRepresentableIn (((n : ℤ) - 1 : R) * (2 : R) ^ e_base)
+        (((n : ℤ) + 1 : R) * (2 : R) ^ e_base))
     (hrd_eq : roundDown v = roundDown w)
     (hru_eq : roundUp v = roundUp w)
     (hrd_ne : roundDown v ≠ roundUp v)
@@ -903,9 +903,8 @@ private theorem rnTA_no_crossing {R : Type*} [Field R] [LinearOrder R]
     (hv_hi : v < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base)
     (hw_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < w)
     (hw_hi : w < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base)
-    (hno_rep : ∀ f : FiniteFp, f.s = false → 0 < f.m →
-      ¬(((n : ℤ) - 1 : R) * (2 : R) ^ e_base < (f.toVal : R) ∧
-        (f.toVal : R) < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base))
+    (hno_rep : noRepresentableIn (((n : ℤ) - 1 : R) * (2 : R) ^ e_base)
+        (((n : ℤ) + 1 : R) * (2 : R) ^ e_base))
     (hrd_eq : roundDown v = roundDown w)
     (hru_eq : roundUp v = roundUp w)
     (hrd_ne : roundDown v ≠ roundUp v)
@@ -1138,8 +1137,7 @@ theorem round_eq_on_odd_interval {R : Type*} [Field R] [LinearOrder R]
     calc 2 ^ FloatFormat.prec.toNat
         ≤ 2 ^ (FloatFormat.prec.toNat + 3) := Nat.pow_le_pow_right (by omega) (by omega)
       _ < n := hn_large
-  have hno_rep : ∀ f : FiniteFp, f.s = false → 0 < f.m →
-      ¬(lo < (f.toVal : R) ∧ (f.toVal : R) < hi) := by
+  have hno_rep : noRepresentableIn lo hi := by
     intro f hfs hfm; rw [hlo_def, hhi_def]
     exact no_representable_in_odd_interval hn_odd hn_prec f hfs hfm
   -- Directional modes: use existing constancy lemmas
