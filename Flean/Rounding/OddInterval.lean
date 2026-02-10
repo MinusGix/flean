@@ -338,4 +338,88 @@ theorem overflow_threshold_outside_odd_interval {R : Type*} [Field R] [LinearOrd
     have : ¬(2 ∣ (n : ℤ)) := by omega
     exact absurd h_even this
 
+/-- When the predecessor has `m = 0` (so toVal = 0), the midpoint `succ_fp.toVal / 2`
+    is outside the odd interval `((n-1)*E, (n+1)*E)` for odd `n > 2^(prec+3)`.
+
+    Parity argument: writing `succ_fp.toVal / 2 = m * 2^d * E`, where `d = e - prec - e_base`:
+    - `d ≤ 0`: `m * 2^d ≤ m < 2^prec < n-1`, so midpoint `≤ (n-1)*E`
+    - `d = 1`: `m * 2 = n` forces `n < 2 * 2^prec`, contradicting `n > 2^(prec+3)`
+    - `d ≥ 2`: `m * 2^d` is even, but `n` is odd -/
+theorem midpoint_zero_pred_outside_odd_interval {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R]
+    {n : ℕ} {e_base : ℤ} {succ_fp : FiniteFp}
+    (hn_odd : n % 2 = 1) (hn_large : 2 ^ (FloatFormat.prec.toNat + 3) < n)
+    (hsucc_s : succ_fp.s = false) :
+    (succ_fp.toVal : R) / 2 ≤ ((n : ℤ) - 1 : R) * (2 : R) ^ e_base ∨
+    ((n : ℤ) + 1 : R) * (2 : R) ^ e_base ≤ (succ_fp.toVal : R) / 2 := by
+  set d := succ_fp.e - FloatFormat.prec - e_base with hd_def
+  have hE_pos : (0 : R) < (2 : R) ^ e_base := zpow_pos (by norm_num : (0:R) < 2) _
+  have hE_ne : (2 : R) ^ e_base ≠ 0 := ne_of_gt hE_pos
+  have hsucc_toVal : (succ_fp.toVal : R) = ↑succ_fp.m * (2 : R) ^ (succ_fp.e - FloatFormat.prec + 1) := by
+    unfold FiniteFp.toVal FiniteFp.sign'; rw [FloatFormat.radix_val_eq_two, hsucc_s]; simp
+  -- Express midpoint in terms of d
+  have hexp_split : succ_fp.e - FloatFormat.prec + 1 = (d + 1) + e_base := by omega
+  have hmid_val : (succ_fp.toVal : R) / 2 = ↑succ_fp.m * (2 : R) ^ d * (2 : R) ^ e_base := by
+    rw [hsucc_toVal, hexp_split, zpow_add₀ (by norm_num : (2:R) ≠ 0),
+        zpow_add₀ (by norm_num : (2:R) ≠ 0)]
+    simp only [zpow_one]; ring
+  -- Show midpoint is outside the interval by contradiction
+  by_contra h_in; push_neg at h_in
+  -- h_in: (n-1)*E < midpoint < (n+1)*E
+  -- i.e., (n-1)*E < m * 2^d * E < (n+1)*E, so n-1 < m * 2^d < n+1
+  have h_cancel : (↑↑n - 1 : R) < ↑succ_fp.m * (2 : R) ^ d ∧
+      ↑succ_fp.m * (2 : R) ^ d < (↑↑n + 1 : R) := by
+    constructor
+    · have h := h_in.1; rw [hmid_val] at h
+      have := lt_of_mul_lt_mul_right h hE_pos.le
+      exact_mod_cast this
+    · have h := h_in.2; rw [hmid_val] at h
+      have := lt_of_mul_lt_mul_right h hE_pos.le
+      exact_mod_cast this
+  have hm_bound : succ_fp.m < 2 ^ FloatFormat.prec.toNat := succ_fp.valid.2.2.1
+  rcases le_or_gt d 0 with hd_le | hd_gt
+  · -- d ≤ 0: m * 2^d ≤ m < 2^prec < n-1
+    have h2d_le : (2 : R) ^ d ≤ 1 :=
+      zpow_le_one_of_nonpos₀ (by norm_num : (1:R) ≤ 2) hd_le
+    have : ↑succ_fp.m * (2 : R) ^ d ≤ ↑succ_fp.m := by
+      calc ↑succ_fp.m * (2:R) ^ d ≤ ↑succ_fp.m * 1 := by gcongr
+        _ = ↑succ_fp.m := mul_one _
+    have : (↑succ_fp.m : R) < (↑↑n - 1 : R) := by
+      have : (succ_fp.m : R) < (2 : R) ^ (FloatFormat.prec.toNat : ℤ) := by
+        rw [zpow_natCast]; exact_mod_cast hm_bound
+      have : (2 : R) ^ (FloatFormat.prec.toNat : ℤ) ≤ (↑↑n - 1 : R) := by
+        rw [zpow_natCast]
+        have h_nat : 2 ^ FloatFormat.prec.toNat + 1 ≤ n := by
+          have := Nat.pow_le_pow_right (show 0 < 2 by omega)
+              (show FloatFormat.prec.toNat ≤ FloatFormat.prec.toNat + 3 by omega)
+          omega
+        have : ((2 ^ FloatFormat.prec.toNat + 1 : ℕ) : R) ≤ ((n : ℕ) : R) :=
+          Nat.cast_le.mpr h_nat
+        push_cast at this ⊢; linarith
+      linarith
+    linarith
+  · -- d ≥ 1
+    rcases eq_or_lt_of_le (show 1 ≤ d from hd_gt) with hd_eq | hd_ge2
+    · -- d = 1: m * 2^1 = m * 2. For this to be in (n-1,n+1), m*2 = n.
+      -- But m < 2^prec and n > 2^(prec+3).
+      rw [← hd_eq] at h_cancel
+      simp only [zpow_one] at h_cancel
+      have hm2_eq_n : succ_fp.m * 2 = n := by
+        have h1 : ((n : ℤ) - 1 : ℤ) < (succ_fp.m : ℤ) * 2 := by exact_mod_cast h_cancel.1
+        have h2 : (succ_fp.m : ℤ) * 2 < (n : ℤ) + 1 := by exact_mod_cast h_cancel.2
+        omega
+      omega
+    · -- d ≥ 2: m * 2^d is even, n is odd
+      have h_even : 2 ∣ (succ_fp.m * 2 ^ d.toNat) := by
+        exact dvd_mul_of_dvd_right (dvd_pow_self 2 (by omega)) _
+      have h_cast : (↑succ_fp.m : R) * (2 : R) ^ d = ↑(succ_fp.m * 2 ^ d.toNat) := by
+        rw [show d = (d.toNat : ℤ) from (Int.toNat_of_nonneg (by omega : 0 ≤ d)).symm,
+            zpow_natCast]; norm_cast
+      rw [h_cast] at h_cancel
+      have h_nat_eq : succ_fp.m * 2 ^ d.toNat = n := by
+        have h1 : ((n : ℤ) - 1 : ℤ) < ↑(succ_fp.m * 2 ^ d.toNat) := by exact_mod_cast h_cancel.1
+        have h2 : ↑(succ_fp.m * 2 ^ d.toNat) < (n : ℤ) + 1 := by exact_mod_cast h_cancel.2
+        omega
+      exact absurd h_nat_eq (by omega)
+
 end OddInterval
