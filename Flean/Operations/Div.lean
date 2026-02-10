@@ -622,6 +622,27 @@ theorem roundTowardZero_eq_of_no_representable {R : Type*} [Field R] [LinearOrde
   rw [roundTowardZero_pos_eq v₁ hv₁_pos, roundTowardZero_pos_eq v₂ hv₂_pos]
   exact roundDown_eq_of_no_representable hlo_pos hno_rep hv₁_lo hv₁_hi hv₂_lo hv₂_hi
 
+/-- Any finite float has `toVal` strictly below the overflow threshold. -/
+private theorem finite_toVal_lt_overflowThreshold {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] [FloorRing R] (f : FiniteFp) :
+    (f.toVal : R) < FloatFormat.overflowThreshold R :=
+  calc (f.toVal : R)
+      ≤ FiniteFp.largestFiniteFloat.toVal := FiniteFp.finite_le_largestFiniteFloat f
+    _ < _ := largestFiniteFloat_lt_overflow_threshold
+
+/-- If `roundUp x = Fp.finite f` for positive `x`, then `x ≤ f.toVal`. -/
+private theorem le_toVal_of_roundUp_finite {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] [FloorRing R]
+    {x : R} {f : FiniteFp} (hx_pos : 0 < x) (hru : roundUp x = Fp.finite f) :
+    x ≤ (f.toVal : R) := by
+  rw [show roundUp x = findSuccessorPos x hx_pos from by
+    unfold roundUp; exact findSuccessor_pos_eq x hx_pos] at hru
+  rcases hfsp : findSuccessorPos x hx_pos with g | _ | _
+  · rw [hfsp, Fp.finite.injEq] at hru; rw [← hru]
+    exact findSuccessorPos_ge x hx_pos g hfsp
+  · rw [hfsp] at hru; exact absurd hru (by simp)
+  · exact absurd hfsp (findSuccessorPos_ne_nan x hx_pos)
+
 /-- In an odd interval with no representable float, a crossing from roundDown to roundUp
     is impossible for roundNearestTiesToEven. This handles the key sorry case in
     `round_eq_on_odd_interval`. -/
@@ -713,26 +734,11 @@ private theorem rnTE_no_crossing {R : Type*} [Field R] [LinearOrder R]
               ((Fp.finite_le_finite_iff succ_fp g).mp hmono)))
       -- Apply midpoint_outside_odd_interval
       -- v, w < overflow threshold (roundUp v = Fp.finite succ_fp, so v ≤ succ_fp ≤ lff < thresh)
-      have hsucc_lt_thresh : (succ_fp.toVal : R) <
-          FloatFormat.overflowThreshold R :=
-        calc (succ_fp.toVal : R)
-            ≤ FiniteFp.largestFiniteFloat.toVal := FiniteFp.finite_le_largestFiniteFloat succ_fp
-          _ < _ := largestFiniteFloat_lt_overflow_threshold
-      have hv_lt_thresh : v < FloatFormat.overflowThreshold R :=
-        lt_of_le_of_lt hsucc_ge_v hsucc_lt_thresh
-      have hw_lt_thresh : w < FloatFormat.overflowThreshold R := by
-        -- roundUp w = Fp.finite succ_fp too, so w ≤ succ_fp < thresh
-        have hru_w : roundUp w = Fp.finite succ_fp := hru_eq.symm.trans hru_case
-        have hw_le_succ : w ≤ (succ_fp.toVal : R) := by
-          have hw_pos' : 0 < w := hw_pos
-          rw [show roundUp w = findSuccessorPos w hw_pos' from by
-            unfold roundUp; exact findSuccessor_pos_eq w hw_pos'] at hru_w
-          rcases hfsp : findSuccessorPos w hw_pos' with g | _ | _
-          · rw [hfsp, Fp.finite.injEq] at hru_w; rw [← hru_w]
-            exact findSuccessorPos_ge w hw_pos' g hfsp
-          · rw [hfsp] at hru_w; exact absurd hru_w (by simp)
-          · exact absurd hfsp (findSuccessorPos_ne_nan w hw_pos')
-        linarith
+      have hsucc_lt_thresh := finite_toVal_lt_overflowThreshold (R := R) succ_fp
+      have hv_lt_thresh := lt_of_le_of_lt hsucc_ge_v hsucc_lt_thresh
+      have hw_lt_thresh : w < FloatFormat.overflowThreshold R :=
+        lt_of_le_of_lt (le_toVal_of_roundUp_finite hw_pos (hru_eq.symm.trans hru_case))
+          hsucc_lt_thresh
       have hru_v_eq : roundUp v = Fp.finite succ_fp := hru_v.trans hru_case
       rcases midpoint_outside_odd_interval hn_odd hn_large pred_fp succ_fp
         hpred_s hpred_m hsucc_s hsucc_m hpred_bound hsucc_bound hadj with hmid_lo | hmid_hi
@@ -756,24 +762,12 @@ private theorem rnTE_no_crossing {R : Type*} [Field R] [LinearOrder R]
       have hmid_outside := midpoint_zero_pred_outside_odd_interval (R := R)
         (e_base := e_base) hn_odd hn_large hsucc_s
       -- Use midpoint position to derive contradiction via rnTE lemmas
-      have hsucc_lt_thresh : (succ_fp.toVal : R) <
-          FloatFormat.overflowThreshold R :=
-        calc (succ_fp.toVal : R)
-            ≤ FiniteFp.largestFiniteFloat.toVal := FiniteFp.finite_le_largestFiniteFloat succ_fp
-          _ < _ := largestFiniteFloat_lt_overflow_threshold
+      have hsucc_lt_thresh := finite_toVal_lt_overflowThreshold (R := R) succ_fp
       have hv_lt_thresh := lt_of_le_of_lt hsucc_ge_v hsucc_lt_thresh
       have hru_v_eq : roundUp v = Fp.finite succ_fp := hru_v.trans hru_case
-      have hw_lt_thresh : w < FloatFormat.overflowThreshold R := by
-        have hru_w : roundUp w = Fp.finite succ_fp := hru_eq.symm.trans hru_case
-        have hw_le_succ : w ≤ (succ_fp.toVal : R) := by
-          rw [show roundUp w = findSuccessorPos w hw_pos from by
-            unfold roundUp; exact findSuccessor_pos_eq w hw_pos] at hru_w
-          rcases hfsp : findSuccessorPos w hw_pos with g | _ | _
-          · rw [hfsp, Fp.finite.injEq] at hru_w; rw [← hru_w]
-            exact findSuccessorPos_ge w hw_pos g hfsp
-          · rw [hfsp] at hru_w; exact absurd hru_w (by simp)
-          · exact absurd hfsp (findSuccessorPos_ne_nan w hw_pos)
-        linarith
+      have hw_lt_thresh : w < FloatFormat.overflowThreshold R :=
+        lt_of_le_of_lt (le_toVal_of_roundUp_finite hw_pos (hru_eq.symm.trans hru_case))
+          hsucc_lt_thresh
       rcases hmid_outside with hmid_lo | hmid_hi
       · have hv_gt_mid : v > ((pred_fp.toVal : R) + succ_fp.toVal) / 2 := by
           rw [hpred_val]; linarith [hmid_lo]
@@ -879,25 +873,11 @@ private theorem rnTA_no_crossing {R : Type*} [Field R] [LinearOrder R]
             rw [hru_v, hru_case, roundUp_idempotent (R := R) g (Or.inl hgs)] at hmono
             exact absurd hg_lt_succ (not_lt.mpr (FiniteFp.le_toVal_le R
               ((Fp.finite_le_finite_iff succ_fp g).mp hmono)))
-      have hsucc_lt_thresh : (succ_fp.toVal : R) <
-          FloatFormat.overflowThreshold R :=
-        calc (succ_fp.toVal : R)
-            ≤ FiniteFp.largestFiniteFloat.toVal := FiniteFp.finite_le_largestFiniteFloat succ_fp
-          _ < _ := largestFiniteFloat_lt_overflow_threshold
-      have hv_lt_thresh : v < FloatFormat.overflowThreshold R :=
-        lt_of_le_of_lt hsucc_ge_v hsucc_lt_thresh
-      have hw_lt_thresh : w < FloatFormat.overflowThreshold R := by
-        have hru_w : roundUp w = Fp.finite succ_fp := hru_eq.symm.trans hru_case
-        have hw_le_succ : w ≤ (succ_fp.toVal : R) := by
-          have hw_pos' : 0 < w := hw_pos
-          rw [show roundUp w = findSuccessorPos w hw_pos' from by
-            unfold roundUp; exact findSuccessor_pos_eq w hw_pos'] at hru_w
-          rcases hfsp : findSuccessorPos w hw_pos' with g | _ | _
-          · rw [hfsp, Fp.finite.injEq] at hru_w; rw [← hru_w]
-            exact findSuccessorPos_ge w hw_pos' g hfsp
-          · rw [hfsp] at hru_w; exact absurd hru_w (by simp)
-          · exact absurd hfsp (findSuccessorPos_ne_nan w hw_pos')
-        linarith
+      have hsucc_lt_thresh := finite_toVal_lt_overflowThreshold (R := R) succ_fp
+      have hv_lt_thresh := lt_of_le_of_lt hsucc_ge_v hsucc_lt_thresh
+      have hw_lt_thresh : w < FloatFormat.overflowThreshold R :=
+        lt_of_le_of_lt (le_toVal_of_roundUp_finite hw_pos (hru_eq.symm.trans hru_case))
+          hsucc_lt_thresh
       have hru_v_eq : roundUp v = Fp.finite succ_fp := hru_v.trans hru_case
       rcases midpoint_outside_odd_interval hn_odd hn_large pred_fp succ_fp
         hpred_s hpred_m hsucc_s hsucc_m hpred_bound hsucc_bound hadj with hmid_lo | hmid_hi
@@ -915,24 +895,12 @@ private theorem rnTA_no_crossing {R : Type*} [Field R] [LinearOrder R]
       have hpred_val : (pred_fp.toVal : R) = 0 := by unfold FiniteFp.toVal; rw [hm0]; simp
       have hmid_outside := midpoint_zero_pred_outside_odd_interval (R := R)
         (e_base := e_base) hn_odd hn_large hsucc_s
-      have hsucc_lt_thresh : (succ_fp.toVal : R) <
-          FloatFormat.overflowThreshold R :=
-        calc (succ_fp.toVal : R)
-            ≤ FiniteFp.largestFiniteFloat.toVal := FiniteFp.finite_le_largestFiniteFloat succ_fp
-          _ < _ := largestFiniteFloat_lt_overflow_threshold
+      have hsucc_lt_thresh := finite_toVal_lt_overflowThreshold (R := R) succ_fp
       have hv_lt_thresh := lt_of_le_of_lt hsucc_ge_v hsucc_lt_thresh
       have hru_v_eq : roundUp v = Fp.finite succ_fp := hru_v.trans hru_case
-      have hw_lt_thresh : w < FloatFormat.overflowThreshold R := by
-        have hru_w : roundUp w = Fp.finite succ_fp := hru_eq.symm.trans hru_case
-        have hw_le_succ : w ≤ (succ_fp.toVal : R) := by
-          rw [show roundUp w = findSuccessorPos w hw_pos from by
-            unfold roundUp; exact findSuccessor_pos_eq w hw_pos] at hru_w
-          rcases hfsp : findSuccessorPos w hw_pos with g | _ | _
-          · rw [hfsp, Fp.finite.injEq] at hru_w; rw [← hru_w]
-            exact findSuccessorPos_ge w hw_pos g hfsp
-          · rw [hfsp] at hru_w; exact absurd hru_w (by simp)
-          · exact absurd hfsp (findSuccessorPos_ne_nan w hw_pos)
-        linarith
+      have hw_lt_thresh : w < FloatFormat.overflowThreshold R :=
+        lt_of_le_of_lt (le_toVal_of_roundUp_finite hw_pos (hru_eq.symm.trans hru_case))
+          hsucc_lt_thresh
       rcases hmid_outside with hmid_lo | hmid_hi
       · have hv_ge_mid : v ≥ ((pred_fp.toVal : R) + succ_fp.toVal) / 2 := by
           rw [hpred_val]; linarith [hmid_lo]
