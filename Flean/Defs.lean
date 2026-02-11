@@ -195,6 +195,10 @@ theorem neg_def (x : FiniteFp) : -x = {
   valid := x.valid
 } := rfl
 
+@[simp] theorem neg_s (x : FiniteFp) : (-x).s = !x.s := rfl
+@[simp] theorem neg_e (x : FiniteFp) : (-x).e = x.e := rfl
+@[simp] theorem neg_m (x : FiniteFp) : (-x).m = x.m := rfl
+
 instance : InvolutiveNeg FiniteFp := ⟨
   by
     intro x

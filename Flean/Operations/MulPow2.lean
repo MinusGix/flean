@@ -85,26 +85,18 @@ theorem fpMulFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
     exact round_idempotent (R := R) mode g (Or.inl hgs)
   · -- Negative f: work with -f which is positive
     have hfs_true : f.s = true := by revert hfs; cases f.s <;> simp
-    have hnfs : (-f).s = false := by rw [FiniteFp.neg_def]; simp [hfs_true]
-    have hnf_nz : 0 < (-f).m := by rw [FiniteFp.neg_def]; exact hf_nz
-    have hne : (-f).e = f.e := by rw [FiniteFp.neg_def]
-    obtain ⟨g, hgs, hgv⟩ := mul_pow2_representable (R := R) (-f) k hnf_nz hnfs
-      (by rw [hne]; exact he_lo) (by rw [hne]; exact he_hi)
-    -- g.toVal = (-f).toVal * 2^k, so (-g).toVal = f.toVal * 2^k
+    obtain ⟨g, hgs, hgv⟩ := mul_pow2_representable (R := R) (-f) k
+      (by simp; exact hf_nz) (by simp [hfs_true]) (by simp; exact he_lo) (by simp; exact he_hi)
+    have hnf_pos : (0 : R) < (-f).toVal :=
+      FiniteFp.toVal_pos (-f) (by simp [hfs_true]) (by simp; exact hf_nz)
     have hg_pos : (0 : R) < g.toVal := by
-      rw [hgv, FiniteFp.toVal_neg_eq_neg]; apply mul_pos (neg_pos.mpr _) (two_zpow_pos' k)
-      have : (f.toVal : R) < 0 := by
-        rw [show f.toVal (R := R) = -(-f).toVal from by rw [FiniteFp.toVal_neg_eq_neg]; ring]
-        linarith [FiniteFp.toVal_pos (-f) hnfs hnf_nz (R := R)]
-      exact this
-    have hgm_pos : 0 < g.m := ((FiniteFp.toVal_pos_iff (R := R)).mpr hg_pos).2
-    have hng_val : (-g).toVal (R := R) = f.toVal * (2 : R) ^ k := by
-      rw [FiniteFp.toVal_neg_eq_neg, hgv, FiniteFp.toVal_neg_eq_neg]; ring
+      rw [hgv]; exact mul_pos hnf_pos (two_zpow_pos' k)
+    have hgm : 0 < g.m := ((FiniteFp.toVal_pos_iff (R := R)).mpr hg_pos).2
+    have hgv_neg : g.toVal (R := R) = -(f.toVal * (2 : R) ^ k) := by
+      rw [hgv, FiniteFp.toVal_neg_eq_neg]; ring
     intro mode
-    refine ⟨-g, ?_, hng_val⟩
-    rw [fpMulFinite_correct (R := R) mode f _ hprod_ne,
-        pow2Float_toVal, ← hng_val]
-    exact round_idempotent (R := R) mode (-g) (Or.inr (by rw [FiniteFp.neg_def]; exact hgm_pos))
+    obtain ⟨hrnd, hval⟩ := round_neg_exact (R := R) mode _ g hgs hgm hgv_neg
+    exact ⟨-g, by rw [fpMulFinite_correct (R := R) mode f _ hprod_ne, pow2Float_toVal]; exact hrnd, hval⟩
 
 /-! ## Full fpMul wrapper -/
 

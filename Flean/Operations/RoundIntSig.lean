@@ -362,6 +362,17 @@ theorem round_idempotent (mode : RoundingMode) (f : FiniteFp)
   | NearestTiesToEven => exact roundNearestTiesToEven_idempotent f h
   | NearestTiesAwayFromZero => exact roundNearestTiesAwayFromZero_idempotent f h
 
+/-- If `g` is a positive-sign FiniteFp with `g.toVal = -val`, then rounding `val` in any mode
+returns `Fp.finite (-g)` and `(-g).toVal = val`. Useful for extending positive-case exactness
+results to negative values via negation. -/
+theorem round_neg_exact (mode : RoundingMode) (val : R)
+    (g : FiniteFp) (hgs : g.s = false) (hgm : 0 < g.m)
+    (hgv : g.toVal (R := R) = -val) :
+    mode.round val = Fp.finite (-g) ∧ (-g).toVal (R := R) = val := by
+  have hng_val : (-g).toVal (R := R) = val := by
+    rw [FiniteFp.toVal_neg_eq_neg, hgv]; ring
+  exact ⟨hng_val ▸ round_idempotent (R := R) mode (-g) (Or.inr (by simp; exact hgm)), hng_val⟩
+
 /-- When the predecessor significand is `2^prec - 1` at the maximum exponent,
 the midpoint between the predecessor and its (overflowing) successor equals the
 nearest-mode overflow threshold `(2 - 2^(1-prec)/2) * 2^max_exp`. -/

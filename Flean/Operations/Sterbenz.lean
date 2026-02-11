@@ -189,13 +189,11 @@ theorem sterbenz (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
         hmag_pos hmag_bound he_lo he_hi
       have hg_pos : (0 : R) < g.toVal := by rw [hgv]; positivity
       have hgm_pos : 0 < g.m := ((FiniteFp.toVal_pos_iff (R := R)).mpr hg_pos).2
+      have hgv_neg : g.toVal (R := R) = -((a.toVal : R) - b.toVal) := by
+        rw [hgv]; linarith [hmag_eq]
       intro mode
-      refine ⟨-g, ?_, by rw [FiniteFp.toVal_neg_eq_neg, hgv]; linarith [hmag_eq]⟩
-      rw [fpSubFinite_correct (R := R) mode a b hdiff_ne]
-      have hng_val : (-g).toVal (R := R) = a.toVal - b.toVal := by
-        rw [FiniteFp.toVal_neg_eq_neg, hgv]; linarith [hmag_eq]
-      rw [← hng_val]
-      exact round_idempotent (R := R) mode (-g) (Or.inr (by rw [FiniteFp.neg_def]; exact hgm_pos))
+      obtain ⟨hrnd, hval⟩ := round_neg_exact (R := R) mode _ g hgs hgm_pos hgv_neg
+      exact ⟨-g, by rw [fpSubFinite_correct (R := R) mode a b hdiff_ne]; exact hrnd, hval⟩
 
 /-! ## Corollaries -/
 
