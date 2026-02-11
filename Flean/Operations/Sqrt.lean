@@ -132,15 +132,9 @@ theorem fpSqrtFinite_correct (mode : RoundingMode) (a : FiniteFp)
       rw [hexp_split]; ring
     rw [hfp_unfold, if_pos hrem, show 2 * q + 0 = 2 * q from by omega,
         roundIntSig_correct (R := ℝ) mode _ _ _ hmag_ne, h_isv]
-  · -- === Sticky case: rem ≠ 0, mag = 2*q + 1 (odd) ===
-    have hmag_ne : 2 * q + 1 ≠ 0 := by omega
-    rw [hfp_unfold, if_neg hrem,
-        roundIntSig_correct (R := ℝ) mode _ _ _ hmag_ne]
-    -- Set up sticky value and mag
-    set mag := 2 * q + 1 with hmag_def
-    -- mag is odd
-    have hmag_odd : mag % 2 = 1 := by omega
-    -- q ≥ 2^(prec+2)
+  · -- === Sticky case: use sticky_roundIntSig_eq_round ===
+    rw [hfp_unfold, if_neg hrem]
+    -- q ≥ 2^(prec+2) (from Nat.sqrt bounds)
     have hq_lower : 2 ^ (FloatFormat.prec.toNat + 2) ≤ q := by
       rw [hq_def]
       have h_scaled_ge : 2 ^ (2 * sqrtShift) ≤ scaled := by
@@ -152,20 +146,7 @@ theorem fpSqrtFinite_correct (mode : RoundingMode) (a : FiniteFp)
         _ = Nat.sqrt (2 ^ sqrtShift * 2 ^ sqrtShift) := (Nat.sqrt_eq _).symm
         _ = Nat.sqrt (2 ^ (2 * sqrtShift)) := by rw [h_sq]
         _ ≤ Nat.sqrt scaled := Nat.sqrt_le_sqrt h_scaled_ge
-    -- mag > 2^(prec+3)
-    have hmag_large : 2 ^ (FloatFormat.prec.toNat + 3) < mag := by
-      have : 2 ^ (FloatFormat.prec.toNat + 3) = 2 * 2 ^ (FloatFormat.prec.toNat + 2) := by
-        rw [Nat.pow_succ]; ring
-      omega
-    -- Sticky value is in interval
-    have abs_sticky := (mag : ℝ) * E
-    have hs_lo : ((mag : ℤ) - 1 : ℝ) * E < (mag : ℝ) * E := by
-      apply mul_lt_mul_of_pos_right _ hE_pos
-      exact_mod_cast (show (mag : ℤ) - 1 < mag from by omega)
-    have hs_hi : (mag : ℝ) * E < ((mag : ℤ) + 1 : ℝ) * E := by
-      apply mul_lt_mul_of_pos_right _ hE_pos
-      exact_mod_cast (show (mag : ℤ) < mag + 1 from by omega)
-    -- √(scaled) bounds: q < √(scaled) < q + 1 (strict since rem ≠ 0)
+    -- √(scaled) strict bounds: q < √(scaled) < q + 1 (since rem ≠ 0)
     have hq_sq_lt : q * q < scaled := by omega
     have hsqrt_gt : (q : ℝ) < Real.sqrt (scaled : ℝ) := by
       rw [show (q : ℝ) = Real.sqrt ((q : ℝ) ^ 2) from
@@ -177,28 +158,20 @@ theorem fpSqrtFinite_correct (mode : RoundingMode) (a : FiniteFp)
         (Real.sqrt_sq (by positivity : (0 : ℝ) ≤ (q : ℝ) + 1)).symm]
       apply Real.sqrt_lt_sqrt (by positivity)
       rw [sq]; exact_mod_cast hlt_succ_sq
-    -- Exact value in interval: (mag-1)*E < √(a.toVal) < (mag+1)*E
-    have he_lo : ((mag : ℤ) - 1 : ℝ) * E < Real.sqrt (a.toVal : ℝ) := by
-      rw [hbridge, hexp_split]
-      have : ((mag : ℤ) - 1 : ℝ) = 2 * (q : ℝ) := by rw [hmag_def]; push_cast; ring
-      rw [this]
+    -- √(a.toVal) in interval (2q·E, 2(q+1)·E) via bridge
+    have he_lo : (2 * (q : ℝ)) * (2 : ℝ) ^ e_base < Real.sqrt (a.toVal : ℝ) := by
+      rw [hbridge, hexp_split, ← hE_def]
       calc 2 * (q : ℝ) * E = (q : ℝ) * (2 * E) := by ring
         _ < Real.sqrt ↑scaled * (2 * E) :=
             mul_lt_mul_of_pos_right hsqrt_gt (by linarith)
-    have he_hi : Real.sqrt (a.toVal : ℝ) < ((mag : ℤ) + 1 : ℝ) * E := by
-      rw [hbridge, hexp_split]
-      have : ((mag : ℤ) + 1 : ℝ) = 2 * ((q : ℝ) + 1) := by rw [hmag_def]; push_cast; ring
-      rw [this]
+    have he_hi : Real.sqrt (a.toVal : ℝ) < (2 * ((q : ℝ) + 1)) * (2 : ℝ) ^ e_base := by
+      rw [hbridge, hexp_split, ← hE_def]
       calc Real.sqrt ↑scaled * (2 * E)
           < ((q : ℝ) + 1) * (2 * E) :=
             mul_lt_mul_of_pos_right hsqrt_lt (by linarith)
         _ = 2 * ((q : ℝ) + 1) * E := by ring
-    -- Apply round_eq_on_odd_interval
-    have hround_eq := round_eq_on_odd_interval (R := ℝ) mode hmag_odd hmag_large
-      hs_lo hs_hi he_lo he_hi
-    -- Connect intSigVal to mag * E
-    have h_isv : intSigVal (R := ℝ) false mag e_base = (mag : ℝ) * E := by
-      unfold intSigVal; simp [hE_def]
-    rw [h_isv, hround_eq]
+    -- Apply shared sticky-bit lemma (sign=false, so if-then-else simplifies)
+    rw [sticky_roundIntSig_eq_round (R := ℝ) mode false q e_base hq_lower _ he_lo he_hi]
+    simp
 
 end Sqrt

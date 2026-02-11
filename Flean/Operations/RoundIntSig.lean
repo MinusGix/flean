@@ -4,6 +4,7 @@ import Flean.Rounding.Rounding
 import Flean.Rounding.RoundDown
 import Flean.Rounding.RoundUp
 import Flean.Rounding.RoundNearest
+import Flean.Rounding.OddInterval
 
 /-! # RoundIntSig: Integer Significand Rounding Primitive
 
@@ -1346,4 +1347,79 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
               simp [FiniteFp.neg_def, hpred_fp_def]
 
 end roundIntSig_correctness
+
+/-! ## Sticky-Bit Rounding Lemma
+
+When an operation computes an integer quotient `q` with nonzero remainder (Euclidean division
+for Div, integer sqrt for Sqrt), the standard technique is to form `mag = 2*q + 1` (odd,
+with sticky LSB) and feed it to `roundIntSig`. This theorem packages the common proof that
+the sticky value rounds identically to the exact value, handling both sign cases. -/
+
+/-- Sticky-bit rounding correctness: when `q ≥ 2^(prec+2)` and `|exact_val|` lies in
+    the open interval `(2q · 2^e_base, 2(q+1) · 2^e_base)`, then
+    `roundIntSig mode sign (2*q+1) e_base = mode.round (±|exact_val|)`.
+
+    This factors the shared scaffolding from Div and Sqrt's sticky cases:
+    odd-interval argument, `round_eq_on_odd_interval`, and sign dispatch. -/
+theorem sticky_roundIntSig_eq_round {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] [FloorRing R]
+    (mode : RoundingMode) (sign : Bool) (q : ℕ) (e_base : ℤ)
+    (hq_lower : 2 ^ (FloatFormat.prec.toNat + 2) ≤ q)
+    (abs_exact : R)
+    (he_lo : (2 * (q : R)) * (2 : R) ^ e_base < abs_exact)
+    (he_hi : abs_exact < (2 * ((q : R) + 1)) * (2 : R) ^ e_base) :
+    roundIntSig mode sign (2 * q + 1) e_base =
+      mode.round (if sign then -abs_exact else abs_exact) := by
+  set mag := 2 * q + 1 with hmag_def
+  set E := (2 : R) ^ e_base with hE_def
+  have hE_pos : (0 : R) < E := zpow_pos (by norm_num : (0:R) < 2) _
+  -- mag is odd and large
+  have hmag_ne : mag ≠ 0 := by omega
+  have hmag_odd : mag % 2 = 1 := by omega
+  have hmag_large : 2 ^ (FloatFormat.prec.toNat + 3) < mag := by
+    have : 2 ^ (FloatFormat.prec.toNat + 3) = 2 * 2 ^ (FloatFormat.prec.toNat + 2) := by
+      rw [Nat.pow_succ]; ring
+    omega
+  -- Apply roundIntSig_correct to get mode.round(intSigVal sign mag e_base)
+  rw [roundIntSig_correct (R := R) mode _ _ _ hmag_ne]
+  -- Sticky value = ±(mag * E), trivially in the odd interval
+  set abs_sticky := (mag : R) * E with habs_sticky_def
+  have hs_lo : ((mag : ℤ) - 1 : R) * E < abs_sticky := by
+    apply mul_lt_mul_of_pos_right _ hE_pos
+    exact_mod_cast (show (mag : ℤ) - 1 < mag from by omega)
+  have hs_hi : abs_sticky < ((mag : ℤ) + 1 : R) * E := by
+    apply mul_lt_mul_of_pos_right _ hE_pos
+    exact_mod_cast (show (mag : ℤ) < mag + 1 from by omega)
+  -- Convert caller's q-based bounds to (mag-1)*E / (mag+1)*E form
+  have he_lo' : ((mag : ℤ) - 1 : R) * E < abs_exact := by
+    have : ((mag : ℤ) - 1 : R) * E = (2 * (q : R)) * E := by
+      rw [hmag_def]; push_cast; ring
+    rw [this]; exact he_lo
+  have he_hi' : abs_exact < ((mag : ℤ) + 1 : R) * E := by
+    have : ((mag : ℤ) + 1 : R) * E = (2 * ((q : R) + 1)) * E := by
+      rw [hmag_def]; push_cast; ring
+    rw [this]; exact he_hi
+  -- Positive rounding equality via round_eq_on_odd_interval
+  have hround_pos : ∀ m : RoundingMode, m.round abs_sticky = m.round abs_exact :=
+    fun m => round_eq_on_odd_interval m hmag_odd hmag_large hs_lo hs_hi he_lo' he_hi'
+  -- Positivity (needed for round_neg in sign=true case)
+  have hq_ge_one : 1 ≤ q := le_trans Nat.one_le_two_pow hq_lower
+  have hlo_E_pos : (0 : R) < ((mag : ℤ) - 1 : R) * E :=
+    mul_pos (by exact_mod_cast (show (0 : ℤ) < (mag : ℤ) - 1 from by omega)) hE_pos
+  have habs_sticky_ne : abs_sticky ≠ 0 := ne_of_gt (lt_trans hlo_E_pos hs_lo)
+  have habs_exact_ne : abs_exact ≠ 0 := ne_of_gt (lt_trans hlo_E_pos he_lo')
+  -- Sign dispatch
+  cases sign with
+  | false =>
+    have hsv : intSigVal (R := R) false mag e_base = abs_sticky := by
+      unfold intSigVal; simp [habs_sticky_def, hE_def]
+    rw [hsv]; exact hround_pos mode
+  | true =>
+    simp only [ite_true]
+    have hsv : intSigVal (R := R) true mag e_base = -abs_sticky := by
+      unfold intSigVal; simp [habs_sticky_def, hE_def]
+    rw [hsv, RoundingMode.round_neg mode abs_sticky habs_sticky_ne,
+        RoundingMode.round_neg mode abs_exact habs_exact_ne]
+    congr 1; exact hround_pos mode.conjugate
+
 end RoundIntSig

@@ -178,31 +178,20 @@ theorem fpDivFinite_correct {R : Type*} [Field R] [LinearOrder R]
   -- Case split: exact (r = 0) vs sticky (r ≠ 0)
   by_cases hr : r = 0
   · exact fpDivFinite_correct_exact mode a b hb hquot hr
-  · -- Sticky bit case: mag = 2*q + 1
-    set mag := 2 * q + 1 with hmag_def
-    have hmag_ne : mag ≠ 0 := by omega
+  · -- Sticky bit case: use sticky_roundIntSig_eq_round
     set e_base := a.e - b.e - (2 * FloatFormat.prec + 2) - 1 with he_base_def
-    -- fpDivFinite unfolds to roundIntSig mode (a.s ^^ b.s) mag e_base
-    have hfpDiv_eq : fpDivFinite mode a b = roundIntSig mode (a.s ^^ b.s) mag e_base := by
-      unfold fpDivFinite; simp only [hmag_def, he_base_def, hq_def]
+    -- fpDivFinite unfolds to roundIntSig mode (a.s ^^ b.s) (2*q+1) e_base
+    have hfpDiv_eq : fpDivFinite mode a b = roundIntSig mode (a.s ^^ b.s) (2 * q + 1) e_base := by
+      unfold fpDivFinite; simp only [he_base_def, hq_def]
       congr 1; simp [show a.m * 2 ^ divShift % b.m ≠ 0 from hr]
-    -- roundIntSig_correct: roundIntSig = mode.round(intSigVal (a.s ^^ b.s) mag e_base)
-    have hris := roundIntSig_correct (R := R) mode (a.s ^^ b.s) mag e_base hmag_ne
-    rw [hfpDiv_eq, hris]
-    -- Need: mode.round(sticky_val) = mode.round(exact_val)
-    -- Strategy: both sticky_val and exact_val are in the odd interval ((mag-1)*E, (mag+1)*E)
-    -- where E = 2^e_base, mag = 2*q+1 is odd, mag > 2^(prec+3)
-    set E := (2 : R) ^ e_base with hE_def
-    have hE_pos : (0 : R) < E := zpow_pos (by norm_num : (0:R) < 2) _
-    -- mag is odd
-    have hmag_odd : mag % 2 = 1 := by omega
-    -- mag > 2^(prec+3)
+    rw [hfpDiv_eq]
+    -- q ≥ 2^(prec+2) (operation-specific bound)
     have ha_pos : 0 < a.m := by
       by_contra h; push_neg at h; apply hquot
       have : a.m = 0 := by omega
       unfold FiniteFp.toVal; rw [this]; simp
-    have hb_bound : b.m < 2 ^ FloatFormat.prec.toNat := b.valid.2.2.1
     have hb_pos : 0 < b.m := Nat.pos_of_ne_zero hb
+    have hb_bound : b.m < 2 ^ FloatFormat.prec.toNat := b.valid.2.2.1
     have hq_lower : 2 ^ (FloatFormat.prec.toNat + 2) ≤ q := by
       rw [hq_def, Nat.le_div_iff_mul_le hb_pos]
       calc 2 ^ (FloatFormat.prec.toNat + 2) * b.m
@@ -213,91 +202,42 @@ theorem fpDivFinite_correct {R : Type*} [Field R] [LinearOrder R]
               2 ^ (2 * FloatFormat.prec.toNat + 2)
             rw [← Nat.pow_add]; congr 1; omega
         _ ≤ a.m * 2 ^ divShift := Nat.le_mul_of_pos_left _ ha_pos
-    have hmag_large : 2 ^ (FloatFormat.prec.toNat + 3) < mag := by
-      have : 2 ^ (FloatFormat.prec.toNat + 3) = 2 * 2 ^ (FloatFormat.prec.toNat + 2) :=
-        by rw [Nat.pow_succ]; ring
-      omega
-    -- Get the exact quotient formula
-    have hexact_form := fpDivFinite_exact_quotient (R := R) a b hb
-    set exact_val := (a.toVal : R) / b.toVal with hexact_def
-    -- Remainder bounds: 0 < r < b.m
+    -- Remainder bounds
     have hr_pos : 0 < r := Nat.pos_of_ne_zero hr
     have hr_lt : r < b.m := Nat.mod_lt _ hb_pos
-    -- Both |sticky_val| and |exact_val| are in the odd interval ((mag-1)*E, (mag+1)*E)
-    -- For sign=false (positive): direct. For sign=true (negative): via round_neg.
-    set abs_sticky := (mag : R) * E with habs_sticky_def
     have hbm_pos : (0 : R) < (b.m : R) := Nat.cast_pos.mpr hb_pos
+    -- abs_exact = |(a.toVal / b.toVal)| in the interval (2q·E, 2(q+1)·E)
+    set E := (2 : R) ^ e_base with hE_def
+    have hE_pos : (0 : R) < E := zpow_pos (by norm_num : (0:R) < 2) _
     set abs_exact := ((q : R) + (r : R) / (b.m : R)) * (2 * E) with habs_exact_def
-    -- Sticky is in interval: (mag-1)*E < mag*E < (mag+1)*E
-    have hs_lo : ((mag : ℤ) - 1 : R) * E < abs_sticky := by
-      rw [habs_sticky_def]; apply mul_lt_mul_of_pos_right _ hE_pos
-      exact_mod_cast (show (mag : ℤ) - 1 < mag from by omega)
-    have hs_hi : abs_sticky < ((mag : ℤ) + 1 : R) * E := by
-      rw [habs_sticky_def]; apply mul_lt_mul_of_pos_right _ hE_pos
-      exact_mod_cast (show (mag : ℤ) < mag + 1 from by omega)
-    -- Exact is in interval
-    have he_lo : ((mag : ℤ) - 1 : R) * E < abs_exact := by
+    have he_lo : (2 * (q : R)) * E < abs_exact := by
       rw [habs_exact_def]
-      have hmag_sub : ((mag : ℤ) - 1 : R) = 2 * (q : R) := by
-        rw [hmag_def]; push_cast; ring
-      rw [hmag_sub]
-      have hq_lt : (q : R) < (q : R) + (r : R) / (b.m : R) :=
-        lt_add_of_pos_right _ (div_pos (Nat.cast_pos.mpr hr_pos) hbm_pos)
       calc 2 * (q : R) * E = (q : R) * (2 * E) := by ring
         _ < ((q : R) + (r : R) / (b.m : R)) * (2 * E) :=
-            mul_lt_mul_of_pos_right hq_lt (by linarith)
-    have he_hi : abs_exact < ((mag : ℤ) + 1 : R) * E := by
+            mul_lt_mul_of_pos_right
+              (lt_add_of_pos_right _ (div_pos (Nat.cast_pos.mpr hr_pos) hbm_pos))
+              (by linarith)
+    have he_hi : abs_exact < (2 * ((q : R) + 1)) * E := by
       rw [habs_exact_def]
-      have hmag_add : ((mag : ℤ) + 1 : R) = 2 * ((q : R) + 1) := by
-        rw [hmag_def]; push_cast; ring
-      rw [hmag_add]
-      have hr_bound : (r : R) / (b.m : R) < 1 := by
-        rw [div_lt_one hbm_pos]; exact_mod_cast hr_lt
       calc ((q : R) + (r : R) / (b.m : R)) * (2 * E)
           < ((q : R) + 1) * (2 * E) :=
-            mul_lt_mul_of_pos_right (by linarith) (by linarith)
+            mul_lt_mul_of_pos_right
+              (by linarith [show (r : R) / (b.m : R) < 1 from
+                (div_lt_one hbm_pos).mpr (by exact_mod_cast hr_lt)])
+              (by linarith)
         _ = 2 * ((q : R) + 1) * E := by ring
-    -- round_eq_on_odd_interval for positive values
-    have hround_pos : ∀ m : RoundingMode, m.round abs_sticky = m.round abs_exact :=
-      fun m => round_eq_on_odd_interval m hmag_odd hmag_large hs_lo hs_hi he_lo he_hi
-    -- Connect sticky_val and exact_val via sign
-    -- Both abs values are positive (needed for ne proofs and positivity)
-    have hq_ge_one : 1 ≤ q := le_trans (Nat.one_le_two_pow) hq_lower
-    have hmag_ge_two : (2 : ℤ) ≤ mag := by exact_mod_cast (show 2 ≤ mag from by omega)
-    have hlo_E_pos : (0 : R) < ((mag : ℤ) - 1 : R) * E :=
-      mul_pos (by exact_mod_cast (show (0 : ℤ) < (mag : ℤ) - 1 from by omega)) hE_pos
-    have habs_pos : 0 < abs_sticky := lt_trans hlo_E_pos hs_lo
-    have habs_exact_pos : 0 < abs_exact := lt_trans hlo_E_pos he_lo
-    have habs_ne : abs_sticky ≠ 0 := ne_of_gt habs_pos
-    have habs_exact_ne : abs_exact ≠ 0 := ne_of_gt habs_exact_pos
-    -- Key exponent identity: 2^(a.e - b.e - (2p+2)) = 2 * E
+    -- Apply shared sticky-bit lemma
+    rw [sticky_roundIntSig_eq_round (R := R) mode _ _ _ hq_lower abs_exact he_lo he_hi]
+    -- Bridge: if sign then -abs_exact else abs_exact = exact_val
     have h2E : (2 : R) ^ (a.e - b.e - (2 * ↑FloatFormat.prec + 2)) = 2 * E := by
-      rw [hE_def, show a.e - b.e - (2 * ↑FloatFormat.prec + 2) = e_base + 1 from by
-        rw [he_base_def]; omega]
+      rw [hE_def, show a.e - b.e - (2 * ↑FloatFormat.prec + 2) = e_base + 1 from by omega]
       rw [zpow_add₀ (by norm_num : (2:R) ≠ 0), zpow_one]; ring
-    -- Connect intSigVal and exact_val to ±abs values via sign
-    -- Goal: mode.round (intSigVal (a.s ^^ b.s) mag e_base) = mode.round exact_val
-    have hexact_form : (a.toVal : R) / b.toVal =
-        (if (a.s ^^ b.s) = true then -1 else (1 : R)) *
-        ((q : R) + (r : R) / (b.m : R)) *
-        (2 : R) ^ (a.e - b.e - (2 * FloatFormat.prec + 2)) :=
-      fpDivFinite_exact_quotient (R := R) a b hb
-    cases hsxor : (a.s ^^ b.s) with
-    | false =>
-      have hsv : intSigVal (R := R) false mag e_base = abs_sticky := by
-        unfold intSigVal; simp [habs_sticky_def, hE_def]
-      have hev : exact_val = abs_exact := by
-        rw [hexact_def, hexact_form, hsxor]
-        simp [habs_exact_def, h2E]
-      rw [hsv, hev]; exact hround_pos mode
-    | true =>
-      have hsv : intSigVal (R := R) true mag e_base = -abs_sticky := by
-        unfold intSigVal; simp [habs_sticky_def, hE_def]
-      have hev : exact_val = -abs_exact := by
-        rw [hexact_def, hexact_form, hsxor]
-        simp [habs_exact_def, h2E]; ring
-      rw [hsv, hev, RoundingMode.round_neg mode abs_sticky habs_ne,
-          RoundingMode.round_neg mode abs_exact habs_exact_ne]
-      congr 1; exact hround_pos mode.conjugate
+    have hexact_signed : (a.toVal : R) / b.toVal =
+        (if (a.s ^^ b.s) = true then -1 else (1 : R)) * abs_exact := by
+      have := fpDivFinite_exact_quotient (R := R) a b hb
+      simp only [← hq_def, ← hr_def] at this
+      rw [this, habs_exact_def, h2E]; ring
+    congr 1; rw [hexact_signed]
+    cases (a.s ^^ b.s) <;> simp
 
 end Div
