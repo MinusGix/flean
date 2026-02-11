@@ -15,12 +15,50 @@ namespace Fp
 -- (I mean, technically, if your R was purely positive then you don't need neg! So this limits the expressivity for our definition of ulp. But that's fine for now.)
 variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorSemiring R]
 
-/-- The gap between the two floating-point numbers nearest to a given number, including the number itself.
-**Harrison's ulp**: The distance between the closest fp-numbers `x`,`y` (`x ≤ f ≤ y` with `x ≠ y`), assuming that the exponent range is not upper bounded.
-Harrison's ulp is equivalent to the quantum of `f`, except when `x` is of the form `β^e` (`e ≥ 0`). -/
-def ulp_har [FloatFormat] (f : FiniteFp) : ℚ := sorry
+/-- **Harrison's ULP** for a finite float, assuming unbounded exponent range.
+For nonzero `f`, this equals `2^(⌊log₂|f.toVal|⌋ - prec + 1)`, computed from the float's
+significand and exponent fields. Unlike `Fp.ulp`, this does NOT clamp the exponent to
+`min_exp`, so for subnormal floats it can be smaller than the actual grid spacing. -/
+def ulp_har [FloatFormat] (f : FiniteFp) : ℚ :=
+  if f.m = 0 then 0
+  else (2 : ℚ) ^ ((Nat.log 2 f.m : ℤ) + f.e - 2 * FloatFormat.prec + 2)
 
--- theorem ulp_har_def [FloatFormat] (f : FiniteFp) : sorry := sorry
+theorem ulp_har_zero [FloatFormat] : ulp_har (0 : FiniteFp) = 0 := by
+  simp [ulp_har, FiniteFp.zero_def]
+
+theorem ulp_har_pos [FloatFormat] (f : FiniteFp) (hm : 0 < f.m) : 0 < ulp_har f := by
+  unfold ulp_har; simp [show f.m ≠ 0 from by omega]
+  exact zpow_pos (by norm_num : (0 : ℚ) < 2) _
+
+theorem ulp_har_ne_zero [FloatFormat] (f : FiniteFp) (hm : 0 < f.m) : ulp_har f ≠ 0 :=
+  ne_of_gt (ulp_har_pos f hm)
+
+theorem ulp_har_neg [FloatFormat] (f : FiniteFp) : ulp_har (-f) = ulp_har f := by
+  simp [ulp_har]
+
+/-- Normal significand implies positive significand. -/
+private theorem isNormal_pos [FloatFormat] {m : ℕ} (hn : _root_.isNormal m) : 0 < m :=
+  lt_of_lt_of_le (by positivity) hn.1
+
+/-- Normal significand implies nonzero significand. -/
+private theorem isNormal_ne_zero [FloatFormat] {m : ℕ} (hn : _root_.isNormal m) : m ≠ 0 :=
+  Nat.pos_iff_ne_zero.mp (isNormal_pos hn)
+
+/-- For normal floats, `Nat.log 2 f.m = (prec - 1).toNat`. -/
+private theorem nat_log_normal [FloatFormat] (f : FiniteFp) (hn : _root_.isNormal f.m) :
+    Nat.log 2 f.m = (FloatFormat.prec - 1).toNat := by
+  have hm_ne : f.m ≠ 0 := isNormal_ne_zero hn
+  apply le_antisymm
+  · have hlt : Nat.log 2 f.m < FloatFormat.prec.toNat :=
+      (Nat.log_lt_iff_lt_pow (by norm_num) hm_ne).mpr f.valid.2.2.1
+    have := FloatFormat.valid_prec; omega
+  · exact (Nat.le_log_iff_pow_le (by norm_num) hm_ne).mpr hn.1
+
+/-- For normal floats, Harrison's ULP equals the quantum `2^(e - prec + 1)`. -/
+theorem ulp_har_normal_eq [FloatFormat] (f : FiniteFp) (hn : _root_.isNormal f.m) :
+    ulp_har f = (2 : ℚ) ^ (f.e - FloatFormat.prec + 1) := by
+  unfold ulp_har; rw [if_neg (isNormal_ne_zero hn)]
+  congr 1; rw [nat_log_normal f hn, FloatFormat.prec_sub_one_toNat_eq]; ring
 
 def ulp [FloatFormat] (v : R) : R :=
   -- Get the e for the power of two interval containing v |v| ∈ [2^e, 2^(e+1))
@@ -287,6 +325,73 @@ theorem abs_error_relativeError_ulp_upper_bound [FloatFormat] (x : R) (y : Finit
     rw [max_eq_left xge', add_comm]
     apply le_of_lt
     apply Int.lt_zpow_succ_log_self (by norm_num)
+
+/-! ## Linking Harrison's ULP to the standard ULP -/
+
+/-- The log of a positive float's value decomposes as `Nat.log 2 f.m + f.e - prec + 1`. -/
+private theorem int_log_toVal_decompose [FloatFormat] (f : FiniteFp) (hs : f.s = false)
+    (hm : 0 < f.m) :
+    Int.log 2 |FiniteFp.toVal f (R := R)| = ↑(Nat.log 2 f.m) + f.e - FloatFormat.prec + 1 := by
+  have hfpos := FiniteFp.toVal_pos f hs hm (R := R)
+  rw [abs_of_pos hfpos, FiniteFp.toVal_pos_eq f hs]
+  have hval_pos : (0 : R) < (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) :=
+    mul_pos (by exact_mod_cast hm) (two_zpow_pos' _)
+  apply le_antisymm
+  · -- Upper: f.m < 2^(Nat.log+1), so f.m * 2^e < 2^(Nat.log+1+e), hence log < Nat.log+1+e
+    have h_lt : (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) <
+        (2 : R) ^ (↑(Nat.log 2 f.m) + 1 + (f.e - FloatFormat.prec + 1)) := by
+      conv_rhs =>
+        rw [show (↑(Nat.log 2 f.m : ℕ) : ℤ) + 1 + (f.e - FloatFormat.prec + 1) =
+            ↑(Nat.log 2 f.m + 1 : ℕ) + (f.e - FloatFormat.prec + 1) from by push_cast; ring,
+            ← two_zpow_mul]
+      apply mul_lt_mul_of_pos_right _ (two_zpow_pos' _)
+      rw [zpow_natCast]
+      exact_mod_cast (Nat.lt_pow_succ_log_self (by norm_num : 1 < (2:ℕ)) f.m)
+    have : Int.log 2 ((f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1)) <
+        ↑(Nat.log 2 f.m) + 1 + (f.e - FloatFormat.prec + 1) := by
+      apply (Int.lt_zpow_iff_log_lt (show 1 < (2:ℕ) from by norm_num) hval_pos).mp
+      exact_mod_cast h_lt
+    omega
+  · -- Lower: 2^(Nat.log) ≤ f.m, so 2^(Nat.log+e) ≤ f.m * 2^e, hence Nat.log+e ≤ log
+    have h_le : (2 : R) ^ (↑(Nat.log 2 f.m) + (f.e - FloatFormat.prec + 1)) ≤
+        (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
+      rw [← two_zpow_mul]
+      exact mul_le_mul_of_nonneg_right
+        (by rw [zpow_natCast]; exact_mod_cast Nat.pow_log_le_self 2 (by omega))
+        (le_of_lt (two_zpow_pos' _))
+    have : ↑(Nat.log 2 f.m) + (f.e - FloatFormat.prec + 1) ≤
+        Int.log 2 ((f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1)) := by
+      apply (Int.zpow_le_iff_le_log (show 1 < (2:ℕ) from by norm_num) hval_pos).mp
+      exact_mod_cast h_le
+    omega
+
+/-- The log of a float's absolute value decomposes as `Nat.log 2 f.m + f.e - prec + 1`,
+regardless of sign. -/
+theorem int_log_toVal_decompose' [FloatFormat] (f : FiniteFp) (hm : 0 < f.m) :
+    Int.log 2 |FiniteFp.toVal f (R := R)| = ↑(Nat.log 2 f.m) + f.e - FloatFormat.prec + 1 := by
+  by_cases hs : f.s = false
+  · exact int_log_toVal_decompose f hs hm
+  · have hfs_true : f.s = true := by revert hs; cases f.s <;> simp
+    rw [show |FiniteFp.toVal f (R := R)| = |FiniteFp.toVal (-f) (R := R)| from by
+      rw [FiniteFp.toVal_neg_eq_neg, abs_neg],
+      int_log_toVal_decompose (-f) (by simp [hfs_true]) (by simp; exact hm)]
+    simp
+
+/-- For normal floats, Harrison's ULP equals the standard ULP. -/
+theorem ulp_har_eq_ulp [FloatFormat] (f : FiniteFp) (hn : _root_.isNormal f.m) :
+    (ulp_har f : R) = ulp (FiniteFp.toVal f (R := R)) := by
+  rw [ulp_har_normal_eq f hn]; push_cast; unfold ulp; congr 1
+  rw [int_log_toVal_decompose' (R := R) f (isNormal_pos hn), nat_log_normal f hn,
+      FloatFormat.prec_sub_one_toNat_eq]
+  have : FloatFormat.min_exp ≤ f.e := f.valid.1
+  omega
+
+/-- Harrison's ULP is at most the standard ULP (they differ only for subnormals). -/
+theorem ulp_har_le_ulp [FloatFormat] (f : FiniteFp) (hm : 0 < f.m) :
+    (ulp_har f : R) ≤ ulp (FiniteFp.toVal f (R := R)) := by
+  unfold ulp_har ulp; rw [if_neg (by omega : ¬f.m = 0)]; push_cast
+  apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+  rw [int_log_toVal_decompose' (R := R) f hm]; omega
 
 end Fp
 
