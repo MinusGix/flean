@@ -4,3 +4,4 @@ import Flean.Operations.Mul
 import Flean.Operations.Sub
 import Flean.Operations.Div
 import Flean.Operations.Sqrt
+import Flean.Operations.FMA
