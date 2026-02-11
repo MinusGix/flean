@@ -151,8 +151,14 @@ theorem roundDown_roundUp_opposite_parity [FloatFormat]
       have hfloor_ub_nat := (floor_isNormal_of_bounds x ⟨le_of_not_gt h_sub, h_norm⟩).right
       have hfloor_ub : ⌊x / (2 : R) ^ findExponentDown x *
           (2 : R) ^ (FloatFormat.prec - 1)⌋ < (2 : ℤ) ^ FloatFormat.prec.toNat := by
-        have := Int.natAbs_of_nonneg (le_of_lt hfloor_pos)
-        simp only [Int.two_pow_eq_nat_cast] at hfloor_ub_nat ⊢; omega
+        have hfloor_ub_int : ((⌊x / (2 : R) ^ findExponentDown x *
+            (2 : R) ^ (FloatFormat.prec - 1)⌋.natAbs : ℤ) < (2 : ℤ) ^ FloatFormat.prec.toNat) := by
+          exact_mod_cast hfloor_ub_nat
+        have hfloor_cast : ((⌊x / (2 : R) ^ findExponentDown x *
+            (2 : R) ^ (FloatFormat.prec - 1)⌋).natAbs : ℤ) =
+            ⌊x / (2 : R) ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌋ :=
+          Int.natAbs_of_nonneg (le_of_lt hfloor_pos)
+        rwa [hfloor_cast] at hfloor_ub_int
       -- ⌈scaled⌉ = 2^prec (from carry + upper bound)
       have hceil_eq_pow : ⌈x / (2 : R) ^ findExponentDown x *
           (2 : R) ^ (FloatFormat.prec - 1)⌉ = (2 : ℤ) ^ FloatFormat.prec.toNat := by
@@ -368,25 +374,61 @@ theorem rnAway_neg_overflow [FloatFormat] (y : R) (hy_pos : 0 < y)
 These lemmas connect the integer-level midpoint comparison (`r` vs `2^(shift-1)`) with
 the real-level nearest rounding functions. -/
 
-/-- For positive `val` in the representable range, if `val < midpoint(pred, succ)` then
-`roundNearestTiesToEven(val) = roundDown(val)`, and if `val > midpoint` then
-`roundNearestTiesToEven(val) = roundUp(val)`. For the tie case, even parity decides. -/
+/-- Core decision tree for positive-value ties-to-even nearest rounding, given finite
+predecessor/successor endpoints. -/
+def rnMidpoint [FloatFormat] (pred_fp succ_fp : FiniteFp) : R :=
+  ((pred_fp.toVal : R) + succ_fp.toVal) / 2
+
+/-- Core decision tree for positive-value ties-to-even nearest rounding, given finite
+predecessor/successor endpoints. -/
+def rnEvenPosCore [FloatFormat] (val : R) (pred_fp succ_fp : FiniteFp) : Fp :=
+  let midpoint := rnMidpoint pred_fp succ_fp
+  if val < midpoint then Fp.finite pred_fp
+  else if val > midpoint then Fp.finite succ_fp
+  else if isEvenSignificand pred_fp then Fp.finite pred_fp
+  else Fp.finite succ_fp
+
+/-- Core decision tree for positive-value ties-away nearest rounding, given finite
+predecessor/successor endpoints. -/
+def rnAwayPosCore [FloatFormat] (val : R) (pred_fp succ_fp : FiniteFp) : Fp :=
+  let midpoint := rnMidpoint pred_fp succ_fp
+  if val < midpoint then Fp.finite pred_fp
+  else if val > midpoint then Fp.finite succ_fp
+  else if val > 0 then Fp.finite succ_fp
+  else Fp.finite pred_fp
+
+/-- Midpoint-case split assumptions for ties-to-even nearest rounding. -/
+def rnEvenMidpointCases [FloatFormat] (val : R) (pred_fp succ_fp : FiniteFp) : Prop :=
+  (val < rnMidpoint pred_fp succ_fp → roundNearestTiesToEven val = roundDown val) ∧
+  (val > rnMidpoint pred_fp succ_fp → roundNearestTiesToEven val = roundUp val) ∧
+  (val = rnMidpoint pred_fp succ_fp → isEvenSignificand pred_fp = true →
+    roundNearestTiesToEven val = roundDown val) ∧
+  (val = rnMidpoint pred_fp succ_fp → isEvenSignificand pred_fp = false →
+    roundNearestTiesToEven val = roundUp val)
+
+/-- Package midpoint-case hypotheses into the core ties-to-even decision tree. -/
 theorem rnEven_pos_of_roundDown_roundUp [FloatFormat]
     (val : R) (pred_fp succ_fp : FiniteFp)
-    (hval_pos : 0 < val)
-    (hval_ge_ssps : val ≥ FiniteFp.smallestPosSubnormal.toVal / 2)
-    (hval_lt_thresh : val < FloatFormat.overflowThreshold R)
     (hroundDown : roundDown val = Fp.finite pred_fp)
     (hroundUp : roundUp val = Fp.finite succ_fp)
-    (hmid_lt : val < (pred_fp.toVal + succ_fp.toVal) / 2 →
-      roundNearestTiesToEven val = roundDown val)
-    (hmid_gt : val > (pred_fp.toVal + succ_fp.toVal) / 2 →
-      roundNearestTiesToEven val = roundUp val)
-    (hmid_even : val = (pred_fp.toVal + succ_fp.toVal) / 2 → isEvenSignificand pred_fp →
-      roundNearestTiesToEven val = roundDown val)
-    (hmid_odd : val = (pred_fp.toVal + succ_fp.toVal) / 2 → ¬isEvenSignificand pred_fp →
-      roundNearestTiesToEven val = roundUp val) :
-    True := trivial  -- This is just documentation; the actual proofs use the cases directly
+    (hmid_cases : rnEvenMidpointCases val pred_fp succ_fp) :
+    roundNearestTiesToEven val = rnEvenPosCore val pred_fp succ_fp := by
+  rcases hmid_cases with ⟨hmid_lt, hmid_gt, hmid_even, hmid_odd⟩
+  by_cases hlt : val < rnMidpoint pred_fp succ_fp
+  · rw [hmid_lt hlt, hroundDown]
+    simpa [rnEvenPosCore, hlt]
+  · by_cases hgt : val > rnMidpoint pred_fp succ_fp
+    · rw [hmid_gt hgt, hroundUp]
+      simpa [rnEvenPosCore, hlt, hgt]
+    · have hmid : val = rnMidpoint pred_fp succ_fp := by
+        exact le_antisymm (le_of_not_gt hgt) (not_lt.mp hlt)
+      by_cases heven : isEvenSignificand pred_fp = true
+      · rw [hmid_even hmid heven, hroundDown]
+        simpa [rnEvenPosCore, hmid, heven]
+      · have hodd : isEvenSignificand pred_fp = false := by
+          cases hsig : isEvenSignificand pred_fp <;> simp [hsig] at heven ⊢
+        rw [hmid_odd hmid hodd, hroundUp]
+        simpa [rnEvenPosCore, hmid, hodd]
 
 -- The actual workhorse: unfold roundNearestTiesToEven for positive val in range
 theorem rnEven_pos_unfold [FloatFormat]
@@ -396,12 +438,7 @@ theorem rnEven_pos_unfold [FloatFormat]
     (hval_lt_thresh : val < FloatFormat.overflowThreshold R)
     (hroundDown : roundDown val = Fp.finite pred_fp)
     (hroundUp : roundUp val = Fp.finite succ_fp) :
-    roundNearestTiesToEven val =
-      let midpoint := (pred_fp.toVal + succ_fp.toVal) / 2
-      if val < midpoint then Fp.finite pred_fp
-      else if val > midpoint then Fp.finite succ_fp
-      else if isEvenSignificand pred_fp then Fp.finite pred_fp
-      else Fp.finite succ_fp := by
+    roundNearestTiesToEven val = rnEvenPosCore val pred_fp succ_fp := by
   have hval_ne : val ≠ 0 := ne_of_gt hval_pos
   have h_not_small : ¬(|val| < FiniteFp.smallestPosSubnormal.toVal / 2) := by
     rw [abs_of_pos hval_pos]; push_neg; exact hval_ge_ssps
@@ -422,6 +459,7 @@ theorem rnEven_pos_unfold [FloatFormat]
   rw [hsucc_eq_fp]
   dsimp only
   rw [hpred_fp_eq]
+  rfl
 
 /-- Similar unfolding for roundNearestTiesAwayFromZero on positive values. -/
 theorem rnAway_pos_unfold [FloatFormat]
@@ -431,12 +469,7 @@ theorem rnAway_pos_unfold [FloatFormat]
     (hval_lt_thresh : val < FloatFormat.overflowThreshold R)
     (hroundDown : roundDown val = Fp.finite pred_fp)
     (hroundUp : roundUp val = Fp.finite succ_fp) :
-    roundNearestTiesAwayFromZero val =
-      let midpoint := (pred_fp.toVal + succ_fp.toVal) / 2
-      if val < midpoint then Fp.finite pred_fp
-      else if val > midpoint then Fp.finite succ_fp
-      else if val > 0 then Fp.finite succ_fp
-      else Fp.finite pred_fp := by
+    roundNearestTiesAwayFromZero val = rnAwayPosCore val pred_fp succ_fp := by
   have hval_ne : val ≠ 0 := ne_of_gt hval_pos
   have h_not_small : ¬(|val| < FiniteFp.smallestPosSubnormal.toVal / 2) := by
     rw [abs_of_pos hval_pos]; push_neg; exact hval_ge_ssps
@@ -454,6 +487,7 @@ theorem rnAway_pos_unfold [FloatFormat]
   rw [hsucc_eq_fp]
   dsimp only
   rw [hpred_fp_eq]
+  rfl
 
 /-! ### Midpoint decision lemmas for positive values
 
@@ -470,9 +504,9 @@ theorem rnEven_above_mid_eq_roundUp [FloatFormat]
     (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
     (hmid : val > ((pred_fp.toVal : R) + succ_fp.toVal) / 2) :
     roundNearestTiesToEven val = roundUp val := by
+  have hmid' : val > rnMidpoint pred_fp succ_fp := by simpa [rnMidpoint] using hmid
   rw [rnEven_pos_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrU]
-  dsimp only
-  rw [if_neg (not_lt.mpr (le_of_lt hmid)), if_pos hmid]
+  simp [rnEvenPosCore, hmid', not_lt.mpr (le_of_lt hmid')]
 
 /-- TiesToEven: value below midpoint → rounds down -/
 theorem rnEven_below_mid_eq_roundDown [FloatFormat]
@@ -483,8 +517,9 @@ theorem rnEven_below_mid_eq_roundDown [FloatFormat]
     (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
     (hmid : val < ((pred_fp.toVal : R) + succ_fp.toVal) / 2) :
     roundNearestTiesToEven val = roundDown val := by
+  have hmid' : val < rnMidpoint pred_fp succ_fp := by simpa [rnMidpoint] using hmid
   rw [rnEven_pos_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrD]
-  dsimp only; rw [if_pos hmid]
+  simp [rnEvenPosCore, hmid']
 
 /-- TiesToEven: at midpoint with odd predecessor → rounds up -/
 theorem rnEven_at_mid_odd_eq_roundUp [FloatFormat]
@@ -496,9 +531,9 @@ theorem rnEven_at_mid_odd_eq_roundUp [FloatFormat]
     (hmid : val = ((pred_fp.toVal : R) + succ_fp.toVal) / 2)
     (hodd : isEvenSignificand pred_fp = false) :
     roundNearestTiesToEven val = roundUp val := by
+  have hmid' : val = rnMidpoint pred_fp succ_fp := by simpa [rnMidpoint] using hmid
   rw [rnEven_pos_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrU]
-  dsimp only
-  rw [if_neg (not_lt.mpr hmid.ge), if_neg (not_lt.mpr hmid.le), hodd]; simp
+  simp [rnEvenPosCore, hmid', hodd]
 
 /-- TiesToEven: at midpoint with even predecessor → rounds down -/
 theorem rnEven_at_mid_even_eq_roundDown [FloatFormat]
@@ -510,9 +545,9 @@ theorem rnEven_at_mid_even_eq_roundDown [FloatFormat]
     (hmid : val = ((pred_fp.toVal : R) + succ_fp.toVal) / 2)
     (heven : isEvenSignificand pred_fp = true) :
     roundNearestTiesToEven val = roundDown val := by
+  have hmid' : val = rnMidpoint pred_fp succ_fp := by simpa [rnMidpoint] using hmid
   rw [rnEven_pos_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrD]
-  dsimp only
-  rw [if_neg (not_lt.mpr hmid.ge), if_neg (not_lt.mpr hmid.le), heven]; simp
+  simp [rnEvenPosCore, hmid', heven]
 
 /-- TiesAway: value at or above midpoint → rounds up -/
 theorem rnAway_ge_mid_eq_roundUp [FloatFormat]
@@ -523,11 +558,12 @@ theorem rnAway_ge_mid_eq_roundUp [FloatFormat]
     (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
     (hmid : val ≥ ((pred_fp.toVal : R) + succ_fp.toVal) / 2) :
     roundNearestTiesAwayFromZero val = roundUp val := by
+  have hmid' : val ≥ rnMidpoint pred_fp succ_fp := by simpa [rnMidpoint] using hmid
   rw [rnAway_pos_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrU]
-  dsimp only
-  by_cases hgt : val > ((pred_fp.toVal : R) + succ_fp.toVal) / 2
-  · rw [if_neg (not_lt.mpr (le_of_lt hgt)), if_pos hgt]
-  · rw [if_neg (not_lt.mpr hmid), if_neg hgt, if_pos hval_pos]
+  by_cases hgt : val > rnMidpoint pred_fp succ_fp
+  · simp [rnAwayPosCore, hgt, not_lt.mpr (le_of_lt hgt)]
+  · have hnot_lt : ¬val < rnMidpoint pred_fp succ_fp := not_lt.mpr hmid'
+    simp [rnAwayPosCore, hnot_lt, hgt, hval_pos]
 
 /-- TiesAway: value below midpoint → rounds down -/
 theorem rnAway_lt_mid_eq_roundDown [FloatFormat]
@@ -538,8 +574,9 @@ theorem rnAway_lt_mid_eq_roundDown [FloatFormat]
     (hrD : roundDown val = Fp.finite pred_fp) (hrU : roundUp val = Fp.finite succ_fp)
     (hmid : val < ((pred_fp.toVal : R) + succ_fp.toVal) / 2) :
     roundNearestTiesAwayFromZero val = roundDown val := by
+  have hmid' : val < rnMidpoint pred_fp succ_fp := by simpa [rnMidpoint] using hmid
   rw [rnAway_pos_unfold val pred_fp succ_fp hval_pos hval_ge hval_lt hrD hrU, hrD]
-  dsimp only; rw [if_pos hmid]
+  simp [rnAwayPosCore, hmid']
 
 /-- When val ≥ midpoint(pred, succ) and both roundDown/roundUp are finite, val ≥ ssps/2.
 

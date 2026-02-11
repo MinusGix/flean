@@ -66,15 +66,20 @@ theorem natAbs_lt_int_pow_of_nonneg {m : ℤ} (hm_pos : 0 < m) (n : ℕ)
   simp only [Int.two_pow_eq_nat_cast] at h1
   omega
 
+/-- Floor of the normal-range scaled significand expression used by normal rounding. -/
+abbrev floorScaledNormal (x : R) : ℤ :=
+  ⌊x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌋
+
 /-- A positive integer floor is normal if it satisfies the scaled bounds -/
 theorem floor_isNormal_of_bounds (x : R) (hx : isNormalRange x) :
-    let e := findExponentDown x
-    let m := ⌊x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1)⌋
-    let hb := findExponentDown_div_binade_normal hx
-    isNormal m.natAbs := by
-  intro e m hb
-  have mpos := floor_scaled_normal_pos x hx
-  have hnatAbs_eq : (m.natAbs : ℤ) = m := Int.natAbs_of_nonneg (le_of_lt mpos)
+    isNormal (floorScaledNormal (R := R) x).natAbs := by
+  let e : ℤ := findExponentDown x
+  let m : ℤ := floorScaledNormal (R := R) x
+  have hb : (1 : R) ≤ x / 2 ^ e ∧ x / 2 ^ e < 2 := by
+    simpa [e] using (findExponentDown_div_binade_normal hx)
+  change isNormal m.natAbs
+  have mpos : 0 < m := by
+    simpa [m, floorScaledNormal] using (floor_scaled_normal_pos x hx)
   -- Lower bound
   have hm_lb_R : (2 : R)^(FloatFormat.prec - 1) ≤ x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1) := by
     calc (2 : R)^(FloatFormat.prec - 1)
@@ -83,11 +88,13 @@ theorem floor_isNormal_of_bounds (x : R) (hx : isNormalRange x) :
           apply mul_le_mul_of_nonneg_right hb.left
           exact zpow_nonneg (by norm_num) _
   have hm_lb_int : (2 : ℤ)^(FloatFormat.prec - 1).toNat ≤ m := by
-    apply Int.le_floor.mpr
-    simp only [Int.cast_pow, Int.cast_ofNat]
-    calc (2 : R)^(FloatFormat.prec - 1).toNat
-        = (2 : R)^(FloatFormat.prec - 1) := FloatFormat.natCast_pow_prec_pred
-      _ ≤ x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1) := hm_lb_R
+    have hm_lb_int' : (2 : ℤ)^(FloatFormat.prec - 1).toNat ≤ ⌊x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1)⌋ := by
+      apply Int.le_floor.mpr
+      simp only [Int.cast_pow, Int.cast_ofNat]
+      calc (2 : R)^(FloatFormat.prec - 1).toNat
+          = (2 : R)^(FloatFormat.prec - 1) := FloatFormat.natCast_pow_prec_pred
+        _ ≤ x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1) := hm_lb_R
+    simpa [m, floorScaledNormal, e] using hm_lb_int'
   -- Upper bound
   have hm_ub_R : x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1) < (2 : R)^FloatFormat.prec := by
     have hpow_eq : (2 : R)^(FloatFormat.prec - 1) = (2 : R)^FloatFormat.prec / 2 := by
@@ -99,13 +106,15 @@ theorem floor_isNormal_of_bounds (x : R) (hx : isNormalRange x) :
           apply div_pos (zpow_pos (by norm_num) _) (by norm_num)
       _ = (2 : R)^FloatFormat.prec := by ring
   have hm_ub_int : m < (2 : ℤ)^FloatFormat.prec.toNat := by
-    apply Int.floor_lt.mpr
-    simp only [Int.cast_pow, Int.cast_ofNat]
-    have hp := FloatFormat.prec_pos
-    calc (x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1) : R) < (2 : R)^FloatFormat.prec := hm_ub_R
-      _ = (2 : R)^FloatFormat.prec.toNat := by
-          rw [← zpow_natCast]; congr 1
-          exact (Int.toNat_of_nonneg (by omega)).symm
+    have hm_ub_int' : ⌊x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1)⌋ < (2 : ℤ)^FloatFormat.prec.toNat := by
+      apply Int.floor_lt.mpr
+      simp only [Int.cast_pow, Int.cast_ofNat]
+      have hp := FloatFormat.prec_pos
+      calc (x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1) : R) < (2 : R)^FloatFormat.prec := hm_ub_R
+        _ = (2 : R)^FloatFormat.prec.toNat := by
+            rw [← zpow_natCast]; congr 1
+            exact (Int.toNat_of_nonneg (by omega)).symm
+    simpa [m, floorScaledNormal, e] using hm_ub_int'
   -- Convert to ℕ
   constructor
   · exact int_pow_le_natAbs_of_nonneg mpos _ hm_lb_int

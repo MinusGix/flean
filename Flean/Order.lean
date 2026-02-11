@@ -942,21 +942,9 @@ def is_total_le (x y : Fp) : Prop :=
 
 instance : LE Fp := ⟨is_total_le⟩
 
-theorem lt_def (x y : Fp) : x < y ↔ (match (x, y) with
-  | (.finite x, .finite y) => x < y
-  | (.infinite b, .infinite c) => b && !c
-  | (.infinite b, .finite _) => b
-  | (.finite _, .infinite b) => !b
-  | (.NaN, _) => true
-  | (_, .NaN) => false) := by rfl
+theorem lt_def (x y : Fp) : x < y ↔ is_total_lt x y := by rfl
 
-theorem le_def (x y : Fp) : x ≤ y ↔ ((match (x, y) with
-  | (.finite x, .finite y) => x < y
-  | (.infinite b, .infinite c) => b && !c
-  | (.infinite b, .finite _) => b
-  | (.finite _, .infinite b) => !b
-  | (.NaN, _) => true
-  | (_, .NaN) => false) ∨ x = y) := by rfl
+theorem le_def (x y : Fp) : x ≤ y ↔ (is_total_lt x y ∨ x = y) := by rfl
 
 -- theorem lt_cases {x y : Fp} :
 

@@ -101,8 +101,7 @@ theorem roundTowardZero_neg_le_zero [FloatFormat] (x : R) (hneg : x < 0) :
     rw [FiniteFp.neg_def]; simp only [hf, Bool.not_false]
   -- Use Fp.lt_imp_le: show -f < 0 first
   apply Fp.lt_imp_le
-  rw [Fp.lt_def]
-  simp only
+  change (-findPredecessorPos (-x) (neg_pos.mpr hneg)) < (0 : FiniteFp)
   rw [FiniteFp.lt_def]
   left
   -- Need to show (-f).s ∧ !(0 : FiniteFp).s
@@ -123,8 +122,7 @@ theorem roundTowardZero_zero_le_pos [FloatFormat] (y : R) (hpos : 0 < y) :
     right; simp only [hz]
   · -- f ≠ 0, so 0 < f
     apply Fp.lt_imp_le
-    rw [Fp.lt_def]
-    simp only
+    change (0 : FiniteFp) < findPredecessorPos y hpos
     rw [FiniteFp.lt_def]
     right; left
     -- Need !(0).s ∧ !f.s ∧ 0.is_mag_lt f

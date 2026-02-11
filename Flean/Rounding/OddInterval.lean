@@ -784,6 +784,19 @@ private theorem midpoint_outside_odd_interval {R : Type*} [Field R] [LinearOrder
 abbrev noRepresentableIn [FloatFormat] {R : Type*} [Field R] [LT R] (lo hi : R) : Prop :=
   ∀ f : FiniteFp, f.s = false → 0 < f.m → ¬(lo < (f.toVal : R) ∧ (f.toVal : R) < hi)
 
+/-- Lower endpoint of the odd interval `((n-1)*2^e_base, (n+1)*2^e_base)`. -/
+abbrev oddIntervalLo [FloatFormat] {R : Type*} [Field R] (n : ℕ) (e_base : ℤ) : R :=
+  ((n : ℤ) - 1 : R) * (2 : R) ^ e_base
+
+/-- Upper endpoint of the odd interval `((n-1)*2^e_base, (n+1)*2^e_base)`. -/
+abbrev oddIntervalHi [FloatFormat] {R : Type*} [Field R] (n : ℕ) (e_base : ℤ) : R :=
+  ((n : ℤ) + 1 : R) * (2 : R) ^ e_base
+
+/-- Membership in the odd interval `((n-1)*2^e_base, (n+1)*2^e_base)`. -/
+abbrev inOddInterval [FloatFormat] {R : Type*} [Field R] [LT R]
+    (n : ℕ) (e_base : ℤ) (v : R) : Prop :=
+  oddIntervalLo (R := R) n e_base < v ∧ v < oddIntervalHi (R := R) n e_base
+
 /-- `roundDown` is constant on positive open intervals containing no representable float.
 
     If no positive representable float has `toVal` in `(lo, hi)`, then `roundDown v₁ = roundDown v₂`
@@ -871,7 +884,7 @@ theorem roundUp_eq_of_no_representable {R : Type*} [Field R] [LinearOrder R]
         rw [show roundUp v₂ = findSuccessorPos v₂ hv₂_pos from by
           unfold roundUp; exact findSuccessor_pos_eq v₂ hv₂_pos]
         rcases hfsp₂ : findSuccessorPos v₂ hv₂_pos with f | c | _
-        · rw [Fp.le_def]; left; dsimp [LT.lt]; decide
+        · rw [Fp.le_def]; left; simp [Fp.is_total_lt]
         · cases c with
           | false => exact Fp.le_refl _
           | true => exact absurd hfsp₂ (findSuccessorPos_ne_neg_inf v₂ hv₂_pos)
@@ -1104,13 +1117,17 @@ theorem round_eq_on_odd_interval {R : Type*} [Field R] [LinearOrder R]
     (hn_odd : n % 2 = 1)
     (hn_large : 2 ^ (FloatFormat.prec.toNat + 3) < n)
     {v₁ v₂ : R}
-    (hv₁_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < v₁)
-    (hv₁_hi : v₁ < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base)
-    (hv₂_lo : ((n : ℤ) - 1 : R) * (2 : R) ^ e_base < v₂)
-    (hv₂_hi : v₂ < ((n : ℤ) + 1 : R) * (2 : R) ^ e_base) :
+    (hv₁_in : inOddInterval (R := R) n e_base v₁)
+    (hv₂_in : inOddInterval (R := R) n e_base v₂) :
     mode.round v₁ = mode.round v₂ := by
-  set lo := ((n : ℤ) - 1 : R) * (2 : R) ^ e_base with hlo_def
-  set hi := ((n : ℤ) + 1 : R) * (2 : R) ^ e_base with hhi_def
+  rcases hv₁_in with ⟨hv₁_lo_raw, hv₁_hi_raw⟩
+  rcases hv₂_in with ⟨hv₂_lo_raw, hv₂_hi_raw⟩
+  set lo := oddIntervalLo (R := R) n e_base with hlo_def
+  set hi := oddIntervalHi (R := R) n e_base with hhi_def
+  have hv₁_lo : lo < v₁ := by simpa [hlo_def] using hv₁_lo_raw
+  have hv₁_hi : v₁ < hi := by simpa [hhi_def] using hv₁_hi_raw
+  have hv₂_lo : lo < v₂ := by simpa [hlo_def] using hv₂_lo_raw
+  have hv₂_hi : v₂ < hi := by simpa [hhi_def] using hv₂_hi_raw
   have hE_pos : (0 : R) < (2 : R) ^ e_base := zpow_pos (by norm_num : (0:R) < 2) _
   have hn_ge : (1 : ℤ) ≤ (n : ℤ) - 1 := by
     have : 0 < 2 ^ (FloatFormat.prec.toNat + 3) := Nat.pos_of_ne_zero (by positivity)
@@ -1122,7 +1139,7 @@ theorem round_eq_on_odd_interval {R : Type*} [Field R] [LinearOrder R]
         ≤ 2 ^ (FloatFormat.prec.toNat + 3) := Nat.pow_le_pow_right (by omega) (by omega)
       _ < n := hn_large
   have hno_rep : noRepresentableIn lo hi := by
-    intro f hfs hfm; rw [hlo_def, hhi_def]
+    intro f hfs hfm; rw [hlo_def, hhi_def, oddIntervalLo, oddIntervalHi]
     exact no_representable_in_odd_interval hn_odd hn_prec f hfs hfm
   -- Directional modes: use existing constancy lemmas
   cases mode with

@@ -36,6 +36,12 @@ variable [FloatFormat]
 to ensure the quotient has enough precision for correct rounding. -/
 abbrev divShift : ℕ := 2 * FloatFormat.prec.toNat + 2
 
+/-- Euclidean quotient used in `fpDivFinite` after scaling the dividend by `2^divShift`. -/
+abbrev divQ (a b : FiniteFp) : ℕ := (a.m * 2 ^ divShift) / b.m
+
+/-- Euclidean remainder used in `fpDivFinite` after scaling the dividend by `2^divShift`. -/
+abbrev divR (a b : FiniteFp) : ℕ := (a.m * 2 ^ divShift) % b.m
+
 /-- Divide two finite floating-point numbers with the given rounding mode.
 
 Requires `b.m ≠ 0` for correct results; when `b.m = 0`, the definition produces
@@ -82,21 +88,21 @@ def fpDiv (mode : RoundingMode) (x y : Fp) : Fp :=
 where `q = (a.m * 2^shift) / b.m` and `r = (a.m * 2^shift) % b.m`. -/
 theorem fpDivFinite_exact_quotient {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
     (a b : FiniteFp) (hb : b.m ≠ 0) :
-    let q := (a.m * 2 ^ divShift) / b.m
-    let r := (a.m * 2 ^ divShift) % b.m
     (a.toVal : R) / b.toVal =
     (if (a.s ^^ b.s) = true then -1 else (1 : R)) *
-      ((q : R) + (r : R) / (b.m : R)) * (2 : R) ^ (a.e - b.e - (2 * FloatFormat.prec + 2)) := by
-  intro q r
+      ((divQ a b : R) + (divR a b : R) / (b.m : R)) *
+      (2 : R) ^ (a.e - b.e - (2 * FloatFormat.prec + 2)) := by
   unfold FiniteFp.toVal FiniteFp.sign'
   rw [FloatFormat.radix_val_eq_two]
   have hb_pos : (0 : R) < (b.m : R) := Nat.cast_pos.mpr (Nat.pos_of_ne_zero hb)
   have hb_ne : (b.m : R) ≠ 0 := ne_of_gt hb_pos
   -- Euclidean division: a.m * 2^shift = b.m * q + r
-  have hdiv_eq : a.m * 2 ^ divShift = b.m * q + r := (Nat.div_add_mod _ _).symm
+  have hdiv_eq : a.m * 2 ^ divShift = b.m * divQ a b + divR a b := by
+    unfold divQ divR
+    exact (Nat.div_add_mod _ _).symm
   -- Cast to R: b.m * q + r = a.m * 2^divShift
-  have hcast : (b.m : R) * (q : R) + (r : R) = (a.m : R) * (2 : R) ^ (divShift : ℕ) := by
-    have hnat : (b.m * q + r : ℕ) = a.m * 2 ^ divShift := hdiv_eq.symm
+  have hcast : (b.m : R) * (divQ a b : R) + (divR a b : R) = (a.m : R) * (2 : R) ^ (divShift : ℕ) := by
+    have hnat : (b.m * divQ a b + divR a b : ℕ) = a.m * 2 ^ divShift := hdiv_eq.symm
     have := congr_arg (Nat.cast (R := R)) hnat
     push_cast [Nat.cast_mul, Nat.cast_add, Nat.cast_pow] at this
     linarith
@@ -138,15 +144,15 @@ theorem fpDivFinite_correct_exact {R : Type*} [Field R] [LinearOrder R] [IsStric
     apply hquot
     have hexact_form := fpDivFinite_exact_quotient (R := R) a b hb
     have hq_zero : (a.m * 2 ^ divShift) / b.m = 0 := by rw [← hq_def]; exact hzero
-    simp only [hexact, hq_zero, Nat.cast_zero, zero_div, add_zero, mul_zero, zero_mul] at hexact_form
+    simp only [divQ, divR, hexact, hq_zero, Nat.cast_zero, zero_div, add_zero, mul_zero, zero_mul] at hexact_form
     exact hexact_form
   have hmag_ne : 2 * q ≠ 0 := by omega
   -- intSigVal equals exact quotient when r = 0
   have hbridge : intSigVal (R := R) (a.s ^^ b.s) (2 * q)
       (a.e - b.e - (2 * FloatFormat.prec + 2) - 1) = (a.toVal : R) / b.toVal := by
     have hexact_form := fpDivFinite_exact_quotient (R := R) a b hb
-    have hq_fold : (a.m * 2 ^ divShift) / b.m = q := hq_def.symm
-    simp only [hexact, hq_fold, Nat.cast_zero, zero_div, add_zero] at hexact_form
+    have hq_fold : divQ a b = q := by rw [divQ, hq_def]
+    simp only [divQ, divR, hexact, hq_fold, Nat.cast_zero, zero_div, add_zero] at hexact_form
     rw [hexact_form]
     unfold intSigVal
     -- (2*q) * 2^(e - 1) = q * 2^e
@@ -227,7 +233,9 @@ theorem fpDivFinite_correct {R : Type*} [Field R] [LinearOrder R]
               (by linarith)
         _ = 2 * ((q : R) + 1) * E := by ring
     -- Apply shared sticky-bit lemma
-    rw [sticky_roundIntSig_eq_round (R := R) mode _ _ _ hq_lower abs_exact he_lo he_hi]
+    rw [sticky_roundIntSig_eq_round (R := R) (mode := mode) (sign := (a.s ^^ b.s)) (q := q)
+      (e_base := e_base) (hq_lower := hq_lower) (abs_exact := abs_exact)
+      (h_exact_in := ⟨he_lo, he_hi⟩)]
     -- Bridge: if sign then -abs_exact else abs_exact = exact_val
     have h2E : (2 : R) ^ (a.e - b.e - (2 * ↑FloatFormat.prec + 2)) = 2 * E := by
       rw [hE_def, show a.e - b.e - (2 * ↑FloatFormat.prec + 2) = e_base + 1 from by omega]
@@ -235,7 +243,7 @@ theorem fpDivFinite_correct {R : Type*} [Field R] [LinearOrder R]
     have hexact_signed : (a.toVal : R) / b.toVal =
         (if (a.s ^^ b.s) = true then -1 else (1 : R)) * abs_exact := by
       have := fpDivFinite_exact_quotient (R := R) a b hb
-      simp only [← hq_def, ← hr_def] at this
+      simp only [divQ, divR, ← hq_def, ← hr_def] at this
       rw [this, habs_exact_def, h2E]; ring
     congr 1; rw [hexact_signed]
     cases (a.s ^^ b.s) <;> simp

@@ -171,7 +171,9 @@ theorem fpSqrtFinite_correct (mode : RoundingMode) (a : FiniteFp)
             mul_lt_mul_of_pos_right hsqrt_lt (by linarith)
         _ = 2 * ((q : ℝ) + 1) * E := by ring
     -- Apply shared sticky-bit lemma (sign=false, so if-then-else simplifies)
-    rw [sticky_roundIntSig_eq_round (R := ℝ) mode false q e_base hq_lower _ he_lo he_hi]
+    rw [sticky_roundIntSig_eq_round (R := ℝ) (mode := mode) (sign := false) (q := q)
+      (e_base := e_base) (hq_lower := hq_lower) (abs_exact := Real.sqrt (a.toVal : ℝ))
+      (h_exact_in := ⟨he_lo, he_hi⟩)]
     simp
 
 end Sqrt
