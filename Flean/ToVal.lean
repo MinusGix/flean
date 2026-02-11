@@ -324,6 +324,43 @@ theorem toVal_injective [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y :
       rw [eq_def]
       exact ⟨by rw [hxs, hys], by rw [hxe, hye], by rw [hxm0, hym0]⟩
 
+/-! ### Simplified toVal expressions -/
+
+/-- For positive sign, `toVal` simplifies to `m * 2^(e - prec + 1)`. -/
+theorem toVal_pos_eq [Field R] (x : FiniteFp) (hs : x.s = false) :
+    toVal x (R := R) = (x.m : R) * (2 : R) ^ (x.e - FloatFormat.prec + 1) := by
+  unfold toVal sign'
+  rw [FloatFormat.radix_val_eq_two]
+  simp [hs]
+
+/-! ### Binade bounds -/
+
+/-- Every positive finite float satisfies `toVal < 2^(e + 1)`. -/
+theorem toVal_lt_zpow_succ [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (x : FiniteFp) (hs : x.s = false) :
+    toVal x (R := R) < (2 : R) ^ (x.e + 1) := by
+  rw [toVal_pos_eq x hs]
+  calc (x.m : R) * (2 : R) ^ (x.e - FloatFormat.prec + 1)
+      < (2 : R) ^ FloatFormat.prec.toNat * (2 : R) ^ (x.e - FloatFormat.prec + 1) := by
+        exact mul_lt_mul_of_pos_right (by exact_mod_cast x.valid.2.2.1) (two_zpow_pos' _)
+    _ = (2 : R) ^ (x.e + 1) := by
+        rw [← zpow_natCast (2 : R) FloatFormat.prec.toNat, two_zpow_mul]
+        congr 1; rw [FloatFormat.prec_toNat_eq]; ring
+
+/-- A normal positive float satisfies `2^e ≤ toVal`. -/
+theorem toVal_normal_lower [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (x : FiniteFp) (hs : x.s = false) (hn : _root_.isNormal x.m) :
+    (2 : R) ^ x.e ≤ toVal x (R := R) := by
+  rw [toVal_pos_eq x hs]
+  calc (2 : R) ^ x.e
+      = (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ (x.e - FloatFormat.prec + 1) := by
+        rw [two_zpow_mul]; congr 1; ring
+    _ ≤ (x.m : R) * (2 : R) ^ (x.e - FloatFormat.prec + 1) := by
+        apply mul_le_mul_of_nonneg_right _ (le_of_lt (two_zpow_pos' _))
+        calc (2 : R) ^ (FloatFormat.prec - 1)
+            = (2 : R) ^ (FloatFormat.prec - 1).toNat := FloatFormat.pow_prec_sub_one_nat_int.symm
+          _ ≤ (x.m : R) := by exact_mod_cast hn.1
+
 def toRat (x : FiniteFp) : ℚ := x.toVal
 
 noncomputable
@@ -332,6 +369,74 @@ def toReal (x : FiniteFp) : ℝ := x.toVal
 end toVal
 
 end FiniteFp
+
+/-! ## Constructing a FiniteFp with a given value -/
+
+section Construction
+
+variable [FloatFormat]
+
+/-- A positive integer `mag` with `0 < mag < 2^prec` at a valid exponent `e_base` in
+    `[min_exp - prec + 1, max_exp - prec + 1]` is the value of some valid `FiniteFp`.
+
+    Handles normalization: if `mag ≥ 2^(prec-1)` it's normal; otherwise we either
+    left-shift to normalize or represent as subnormal at `min_exp`.
+    Proof by strong induction on the distance from `e_base` to the minimum. -/
+theorem exists_finiteFp_of_nat_mul_zpow {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] (mag : ℕ) (e_base : ℤ)
+    (hmag_pos : 0 < mag) (hmag_bound : mag < 2 ^ FloatFormat.prec.toNat)
+    (he_lo : e_base ≥ FloatFormat.min_exp - FloatFormat.prec + 1)
+    (he_hi : e_base + FloatFormat.prec - 1 ≤ FloatFormat.max_exp) :
+    ∃ f : FiniteFp, f.s = false ∧ (f.toVal : R) = (mag : R) * (2 : R) ^ e_base := by
+  suffices h : ∀ (n : ℕ) (mag : ℕ) (e_base : ℤ),
+      (e_base - (FloatFormat.min_exp - FloatFormat.prec + 1)).toNat = n →
+      0 < mag → mag < 2 ^ FloatFormat.prec.toNat →
+      e_base ≥ FloatFormat.min_exp - FloatFormat.prec + 1 →
+      e_base + FloatFormat.prec - 1 ≤ FloatFormat.max_exp →
+      ∃ f : FiniteFp, f.s = false ∧ (f.toVal : R) = (mag : R) * (2 : R) ^ e_base by
+    exact h _ mag e_base rfl hmag_pos hmag_bound he_lo he_hi
+  intro n
+  induction n using Nat.strongRecOn with
+  | ind n ih =>
+    intro mag e_base hn hmag_pos hmag_bound he_lo he_hi
+    have hprec := FloatFormat.valid_prec
+    set e_stored := e_base + FloatFormat.prec - 1 with e_stored_def
+    by_cases hmag_normal : 2 ^ (FloatFormat.prec - 1).toNat ≤ mag
+    · -- Case 1: mag ≥ 2^(prec-1) — already normal
+      refine ⟨⟨false, e_stored, mag, ?_⟩, rfl, ?_⟩
+      · refine ⟨by omega, by omega, hmag_bound, Or.inl ⟨hmag_normal, hmag_bound⟩⟩
+      · show (⟨false, e_stored, mag, _⟩ : FiniteFp).toVal (R := R) = _
+        unfold FiniteFp.toVal FiniteFp.sign'
+        rw [FloatFormat.radix_val_eq_two]; simp; omega
+    · -- Case 2: mag < 2^(prec-1) — needs normalization or subnormal
+      push_neg at hmag_normal
+      by_cases he_min : e_stored = FloatFormat.min_exp
+      · -- Case 2a: Already at minimum exponent — subnormal
+        refine ⟨⟨false, FloatFormat.min_exp, mag, ?_⟩, rfl, ?_⟩
+        · refine ⟨le_refl _, FloatFormat.exp_order_le, ?_, Or.inr ⟨rfl, by omega⟩⟩
+          calc mag < 2 ^ (FloatFormat.prec - 1).toNat := hmag_normal
+            _ < 2 ^ FloatFormat.prec.toNat := FloatFormat.nat_two_pow_prec_sub_one_lt_two_pow_prec
+        · show (⟨false, FloatFormat.min_exp, mag, _⟩ : FiniteFp).toVal (R := R) = _
+          unfold FiniteFp.toVal FiniteFp.sign'
+          rw [FloatFormat.radix_val_eq_two]; simp; omega
+      · -- Case 2b: e_stored > min_exp — double mag and recurse
+        have he_gt : e_stored > FloatFormat.min_exp := by omega
+        have he_base_gt : e_base > FloatFormat.min_exp - FloatFormat.prec + 1 := by omega
+        have h2mag_bound : 2 * mag < 2 ^ FloatFormat.prec.toNat := by
+          have : 2 * 2 ^ (FloatFormat.prec - 1).toNat = 2 ^ FloatFormat.prec.toNat := by
+            rw [← pow_succ']; congr 1; omega
+          omega
+        have hmeasure : (e_base - 1 - (FloatFormat.min_exp - FloatFormat.prec + 1)).toNat < n := by
+          rw [← hn]; omega
+        obtain ⟨f, hfs, hfv⟩ := ih _ hmeasure (2 * mag) (e_base - 1) rfl
+          (by omega) h2mag_bound (by omega) (by omega)
+        refine ⟨f, hfs, ?_⟩
+        rw [hfv]; push_cast
+        rw [show (2 : R) * (mag : R) * (2 : R) ^ (e_base - 1) =
+            (mag : R) * ((2 : R) ^ (1 : ℤ) * (2 : R) ^ (e_base - 1)) from by ring]
+        rw [two_zpow_mul]; norm_num
+
+end Construction
 
 -- namespace InfFp
 

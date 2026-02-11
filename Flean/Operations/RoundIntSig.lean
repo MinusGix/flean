@@ -352,7 +352,7 @@ private theorem handleOverflow_eq_round_intSigVal
       rw [neg_mul]; exact (rnAway_neg_overflow _ hmag_pos hmag_ge_thresh).symm
 
 /-- All rounding modes are idempotent on non-negative-zero floats. -/
-private theorem round_idempotent (mode : RoundingMode) (f : FiniteFp)
+theorem round_idempotent (mode : RoundingMode) (f : FiniteFp)
     (h : f.s = false ∨ 0 < f.m) :
     mode.round (f.toVal (R := R)) = Fp.finite f := by
   cases mode with
