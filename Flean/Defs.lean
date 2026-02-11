@@ -104,6 +104,16 @@ theorem IsValidFiniteVal_subnormal [FloatFormat] (m : ℕ) : m ≤ 2^(FloatForma
   · right
     exact ⟨rfl, hm⟩
 
+/-- Conditionally negate a value based on a sign bit. -/
+def condNeg {α : Type*} [Neg α] (s : Bool) (x : α) : α :=
+  if s then -x else x
+
+@[simp] theorem condNeg_true {α : Type*} [Neg α] (x : α) :
+    condNeg true x = -x := rfl
+
+@[simp] theorem condNeg_false {α : Type*} [Neg α] (x : α) :
+    condNeg false x = x := rfl
+
 @[ext]
 structure FiniteFp [FloatFormat] where
   /-- The sign of the number. -/

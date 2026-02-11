@@ -11,6 +11,8 @@ section Sterbenz
 
 variable [FloatFormat]
 variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+local notation "prec" => FloatFormat.prec
+local notation "precNat" => FloatFormat.prec.toNat
 
 /-! ## Sterbenz conditions imply exponent proximity -/
 
@@ -54,6 +56,13 @@ theorem sterbenz_exp_proximity (a b : FiniteFp) (ha : a.s = false) (hb : b.s = f
 
 /-! ## Aligned difference bound -/
 
+def sterbenzEMin (a b : FiniteFp) : ℤ := min a.e (-b).e
+
+/-- Aligned signed integer corresponding to `a + (-b)` at exponent `sterbenzEMin a b`. -/
+def sterbenzAlignedDiffInt (a b : FiniteFp) : ℤ :=
+  condNeg a.s (a.m : ℤ) * 2 ^ (a.e - sterbenzEMin a b).toNat +
+    condNeg (-b).s ((-b).m : ℤ) * 2 ^ ((-b).e - sterbenzEMin a b).toNat
+
 omit [FloorRing R] in
 /-- The integer sum in `fpAddFinite` for `a + (-b)` under Sterbenz conditions has
     magnitude strictly less than `2^prec`. -/
@@ -62,14 +71,11 @@ theorem sterbenz_aligned_diff_bound (a b : FiniteFp) (ha : a.s = false) (hb : b.
     (h_lb : (b.toVal : R) / 2 ≤ a.toVal)
     (h_ub : (a.toVal : R) ≤ 2 * b.toVal)
     (h_exp : a.e - 1 ≤ b.e ∧ b.e - 1 ≤ a.e) :
-    let e_min := min a.e (-b).e
-    let isum : ℤ := (if a.s then -(a.m : ℤ) else (a.m : ℤ)) * 2 ^ (a.e - e_min).toNat +
-      (if (-b).s then -((-b).m : ℤ) else ((-b).m : ℤ)) * 2 ^ ((-b).e - e_min).toNat
-    isum.natAbs < 2 ^ FloatFormat.prec.toNat := by
+    (sterbenzAlignedDiffInt a b).natAbs < 2 ^ precNat := by
+  unfold sterbenzAlignedDiffInt sterbenzEMin
   simp only [FiniteFp.neg_def, ha, hb, Bool.false_eq_true, ↓reduceIte, Bool.not_false,
-    Int.neg_mul]
+    condNeg_false, condNeg_true, Int.neg_mul]
   set e_min := min a.e b.e
-  rw [← sub_eq_add_neg]
   have ha_bnd := a.valid.2.2.1
   have hb_bnd := b.valid.2.2.1
   -- Helper for the shifted-exponent cases
@@ -77,16 +83,16 @@ theorem sterbenz_aligned_diff_bound (a b : FiniteFp) (ha : a.s = false) (hb : b.
       (hy_nz : 0 < y.m)
       (h_half : (y.toVal : R) / 2 ≤ x.toVal) (hye_eq : y.e = x.e + 1) :
       y.m ≤ x.m := by
-    have hpow_pos : (0 : R) < (2 : R) ^ (y.e - FloatFormat.prec + 1) := by positivity
-    have key : (y.m : R) * (2 : R) ^ (y.e - FloatFormat.prec + 1) ≤
-        (x.m : R) * (2 : R) ^ (y.e - FloatFormat.prec + 1) := by
-      calc (y.m : R) * (2 : R) ^ (y.e - FloatFormat.prec + 1)
+    have hpow_pos : (0 : R) < (2 : R) ^ (y.e - prec + 1) := by positivity
+    have key : (y.m : R) * (2 : R) ^ (y.e - prec + 1) ≤
+        (x.m : R) * (2 : R) ^ (y.e - prec + 1) := by
+      calc (y.m : R) * (2 : R) ^ (y.e - prec + 1)
           = y.toVal := (FiniteFp.toVal_pos_eq (R := R) y hys).symm
         _ ≤ 2 * x.toVal := by linarith
-        _ = 2 * ((x.m : R) * (2 : R) ^ (x.e - FloatFormat.prec + 1)) := by
+        _ = 2 * ((x.m : R) * (2 : R) ^ (x.e - prec + 1)) := by
             rw [FiniteFp.toVal_pos_eq x hxs]
-        _ = (x.m : R) * (2 * (2 : R) ^ (x.e - FloatFormat.prec + 1)) := by ring
-        _ = (x.m : R) * (2 : R) ^ (y.e - FloatFormat.prec + 1) := by
+        _ = (x.m : R) * (2 * (2 : R) ^ (x.e - prec + 1)) := by ring
+        _ = (x.m : R) * (2 : R) ^ (y.e - prec + 1) := by
             congr 1; rw [mul_comm, ← zpow_add_one₀ (by norm_num : (2:R) ≠ 0)]; congr 1; omega
     exact_mod_cast le_of_mul_le_mul_right key hpow_pos
   rcases le_or_gt a.e b.e with hae_le | hae_gt
@@ -125,11 +131,11 @@ theorem sterbenz (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
   set e_min := min a.e (-b).e with e_min_def
   have hnb_e : (-b).e = b.e := by rw [FiniteFp.neg_def]
   have he_min_eq : e_min = min a.e b.e := by rw [e_min_def, hnb_e]
-  set isum : ℤ := (if a.s then -(a.m : ℤ) else (a.m : ℤ)) * 2 ^ (a.e - e_min).toNat +
-    (if (-b).s then -((-b).m : ℤ) else ((-b).m : ℤ)) * 2 ^ ((-b).e - e_min).toNat with isum_def
+  set isum : ℤ := condNeg a.s (a.m : ℤ) * 2 ^ (a.e - e_min).toNat +
+    condNeg (-b).s ((-b).m : ℤ) * 2 ^ ((-b).e - e_min).toNat with isum_def
   have hexact := fpAddFinite_exact_sum R a (-b)
   rw [FiniteFp.toVal_neg_eq_neg] at hexact
-  set e_base := e_min - FloatFormat.prec + 1 with e_base_def
+  set e_base := e_min - prec + 1 with e_base_def
   have hdiff_eq : (a.toVal : R) - b.toVal = (isum : R) * (2 : R) ^ e_base := by
     rw [e_base_def]; linarith
   -- Case split: is the difference zero?
@@ -151,16 +157,17 @@ theorem sterbenz (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
       have : (a.toVal : R) - b.toVal = 0 := by rw [hdiff_eq, hzero, Int.cast_zero, zero_mul]
       linarith
     have hbound := sterbenz_aligned_diff_bound (R := R) a b ha hb ha_nz hb_nz h_lb h_ub h_exp
-    simp only [hnb_e] at hbound
     set mag := isum.natAbs with mag_def
     have hmag_pos : 0 < mag := by rwa [mag_def, Int.natAbs_pos]
-    have hmag_bound : mag < 2 ^ FloatFormat.prec.toNat := by
-      simp only [mag_def, isum_def, e_min_def, hnb_e]; exact hbound
-    have he_lo : e_base ≥ FloatFormat.min_exp - FloatFormat.prec + 1 := by
+    have hmag_bound : mag < 2 ^ precNat := by
+      have hbound' : isum.natAbs < 2 ^ precNat := by
+        simpa [isum_def, sterbenzAlignedDiffInt, sterbenzEMin] using hbound
+      simpa [mag_def] using hbound'
+    have he_lo : e_base ≥ FloatFormat.min_exp - prec + 1 := by
       rw [e_base_def, he_min_eq]
       have : FloatFormat.min_exp ≤ min a.e b.e := le_min a.valid.1 b.valid.1
       omega
-    have he_hi : e_base + FloatFormat.prec - 1 ≤ FloatFormat.max_exp := by
+    have he_hi : e_base + prec - 1 ≤ FloatFormat.max_exp := by
       rw [e_base_def, he_min_eq]
       have : min a.e b.e ≤ FloatFormat.max_exp := le_trans (min_le_left _ _) a.valid.2.1; omega
     have hdiff_ne : (a.toVal : R) - b.toVal ≠ 0 := sub_ne_zero.mpr hdiff

@@ -14,6 +14,8 @@ The algorithm for adding two finite floats:
 section Add
 
 variable [FloatFormat]
+local notation "prec" => FloatFormat.prec
+local notation "precNat" => FloatFormat.prec.toNat
 
 /-- Add two finite floating-point numbers with the given rounding mode.
 
@@ -24,8 +26,8 @@ def fpAddFinite (mode : RoundingMode) (a b : FiniteFp) : Fp :=
   let e_min := min a.e b.e
   -- Align significands to common exponent e_min - prec + 1
   -- Each significand is shifted left by (its_e - e_min) bits
-  let sa : ℤ := (if a.s then -(a.m : ℤ) else (a.m : ℤ)) * 2^(a.e - e_min).toNat
-  let sb : ℤ := (if b.s then -(b.m : ℤ) else (b.m : ℤ)) * 2^(b.e - e_min).toNat
+  let sa : ℤ := condNeg a.s (a.m : ℤ) * 2^(a.e - e_min).toNat
+  let sb : ℤ := condNeg b.s (b.m : ℤ) * 2^(b.e - e_min).toNat
   let sum := sa + sb
   if sum = 0 then
     -- IEEE 754 signed zero rules:
@@ -40,7 +42,7 @@ def fpAddFinite (mode : RoundingMode) (a b : FiniteFp) : Fp :=
   else
     let sign := decide (sum < 0)
     let mag := sum.natAbs
-    roundIntSig mode sign mag (e_min - FloatFormat.prec + 1)
+    roundIntSig mode sign mag (e_min - prec + 1)
 
 /-- IEEE 754 floating-point addition with full special-case handling.
 
@@ -73,8 +75,8 @@ private theorem signed_zero_sign_comm (as bs : Bool) (mode : RoundingMode) :
 theorem fpAddFinite_comm (mode : RoundingMode) (a b : FiniteFp) :
     fpAddFinite mode a b = fpAddFinite mode b a := by
   simp only [fpAddFinite, min_comm a.e b.e, add_comm
-    ((if a.s = true then -(a.m : ℤ) else ↑a.m) * 2 ^ (a.e - min b.e a.e).toNat)
-    ((if b.s = true then -(b.m : ℤ) else ↑b.m) * 2 ^ (b.e - min b.e a.e).toNat),
+    (condNeg a.s (a.m : ℤ) * 2 ^ (a.e - min b.e a.e).toNat)
+    (condNeg b.s (b.m : ℤ) * 2 ^ (b.e - min b.e a.e).toNat),
     signed_zero_sign_comm a.s b.s mode]
 
 /-- fpAdd is commutative -/
@@ -100,13 +102,33 @@ theorem fpAdd_comm (mode : RoundingMode) (x y : Fp) :
 
 /-! ## Representation Lemma -/
 
+/-- Signed integer view of a finite float significand. -/
+abbrev finiteSignedInt (x : FiniteFp) : ℤ :=
+  condNeg x.s (x.m : ℤ)
+
+/-- Align a finite float's signed significand to exponent base `e_min`. -/
+abbrev alignedSignedInt (x : FiniteFp) (e_min : ℤ) : ℤ :=
+  finiteSignedInt x * 2 ^ (x.e - e_min).toNat
+
+/-- First aligned signed term in finite addition. -/
+abbrev addAlignedIntA (a b : FiniteFp) : ℤ :=
+  alignedSignedInt a (min a.e b.e)
+
+/-- Second aligned signed term in finite addition. -/
+abbrev addAlignedIntB (a b : FiniteFp) : ℤ :=
+  alignedSignedInt b (min a.e b.e)
+
+/-- Signed aligned integer sum for finite addition. -/
+abbrev addAlignedSumInt (a b : FiniteFp) : ℤ :=
+  addAlignedIntA a b + addAlignedIntB a b
+
 /-- The signed integer for a single operand, scaled by 2^(e_min - prec + 1), equals toVal.
     For operand `x` with `e_min ≤ x.e`:
     `(if x.s then -x.m else x.m) * 2^(x.e - e_min) * 2^(e_min - prec + 1) = x.toVal` -/
 theorem signed_int_mul_zpow_eq_toVal {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
     (x : FiniteFp) (e_min : ℤ) (he : e_min ≤ x.e) :
-    ((if x.s = true then -(x.m : ℤ) else (x.m : ℤ)) * 2^(x.e - e_min).toNat : ℤ) *
-      (2 : R)^(e_min - FloatFormat.prec + 1) = (x.toVal : R) := by
+    (condNeg x.s (x.m : ℤ) * 2^(x.e - e_min).toNat : ℤ) *
+      (2 : R)^(e_min - prec + 1) = (x.toVal : R) := by
   -- Expand toVal
   unfold FiniteFp.toVal FiniteFp.sign'
   rw [FloatFormat.radix_val_eq_two]
@@ -115,6 +137,7 @@ theorem signed_int_mul_zpow_eq_toVal {R : Type*} [Field R] [LinearOrder R] [IsSt
   -- RHS: (if s then -1 else 1) * m * 2^(e-p+1) in R
   -- Key: 2^(e-e_min) * 2^(e_min-p+1) = 2^(e-p+1) since (e-e_min) + (e_min-p+1) = e-p+1
   push_cast
+  unfold condNeg
   -- Now convert ↑(2^(x.e - e_min).toNat) to (2:R)^(x.e - e_min)
   have hnn : 0 ≤ x.e - e_min := by omega
   rw [show (x.e - e_min).toNat = (x.e - e_min).toNat from rfl]
@@ -122,25 +145,35 @@ theorem signed_int_mul_zpow_eq_toVal {R : Type*} [Field R] [LinearOrder R] [IsSt
   rw [Int.toNat_of_nonneg hnn]
   -- Now combine: 2^(x.e - e_min) * 2^(e_min - prec + 1) = 2^(x.e - prec + 1)
   -- Key: 2^(x.e - e_min) * 2^(e_min - prec + 1) = 2^(x.e - prec + 1)
-  have hexp : (2 : R) ^ (x.e - e_min) * (2 : R) ^ (e_min - FloatFormat.prec + 1) =
-      (2 : R) ^ (x.e - FloatFormat.prec + 1) := by
+  have hexp : (2 : R) ^ (x.e - e_min) * (2 : R) ^ (e_min - prec + 1) =
+      (2 : R) ^ (x.e - prec + 1) := by
     rw [two_zpow_mul]; congr 1; omega
-  split_ifs with hs <;> (rw [mul_assoc, hexp]; ring)
+  split_ifs with hs
+  · rw [mul_assoc, hexp]
+    simp [hs, mul_assoc, mul_left_comm, mul_comm]
+  · rw [mul_assoc, hexp]
+    simp [hs, mul_assoc, mul_left_comm, mul_comm]
 
 /-- The integer sum in fpAddFinite exactly represents `a.toVal + b.toVal`.
 
-`(a.toVal : R) + b.toVal = (sa + sb) * (2 : R)^(e_min - prec + 1)`
+`(a.toVal : R) + b.toVal =
+  addAlignedSumInt a b * (2 : R)^(min a.e b.e - prec + 1)`
 
 where `e_min = min a.e b.e`, `sa` and `sb` are the aligned signed integers. -/
 theorem fpAddFinite_exact_sum (R : Type*) [Field R] [LinearOrder R] [IsStrictOrderedRing R]
     (a b : FiniteFp) :
     (a.toVal : R) + b.toVal =
-    (((if a.s = true then -(a.m : ℤ) else (a.m : ℤ)) * 2^(a.e - min a.e b.e).toNat +
-      (if b.s = true then -(b.m : ℤ) else (b.m : ℤ)) * 2^(b.e - min a.e b.e).toNat : ℤ) : R) *
-    (2 : R)^(min a.e b.e - FloatFormat.prec + 1) := by
+    ((addAlignedSumInt a b : ℤ) : R) * (2 : R)^(min a.e b.e - prec + 1) := by
+  have ha :
+      ((addAlignedIntA a b : ℤ) : R) * (2 : R) ^ (min a.e b.e - prec + 1) =
+        (a.toVal : R) :=
+    signed_int_mul_zpow_eq_toVal a (min a.e b.e) (min_le_left _ _)
+  have hb :
+      ((addAlignedIntB a b : ℤ) : R) * (2 : R) ^ (min a.e b.e - prec + 1) =
+        (b.toVal : R) :=
+    signed_int_mul_zpow_eq_toVal b (min a.e b.e) (min_le_right _ _)
   rw [Int.cast_add, add_mul]
-  rw [← signed_int_mul_zpow_eq_toVal a (min a.e b.e) (min_le_left a.e b.e)]
-  rw [← signed_int_mul_zpow_eq_toVal b (min a.e b.e) (min_le_right a.e b.e)]
+  rw [← ha, ← hb]
 
 /-! ## fpAddFinite Correctness -/
 
@@ -156,14 +189,13 @@ theorem fpAddFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
   have hexact := fpAddFinite_exact_sum R a b
   -- Name the integer sum
   set e_min := min a.e b.e with e_min_def
-  set isum : ℤ := (if a.s = true then -(a.m : ℤ) else ↑a.m) * 2 ^ (a.e - e_min).toNat +
-    (if b.s = true then -(b.m : ℤ) else ↑b.m) * 2 ^ (b.e - e_min).toNat with isum_def
+  set isum : ℤ := addAlignedSumInt a b with isum_def
   -- The integer sum is nonzero
   have hsum_ne : isum ≠ 0 := by
     intro hzero
     apply hsum; rw [hexact, hzero, Int.cast_zero, zero_mul]
   -- Unfold fpAddFinite
-  simp only [fpAddFinite, isum_def.symm, e_min_def.symm]
+  simp only [fpAddFinite, e_min_def.symm]
   rw [if_neg hsum_ne]
   -- Now apply roundIntSig_correct
   have hmag_ne : isum.natAbs ≠ 0 := by rwa [Int.natAbs_ne_zero]

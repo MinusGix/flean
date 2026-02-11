@@ -21,6 +21,8 @@ the need for sticky-bit approximation (unlike division/sqrt).
 section FMA
 
 variable [FloatFormat]
+local notation "prec" => FloatFormat.prec
+local notation "precNat" => FloatFormat.prec.toNat
 
 /-- Fused multiply-add of three finite floating-point numbers.
 
@@ -28,12 +30,12 @@ The exact value `a.toVal × b.toVal + c.toVal` equals `sum × 2^(e_min - prec + 
 `sum` is the signed integer sum of the aligned product and addend significands. -/
 def fpFMAFinite (mode : RoundingMode) (a b c : FiniteFp) : Fp :=
   -- Product as a "virtual float": magnitude a.m * b.m, stored exponent prod_E
-  let prod_E := a.e + b.e - FloatFormat.prec + 1
+  let prod_E := a.e + b.e - prec + 1
   let e_min := min prod_E c.e
   -- Align signed significands to common exponent base e_min - prec + 1
-  let sp : ℤ := (if a.s ^^ b.s then -((a.m * b.m : ℕ) : ℤ) else ((a.m * b.m : ℕ) : ℤ)) *
+  let sp : ℤ := condNeg (a.s ^^ b.s) ((a.m * b.m : ℕ) : ℤ) *
     2^(prod_E - e_min).toNat
-  let sc : ℤ := (if c.s then -(c.m : ℤ) else (c.m : ℤ)) * 2^(c.e - e_min).toNat
+  let sc : ℤ := condNeg c.s (c.m : ℤ) * 2^(c.e - e_min).toNat
   let sum := sp + sc
   if sum = 0 then
     -- IEEE 754 signed zero rules (same as fpAdd):
@@ -48,7 +50,7 @@ def fpFMAFinite (mode : RoundingMode) (a b c : FiniteFp) : Fp :=
   else
     let sign := decide (sum < 0)
     let mag := sum.natAbs
-    roundIntSig mode sign mag (e_min - FloatFormat.prec + 1)
+    roundIntSig mode sign mag (e_min - prec + 1)
 
 /-- IEEE 754 floating-point fused multiply-add with full special-case handling.
 
@@ -88,48 +90,78 @@ def fpFMA (mode : RoundingMode) (x y z : Fp) : Fp :=
 
 /-! ## Representation Lemma -/
 
+/-- Stored exponent of the exact product `a * b` as a virtual finite float. -/
+abbrev fmaProdE (a b : FiniteFp) : ℤ :=
+  a.e + b.e - prec + 1
+
+/-- Common alignment exponent for the fused product-add sum. -/
+abbrev fmaEMin (a b c : FiniteFp) : ℤ :=
+  min (fmaProdE a b) c.e
+
+/-- Aligned signed integer term contributed by the product `a * b`. -/
+abbrev fmaAlignedProdInt (a b c : FiniteFp) : ℤ :=
+  condNeg (a.s ^^ b.s) ((a.m * b.m : ℕ) : ℤ) *
+    2 ^ (fmaProdE a b - fmaEMin a b c).toNat
+
+/-- Aligned signed integer term contributed by the addend `c`. -/
+abbrev fmaAlignedAddInt (a b c : FiniteFp) : ℤ :=
+  condNeg c.s (c.m : ℤ) * 2 ^ (c.e - fmaEMin a b c).toNat
+
+/-- Signed aligned integer sum for the exact fused product-add value. -/
+abbrev fmaAlignedSumInt (a b c : FiniteFp) : ℤ :=
+  fmaAlignedProdInt a b c + fmaAlignedAddInt a b c
+
 /-- The signed product `±(a.m * b.m)`, aligned to exponent `e_min` and scaled by
     `2^(e_min - prec + 1)`, equals `a.toVal * b.toVal`.
 
     This is the product analogue of `signed_int_mul_zpow_eq_toVal`. -/
 theorem signed_product_mul_zpow_eq_product {R : Type*} [Field R] [LinearOrder R]
     [IsStrictOrderedRing R]
-    (a b : FiniteFp) (e_min : ℤ) (he : e_min ≤ a.e + b.e - FloatFormat.prec + 1) :
-    ((if (a.s ^^ b.s) = true then -((a.m * b.m : ℕ) : ℤ) else ((a.m * b.m : ℕ) : ℤ)) *
-      2^(a.e + b.e - FloatFormat.prec + 1 - e_min).toNat : ℤ) *
-      (2 : R)^(e_min - FloatFormat.prec + 1) = (a.toVal : R) * b.toVal := by
+    (a b : FiniteFp) (e_min : ℤ) (he : e_min ≤ a.e + b.e - prec + 1) :
+    (condNeg (a.s ^^ b.s) ((a.m * b.m : ℕ) : ℤ) *
+      2^(a.e + b.e - prec + 1 - e_min).toNat : ℤ) *
+      (2 : R)^(e_min - prec + 1) = (a.toVal : R) * b.toVal := by
   -- Rewrite product via fpMulFinite_exact_product
   rw [fpMulFinite_exact_product (R := R) a b]
   unfold intSigVal
   push_cast
-  have hnn : 0 ≤ a.e + b.e - FloatFormat.prec + 1 - e_min := by omega
-  rw [← zpow_natCast (2 : R) (a.e + b.e - FloatFormat.prec + 1 - e_min).toNat,
+  unfold condNeg
+  have hnn : 0 ≤ a.e + b.e - prec + 1 - e_min := by omega
+  rw [← zpow_natCast (2 : R) (a.e + b.e - prec + 1 - e_min).toNat,
       Int.toNat_of_nonneg hnn]
-  have hexp : (2 : R) ^ (a.e + b.e - FloatFormat.prec + 1 - e_min) *
-      (2 : R) ^ (e_min - FloatFormat.prec + 1) =
-      (2 : R) ^ (a.e + b.e - 2 * FloatFormat.prec + 2) := by
+  have hexp : (2 : R) ^ (a.e + b.e - prec + 1 - e_min) *
+      (2 : R) ^ (e_min - prec + 1) =
+      (2 : R) ^ (a.e + b.e - 2 * prec + 2) := by
     rw [two_zpow_mul]; congr 1; omega
-  split_ifs with hs <;> rw [mul_assoc, hexp]
+  split_ifs with hs
+  · rw [mul_assoc, hexp]
+    simp [hs, mul_assoc, mul_left_comm, mul_comm]
+  · rw [mul_assoc, hexp]
+    simp [hs, mul_assoc, mul_left_comm, mul_comm]
 
 /-- The integer sum in fpFMAFinite exactly represents `a.toVal * b.toVal + c.toVal`.
 
-`(a.toVal : R) * b.toVal + c.toVal = (sp + sc) * (2 : R)^(e_min - prec + 1)`
+`(a.toVal : R) * b.toVal + c.toVal =
+  fmaAlignedSumInt a b c * (2 : R)^(fmaEMin a b c - prec + 1)`
 
 where `e_min = min (a.e + b.e - prec + 1) c.e`, `sp` is the aligned signed product,
 and `sc` is the aligned signed addend. -/
 theorem fpFMAFinite_exact_sum (R : Type*) [Field R] [LinearOrder R] [IsStrictOrderedRing R]
     (a b c : FiniteFp) :
     (a.toVal : R) * b.toVal + c.toVal =
-    (((if (a.s ^^ b.s) = true then -((a.m * b.m : ℕ) : ℤ) else ((a.m * b.m : ℕ) : ℤ)) *
-        2^(a.e + b.e - FloatFormat.prec + 1 - min (a.e + b.e - FloatFormat.prec + 1) c.e).toNat +
-      (if c.s = true then -(c.m : ℤ) else (c.m : ℤ)) *
-        2^(c.e - min (a.e + b.e - FloatFormat.prec + 1) c.e).toNat : ℤ) : R) *
-    (2 : R)^(min (a.e + b.e - FloatFormat.prec + 1) c.e - FloatFormat.prec + 1) := by
+    ((fmaAlignedSumInt a b c : ℤ) : R) * (2 : R)^(fmaEMin a b c - prec + 1) := by
+  have hprod :
+      ((fmaAlignedProdInt a b c : ℤ) : R) * (2 : R) ^ (fmaEMin a b c - prec + 1) =
+        (a.toVal : R) * b.toVal :=
+    signed_product_mul_zpow_eq_product a b (fmaEMin a b c)
+      (by simp [fmaEMin, fmaProdE])
+  have hadd :
+      ((fmaAlignedAddInt a b c : ℤ) : R) * (2 : R) ^ (fmaEMin a b c - prec + 1) =
+        (c.toVal : R) :=
+    signed_int_mul_zpow_eq_toVal c (fmaEMin a b c)
+      (by simp [fmaEMin, fmaProdE])
   rw [Int.cast_add, add_mul]
-  rw [← signed_product_mul_zpow_eq_product a b
-    (min (a.e + b.e - FloatFormat.prec + 1) c.e) (min_le_left _ _)]
-  rw [← signed_int_mul_zpow_eq_toVal c
-    (min (a.e + b.e - FloatFormat.prec + 1) c.e) (min_le_right _ _)]
+  rw [← hprod, ← hadd]
 
 /-! ## fpFMAFinite Correctness -/
 
@@ -144,20 +176,16 @@ theorem fpFMAFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
     fpFMAFinite mode a b c = mode.round ((a.toVal : R) * b.toVal + c.toVal) := by
   -- Get the exact sum representation
   have hexact := fpFMAFinite_exact_sum R a b c
-  -- Name the integer sum and exponent
-  set prod_E := a.e + b.e - FloatFormat.prec + 1 with prod_E_def
-  set e_min := min prod_E c.e with e_min_def
-  set isum : ℤ :=
-    (if (a.s ^^ b.s) = true then -((a.m * b.m : ℕ) : ℤ) else ((a.m * b.m : ℕ) : ℤ)) *
-      2 ^ (prod_E - e_min).toNat +
-    (if c.s = true then -(c.m : ℤ) else (c.m : ℤ)) *
-      2 ^ (c.e - e_min).toNat with isum_def
+  -- Name the aligned integer sum and base exponent
+  set e_min := fmaEMin a b c with e_min_def
+  set isum : ℤ := fmaAlignedSumInt a b c with isum_def
   -- The integer sum is nonzero
   have hsum_ne : isum ≠ 0 := by
     intro hzero
-    apply hsum; rw [hexact, hzero, Int.cast_zero, zero_mul]
+    apply hsum
+    rw [hexact, hzero, Int.cast_zero, zero_mul]
   -- Unfold fpFMAFinite
-  simp only [fpFMAFinite, isum_def.symm, e_min_def.symm, prod_E_def.symm]
+  simp only [fpFMAFinite, e_min_def.symm]
   rw [if_neg hsum_ne]
   -- Apply roundIntSig_correct
   have hmag_ne : isum.natAbs ≠ 0 := by rwa [Int.natAbs_ne_zero]
