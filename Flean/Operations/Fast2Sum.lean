@@ -324,10 +324,9 @@ theorem add_error_representable (mode : RoundingMode) (a b : FiniteFp)
   set k := (s_fp.e - e_min).toNat with k_def
   have hk_eq : (k : ℤ) = s_fp.e - e_min := Int.toNat_of_nonneg (by omega)
   have hs_toVal : (s_fp.toVal : R) = ((s_fp.m : ℤ) * 2 ^ k : ℤ) * (2 : R) ^ e₀ := by
-    have hexp : s_fp.e - prec + 1 = (s_fp.e - e_min) + e₀ := by linarith [e₀_def]
-    rw [FiniteFp.toVal_pos_eq s_fp hs_s, hexp, zpow_add₀ (by norm_num : (2:R) ≠ 0), ← mul_assoc]
-    congr 1
-    rw [show (s_fp.e - e_min : ℤ) = ↑k from hk_eq.symm, zpow_natCast]
+    rw [FiniteFp.toVal_factor_zpow (R := R) s_fp hs_s e₀,
+        show s_fp.e - prec + 1 - e₀ = s_fp.e - e_min from by omega,
+        show (s_fp.e - e_min : ℤ) = ↑k from hk_eq.symm, zpow_natCast]
     push_cast; ring
   -- Define integer error
   set r := isum - (s_fp.m : ℤ) * 2 ^ k with r_def
@@ -340,9 +339,7 @@ theorem add_error_representable (mode : RoundingMode) (a b : FiniteFp)
   -- |error| ≤ b.toVal, and b.toVal = b.m * 2^(b.e - e_min) * 2^e₀
   have hb_e_ge : b.e ≥ e_min := min_le_right a.e b.e
   have hb_factor : (b.toVal : R) = (b.m : R) * (2 : R) ^ ((b.e - e_min : ℤ)) * (2 : R) ^ e₀ := by
-    rw [FiniteFp.toVal_pos_eq b hb,
-        show b.e - prec + 1 = (b.e - e_min) + e₀ from by linarith [e₀_def],
-        zpow_add₀ (by norm_num : (2:R) ≠ 0), mul_assoc]
+    rw [FiniteFp.toVal_factor_zpow (R := R) b hb e₀, show b.e - prec + 1 - e₀ = b.e - e_min from by omega]
   have hr_abs_le : |(r : R)| ≤ (b.m : R) * (2 : R) ^ (b.e - e_min : ℤ) := by
     have herr_abs : |(a.toVal + b.toVal - s_fp.toVal : R)| ≤ b.toVal :=
       abs_le.mpr ⟨herr_ge_neg_b, herr_le_b⟩

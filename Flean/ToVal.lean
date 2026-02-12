@@ -333,6 +333,29 @@ theorem toVal_pos_eq [Field R] (x : FiniteFp) (hs : x.s = false) :
   rw [FloatFormat.radix_val_eq_two]
   simp [hs]
 
+/-- Factor a positive float's value on a coarser `2^e₀` grid:
+    `f.toVal = f.m * 2^(f.e - prec + 1 - e₀) * 2^e₀`.
+    Useful when aligning multiple floats onto the same power-of-two grid. -/
+theorem toVal_factor_zpow [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (f : FiniteFp) (hs : f.s = false) (e₀ : ℤ) :
+    toVal f (R := R) = (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1 - e₀) * (2 : R) ^ e₀ := by
+  conv_lhs => rw [toVal_pos_eq f hs,
+    show f.e - FloatFormat.prec + 1 = (f.e - FloatFormat.prec + 1 - e₀) + e₀ from by omega,
+    zpow_add₀ (by norm_num : (2:R) ≠ 0)]
+  exact (mul_assoc _ _ _).symm
+
+/-- A positive float's value is an integer multiple of `2^e₀` when its ULP exponent
+    `f.e - prec + 1` is at least `e₀`. Returns the integer coefficient. -/
+theorem toVal_int_mul_zpow [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (f : FiniteFp) (hs : f.s = false) (e₀ : ℤ) (he : e₀ ≤ f.e - FloatFormat.prec + 1) :
+    ∃ n : ℤ, toVal f (R := R) = (n : R) * (2 : R) ^ e₀ := by
+  set shift := (f.e - FloatFormat.prec + 1 - e₀).toNat
+  have hshift : (shift : ℤ) = f.e - FloatFormat.prec + 1 - e₀ := Int.toNat_of_nonneg (by omega)
+  refine ⟨(f.m : ℤ) * 2 ^ shift, ?_⟩
+  rw [toVal_factor_zpow (R := R) f hs e₀, show f.e - FloatFormat.prec + 1 - e₀ = ↑shift from hshift.symm,
+      zpow_natCast]
+  push_cast; ring
+
 /-! ### Binade bounds -/
 
 /-- Every positive finite float satisfies `toVal < 2^(e + 1)`. -/
