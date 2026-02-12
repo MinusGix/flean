@@ -436,6 +436,39 @@ theorem exists_finiteFp_of_nat_mul_zpow {R : Type*} [Field R] [LinearOrder R]
             (mag : R) * ((2 : R) ^ (1 : ℤ) * (2 : R) ^ (e_base - 1)) from by ring]
         rw [two_zpow_mul]; norm_num
 
+/-- Signed integer version: given `r : ℤ` with `r ≠ 0`, `|r| < 2^prec`, and valid exponent
+    bounds, there exists a `FiniteFp` whose value equals `r * 2^e_base`.
+
+    For `r > 0` the result has `s = false`; for `r < 0` it has `0 < m`.
+    Either way, `f.s = false ∨ 0 < f.m` holds, which is exactly the condition
+    needed for `round_idempotent`. -/
+theorem exists_finiteFp_of_int_mul_zpow {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] (r : ℤ) (e_base : ℤ)
+    (hr : r ≠ 0) (hr_bound : r.natAbs < 2 ^ FloatFormat.prec.toNat)
+    (he_lo : e_base ≥ FloatFormat.min_exp - FloatFormat.prec + 1)
+    (he_hi : e_base + FloatFormat.prec - 1 ≤ FloatFormat.max_exp) :
+    ∃ f : FiniteFp, (f.s = false ∨ 0 < f.m) ∧
+      (f.toVal : R) = (r : R) * (2 : R) ^ e_base := by
+  have hmag_pos : 0 < r.natAbs := Int.natAbs_pos.mpr hr
+  obtain ⟨g, hgs, hgv⟩ := exists_finiteFp_of_nat_mul_zpow (R := R) r.natAbs e_base
+    hmag_pos hr_bound he_lo he_hi
+  by_cases hr_pos : 0 < r
+  · -- Positive: use g directly
+    refine ⟨g, Or.inl hgs, ?_⟩
+    rw [hgv]; congr 1
+    rw [show (r.natAbs : R) = ((r.natAbs : ℤ) : R) from (Int.cast_natCast _).symm,
+        Int.natAbs_of_nonneg (le_of_lt hr_pos)]
+  · -- Negative: negate g
+    push_neg at hr_pos
+    have hr_neg : r < 0 := lt_of_le_of_ne hr_pos hr
+    have hg_pos : (0 : R) < g.toVal := by rw [hgv]; positivity
+    have hgm_pos : 0 < g.m := ((FiniteFp.toVal_pos_iff (R := R)).mpr hg_pos).2
+    refine ⟨-g, Or.inr (by rw [FiniteFp.neg_def]; exact hgm_pos), ?_⟩
+    rw [FiniteFp.toVal_neg_eq_neg, hgv, ← neg_mul]; congr 1
+    rw [show (r.natAbs : R) = ((r.natAbs : ℤ) : R) from (Int.cast_natCast _).symm,
+        Int.ofNat_natAbs_of_nonpos (le_of_lt hr_neg)]
+    push_cast; ring
+
 end Construction
 
 -- namespace InfFp

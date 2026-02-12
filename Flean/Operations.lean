@@ -9,3 +9,4 @@ import Flean.Operations.Sterbenz
 import Flean.Operations.MulPow2
 import Flean.Operations.ExactInt
 import Flean.Operations.DivPow2
+import Flean.Operations.Fast2Sum

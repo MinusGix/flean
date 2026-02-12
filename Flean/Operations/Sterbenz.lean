@@ -156,51 +156,23 @@ theorem sterbenz (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
       intro hzero; apply hdiff
       have : (a.toVal : R) - b.toVal = 0 := by rw [hdiff_eq, hzero, Int.cast_zero, zero_mul]
       linarith
-    have hbound := sterbenz_aligned_diff_bound (R := R) a b ha hb ha_nz hb_nz h_lb h_ub h_exp
-    set mag := isum.natAbs with mag_def
-    have hmag_pos : 0 < mag := by rwa [mag_def, Int.natAbs_pos]
-    have hmag_bound : mag < 2 ^ precNat := by
-      have hbound' : isum.natAbs < 2 ^ precNat := by
-        simpa [isum_def, sterbenzAlignedDiffInt, sterbenzEMin] using hbound
-      simpa [mag_def] using hbound'
+    have hisum_bound : isum.natAbs < 2 ^ precNat := by
+      simpa [isum_def, sterbenzAlignedDiffInt, sterbenzEMin] using
+        sterbenz_aligned_diff_bound (R := R) a b ha hb ha_nz hb_nz h_lb h_ub h_exp
     have he_lo : e_base ≥ FloatFormat.min_exp - prec + 1 := by
       rw [e_base_def, he_min_eq]
-      have : FloatFormat.min_exp ≤ min a.e b.e := le_min a.valid.1 b.valid.1
-      omega
+      have : FloatFormat.min_exp ≤ min a.e b.e := le_min a.valid.1 b.valid.1; omega
     have he_hi : e_base + prec - 1 ≤ FloatFormat.max_exp := by
       rw [e_base_def, he_min_eq]
       have : min a.e b.e ≤ FloatFormat.max_exp := le_trans (min_le_left _ _) a.valid.2.1; omega
     have hdiff_ne : (a.toVal : R) - b.toVal ≠ 0 := sub_ne_zero.mpr hdiff
-    by_cases hisum_pos : 0 < isum
-    · -- Positive difference
-      have hmag_eq : (a.toVal : R) - b.toVal = (mag : R) * (2 : R) ^ e_base := by
-        rw [hdiff_eq, mag_def]; congr 1
-        rw [show (isum.natAbs : R) = ((isum.natAbs : ℤ) : R) from (Int.cast_natCast _).symm,
-            Int.natAbs_of_nonneg (le_of_lt hisum_pos)]
-      obtain ⟨f, hfs, hfv⟩ := exists_finiteFp_of_nat_mul_zpow (R := R) mag e_base
-        hmag_pos hmag_bound he_lo he_hi
-      intro mode
-      refine ⟨f, ?_, by rw [hfv, hmag_eq]⟩
-      rw [fpSubFinite_correct (R := R) mode a b hdiff_ne,
-          show (a.toVal : R) - b.toVal = f.toVal from by rw [hfv, hmag_eq]]
-      exact round_idempotent (R := R) mode f (Or.inl hfs)
-    · -- Negative difference
-      push_neg at hisum_pos
-      have hisum_neg : isum < 0 := by omega
-      have hmag_eq : (a.toVal : R) - b.toVal = -((mag : R) * (2 : R) ^ e_base) := by
-        rw [hdiff_eq, mag_def]
-        rw [show (isum.natAbs : R) = ((isum.natAbs : ℤ) : R) from (Int.cast_natCast _).symm,
-            Int.ofNat_natAbs_of_nonpos (le_of_lt hisum_neg)]
-        push_cast; ring
-      obtain ⟨g, hgs, hgv⟩ := exists_finiteFp_of_nat_mul_zpow (R := R) mag e_base
-        hmag_pos hmag_bound he_lo he_hi
-      have hg_pos : (0 : R) < g.toVal := by rw [hgv]; positivity
-      have hgm_pos : 0 < g.m := ((FiniteFp.toVal_pos_iff (R := R)).mpr hg_pos).2
-      have hgv_neg : g.toVal (R := R) = -((a.toVal : R) - b.toVal) := by
-        rw [hgv]; linarith [hmag_eq]
-      intro mode
-      obtain ⟨hrnd, hval⟩ := round_neg_exact (R := R) mode _ g hgs hgm_pos hgv_neg
-      exact ⟨-g, by rw [fpSubFinite_correct (R := R) mode a b hdiff_ne]; exact hrnd, hval⟩
+    obtain ⟨f, hf_valid, hfv⟩ := exists_finiteFp_of_int_mul_zpow (R := R) isum e_base
+      hsum_ne hisum_bound he_lo he_hi
+    have hval_eq : (a.toVal : R) - b.toVal = f.toVal := hdiff_eq.trans hfv.symm
+    intro mode
+    refine ⟨f, ?_, hval_eq.symm⟩
+    rw [fpSubFinite_correct (R := R) mode a b hdiff_ne, hval_eq]
+    exact round_idempotent (R := R) mode f hf_valid
 
 /-! ## Corollaries -/
 
