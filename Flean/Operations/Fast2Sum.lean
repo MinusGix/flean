@@ -240,53 +240,24 @@ theorem add_error_representable (mode : RoundingMode) (a b : FiniteFp)
   have ha_normal : _root_.isNormal a.m := by
     by_contra h_not_normal
     have ha_sub := a.valid.2.2.2.resolve_left h_not_normal
-    -- isSubnormal: .1 = e = min_exp, .2 = m ≤ 2^(prec-1).toNat - 1
-    have ha_e : a.e = FloatFormat.min_exp := ha_sub.1
-    have hprec := FloatFormat.valid_prec
-    have ha_m_bound : a.m ≤ 2 ^ (FloatFormat.prec - 1).toNat - 1 := ha_sub.2
-    -- a subnormal means a.toVal < 2^min_exp
-    have ha_lt : (a.toVal : R) < (2 : R) ^ FloatFormat.min_exp := by
-      rw [FiniteFp.toVal_pos_eq a ha, ha_e]
-      have hm_lt : a.m < 2 ^ (FloatFormat.prec - 1).toNat := by omega
-      calc (a.m : R) * (2 : R) ^ (FloatFormat.min_exp - prec + 1)
-          < (2 : R) ^ (FloatFormat.prec - 1).toNat * (2 : R) ^ (FloatFormat.min_exp - prec + 1) := by
-            exact mul_lt_mul_of_pos_right (by exact_mod_cast hm_lt) (by positivity)
-        _ = (2 : R) ^ FloatFormat.min_exp := by
-            rw [← zpow_natCast (2 : R) ((FloatFormat.prec - 1).toNat),
-                Int.toNat_of_nonneg (show 0 ≤ prec - 1 from by have := FloatFormat.valid_prec; omega),
-                ← zpow_add₀ (show (2:R) ≠ 0 from by norm_num),
-                show (FloatFormat.prec - 1 : ℤ) + (FloatFormat.min_exp - FloatFormat.prec + 1) = FloatFormat.min_exp from by omega]
-    -- b is also subnormal (since b ≤ a)
+    -- b is also subnormal (since b.toVal ≤ a.toVal < 2^min_exp)
     have hb_not_normal : ¬_root_.isNormal b.m := by
       intro hb_norm
-      linarith [FiniteFp.toVal_normal_lower (R := R) b hb hb_norm,
+      linarith [FiniteFp.toVal_subnormal_lt (R := R) a ha ha_sub,
+                FiniteFp.toVal_normal_lower (R := R) b hb hb_norm,
                 zpow_le_zpow_right₀ (show (1:R) ≤ 2 from by norm_num) b.valid.1]
     have hb_sub := b.valid.2.2.2.resolve_left hb_not_normal
-    have hb_e : b.e = FloatFormat.min_exp := hb_sub.1
-    -- Construct exact sum float: (a.m + b.m) * 2^(min_exp - prec + 1) with sum < 2^prec
-    have hmag_pos : 0 < a.m + b.m := by omega
-    have hmag_bound : a.m + b.m < 2 ^ precNat := by
-      have ha_m : a.m < 2 ^ (FloatFormat.prec - 1).toNat := by have := ha_sub.2; omega
-      have hb_m : b.m < 2 ^ (FloatFormat.prec - 1).toNat := by have := hb_sub.2; omega
-      rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub] at ha_m hb_m
-      -- ha_m : a.m < 2^(precNat-1), hb_m : b.m < 2^(precNat-1)
-      have hp : 0 < precNat := by have := FloatFormat.valid_prec; omega
-      have hpow : 2 ^ (precNat - 1) + 2 ^ (precNat - 1) = 2 ^ precNat := by
-        set k := precNat - 1
-        have hk : precNat = k + 1 := by omega
-        rw [hk, pow_succ]; omega
+    -- Subnormal significands are < 2^(prec-1), so sum < 2^prec
+    have hfit : a.m + b.m < 2 ^ precNat := by
+      have := ha_sub.2; have := hb_sub.2
+      rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub] at *
+      have : 0 < precNat := by have := FloatFormat.valid_prec; omega
+      have : 2 ^ (precNat - 1) + 2 ^ (precNat - 1) = 2 ^ precNat := by
+        set k := precNat - 1; rw [show precNat = k + 1 from by omega, pow_succ]; omega
       omega
-    obtain ⟨g, hgs, hgv⟩ := exists_finiteFp_of_nat_mul_zpow (R := R) (a.m + b.m)
-      (FloatFormat.min_exp - prec + 1) hmag_pos hmag_bound
-      (by omega) (by have := FloatFormat.exp_order; omega)
-    have hgv_eq : (g.toVal : R) = a.toVal + b.toVal := by
-      rw [hgv, FiniteFp.toVal_pos_eq a ha, FiniteFp.toVal_pos_eq b hb, ha_e, hb_e]
-      push_cast; ring
-    -- By idempotence, round(a+b) = g, so error = 0, contradiction
-    have hround_g := round_idempotent (R := R) mode g (Or.inl hgs)
-    rw [hgv_eq] at hround_g
-    have : s_fp = g := Fp.finite.inj (by rw [← hs_correct, hround_g])
-    exact absurd (show (a.toVal : R) + b.toVal - s_fp.toVal = 0 by rw [this, hgv_eq]; ring) herr
+    obtain ⟨g, _, hgv, hround⟩ := subnormal_sum_exact (R := R) mode a b ha hb hb_nz.ne' ha_sub hb_sub hfit
+    have : s_fp = g := Fp.finite.inj (by rw [← hs_correct, hround])
+    exact absurd (show (a.toVal : R) + b.toVal - s_fp.toVal = 0 by rw [this, hgv]; ring) herr
   -- Step C: isNormalRange(a+b)
   have hNR : isNormalRange ((a.toVal : R) + b.toVal) := by
     constructor

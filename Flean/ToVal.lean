@@ -384,6 +384,22 @@ theorem toVal_normal_lower [Field R] [LinearOrder R] [IsStrictOrderedRing R]
             = (2 : R) ^ (FloatFormat.prec - 1).toNat := FloatFormat.pow_prec_sub_one_nat_int.symm
           _ ≤ (x.m : R) := by exact_mod_cast hn.1
 
+/-- A positive subnormal float satisfies `toVal < 2^min_exp`. -/
+theorem toVal_subnormal_lt [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (f : FiniteFp) (hs : f.s = false) (hsub : _root_.isSubnormal f.e f.m) :
+    toVal f (R := R) < (2 : R) ^ FloatFormat.min_exp := by
+  rw [toVal_pos_eq f hs, hsub.1]
+  have hm_lt : f.m < 2 ^ (FloatFormat.prec - 1).toNat := by
+    have := hsub.2; have : 0 < 2 ^ (FloatFormat.prec - 1).toNat := Nat.pos_of_ne_zero (by positivity); omega
+  calc (f.m : R) * (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1)
+      < (2 : R) ^ (FloatFormat.prec - 1).toNat * (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) :=
+        mul_lt_mul_of_pos_right (by exact_mod_cast hm_lt) (two_zpow_pos' _)
+    _ = (2 : R) ^ FloatFormat.min_exp := by
+        rw [← zpow_natCast, Int.toNat_of_nonneg (by have := FloatFormat.valid_prec; omega),
+            ← zpow_add₀ (by norm_num : (2:R) ≠ 0),
+            show FloatFormat.prec - 1 + (FloatFormat.min_exp - FloatFormat.prec + 1)
+              = FloatFormat.min_exp from by omega]
+
 def toRat (x : FiniteFp) : ℚ := x.toVal
 
 noncomputable

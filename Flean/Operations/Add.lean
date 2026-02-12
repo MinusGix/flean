@@ -204,4 +204,26 @@ theorem fpAddFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
   congr 1
   rw [intSigVal_eq_int_mul (R := R) hsum_ne, hexact]
 
+/-- When both positive operands are subnormal and their significands fit in one word,
+    rounding their sum in any mode returns their exact sum. -/
+theorem subnormal_sum_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    (mode : RoundingMode) (a b : FiniteFp)
+    (ha : a.s = false) (hb : b.s = false)
+    (hb_nz : b.m ≠ 0)
+    (ha_sub : isSubnormal a.e a.m) (hb_sub : isSubnormal b.e b.m)
+    (hfit : a.m + b.m < 2 ^ precNat) :
+    ∃ g : FiniteFp, g.s = false ∧
+      (g.toVal : R) = (a.toVal : R) + b.toVal ∧
+      mode.round ((a.toVal : R) + b.toVal) = Fp.finite g := by
+  have hmag_pos : 0 < a.m + b.m := by omega
+  obtain ⟨g, hgs, hgv⟩ := exists_finiteFp_of_nat_mul_zpow (R := R) (a.m + b.m)
+    (FloatFormat.min_exp - prec + 1) hmag_pos hfit
+    (by omega) (by have := FloatFormat.exp_order; omega)
+  have hgv_eq : (g.toVal : R) = a.toVal + b.toVal := by
+    rw [hgv, FiniteFp.toVal_pos_eq a ha, FiniteFp.toVal_pos_eq b hb, ha_sub.1, hb_sub.1]
+    push_cast; ring
+  have hround := round_idempotent (R := R) mode g (Or.inl hgs)
+  rw [hgv_eq] at hround
+  exact ⟨g, hgs, hgv_eq, hround⟩
+
 end Add
