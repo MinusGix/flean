@@ -515,7 +515,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
         have hbits_pos : bits_nat ≥ 1 := by omega
         calc (2 : R) ^ (FloatFormat.max_exp + 1)
             ≤ (2 : R) ^ (e_base + ↑bits_nat - 1) :=
-              zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2) hexp_bound
+              two_zpow_mono hexp_bound
           _ = (2 : R) ^ ((bits_nat - 1 : ℕ) : ℤ) * (2 : R) ^ e_base := by
               rw [two_zpow_mul]; congr 1
               have : ((bits_nat - 1 : ℕ) : ℤ) = (bits_nat : ℤ) - 1 := by omega
@@ -630,7 +630,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
         have hmag_ge : (mag : R) * (2 : R) ^ e_base ≥ (2 : R) ^ (FloatFormat.max_exp + 1) := by
           calc (2 : R) ^ (FloatFormat.max_exp + 1)
               ≤ (2 : R) ^ (e_base + ↑bits_nat - 1) :=
-                zpow_le_zpow_right₀ (by norm_num) hexp_bound
+                two_zpow_mono hexp_bound
             _ = (2 : R) ^ ((bits_nat - 1 : ℕ) : ℤ) * (2 : R) ^ e_base := by
                 rw [two_zpow_mul]; congr 1
                 have : bits_nat ≥ 1 := by omega
@@ -899,7 +899,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 rw [show (2 : R) ^ (bits_nat : ℕ) = (2 : R) ^ (bits_nat : ℤ) from
                   (zpow_natCast (2 : R) bits_nat).symm, ← two_zpow_mul]
             _ ≤ (2 : R) ^ (FloatFormat.max_exp + 1) := by
-                apply zpow_le_zpow_right₀ (by norm_num)
+                apply two_zpow_mono
                 have : e_ulp ≥ e_ulp_normal := le_max_left _ _
                 have hp := FloatFormat.prec_pos; omega
         -- FLOOR BRIDGE: ⌊val / 2^e_ulp⌋ = q (as ℤ)

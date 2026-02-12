@@ -43,7 +43,7 @@ theorem smallestPosSubnormal_half_lt_zpow_min_exp {R : Type*} [Field R] [LinearO
   have hstep1 : (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) / 2 < 2 ^ (FloatFormat.min_exp - FloatFormat.prec + 1) := by
     linarith
   have hstep2 : (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) ≤ 2 ^ FloatFormat.min_exp :=
-    zpow_le_zpow_right₀ (by norm_num) hexp_le
+    two_zpow_mono hexp_le
   linarith
 
 def smallestPosNormal : FiniteFp := ⟨
@@ -191,7 +191,7 @@ theorem finite_pos_le_largest {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
     have h_lt : f.e < FloatFormat.max_exp := lt_of_le_of_ne h_e_bound h_e
     have h_pow_le : ((2 : R) ^ (f.e - (FloatFormat.prec : ℤ) + 1) : R) ≤
                      ((2 : R) ^ (FloatFormat.max_exp - (FloatFormat.prec : ℤ) + 1) : R) := by
-      apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+      apply two_zpow_mono
       omega
     have h_m_le : (f.m : R) ≤ (2 : R) ^ FloatFormat.prec - 1 := by
       have h_nat_le : f.m ≤ 2^FloatFormat.prec.toNat - 1 := Nat.le_sub_one_of_lt h_m_bound

@@ -390,7 +390,7 @@ theorem ulp_har_eq_ulp [FloatFormat] (f : FiniteFp) (hn : _root_.isNormal f.m) :
 theorem ulp_har_le_ulp [FloatFormat] (f : FiniteFp) (hm : 0 < f.m) :
     (ulp_har f : R) ≤ ulp (FiniteFp.toVal f (R := R)) := by
   unfold ulp_har ulp; rw [if_neg (by omega : ¬f.m = 0)]; push_cast
-  apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+  apply two_zpow_mono
   rw [int_log_toVal_decompose' (R := R) f hm]; omega
 
 end Fp

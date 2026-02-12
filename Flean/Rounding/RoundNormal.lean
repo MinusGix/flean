@@ -265,7 +265,7 @@ theorem roundNormalDown_ge_zpow_min_exp (y : R) (h : isNormalRange y) :
   have hexp_ge := findExponentDown_min y
   calc (2 : R) ^ FloatFormat.min_exp
       ≤ (2 : R) ^ findExponentDown y := by
-          apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+          apply two_zpow_mono
           exact hexp_ge
     _ ≤ (roundNormalDown y h).toVal := roundNormalDown_ge_zpow_exp y h
 
@@ -312,7 +312,7 @@ theorem roundNormalDown_toVal_mono {x y : R} (hx : isNormalRange x) (hy : isNorm
       _ < (2 : R) ^ (Int.log 2 x + 1) := Int.lt_zpow_succ_log_self (by norm_num : 1 < 2) x
       _ = (2 : R) ^ (findExponentDown x + 1) := by rw [hex]
       _ ≤ (2 : R) ^ findExponentDown y := by
-          apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+          apply two_zpow_mono
           exact hexp_bound
       _ ≤ (roundNormalDown y hy).toVal := roundNormalDown_ge_zpow_exp y hy
 
@@ -653,7 +653,7 @@ theorem roundNormalUp_toVal_mono {x y : R} (hx : isNormalRange x) (hy : isNormal
     calc gx.toVal (R := R)
         ≤ (2 : R) ^ (findExponentDown x + 1) := roundNormalUp_toVal_le_zpow_succ hx hgx
       _ ≤ (2 : R) ^ findExponentDown y := by
-          apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2) hexp_bound
+          apply two_zpow_mono hexp_bound
       _ ≤ y := by rw [hey]; exact Int.zpow_log_le_self (by norm_num) hypos
       _ ≤ gy.toVal := roundNormalUp_ge y hy gy hgy
 

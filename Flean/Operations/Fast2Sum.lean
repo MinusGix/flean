@@ -15,9 +15,8 @@ is classically proven correct.
 section Fast2Sum
 
 variable [FloatFormat]
-variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
 local notation "prec" => FloatFormat.prec
-local notation "precNat" => FloatFormat.prec.toNat
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
 
 /-! ## Layer 1: Sterbenz conditions for `s - a`
 
@@ -80,7 +79,7 @@ theorem round_sum_le_double (mode : RoundingMode) (a b : FiniteFp)
         by rw [mul_comm, ← zpow_add_one₀ (by norm_num : (2 : R) ≠ 0)]
       linarith
     · -- a is subnormal: min_exp = max_exp, 2*a.m < 2^prec, so 2a representable
-      have hsub := a.valid.2.2.2.resolve_left ha_normal
+      have hsub := a.isNormal_or_isSubnormal.resolve_left ha_normal
       have hm_sub : a.m < 2 ^ (prec - 1).toNat := by omega
       have hprec := FloatFormat.valid_prec
       have h2m_bound : 2 * a.m < 2 ^ precNat := by
@@ -239,14 +238,14 @@ theorem add_error_representable (mode : RoundingMode) (a b : FiniteFp)
   -- Step B': Prove a is normal (subnormal sums are exact → error = 0)
   have ha_normal : _root_.isNormal a.m := by
     by_contra h_not_normal
-    have ha_sub := a.valid.2.2.2.resolve_left h_not_normal
+    have ha_sub := a.isNormal_or_isSubnormal.resolve_left h_not_normal
     -- b is also subnormal (since b.toVal ≤ a.toVal < 2^min_exp)
     have hb_not_normal : ¬_root_.isNormal b.m := by
       intro hb_norm
       linarith [FiniteFp.toVal_subnormal_lt (R := R) a ha ha_sub,
                 FiniteFp.toVal_normal_lower (R := R) b hb hb_norm,
-                zpow_le_zpow_right₀ (show (1:R) ≤ 2 from by norm_num) b.valid.1]
-    have hb_sub := b.valid.2.2.2.resolve_left hb_not_normal
+                two_zpow_mono (R := R) b.valid.1]
+    have hb_sub := b.isNormal_or_isSubnormal.resolve_left hb_not_normal
     -- Subnormal significands are < 2^(prec-1), so sum < 2^prec
     have hfit : a.m + b.m < 2 ^ precNat := by
       have := ha_sub.2; have := hb_sub.2
@@ -262,7 +261,7 @@ theorem add_error_representable (mode : RoundingMode) (a b : FiniteFp)
   have hNR : isNormalRange ((a.toVal : R) + b.toVal) := by
     constructor
     · calc (2 : R) ^ FloatFormat.min_exp
-          ≤ (2 : R) ^ a.e := zpow_le_zpow_right₀ (by norm_num : (1:R) ≤ 2) a.valid.1
+          ≤ (2 : R) ^ a.e := two_zpow_mono (R := R) a.valid.1
         _ ≤ a.toVal := FiniteFp.toVal_normal_lower (R := R) a ha ha_normal
         _ ≤ a.toVal + b.toVal := le_add_of_nonneg_right (le_of_lt hb_pos)
     · by_contra h_high; push_neg at h_high
@@ -289,7 +288,7 @@ theorem add_error_representable (mode : RoundingMode) (a b : FiniteFp)
     by_contra h; push_neg at h
     linarith [FiniteFp.toVal_normal_lower (R := R) a ha ha_normal,
               FiniteFp.toVal_lt_zpow_succ (R := R) s_fp hs_s,
-              zpow_le_zpow_right₀ (show (1:R) ≤ 2 from by norm_num) (show s_fp.e + 1 ≤ a.e by omega)]
+              two_zpow_mono (R := R) (show s_fp.e + 1 ≤ a.e by omega)]
   have he_min_le_s : e_min ≤ s_fp.e := le_trans (min_le_left _ _) ha_e_le_s
   -- Factor s_fp.toVal as integer * 2^e₀
   set k := (s_fp.e - e_min).toNat with k_def

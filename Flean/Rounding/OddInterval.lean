@@ -297,7 +297,7 @@ theorem overflow_threshold_outside_odd_interval {R : Type*} [Field R] [LinearOrd
     -- But n > 2^(prec+3) > 2^(prec+1). Contradiction.
     have ha_bound : a ≤ FloatFormat.prec + 1 := by omega
     have h2a_bound : (2 : R) ^ a ≤ (2 : R) ^ (FloatFormat.prec + 1) :=
-      zpow_le_zpow_right₀ (by norm_num : (1:R) ≤ 2) ha_bound
+      two_zpow_mono ha_bound
     have h2b_pos : (0 : R) < (2 : R) ^ b := zpow_pos (by norm_num) _
     -- 2^a - 2^b < 2^a ≤ 2^(prec+1)
     have hOT_E_lt : (2 : R) ^ a - (2 : R) ^ b < (2 : R) ^ (FloatFormat.prec + 1) :=

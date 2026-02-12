@@ -94,6 +94,9 @@ theorem FloatFormat.prec_sub_one_nonneg [FloatFormat] : 0 ≤ FloatFormat.prec -
 attribute [simp] FloatFormat.prec_pos FloatFormat.one_le_prec FloatFormat.one_lt_prec
 attribute [simp] FloatFormat.prec_sub_one_pos FloatFormat.prec_sub_one_nonneg
 
+/-- Precision as a natural number, for use in `Nat.pow` and `omega` goals. -/
+notation "precNat" => FloatFormat.prec.toNat
+
 -- ℕ-specific lemmas for working with toNat
 theorem FloatFormat.prec_toNat_pos [FloatFormat] : 0 < FloatFormat.prec.toNat := by
   have := FloatFormat.prec_pos
@@ -393,19 +396,24 @@ def TF32 : StdFloatFormat := {
 @[simp]
 theorem exp_order_le [FloatFormat] : min_exp ≤ max_exp := FloatFormat.exp_order.le
 
+/-- Monotonicity of `(2 : R) ^ ·`. Local copy for FloatFormat (which cannot import Util). -/
+private theorem two_zpow_mono {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    {a b : ℤ} (h : a ≤ b) : (2 : R) ^ a ≤ (2 : R) ^ b :=
+  zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2) h
+
 @[simp]
 theorem zpow_prec_ge_four [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : (4 : R) ≤ (2 : R)^FloatFormat.prec := by
   have hp := FloatFormat.valid_prec
   calc (4 : R) = (2 : R)^(2 : ℤ) := by norm_num
     _ ≤ (2 : R)^FloatFormat.prec := by
-        apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+        apply two_zpow_mono
         omega
 
 theorem zpow_prec_sub_one_ge_two [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : (2 : R) ≤ (2 : R)^(FloatFormat.prec - 1) := by
   have hp := FloatFormat.valid_prec
   calc (2 : R) = (2 : R)^(1 : ℤ) := by norm_num
     _ ≤ (2 : R)^(FloatFormat.prec - 1) := by
-        apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+        apply two_zpow_mono
         omega
 
 @[simp]
@@ -418,7 +426,7 @@ theorem zpow_neg_prec_plus_one_le_two [FloatFormat] {R : Type*} [Field R] [Linea
   : (2 : R)^(-FloatFormat.prec + 1) ≤ (2 : R) := by
   have hp := FloatFormat.valid_prec
   calc (2 : R)^(-FloatFormat.prec + 1) ≤ (2 : R)^(1 : ℤ) := by
-        apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+        apply two_zpow_mono
         omega
     _ = 2 := by norm_num
 
@@ -428,7 +436,7 @@ theorem zpow_min_exp_prec_plus_one_le_zpow_min_exp_sub_one
   [Field R] [LinearOrder R] [IsStrictOrderedRing R]
   [FloatFormat] : (2 : R)^(FloatFormat.min_exp - FloatFormat.prec + 1) ≤ (2 : R)^(FloatFormat.min_exp - 1) := by
   have h := FloatFormat.valid_prec
-  apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+  apply two_zpow_mono
   omega
 
 theorem zpow_min_exp_prec_plus_one_le_zpow_min_exp
@@ -437,7 +445,7 @@ theorem zpow_min_exp_prec_plus_one_le_zpow_min_exp
   [FloatFormat] : (2 : R)^(FloatFormat.min_exp - FloatFormat.prec + 1) ≤ (2 : R)^(FloatFormat.min_exp) := by
   have := zpow_min_exp_prec_plus_one_le_zpow_min_exp_sub_one (R := R)
   apply le_trans this
-  apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+  apply two_zpow_mono
   omega
 
 theorem zpow_prec_eq_natpow [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]

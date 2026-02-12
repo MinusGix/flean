@@ -146,6 +146,11 @@ theorem valid_min_exp_lt_imp_isNormal {x : FiniteFp} : FloatFormat.min_exp < x.e
   grind
 
 
+/-- Every finite float is either normal or subnormal. -/
+theorem isNormal_or_isSubnormal (x : FiniteFp) :
+    _root_.isNormal x.m ∨ _root_.isSubnormal x.e x.m :=
+  x.valid.2.2.2
+
 def isNormal (x : FiniteFp) : Prop := _root_.isNormal x.m
 
 def isSubnormal (x : FiniteFp) : Prop := _root_.isSubnormal x.e x.m

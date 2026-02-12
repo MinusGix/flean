@@ -10,9 +10,8 @@ occurs regardless of the rounding mode.
 section Sterbenz
 
 variable [FloatFormat]
-variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
 local notation "prec" => FloatFormat.prec
-local notation "precNat" => FloatFormat.prec.toNat
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
 
 /-! ## Sterbenz conditions imply exponent proximity -/
 
@@ -39,7 +38,7 @@ theorem sterbenz_exp_proximity (a b : FiniteFp) (ha : a.s = false) (hb : b.s = f
           _ = (2 : R) ^ ((b.e + 1) + 1) := two_mul_zpow _
           _ = (2 : R) ^ (b.e + 2) := by congr 1; ring
       linarith [(zpow_lt_zpow_iff_right₀ h2gt).mp this]
-    · linarith [(a.valid.2.2.2.resolve_left ha_normal).1, b.valid.1]
+    · linarith [(a.isNormal_or_isSubnormal.resolve_left ha_normal).1, b.valid.1]
   · -- b.e - 1 ≤ a.e
     by_cases hb_normal : _root_.isNormal b.m
     · have hb_div2 : (2 : R) ^ (b.e - 1) ≤ b.toVal / 2 := by
@@ -52,7 +51,7 @@ theorem sterbenz_exp_proximity (a b : FiniteFp) (ha : a.s = false) (hb : b.s = f
           _ ≤ a.toVal := h_lb
           _ < (2 : R) ^ (a.e + 1) := FiniteFp.toVal_lt_zpow_succ a ha
       linarith [(zpow_lt_zpow_iff_right₀ h2gt).mp this]
-    · linarith [(b.valid.2.2.2.resolve_left hb_normal).1, a.valid.1]
+    · linarith [(b.isNormal_or_isSubnormal.resolve_left hb_normal).1, a.valid.1]
 
 /-! ## Aligned difference bound -/
 

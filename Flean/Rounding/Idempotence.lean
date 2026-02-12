@@ -85,12 +85,12 @@ theorem findExponentDown_of_normal_toVal (f : FiniteFp) (hs : f.s = false) (hn :
   have hnr : isNormalRange (f.toVal (R := R)) := by
     constructor
     · calc (2 : R) ^ FloatFormat.min_exp
-          ≤ (2 : R) ^ f.e := zpow_le_zpow_right₀ (by norm_num) f.valid_min_exp
+          ≤ (2 : R) ^ f.e := two_zpow_mono f.valid_min_exp
         _ ≤ f.toVal := hbounds.1
     · calc f.toVal
           < (2 : R) ^ (f.e + 1) := hbounds.2
         _ ≤ (2 : R) ^ (FloatFormat.max_exp + 1) :=
-            zpow_le_zpow_right₀ (by norm_num) (by linarith [f.valid_max_exp])
+            two_zpow_mono (by linarith [f.valid_max_exp])
   rw [findExponentDown_normal _ hnr, Int_log_of_normal_toVal f hs hn]
 
 /-- The scaled significand of a normal positive float equals its significand:
@@ -113,12 +113,12 @@ private theorem toVal_normal_isNormalRange (f : FiniteFp) (hs : f.s = false) (hn
   have hbounds := toVal_normal_bounds (R := R) f hs hn
   constructor
   · calc (2 : R) ^ FloatFormat.min_exp
-        ≤ (2 : R) ^ f.e := zpow_le_zpow_right₀ (by norm_num) f.valid_min_exp
+        ≤ (2 : R) ^ f.e := two_zpow_mono f.valid_min_exp
       _ ≤ f.toVal := hbounds.1
   · calc f.toVal
         < (2 : R) ^ (f.e + 1) := hbounds.2
       _ ≤ (2 : R) ^ (FloatFormat.max_exp + 1) :=
-          zpow_le_zpow_right₀ (by norm_num) (by linarith [f.valid_max_exp])
+          two_zpow_mono (by linarith [f.valid_max_exp])
 
 /-- Rounding a normal positive float down gives back the same float. -/
 theorem roundNormalDown_of_normal_toVal (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m)
@@ -213,7 +213,7 @@ theorem roundDown_idempotent_nonneg (f : FiniteFp) (hs : f.s = false) (hm : 0 < 
   unfold roundDown findPredecessor
   simp only [ne_of_gt hfpos, ↓reduceDIte, hfpos, Fp.finite.injEq]
   unfold findPredecessorPos
-  rcases f.valid.2.2.2 with hnormal | hsubnormal
+  rcases f.isNormal_or_isSubnormal with hnormal | hsubnormal
   · -- Normal case
     have hnr := toVal_normal_isNormalRange (R := R) f hs hnormal
     have h_not_sub : ¬(f.toVal (R := R) < (2 : R) ^ FloatFormat.min_exp) := not_lt.mpr hnr.1
@@ -281,7 +281,7 @@ theorem roundUp_idempotent_nonneg (f : FiniteFp) (hs : f.s = false) (hm : 0 < f.
   unfold roundUp findSuccessor
   simp only [ne_of_gt hfpos, ↓reduceDIte, hfpos]
   unfold findSuccessorPos
-  rcases f.valid.2.2.2 with hnormal | hsubnormal
+  rcases f.isNormal_or_isSubnormal with hnormal | hsubnormal
   · -- Normal case
     have hnr := toVal_normal_isNormalRange (R := R) f hs hnormal
     have h_not_sub : ¬(f.toVal (R := R) < (2 : R) ^ FloatFormat.min_exp) := not_lt.mpr hnr.1
@@ -339,7 +339,7 @@ private theorem eq_zero_of_sign_false_m_zero (f : FiniteFp) (hs : f.s = false) (
     f = (0 : FiniteFp) := by
   ext
   · exact hs
-  · have := f.valid.2.2.2
+  · have := f.isNormal_or_isSubnormal
     rcases this with hn | hsub
     · exfalso
       have := hn.1
@@ -417,7 +417,7 @@ theorem toVal_abs_ge_smallest (f : FiniteFp) (hm : 0 < f.m) :
       _ ≤ (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
           apply mul_le_mul
           · exact_mod_cast hm
-          · exact zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+          · exact two_zpow_mono
               (by linarith [f.valid_min_exp])
           · exact le_of_lt (two_zpow_pos' _)
           · exact Nat.cast_nonneg _
@@ -442,7 +442,7 @@ theorem toVal_abs_ge_smallest (f : FiniteFp) (hm : 0 < f.m) :
       _ ≤ (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
           apply mul_le_mul
           · exact_mod_cast hm
-          · exact zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+          · exact two_zpow_mono
               (by linarith [f.valid_min_exp])
           · exact le_of_lt (two_zpow_pos' _)
           · exact Nat.cast_nonneg _

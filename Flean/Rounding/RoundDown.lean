@@ -109,10 +109,10 @@ theorem roundDown_gt_lff [FloatFormat] (x : R) (hn : 0 < x)
             have h1 : (0 : R) < (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) := zpow_pos (by norm_num) _
             have h2 : (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) ≤ 1 := by
               calc (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) ≤ (2 : R) ^ (0 : ℤ) :=
-                    zpow_le_zpow_right₀ (by norm_num) (by linarith [FloatFormat.valid_prec])
+                    two_zpow_mono (by linarith [FloatFormat.valid_prec])
                 _ = 1 := zpow_zero _
             linarith
-    have hnr : isNormalRange x := ⟨le_trans (le_trans (zpow_le_zpow_right₀ (by norm_num)
+    have hnr : isNormalRange x := ⟨le_trans (le_trans (two_zpow_mono
       (by linarith [FloatFormat.exp_order])) hlff_ge) (le_of_lt hgt), hge⟩
     unfold roundDown findPredecessor
     simp [ne_of_gt hn, hn]

@@ -314,11 +314,11 @@ theorem toVal_injective [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y :
       have hys : y.s = false := by rcases hy with hs | hm <;> [exact hs; omega]
       -- From validity: m = 0 → not normal → subnormal → e = min_exp
       have hxe : x.e = FloatFormat.min_exp := by
-        have := x.valid.2.2.2
+        have := x.isNormal_or_isSubnormal
         rw [hxm0] at this
         exact isSubnormal.zero_iff.mp (this.resolve_left (by simp [_root_.isNormal]))
       have hye : y.e = FloatFormat.min_exp := by
-        have := y.valid.2.2.2
+        have := y.isNormal_or_isSubnormal
         rw [hym0] at this
         exact isSubnormal.zero_iff.mp (this.resolve_left (by simp [_root_.isNormal]))
       rw [eq_def]

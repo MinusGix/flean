@@ -15,7 +15,6 @@ section Add
 
 variable [FloatFormat]
 local notation "prec" => FloatFormat.prec
-local notation "precNat" => FloatFormat.prec.toNat
 
 /-- Add two finite floating-point numbers with the given rounding mode.
 

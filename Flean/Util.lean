@@ -89,6 +89,12 @@ theorem two_zpow_ne_zero (n : ℤ) : (2 : R) ^ n ≠ 0 :=
 theorem two_zpow_pos' (n : ℤ) : (0 : R) < (2 : R) ^ n :=
   zpow_pos (by norm_num : (0 : R) < 2) n
 
+theorem two_zpow_mono {a b : ℤ} (h : a ≤ b) : (2 : R) ^ a ≤ (2 : R) ^ b :=
+  zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2) h
+
+theorem two_zpow_strict_mono {a b : ℤ} (h : a < b) : (2 : R) ^ a < (2 : R) ^ b :=
+  (zpow_lt_zpow_iff_right₀ (by norm_num : (1 : R) < 2)).mpr h
+
 end ZpowTwo
 
 -- Connecting `zpow` and `pow` of a sort

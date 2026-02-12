@@ -428,7 +428,7 @@ theorem roundUp_nat_mul_zpow_carry [FloatFormat]
         = (2 : R) ^ ((FloatFormat.prec - 1) + (FloatFormat.min_exp - FloatFormat.prec + 1)) := by
           congr 1; ring
       _ ≤ (2 : R) ^ ((FloatFormat.prec - 1) + e_ulp) := by
-          apply zpow_le_zpow_right₀ (by norm_num); omega
+          apply two_zpow_mono; omega
       _ = (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ e_ulp := by rw [two_zpow_mul]
       _ ≤ (q : R) * (2 : R) ^ e_ulp := by
           apply mul_le_mul_of_nonneg_right hq_ge_half (le_of_lt (zpow_pos (by norm_num) _))

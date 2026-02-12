@@ -22,7 +22,6 @@ section FMA
 
 variable [FloatFormat]
 local notation "prec" => FloatFormat.prec
-local notation "precNat" => FloatFormat.prec.toNat
 
 /-- Fused multiply-add of three finite floating-point numbers.
 
