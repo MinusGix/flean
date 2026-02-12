@@ -80,6 +80,27 @@ theorem RoundingMode.round_neg [FloatFormat] (mode : RoundingMode) (x : R) (hx :
   | NearestTiesToEven => exact rnEven_neg_eq_neg x hx
   | NearestTiesAwayFromZero => exact rnAway_neg_eq_neg x hx
 
+/-- All rounding modes are monotone: `x ≤ y → round(x) ≤ round(y)`. -/
+theorem RoundingMode.round_mono [FloatFormat] (mode : RoundingMode) {x y : R} (h : x ≤ y) :
+    mode.round x ≤ mode.round y := by
+  cases mode with
+  | Down => exact roundDown_mono h
+  | Up => exact roundUp_mono h
+  | TowardZero => exact roundTowardZero_mono h
+  | NearestTiesToEven => exact roundNearestTE_mono h
+  | NearestTiesAwayFromZero => exact roundNearestTA_mono h
+
+/-- For nearest modes, values at or above the overflow threshold round to positive infinity. -/
+theorem nearest_round_overflow [FloatFormat] (mode : RoundingMode) (x : R)
+    (hmode : mode = .NearestTiesToEven ∨ mode = .NearestTiesAwayFromZero)
+    (hx : FloatFormat.overflowThreshold R ≤ x) :
+    mode.round x = Fp.infinite false := by
+  cases hmode with
+  | inl hTE => subst hTE; simp only [RoundingMode.round, RoundingMode.toRoundingFunction]
+               exact rnEven_ge_inf _ hx
+  | inr hTA => subst hTA; simp only [RoundingMode.round, RoundingMode.toRoundingFunction]
+               exact rnAway_ge_inf _ hx
+
 end RoundingModes
 
 end Rounding

@@ -19,18 +19,6 @@ variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRin
 local notation "prec" => FloatFormat.prec
 local notation "precNat" => FloatFormat.prec.toNat
 
-/-! ## Layer 0: Rounding monotonicity -/
-
-/-- All rounding modes are monotone: `x ≤ y → round(x) ≤ round(y)`. -/
-theorem RoundingMode.round_mono (mode : RoundingMode) {x y : R} (h : x ≤ y) :
-    mode.round x ≤ mode.round y := by
-  cases mode with
-  | Down => exact roundDown_mono h
-  | Up => exact roundUp_mono h
-  | TowardZero => exact roundTowardZero_mono h
-  | NearestTiesToEven => exact roundNearestTE_mono h
-  | NearestTiesAwayFromZero => exact roundNearestTA_mono h
-
 /-! ## Layer 1: Sterbenz conditions for `s - a`
 
 For positive same-sign operands with `a ≥ b`, the rounded sum `s` satisfies
@@ -306,26 +294,10 @@ theorem add_error_representable (mode : RoundingMode) (a b : FiniteFp)
           ≤ (2 : R) ^ a.e := zpow_le_zpow_right₀ (by norm_num : (1:R) ≤ 2) a.valid.1
         _ ≤ a.toVal := FiniteFp.toVal_normal_lower (R := R) a ha ha_normal
         _ ≤ a.toVal + b.toVal := le_add_of_nonneg_right (le_of_lt hb_pos)
-    · by_contra h_high
-      push_neg at h_high
-      have h_ot_le : FloatFormat.overflowThreshold R ≤ (a.toVal : R) + b.toVal := by
-        have : FloatFormat.overflowThreshold R < (2 : R) ^ (FloatFormat.max_exp + 1) := by
-          unfold FloatFormat.overflowThreshold
-          have hcoef_lt : (2 : R) - (2 : R) ^ (1 - (prec : ℤ)) / 2 < 2 :=
-            sub_lt_self _ (div_pos (zpow_pos (by norm_num) _) (by norm_num : (0:R) < 2))
-          calc (2 - (2 : R) ^ (1 - (prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp
-              < 2 * (2 : R) ^ FloatFormat.max_exp :=
-                mul_lt_mul_of_pos_right hcoef_lt (zpow_pos (by norm_num) _)
-            _ = (2 : R) ^ (FloatFormat.max_exp + 1) := by
-                rw [mul_comm, ← zpow_add_one₀ (by norm_num : (2:R) ≠ 0)]
-        linarith
-      have h_inf : mode.round ((a.toVal : R) + b.toVal) = Fp.infinite false := by
-        cases hmode with
-        | inl hTE => subst hTE; simp only [RoundingMode.round, RoundingMode.toRoundingFunction]
-                     exact rnEven_ge_inf _ h_ot_le
-        | inr hTA => subst hTA; simp only [RoundingMode.round, RoundingMode.toRoundingFunction]
-                     exact rnAway_ge_inf _ h_ot_le
-      exact absurd (hs_correct ▸ h_inf) (by simp)
+    · by_contra h_high; push_neg at h_high
+      have h_ot_le : FloatFormat.overflowThreshold R ≤ (a.toVal : R) + b.toVal :=
+        le_of_lt (lt_of_lt_of_le FloatFormat.overflowThreshold_lt_zpow_max_exp_succ h_high)
+      exact absurd (hs_correct ▸ nearest_round_overflow mode _ hmode h_ot_le) (by simp)
   -- Step D: Error bound |error| ≤ b via helper + roundDown ≥ a
   set pred := findPredecessorPos ((a.toVal : R) + b.toVal) hval_pos with pred_def
   have hhelper := nearest_round_le_two_x_sub_pred mode _ hval_pos hNR hmode s_fp hs_correct

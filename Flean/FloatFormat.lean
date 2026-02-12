@@ -577,6 +577,19 @@ theorem zpow_max_exp_le_overflow_threshold [FloatFormat] {R : Type*} [Field R] [
   have hpos : (0 : R) < 2 ^ FloatFormat.max_exp := by positivity
   nlinarith
 
+/-- The overflow threshold is strictly below 2^(max_exp + 1) -/
+theorem overflowThreshold_lt_zpow_max_exp_succ [FloatFormat] {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] :
+    overflowThreshold R < (2 : R) ^ (FloatFormat.max_exp + 1) := by
+  unfold overflowThreshold
+  have hcoef_lt : (2 : R) - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2 < 2 :=
+    sub_lt_self _ (div_pos (zpow_pos (by norm_num) _) (by norm_num : (0:R) < 2))
+  calc (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp
+      < 2 * (2 : R) ^ FloatFormat.max_exp :=
+        mul_lt_mul_of_pos_right hcoef_lt (zpow_pos (by norm_num) _)
+    _ = (2 : R) ^ (FloatFormat.max_exp + 1) := by
+        rw [mul_comm, ← zpow_add_one₀ (by norm_num : (2:R) ≠ 0)]
+
 end FloatFormat
 
 namespace StdFloatFormat
