@@ -15,6 +15,13 @@ private inductive RoundingMode
   | NearestTiesAwayFromZero
 deriving DecidableEq
 
+private def RoundingMode.toPolicyKind : RoundingMode → RModePolicyKind
+  | .Down => .towardNeg
+  | .Up => .towardPos
+  | .TowardZero => .towardZero
+  | .NearestTiesToEven => .nearestEven
+  | .NearestTiesAwayFromZero => .nearestAway
+
 private def RoundingMode.conjugate : RoundingMode → RoundingMode
   | .Down => .Up
   | .Up => .Down
@@ -85,18 +92,7 @@ theorem shouldRoundUp_sign_conjugate (mode : RoundingMode) (q r shift : ℕ) :
 - Up: positive overflows to +∞, negative overflows to -largest finite
 - TowardZero: always produces ±largest finite -/
 def handleOverflow (mode : RoundingMode) (sign : Bool) : Fp :=
-  match mode with
-  | .Down =>
-    if sign then Fp.infinite true
-    else Fp.finite FiniteFp.largestFiniteFloat
-  | .Up =>
-    if sign then Fp.finite (-FiniteFp.largestFiniteFloat)
-    else Fp.infinite false
-  | .TowardZero =>
-    if sign then Fp.finite (-FiniteFp.largestFiniteFloat)
-    else Fp.finite FiniteFp.largestFiniteFloat
-  | .NearestTiesToEven => Fp.infinite sign
-  | .NearestTiesAwayFromZero => Fp.infinite sign
+  policyHandleOverflow mode.toPolicyKind sign
 
 -- Helper: if a < 2^b then a * 2^c < 2^(b + c)
 omit [FloatFormat] in
@@ -345,7 +341,8 @@ private theorem handleOverflow_eq_round_intSigVal
   cases sign
   · -- sign = false (positive)
     cases mode <;>
-      simp only [handleOverflow, Bool.false_eq_true, ↓reduceIte,
+      simp only [handleOverflow, RoundingMode.toPolicyKind, policyHandleOverflow,
+        Bool.false_eq_true, ↓reduceIte,
         intSigVal, RoundingMode.round, RoundingMode.toRoundingFunction]
     · exact (roundDown_gt_largestFiniteFloat _ hmag_pos hmag_ge).symm
     · exact (roundUp_gt_largestFiniteFloat _ hmag_pos hmag_gt_largest).symm
@@ -356,7 +353,7 @@ private theorem handleOverflow_eq_round_intSigVal
   · -- sign = true (negative)
     have hneg_val : -(↑mag : R) * (2:R) ^ e_base < 0 := by linarith
     cases mode <;>
-      simp only [handleOverflow, Bool.true_eq_false, ↓reduceIte,
+      simp only [handleOverflow, RoundingMode.toPolicyKind, policyHandleOverflow, ↓reduceIte,
         intSigVal, RoundingMode.round, RoundingMode.toRoundingFunction]
     · -- Down
       rw [neg_mul, roundDown_neg_eq_neg_roundUp _ (ne_of_gt hmag_pos),
