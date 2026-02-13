@@ -42,6 +42,7 @@ private def RoundingMode.round {R : Type*}
     [FloatFormat] (mode : RoundingMode) (x : R) : Fp :=
   mode.toRoundingFunction x
 
+omit [FloatFormat] in
 private theorem RoundingMode.round_neg {R : Type*}
     [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
     [FloatFormat] (mode : RoundingMode) (x : R) (hx : x ≠ 0) :
@@ -53,6 +54,7 @@ private theorem RoundingMode.round_neg {R : Type*}
   | NearestTiesToEven => exact rnEven_neg_eq_neg x hx
   | NearestTiesAwayFromZero => exact rnAway_neg_eq_neg x hx
 
+omit [FloatFormat] in
 private theorem RoundingMode.round_mono {R : Type*}
     [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
     [FloatFormat] (mode : RoundingMode) {x y : R} (h : x ≤ y) :
@@ -388,7 +390,7 @@ theorem round_idempotent (mode : RoundingMode) (f : FiniteFp)
 returns `Fp.finite (-g)` and `(-g).toVal = val`. Useful for extending positive-case exactness
 results to negative values via negation. -/
 theorem round_neg_exact (mode : RoundingMode) (val : R)
-    (g : FiniteFp) (hgs : g.s = false) (hgm : 0 < g.m)
+    (g : FiniteFp) (_hgs : g.s = false) (hgm : 0 < g.m)
     (hgv : g.toVal (R := R) = -val) :
     mode.round val = Fp.finite (-g) ∧ (-g).toVal (R := R) = val := by
   have hng_val : (-g).toVal (R := R) = val := by
@@ -398,6 +400,7 @@ theorem round_neg_exact (mode : RoundingMode) (val : R)
 /-- When the predecessor significand is `2^prec - 1` at the maximum exponent,
 the midpoint between the predecessor and its (overflowing) successor equals the
 nearest-mode overflow threshold `(2 - 2^(1-prec)/2) * 2^max_exp`. -/
+omit [FloorRing R] in
 private theorem mid_val_eq_overflow_threshold (q : ℕ) (e_ulp : ℤ)
     (hq_eq : q + 1 = 2 ^ FloatFormat.prec.toNat)
     (he_ulp : e_ulp = FloatFormat.max_exp - FloatFormat.prec + 1) :
@@ -783,7 +786,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
           · -- sign = true (negative)
             have hneg_val : -(↑mag : R) * (2:R) ^ e_base < 0 := by linarith
             cases mode <;>
-              simp only [handleOverflow, Bool.true_eq_false, ↓reduceIte,
+              simp only [handleOverflow, ↓reduceIte,
                 intSigVal, RoundingMode.round, RoundingMode.toRoundingFunction]
             · rw [neg_mul, roundDown_neg_eq_neg_roundUp _ (ne_of_gt hval_pos),
                   roundUp_gt_largestFiniteFloat _ hval_pos hmag_gt_lff]
@@ -848,7 +851,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
         have hru_false : roundUp_val = false := hru_exact hr0
         have hm_eq : m_rounded = q := by rw [hm_rounded_def]; simp [hru_false]
         have hno_carry : ¬(m_rounded ≥ 2 ^ FloatFormat.prec.toNat) := by omega
-        simp only [hno_carry, if_false, ite_false]
+        simp only [hno_carry, if_false]
         -- When r = 0 and q = 0, mag = 0 which contradicts hmag
         have hq_ne_zero : q ≠ 0 := by
           intro hq0; apply hmag
@@ -1043,7 +1046,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
             have hq_eq : q = 2 ^ FloatFormat.prec.toNat - 1 :=
               Nat.eq_sub_of_add_eq (Nat.le_antisymm hq_bound (by omega))
             -- m_rounded / 2 = 2^(prec-1), e_stored = e_ulp + 1 + prec - 1 = e_ulp + prec
-            simp only [hcarry, if_true, ite_true]
+            simp only [hcarry, if_true]
             -- m_rounded = 2^prec, so m_rounded / 2 = 2^(prec-1)
             have hm_eq2 : m_rounded = 2 ^ FloatFormat.prec.toNat := by omega
             have hm_div : m_rounded / 2 = 2 ^ (FloatFormat.prec.toNat - 1) := by
@@ -1103,7 +1106,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
               unfold shouldRoundUp at hru_ta
               simp only [show r ≠ 0 from by omega, ↓reduceIte,
                 show 2 ^ (shift_nat - 1) = half from rfl] at hru_ta
-              have hge_half : r ≥ half := by revert hru_ta; simp [decide_eq_true_eq, Nat.not_lt]
+              have hge_half : r ≥ half := by revert hru_ta; simp [decide_eq_true_eq]
               exact rnAway_ge_mid_roundUp _ mid_val pred_fp _ hval_pos hval_lt_thresh
                   hroundDown_eq hroundUp_carry (hmid_unfold _ (carry_float_toVal (R := R) q e_ulp (by omega) _ rfl rfl rfl))
                   (by rcases Nat.eq_or_lt_of_le hge_half with h | h
@@ -1122,7 +1125,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
               · simp only [hm_bridge.symm]; rw [h_TE_round rfl]; exact hroundUp_carry.symm  -- TE
               · simp only [hm_bridge.symm]; rw [h_TA_round rfl]; exact hroundUp_carry.symm  -- TA
             · -- sign = true
-              simp only [intSigVal, Bool.true_eq_false, ↓reduceIte]
+              simp only [intSigVal, ↓reduceIte]
               unfold shouldRoundUp at hru_val
               simp only [show r ≠ 0 from by omega, ↓reduceIte] at hru_val
               cases mode <;>
@@ -1149,7 +1152,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
             have hq1_bound : q + 1 < 2 ^ FloatFormat.prec.toNat := by omega
             have hno_carry_m : ¬(m_rounded ≥ 2 ^ FloatFormat.prec.toNat) := by omega
             have hno_carry_q1 : ¬(q + 1 ≥ 2 ^ FloatFormat.prec.toNat) := by omega
-            simp only [hno_carry_m, hm_eq, hno_carry_q1, if_false, ite_false, ↓reduceIte]
+            simp only [hm_eq, hno_carry_q1, ↓reduceIte]
             -- Goal: Fp.finite ⟨sign, e_ulp+prec-1, q+1, _⟩ = mode.round(intSigVal sign mag e_base)
             -- This is the roundUp direction. For sign=false, roundUp(val) gives q+1.
             -- For sign=true, -(roundUp(val)) = roundDown(-val) gives q+1.
@@ -1194,7 +1197,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
               unfold shouldRoundUp at hru_ta
               simp only [show r ≠ 0 from by omega, ↓reduceIte,
                 show 2 ^ (shift_nat - 1) = half from rfl] at hru_ta
-              have hge_half : r ≥ half := by revert hru_ta; simp [decide_eq_true_eq, Nat.not_lt]
+              have hge_half : r ≥ half := by revert hru_ta; simp [decide_eq_true_eq]
               exact rnAway_ge_mid_roundUp _ mid_val pred_fp _ hval_pos hval_lt_thresh
                   hroundDown_eq hroundUp_eq (hmid_unfold _ (no_carry_succ_toVal (R := R) q e_ulp _ rfl rfl rfl))
                   (by rcases Nat.eq_or_lt_of_le hge_half with h | h
@@ -1213,7 +1216,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
               · rw [h_TE_round rfl]; exact hroundUp_eq.symm  -- NearestTiesToEven
               · rw [h_TA_round rfl]; exact hroundUp_eq.symm  -- NearestTiesAwayFromZero
             · -- sign = true
-              simp only [intSigVal, Bool.true_eq_false, ↓reduceIte]
+              simp only [intSigVal, ↓reduceIte]
               unfold shouldRoundUp at hru_val
               simp only [show r ≠ 0 from by omega, ↓reduceIte] at hru_val
               cases mode <;>
@@ -1234,7 +1237,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
           have hm_eq : m_rounded = q := by rw [hm_rounded_def]; simp [hru]
           have hno_carry : ¬(m_rounded ≥ 2 ^ FloatFormat.prec.toNat) := by omega
           have hno_carry_q : ¬(q ≥ 2 ^ FloatFormat.prec.toNat) := by omega
-          simp only [hno_carry, hm_eq, hno_carry_q, if_false, ite_false, ↓reduceIte]
+          simp only [hm_eq, hno_carry_q, ↓reduceIte]
           -- Goal: Fp.finite ⟨sign, e_ulp+prec-1, q, _⟩ = mode.round(intSigVal sign mag e_base)
           -- The LHS matches roundDown(|val|) with sign, and shouldRoundUp=false means
           -- the mode picks this direction.
@@ -1289,7 +1292,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
               have hr_eq : r = half := by omega
               have hq_even : q % 2 = 0 := by
                 simp only [hr_not_gt, ite_false, show ¬(r < half) from hr_lt, ite_false] at hru_te
-                revert hru_te; simp [decide_eq_false_iff_not, not_not]
+                revert hru_te; simp [decide_eq_false_iff_not]
               have hq1_bound : q + 1 < 2 ^ FloatFormat.prec.toNat := by
                 by_contra h_ge; push_neg at h_ge
                 have hq_max : q = 2 ^ FloatFormat.prec.toNat - 1 := by omega
@@ -1315,7 +1318,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
             unfold shouldRoundUp at hru_ta
             simp only [show r ≠ 0 from by omega, ↓reduceIte,
               show 2 ^ (shift_nat - 1) = half from rfl] at hru_ta
-            have hr_lt : r < half := by revert hru_ta; simp [decide_eq_false_iff_not, Nat.not_le]
+            have hr_lt : r < half := by revert hru_ta; simp [decide_eq_false_iff_not]
             by_cases hq1 : q + 1 < 2 ^ FloatFormat.prec.toNat
             · have hroundUp_eq := roundUp_nat_mul_zpow (R := R) mag e_base e_ulp q
                 hmag hval_pos hval_lt_overflow hceil_bridge hint_log (by omega)
@@ -1360,7 +1363,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
             · exact (h_TE_round rfl).symm  -- NearestTiesToEven
             · exact (h_TA_round rfl).symm  -- NearestTiesAwayFromZero
           · -- sign = true
-            simp only [intSigVal, Bool.true_eq_false, ↓reduceIte]
+            simp only [intSigVal, ↓reduceIte]
             unfold shouldRoundUp at hru_val
             simp only [show r ≠ 0 from by omega, ↓reduceIte] at hru_val
             cases mode <;>
@@ -1392,6 +1395,7 @@ private def modeOfPolicyKind : RModePolicyKind → RoundingMode
   | .nearestEven => .NearestTiesToEven
   | .nearestAway => .NearestTiesAwayFromZero
 
+omit [FloatFormat] in
 private theorem shouldRoundUp_modeOfPolicyKind (k : RModePolicyKind)
     (sign : Bool) (q r shift : ℕ) :
     shouldRoundUp (modeOfPolicyKind k) sign q r shift =
@@ -1404,12 +1408,14 @@ private theorem handleOverflow_modeOfPolicyKind (k : RModePolicyKind)
       policyHandleOverflow k sign := by
   cases k <;> rfl
 
+omit [FloatFormat] in
 private theorem round_modeOfPolicyKind {R : Type*}
     [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
     [FloatFormat] (k : RModePolicyKind) (x : R) :
     (modeOfPolicyKind k).round x = policyRound R k x := by
   cases k <;> rfl
 
+omit [FloatFormat] in
 private theorem intSigVal_eq_global {R : Type*}
     [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
     [FloatFormat] (sign : Bool) (mag : ℕ) (e_base : ℤ) :
