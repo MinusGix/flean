@@ -1,6 +1,7 @@
 import Flean.Defs
 import Flean.CommonConstants
 import Flean.Rounding.Rounding
+import Flean.Rounding.ModeClass
 import Flean.Rounding.RoundDown
 import Flean.Rounding.RoundUp
 import Flean.Rounding.RoundNearest
@@ -182,6 +183,180 @@ def roundIntSig (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_base : ℤ) :
       let e_stored := e_ulp_final + FloatFormat.prec - 1
       if h_overflow2 : e_stored > FloatFormat.max_exp then
         handleOverflow mode sign
+      else
+        Fp.finite ⟨sign, e_stored, m_final, by
+          -- Need: IsValidFiniteVal e_stored m_final
+          -- First, get useful facts
+          set bits_nat := Nat.log2 mag + 1
+          have hmag_lt : mag < 2^bits_nat := Nat.lt_log2_self
+          have hmag_le : 2^(bits_nat - 1) ≤ mag := Nat.log2_self_le hmag
+          have he_ulp_ge_normal : e_ulp ≥ e_base + bits - FloatFormat.prec := le_max_left _ _
+          have he_ulp_ge_sub : e_ulp ≥ FloatFormat.min_exp - FloatFormat.prec + 1 := le_max_right _ _
+          have hshift_pos : shift > 0 := by omega
+          -- Key bound: q < 2^prec.toNat
+          have hq_bound : q < 2^FloatFormat.prec.toNat := by
+            have hsum : FloatFormat.prec.toNat + shift_nat ≥ bits_nat := by
+              have hp := FloatFormat.prec_pos; omega
+            rw [Nat.div_lt_iff_lt_mul (Nat.two_pow_pos shift_nat)]
+            calc mag < 2^bits_nat := hmag_lt
+              _ ≤ 2^(FloatFormat.prec.toNat + shift_nat) :=
+                Nat.pow_le_pow_right (by norm_num) hsum
+              _ = 2^FloatFormat.prec.toNat * 2^shift_nat := by rw [Nat.pow_add]
+          -- m_rounded bounds
+          have hm_rounded_le : m_rounded ≤ q + 1 := by
+            simp only [m_rounded]; split_ifs <;> omega
+          have hm_rounded_ge_q : m_rounded ≥ q := by
+            simp only [m_rounded]; split_ifs <;> omega
+          -- Case-split on the carry condition. First expand let-bindings so split_ifs can see the if.
+          show IsValidFiniteVal
+            ((if carry then e_ulp + 1 else e_ulp) + FloatFormat.prec - 1)
+            (if carry then m_rounded / 2 else m_rounded)
+          split_ifs with hcarry
+          · -- Carry case: m_final = m_rounded / 2, e_ulp_final = e_ulp + 1
+            -- m_rounded = 2^prec.toNat (since q < 2^prec and m_rounded ≤ q+1)
+            have hm_rounded_eq : m_rounded = 2^FloatFormat.prec.toNat := by omega
+            -- 2^prec / 2 = 2^(prec-1)
+            have hp := FloatFormat.prec_toNat_pos
+            have hm_div : m_rounded / 2 = 2^(FloatFormat.prec.toNat - 1) := by
+              rw [hm_rounded_eq]
+              have : (2 : ℕ)^FloatFormat.prec.toNat = 2 * 2^(FloatFormat.prec.toNat - 1) := by
+                conv_rhs => rw [mul_comm, ← Nat.pow_succ, Nat.succ_eq_add_one, Nat.sub_add_cancel hp]
+              omega
+            have hprec_eq : FloatFormat.prec.toNat - 1 = (FloatFormat.prec - 1).toNat :=
+              FloatFormat.prec_sub_one_toNat_eq_toNat_sub.symm
+            have hm_normal : isNormal (m_rounded / 2) := by
+              rw [hm_div, hprec_eq]; exact isNormal.sig_msb
+            have hm_lt : m_rounded / 2 < 2^FloatFormat.prec.toNat := by
+              rw [hm_div, hprec_eq]; exact FloatFormat.nat_two_pow_prec_sub_one_lt_two_pow_prec
+            have he_ge : e_ulp + 1 + FloatFormat.prec - 1 ≥ FloatFormat.min_exp := by
+              have := FloatFormat.valid_prec; omega
+            have he_le : e_ulp + 1 + FloatFormat.prec - 1 ≤ FloatFormat.max_exp := by omega
+            exact ⟨he_ge, he_le, hm_lt, Or.inl hm_normal⟩
+          · -- No-carry case: m_final = m_rounded, e_ulp_final = e_ulp
+            have hm_lt : m_rounded < 2^FloatFormat.prec.toNat := by omega
+            have he_ge : e_ulp + FloatFormat.prec - 1 ≥ FloatFormat.min_exp := by
+              have := FloatFormat.valid_prec; omega
+            have he_le : e_ulp + FloatFormat.prec - 1 ≤ FloatFormat.max_exp := by omega
+            have h4 : isNormal m_rounded ∨ isSubnormal (e_ulp + FloatFormat.prec - 1) m_rounded := by
+              by_cases hm_normal : 2^(FloatFormat.prec - 1).toNat ≤ m_rounded
+              · left; exact ⟨hm_normal, hm_lt⟩
+              · right
+                push_neg at hm_normal
+                constructor
+                · -- If normal branch dominated, q ≥ 2^(prec-1), contradiction
+                  by_contra h_ne
+                  have he_ulp_gt : e_ulp > FloatFormat.min_exp - FloatFormat.prec + 1 := by omega
+                  have he_ulp_eq : e_ulp = e_base + bits - FloatFormat.prec := by omega
+                  have hbits_nat_gt : bits_nat > FloatFormat.prec.toNat := by
+                    have := FloatFormat.prec_pos; omega
+                  have hshift_nat_eq : shift_nat = bits_nat - FloatFormat.prec.toNat := by
+                    have := FloatFormat.prec_pos; omega
+                  have hq_ge : q ≥ 2^(FloatFormat.prec - 1).toNat := by
+                    have hexp_sum : (FloatFormat.prec - 1).toNat + (bits_nat - FloatFormat.prec.toNat) = bits_nat - 1 := by
+                      have := FloatFormat.prec_pos; omega
+                    have hmul_le : 2 ^ (FloatFormat.prec - 1).toNat * 2 ^ shift_nat ≤ mag := by
+                      calc 2 ^ (FloatFormat.prec - 1).toNat * 2 ^ shift_nat
+                          = 2 ^ (FloatFormat.prec - 1).toNat * 2 ^ (bits_nat - FloatFormat.prec.toNat) := by rw [hshift_nat_eq]
+                        _ = 2 ^ ((FloatFormat.prec - 1).toNat + (bits_nat - FloatFormat.prec.toNat)) := by rw [Nat.pow_add]
+                        _ = 2 ^ (bits_nat - 1) := by rw [hexp_sum]
+                        _ ≤ mag := hmag_le
+                    exact (Nat.le_div_iff_mul_le (Nat.two_pow_pos shift_nat)).mpr hmul_le
+                  omega
+                · omega
+            exact ⟨he_ge, he_le, hm_lt, h4⟩⟩
+
+/-- Typeclass-driven `roundIntSig`, using contextual `RModeExec`.
+
+This is operationally the same algorithm as `roundIntSig`, but obtains tie and
+overflow behavior through `RModeExec` instead of a value-level
+`RoundingMode` argument. -/
+def roundIntSigM [RModeExec]
+    (sign : Bool) (mag : ℕ) (e_base : ℤ) : Fp :=
+  if hmag : mag = 0 then
+    -- Zero result: preserve sign for signed zero
+    Fp.finite (if sign then -0 else 0)
+  else
+    -- Step 1: bit-length of mag
+    let bits : ℤ := (Nat.log2 mag + 1 : ℕ)
+    -- Step 2: ULP exponent, clamped for subnormals
+    -- In the normal case, we want the ULP step to be 2^(e_base + bits - prec)
+    -- For subnormals, the minimum ULP step is 2^(min_exp - prec + 1)
+    let e_ulp_normal := e_base + bits - FloatFormat.prec
+    let e_ulp_subnormal := FloatFormat.min_exp - FloatFormat.prec + 1
+    let e_ulp := max e_ulp_normal e_ulp_subnormal
+    -- Step 3: shift = number of bits to discard
+    let shift := e_ulp - e_base
+    if h_exact : shift ≤ 0 then
+      -- No rounding needed: the value is exactly representable (or needs left-shift)
+      let m := mag * 2^(-shift).toNat
+      let e_stored := e_ulp + FloatFormat.prec - 1
+      if h_overflow : e_stored > FloatFormat.max_exp then
+        RModeExec.handleOverflow sign
+      else
+        Fp.finite ⟨sign, e_stored, m, by
+          -- Need: IsValidFiniteVal e_stored m
+          -- Abbreviations for ℕ versions
+          set bits_nat := Nat.log2 mag + 1
+          have hmag_lt : mag < 2^bits_nat := Nat.lt_log2_self
+          have hmag_le : 2^(bits_nat - 1) ≤ mag := Nat.log2_self_le hmag
+          -- e_ulp ≥ both branches of the max
+          have he_ulp_ge_normal : e_ulp ≥ e_base + bits - FloatFormat.prec := le_max_left _ _
+          have he_ulp_ge_sub : e_ulp ≥ FloatFormat.min_exp - FloatFormat.prec + 1 := le_max_right _ _
+          -- bits_nat + (-shift).toNat ≤ prec.toNat
+          have hsum : bits_nat + (-shift).toNat ≤ FloatFormat.prec.toNat := by
+            have hp := FloatFormat.prec_pos; omega
+          -- Conjunct 3: m < 2^prec.toNat
+          have hm_bound : m < 2^FloatFormat.prec.toNat :=
+            exact_branch_m_bound hmag_lt hsum
+          -- Conjunct 1: e_stored ≥ min_exp
+          have he_ge_min : e_stored ≥ FloatFormat.min_exp := by
+            have hp := FloatFormat.valid_prec; omega
+          -- Conjunct 2: e_stored ≤ max_exp
+          have he_le_max : e_stored ≤ FloatFormat.max_exp := by omega
+          -- Conjunct 4: isNormal m ∨ isSubnormal e_stored m
+          have h4 : isNormal m ∨ isSubnormal e_stored m := by
+            by_cases hm_normal : 2^(FloatFormat.prec - 1).toNat ≤ m
+            · -- Normal case: 2^(prec-1) ≤ m
+              left; exact ⟨hm_normal, hm_bound⟩
+            · -- Subnormal case: m < 2^(prec-1)
+              right
+              push_neg at hm_normal
+              constructor
+              · -- e_stored = min_exp
+                -- If the normal term dominated the max, then m ≥ 2^(prec-1), contradiction.
+                by_contra h_ne
+                have he_gt : e_stored > FloatFormat.min_exp := by omega
+                -- So e_ulp > min_exp - prec + 1, meaning the normal branch won the max
+                have he_ulp_eq : e_ulp = e_base + bits - FloatFormat.prec := by omega
+                have hshift_eq : shift = bits - FloatFormat.prec := by omega
+                have hneg_shift : (-shift).toNat = (FloatFormat.prec - bits).toNat := by omega
+                have hexp_sum : bits_nat - 1 + (-shift).toNat = (FloatFormat.prec - 1).toNat := by
+                  have hp := FloatFormat.prec_pos; omega
+                have : m ≥ 2^(FloatFormat.prec - 1).toNat := by
+                  calc 2^(FloatFormat.prec - 1).toNat
+                      = 2^(bits_nat - 1 + (-shift).toNat) := by rw [hexp_sum]
+                    _ ≤ mag * 2^(-shift).toNat := nat_le_mul_pow2 hmag_le
+                omega
+              · -- m ≤ 2^(prec-1).toNat - 1
+                omega
+          exact ⟨he_ge_min, he_le_max, hm_bound, h4⟩⟩
+    else
+      -- Step 4: Euclidean division to extract quotient and remainder
+      let shift_nat := shift.toNat
+      let divisor := 2^shift_nat
+      let q := mag / divisor
+      let r := mag % divisor
+      -- Step 5: Rounding decision
+      let roundUp := RModeExec.shouldRoundUp sign q r shift_nat
+      let m_rounded := if roundUp then q + 1 else q
+      -- Step 6: Handle significand overflow (carry into next binade)
+      let carry := m_rounded ≥ 2^FloatFormat.prec.toNat
+      let m_final := if carry then m_rounded / 2 else m_rounded
+      let e_ulp_final := if carry then e_ulp + 1 else e_ulp
+      -- Step 7: Compute stored exponent and check for overflow
+      let e_stored := e_ulp_final + FloatFormat.prec - 1
+      if h_overflow2 : e_stored > FloatFormat.max_exp then
+        RModeExec.handleOverflow sign
       else
         Fp.finite ⟨sign, e_stored, m_final, by
           -- Need: IsValidFiniteVal e_stored m_final
@@ -1360,13 +1535,52 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
               rw [neg_mul, rnAway_neg_eq_neg _ hval_ne, h_TA_round rfl, Fp.neg_finite]
               simp [FiniteFp.neg_def, hpred_fp_def]
 
+/-- Semantic contract for `roundIntSigM`: execution policy agrees with `RMode.round`. -/
+class RoundIntSigMSound (R : Type*) [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] [FloorRing R] [FloatFormat] [RMode R] [RModeExec] : Prop where
+  roundIntSigM_correct :
+    ∀ (sign : Bool) (mag : ℕ) (e_base : ℤ), mag ≠ 0 →
+      roundIntSigM sign mag e_base =
+        RMode.round (R := R) (intSigVal (R := R) sign mag e_base)
+
+/-- Value-level compatibility: any `RoundingMode` induces a sound contextual dictionary. -/
+theorem roundIntSigMSound_of_mode (mode : RoundingMode) :
+    letI : RMode R := rModeOf mode R
+    letI : RModeExec := rModeExecOf mode
+    RoundIntSigMSound R := by
+  letI : RMode R := rModeOf mode R
+  letI : RModeExec := rModeExecOf mode
+  refine ⟨?_⟩
+  intro sign mag e_base hmag
+  simpa [rModeOf, rModeExecOf, shouldRoundUpMode, handleOverflowMode, RMode.round] using
+    (roundIntSig_correct (R := R) mode sign mag e_base hmag)
+
+/-- Generic correctness theorem for `roundIntSigM` under a sound execution policy. -/
+theorem roundIntSigM_correct_tc [RMode R] [RModeExec]
+    [RoundIntSigMSound R]
+    (sign : Bool) (mag : ℕ) (e_base : ℤ) (hmag : mag ≠ 0) :
+    roundIntSigM sign mag e_base =
+      RMode.round (R := R) (intSigVal (R := R) sign mag e_base) := by
+  simpa using (RoundIntSigMSound.roundIntSigM_correct (R := R) sign mag e_base hmag)
+
+/-- Value-level compatibility theorem for existing callsites. -/
+theorem roundIntSigM_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_base : ℤ)
+    (hmag : mag ≠ 0) :
+    @roundIntSigM _ (rModeExecOf mode) sign mag e_base =
+      mode.round (intSigVal (R := R) sign mag e_base) := by
+  letI : RMode R := rModeOf mode R
+  letI : RModeExec := rModeExecOf mode
+  letI : RoundIntSigMSound R := roundIntSigMSound_of_mode (R := R) mode
+  simpa [RMode.round] using
+    (roundIntSigM_correct_tc (R := R) sign mag e_base hmag)
+
 end roundIntSig_correctness
 
 /-! ## Sticky-Bit Rounding Lemma
 
 When an operation computes an integer quotient `q` with nonzero remainder (Euclidean division
 for Div, integer sqrt for Sqrt), the standard technique is to form `mag = 2*q + 1` (odd,
-with sticky LSB) and feed it to `roundIntSig`. This theorem packages the common proof that
+with sticky LSB) and feed it to `roundIntSigM`. This theorem packages the common proof that
 the sticky value rounds identically to the exact value, handling both sign cases. -/
 
 section sticky_roundIntSig
@@ -1441,11 +1655,16 @@ theorem sticky_roundIntSig_eq_round_pos
     (hq_lower : 2 ^ (FloatFormat.prec.toNat + 2) ≤ q)
     (abs_exact : R)
     (h_exact_in : inStickyInterval (R := R) q e_base abs_exact) :
-    roundIntSig mode false (stickyMag q) e_base = mode.round abs_exact := by
+    @roundIntSigM _ (rModeExecOf mode) false (stickyMag q) e_base =
+      mode.round abs_exact := by
+  letI : RMode R := rModeOf mode R
+  letI : RModeExec := rModeExecOf mode
+  letI : RoundIntSigMSound R := roundIntSigMSound_of_mode (R := R) mode
   have hmag_ne : stickyMag q ≠ 0 := by
     unfold stickyMag
     omega
-  rw [roundIntSig_correct (R := R) mode false (stickyMag q) e_base hmag_ne]
+  rw [roundIntSigM_correct_tc (R := R) false (stickyMag q) e_base hmag_ne]
+  change mode.round (intSigVal (R := R) false (stickyMag q) e_base) = mode.round abs_exact
   have hsv : intSigVal (R := R) false (stickyMag q) e_base = stickyAbs (R := R) q e_base := by
     unfold intSigVal stickyAbs
     simp [stickyMag]
@@ -1458,11 +1677,16 @@ private theorem sticky_roundIntSig_eq_round_neg
     (hq_lower : 2 ^ (FloatFormat.prec.toNat + 2) ≤ q)
     (abs_exact : R)
     (h_exact_in : inStickyInterval (R := R) q e_base abs_exact) :
-    roundIntSig mode true (stickyMag q) e_base = mode.round (-abs_exact) := by
+    @roundIntSigM _ (rModeExecOf mode) true (stickyMag q) e_base =
+      mode.round (-abs_exact) := by
+  letI : RMode R := rModeOf mode R
+  letI : RModeExec := rModeExecOf mode
+  letI : RoundIntSigMSound R := roundIntSigMSound_of_mode (R := R) mode
   have hmag_ne : stickyMag q ≠ 0 := by
     unfold stickyMag
     omega
-  rw [roundIntSig_correct (R := R) mode true (stickyMag q) e_base hmag_ne]
+  rw [roundIntSigM_correct_tc (R := R) true (stickyMag q) e_base hmag_ne]
+  change mode.round (intSigVal (R := R) true (stickyMag q) e_base) = mode.round (-abs_exact)
   have hsv : intSigVal (R := R) true (stickyMag q) e_base = -stickyAbs (R := R) q e_base := by
     unfold intSigVal stickyAbs stickyMag
     simp
@@ -1493,7 +1717,7 @@ private theorem sticky_roundIntSig_eq_round_neg
 
 /-- Sticky-bit rounding correctness: when `q ≥ 2^(prec+2)` and `|exact_val|` lies in
     the open interval `(2q · 2^e_base, 2(q+1) · 2^e_base)`, then
-    `roundIntSig mode sign (2*q+1) e_base = mode.round (±|exact_val|)`.
+    `roundIntSigM sign (2*q+1) e_base = mode.round (±|exact_val|)`.
 
     This factors the shared scaffolding from Div and Sqrt's sticky cases:
     odd-interval argument, positive-core theorem, and sign transport. -/
@@ -1502,7 +1726,7 @@ theorem sticky_roundIntSig_eq_round
     (hq_lower : 2 ^ (FloatFormat.prec.toNat + 2) ≤ q)
     (abs_exact : R)
     (h_exact_in : inStickyInterval (R := R) q e_base abs_exact) :
-    roundIntSig mode sign (2 * q + 1) e_base =
+    @roundIntSigM _ (rModeExecOf mode) sign (2 * q + 1) e_base =
       mode.round (if sign then -abs_exact else abs_exact) := by
   cases sign with
   | false =>

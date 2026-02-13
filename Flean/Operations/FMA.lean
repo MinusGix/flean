@@ -49,7 +49,8 @@ def fpFMAFinite (mode : RoundingMode) (a b c : FiniteFp) : Fp :=
   else
     let sign := decide (sum < 0)
     let mag := sum.natAbs
-    roundIntSig mode sign mag (e_min - prec + 1)
+    letI : RModeExec := rModeExecOf mode
+    roundIntSigM sign mag (e_min - prec + 1)
 
 /-- IEEE 754 floating-point fused multiply-add with full special-case handling.
 
@@ -186,9 +187,15 @@ theorem fpFMAFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
   -- Unfold fpFMAFinite
   simp only [fpFMAFinite, e_min_def.symm]
   rw [if_neg hsum_ne]
-  -- Apply roundIntSig_correct
+  -- Apply generic roundIntSigM correctness
   have hmag_ne : isum.natAbs ≠ 0 := by rwa [Int.natAbs_ne_zero]
-  rw [roundIntSig_correct (R := R) mode _ _ _ hmag_ne]
+  have hround :
+      @roundIntSigM _ (rModeExecOf mode) (decide (isum < 0)) isum.natAbs (e_min - prec + 1) =
+        mode.round (intSigVal (R := R) (decide (isum < 0)) isum.natAbs (e_min - prec + 1)) := by
+    simpa using
+      (roundIntSigM_correct (R := R) mode
+        (decide (isum < 0)) isum.natAbs (e_min - prec + 1) hmag_ne)
+  rw [hround]
   -- Show the arguments to mode.round are equal
   congr 1
   rw [intSigVal_eq_int_mul (R := R) hsum_ne, hexact]

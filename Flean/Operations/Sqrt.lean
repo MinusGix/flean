@@ -27,7 +27,8 @@ def fpSqrtFinite (mode : RoundingMode) (a : FiniteFp) : Fp :=
   let rem := scaled - q * q
   let mag := 2 * q + (if rem = 0 then 0 else 1)
   let e_base := e_half - (sqrtShift : ℤ) - 1
-  roundIntSig mode false mag e_base
+  letI : RModeExec := rModeExecOf mode
+  roundIntSigM false mag e_base
 
 /-- IEEE 754 floating-point square root with full special-case handling. -/
 def fpSqrt (mode : RoundingMode) (x : Fp) : Fp :=
@@ -109,9 +110,9 @@ theorem fpSqrtFinite_correct (mode : RoundingMode) (a : FiniteFp)
   -- Nat.sqrt bounds
   have hq_sq_le : q * q ≤ scaled := Nat.sqrt_le scaled
   have hlt_succ_sq : scaled < (q + 1) * (q + 1) := by rw [hq_def]; exact Nat.lt_succ_sqrt scaled
-  -- Unfold fpSqrtFinite to roundIntSig
+  -- Unfold fpSqrtFinite to roundIntSigM
   have hfp_unfold : fpSqrtFinite mode a =
-      roundIntSig mode false (2 * q + (if rem = 0 then 0 else 1)) e_base := by
+      @roundIntSigM _ (rModeExecOf mode) false (2 * q + (if rem = 0 then 0 else 1)) e_base := by
     unfold fpSqrtFinite
     simp only [← he_val_def, ← hm'_def, ← he_half_def, ← hscaled_def,
                ← hq_def, ← hrem_def, ← he_base_def]
@@ -131,7 +132,8 @@ theorem fpSqrtFinite_correct (mode : RoundingMode) (a : FiniteFp)
       rw [show (↑(2 * q) : ℝ) = 2 * (q : ℝ) from by push_cast; ring]
       rw [hexp_split]; ring
     rw [hfp_unfold, if_pos hrem, show 2 * q + 0 = 2 * q from by omega,
-        roundIntSig_correct (R := ℝ) mode _ _ _ hmag_ne, h_isv]
+        roundIntSigM_correct (R := ℝ) mode _ _ _ hmag_ne]
+    rw [h_isv]
   · -- === Sticky case: use sticky_roundIntSig_eq_round ===
     rw [hfp_unfold, if_neg hrem]
     -- q ≥ 2^(prec+2) (from Nat.sqrt bounds)

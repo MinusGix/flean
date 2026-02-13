@@ -27,7 +27,8 @@ def fpMulFinite (mode : RoundingMode) (a b : FiniteFp) : Fp :=
   let sign := a.s ^^ b.s
   let mag := a.m * b.m
   let e_base := a.e + b.e - 2 * FloatFormat.prec + 2
-  roundIntSig mode sign mag e_base
+  letI : RModeExec := rModeExecOf mode
+  roundIntSigM sign mag e_base
 
 /-- IEEE 754 floating-point multiplication with full special-case handling.
 
@@ -83,9 +84,9 @@ theorem fpMulFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
   -- The magnitude is nonzero (from hprod ≠ 0)
   have hmag_ne : a.m * b.m ≠ 0 := by
     intro hzero; apply hprod; rw [hexact]; unfold intSigVal; simp [hzero]
-  -- Unfold fpMulFinite and apply roundIntSig_correct
+  -- Unfold fpMulFinite and apply generic roundIntSigM correctness
   unfold fpMulFinite
-  rw [roundIntSig_correct (R := R) mode _ _ _ hmag_ne]
+  rw [roundIntSigM_correct (R := R) mode _ _ _ hmag_ne]
   congr 1; rw [hexact]
 
 /-! ## Commutativity -/

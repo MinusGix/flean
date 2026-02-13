@@ -54,7 +54,8 @@ def fpDivFinite (mode : RoundingMode) (a b : FiniteFp) : Fp :=
   -- Sticky bit: if remainder is nonzero, force the LSB to preserve rounding info
   let mag := 2 * q + (if r = 0 then 0 else 1)
   let e_base := a.e - b.e - (2 * FloatFormat.prec + 2) - 1
-  roundIntSig mode sign mag e_base
+  letI : RModeExec := rModeExecOf mode
+  roundIntSigM sign mag e_base
 
 /-- IEEE 754 floating-point division with full special-case handling.
 
@@ -161,11 +162,12 @@ theorem fpDivFinite_correct_exact {R : Type*} [Field R] [LinearOrder R] [IsStric
         (2 : R) ^ (a.e - b.e - (2 * FloatFormat.prec + 2)) / 2 := by
       rw [zpow_sub₀ (by norm_num : (2:R) ≠ 0), zpow_one]
     split_ifs <;> rw [h2q, hexp] <;> ring
-  -- Unfold and apply roundIntSig_correct
-  show roundIntSig mode (a.s ^^ b.s)
+  -- Unfold and apply generic roundIntSigM correctness
+  show @roundIntSigM _ (rModeExecOf mode) (a.s ^^ b.s)
     (2 * q + (if (a.m * 2 ^ divShift) % b.m = 0 then 0 else 1))
     (a.e - b.e - (2 * FloatFormat.prec + 2) - 1) = _
-  rw [hmag_eq, roundIntSig_correct (R := R) mode _ _ _ hmag_ne, hbridge]
+  rw [hmag_eq, roundIntSigM_correct (R := R) mode _ _ _ hmag_ne]
+  rw [hbridge]
 
 /-! ## Full Correctness -/
 
@@ -186,8 +188,9 @@ theorem fpDivFinite_correct {R : Type*} [Field R] [LinearOrder R]
   · exact fpDivFinite_correct_exact mode a b hb hquot hr
   · -- Sticky bit case: use sticky_roundIntSig_eq_round
     set e_base := a.e - b.e - (2 * FloatFormat.prec + 2) - 1 with he_base_def
-    -- fpDivFinite unfolds to roundIntSig mode (a.s ^^ b.s) (2*q+1) e_base
-    have hfpDiv_eq : fpDivFinite mode a b = roundIntSig mode (a.s ^^ b.s) (2 * q + 1) e_base := by
+    -- fpDivFinite unfolds to roundIntSigM (a.s ^^ b.s) (2*q+1) e_base
+    have hfpDiv_eq : fpDivFinite mode a b =
+        @roundIntSigM _ (rModeExecOf mode) (a.s ^^ b.s) (2 * q + 1) e_base := by
       unfold fpDivFinite; simp only [he_base_def, hq_def]
       congr 1; simp [show a.m * 2 ^ divShift % b.m ≠ 0 from hr]
     rw [hfpDiv_eq]
