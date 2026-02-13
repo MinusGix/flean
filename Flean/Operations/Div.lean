@@ -3,20 +3,20 @@ import Flean.Rounding.OddInterval
 
 /-! # Floating-Point Division
 
-Softfloat-style floating-point division using `roundIntSig` as the rounding primitive.
+Softfloat-style floating-point division using `roundIntSigM` as the rounding primitive.
 
 ## Algorithm
 
-Division cannot directly use `roundIntSig` because `a.m / b.m` is not necessarily an integer.
+Division cannot directly use `roundIntSigM` because `a.m / b.m` is not necessarily an integer.
 The standard softfloat approach:
 
 1. Scale the dividend: `scaled = a.m * 2^shift` (with `shift = 2 * prec.toNat + 2`)
 2. Euclidean division: `q = scaled / b.m`, `r = scaled % b.m`
 3. Sticky bit: if `r ≠ 0`, set `mag = 2*q + 1`; otherwise `mag = 2*q`
-4. Feed `mag` and adjusted exponent into `roundIntSig`
+4. Feed `mag` and adjusted exponent into `roundIntSigM`
 
 The "sticky bit" trick: when the division has a nonzero remainder, `2*q + 1` (an odd number)
-ensures that `roundIntSig`'s internal shifting produces a nonzero remainder, correctly signaling
+ensures that `roundIntSigM`'s internal shifting produces a nonzero remainder, correctly signaling
 that the exact quotient is not on a grid point. This preserves correct rounding for all modes.
 
 ## Exact quotient formula
@@ -42,32 +42,31 @@ abbrev divQ (a b : FiniteFp) : ℕ := (a.m * 2 ^ divShift) / b.m
 /-- Euclidean remainder used in `fpDivFinite` after scaling the dividend by `2^divShift`. -/
 abbrev divR (a b : FiniteFp) : ℕ := (a.m * 2 ^ divShift) % b.m
 
-/-- Divide two finite floating-point numbers with the given rounding mode.
+/-- Divide two finite floating-point numbers with contextual rounding policy.
 
-Requires `b.m ≠ 0` for correct results; when `b.m = 0`, the definition produces
-a meaningless value (handled by `fpDiv` at the `Fp` level). -/
-def fpDivFinite (mode : RoundingMode) (a b : FiniteFp) : Fp :=
+Requires `b.m ≠ 0` for meaningful results; the `Fp`-level wrapper handles
+division-by-zero cases before calling this routine. -/
+def fpDivFinite [RModeExec] (a b : FiniteFp) : Fp :=
   let sign := a.s ^^ b.s
   let scaled := a.m * 2 ^ divShift
   let q := scaled / b.m
   let r := scaled % b.m
-  -- Sticky bit: if remainder is nonzero, force the LSB to preserve rounding info
+  -- Sticky-bit trick: odd `mag` encodes nonzero remainder.
   let mag := 2 * q + (if r = 0 then 0 else 1)
   let e_base := a.e - b.e - (2 * FloatFormat.prec + 2) - 1
-  letI : RModeExec := rModeExecOf mode
   roundIntSigM sign mag e_base
 
 /-- IEEE 754 floating-point division with full special-case handling.
 
 Special cases:
 - Any NaN operand produces NaN
-- ∞ / ∞ = NaN
-- ∞ / finite = ∞ (sign = XOR)
-- finite / ∞ = ±0 (sign = XOR)
-- nonzero / 0 = ∞ (sign = XOR)
-- 0 / 0 = NaN
-- finite / finite delegates to `fpDivFinite` -/
-def fpDiv (mode : RoundingMode) (x y : Fp) : Fp :=
+- `∞ / ∞` = NaN
+- `∞ / finite` = `∞` (sign = XOR)
+- `finite / ∞` = signed zero (sign = XOR)
+- `nonzero / 0` = `∞` (sign = XOR)
+- `0 / 0` = NaN
+- `finite / finite` delegates to `fpDivFinite` -/
+def fpDiv [RModeExec] (x y : Fp) : Fp :=
   match x, y with
   | .NaN, _ | _, .NaN => .NaN
   | .infinite _, .infinite _ => .NaN
@@ -78,7 +77,7 @@ def fpDiv (mode : RoundingMode) (x y : Fp) : Fp :=
     if b.m = 0 then
       if a.m = 0 then .NaN
       else .infinite (a.s ^^ b.s)
-    else fpDivFinite mode a b
+    else fpDivFinite a b
 
 /-! ## Exact Quotient Representation -/
 
@@ -128,12 +127,13 @@ theorem fpDivFinite_exact_quotient {R : Type*} [Field R] [LinearOrder R] [IsStri
 
 This is a special case of the full correctness theorem, covering cases like
 division by powers of 2 where `b.m` divides `a.m * 2^shift`. -/
-theorem fpDivFinite_correct_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
-    (mode : RoundingMode) (a b : FiniteFp)
+theorem fpDivFinite_correct_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    [FloorRing R] [RMode R] [RModeExec] [RoundIntSigMSound R]
+    (a b : FiniteFp)
     (hb : b.m ≠ 0)
     (hquot : (a.toVal : R) / b.toVal ≠ 0)
     (hexact : (a.m * 2 ^ divShift) % b.m = 0) :
-    fpDivFinite mode a b = mode.round ((a.toVal : R) / b.toVal) := by
+    fpDivFinite a b = RMode.round ((a.toVal : R) / b.toVal) := by
   -- When remainder = 0, mag = 2*q and intSigVal equals exact quotient
   set q := (a.m * 2 ^ divShift) / b.m with hq_def
   -- mag = 2 * q (since r = 0)
@@ -163,10 +163,10 @@ theorem fpDivFinite_correct_exact {R : Type*} [Field R] [LinearOrder R] [IsStric
       rw [zpow_sub₀ (by norm_num : (2:R) ≠ 0), zpow_one]
     split_ifs <;> rw [h2q, hexp] <;> ring
   -- Unfold and apply generic roundIntSigM correctness
-  show @roundIntSigM _ (rModeExecOf mode) (a.s ^^ b.s)
+  change roundIntSigM (a.s ^^ b.s)
     (2 * q + (if (a.m * 2 ^ divShift) % b.m = 0 then 0 else 1))
     (a.e - b.e - (2 * FloatFormat.prec + 2) - 1) = _
-  rw [hmag_eq, roundIntSigM_correct (R := R) mode _ _ _ hmag_ne]
+  rw [hmag_eq, roundIntSigM_correct_tc (R := R) _ _ _ hmag_ne]
   rw [hbridge]
 
 /-! ## Full Correctness -/
@@ -174,23 +174,24 @@ theorem fpDivFinite_correct_exact {R : Type*} [Field R] [LinearOrder R] [IsStric
 -- Note: The interval-constancy lemmas (no_representable_in_odd_interval,
 -- round_eq_on_odd_interval, etc.) have been extracted to Flean.Rounding.OddInterval.
 
-/-- `fpDivFinite` correctly rounds the exact quotient for all rounding modes. -/
+/-- `fpDivFinite` correctly rounds the exact quotient for all contextual policies. -/
 theorem fpDivFinite_correct {R : Type*} [Field R] [LinearOrder R]
     [IsStrictOrderedRing R] [FloorRing R]
-    (mode : RoundingMode) (a b : FiniteFp)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeSticky R]
+    (a b : FiniteFp)
     (hb : b.m ≠ 0)
     (hquot : (a.toVal : R) / b.toVal ≠ 0) :
-    fpDivFinite mode a b = mode.round ((a.toVal : R) / b.toVal) := by
+    fpDivFinite a b = RMode.round ((a.toVal : R) / b.toVal) := by
   set q := (a.m * 2 ^ divShift) / b.m with hq_def
   set r := (a.m * 2 ^ divShift) % b.m with hr_def
   -- Case split: exact (r = 0) vs sticky (r ≠ 0)
   by_cases hr : r = 0
-  · exact fpDivFinite_correct_exact mode a b hb hquot hr
+  · exact fpDivFinite_correct_exact (R := R) a b hb hquot hr
   · -- Sticky bit case: use sticky_roundIntSig_eq_round
     set e_base := a.e - b.e - (2 * FloatFormat.prec + 2) - 1 with he_base_def
     -- fpDivFinite unfolds to roundIntSigM (a.s ^^ b.s) (2*q+1) e_base
-    have hfpDiv_eq : fpDivFinite mode a b =
-        @roundIntSigM _ (rModeExecOf mode) (a.s ^^ b.s) (2 * q + 1) e_base := by
+    have hfpDiv_eq : fpDivFinite a b =
+        roundIntSigM (a.s ^^ b.s) (2 * q + 1) e_base := by
       unfold fpDivFinite; simp only [he_base_def, hq_def]
       congr 1; simp [show a.m * 2 ^ divShift % b.m ≠ 0 from hr]
     rw [hfpDiv_eq]
@@ -236,7 +237,7 @@ theorem fpDivFinite_correct {R : Type*} [Field R] [LinearOrder R]
               (by linarith)
         _ = 2 * ((q : R) + 1) * E := by ring
     -- Apply shared sticky-bit lemma
-    rw [sticky_roundIntSig_eq_round (R := R) (mode := mode) (sign := (a.s ^^ b.s)) (q := q)
+    rw [sticky_roundIntSig_eq_round_tc (R := R) (sign := (a.s ^^ b.s)) (q := q)
       (e_base := e_base) (hq_lower := hq_lower) (abs_exact := abs_exact)
       (h_exact_in := ⟨he_lo, he_hi⟩)]
     -- Bridge: if sign then -abs_exact else abs_exact = exact_val

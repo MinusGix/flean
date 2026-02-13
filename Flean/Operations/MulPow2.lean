@@ -55,15 +55,15 @@ theorem mul_pow2_representable {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
 
 /-! ## Main exactness theorem -/
 
-/-- Multiplying any nonzero finite float by `pow2Float k` produces an exact result (no rounding
-error) for every rounding mode, provided the result exponent stays in range. -/
+/-- Multiplying any nonzero finite float by `pow2Float k` produces an exact result
+for the contextual rounding policy, provided the result exponent stays in range. -/
 theorem fpMulFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
-    [FloorRing R]
+    [FloorRing R] [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R]
     (f : FiniteFp) (k : ℤ) (hf_nz : 0 < f.m)
     (hk_lo : FloatFormat.min_exp ≤ k) (hk_hi : k ≤ FloatFormat.max_exp)
     (he_lo : f.e + k ≥ FloatFormat.min_exp) (he_hi : f.e + k ≤ FloatFormat.max_exp) :
-    ∀ mode, ∃ g : FiniteFp,
-      fpMulFinite mode f (pow2Float k hk_lo hk_hi) = Fp.finite g ∧
+    ∃ g : FiniteFp,
+      fpMulFinite f (pow2Float k hk_lo hk_hi) = Fp.finite g ∧
         (g.toVal : R) = (f.toVal : R) * (2 : R) ^ k := by
   -- Product is nonzero because both operands are nonzero
   have hf_toVal_ne : (f.toVal : R) ≠ 0 := by
@@ -74,15 +74,17 @@ theorem fpMulFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
     rw [pow2Float_toVal]; exact two_zpow_pos' k
   have hprod_ne : (f.toVal : R) * (pow2Float k hk_lo hk_hi).toVal ≠ 0 :=
     mul_ne_zero hf_toVal_ne (ne_of_gt hp_toVal_pos)
+  have hmul_corr : fpMulFinite f (pow2Float k hk_lo hk_hi) =
+      RMode.round ((f.toVal : R) * (pow2Float k hk_lo hk_hi).toVal) := by
+    exact fpMulFinite_correct (R := R) f (pow2Float k hk_lo hk_hi) hprod_ne
   by_cases hfs : f.s = false
   · -- Positive f
     obtain ⟨g, hgs, hgv⟩ := mul_pow2_representable (R := R) f k hf_nz hfs he_lo he_hi
-    intro mode
     refine ⟨g, ?_, hgv⟩
-    rw [fpMulFinite_correct (R := R) mode f _ hprod_ne,
+    rw [hmul_corr,
         pow2Float_toVal,
         show (f.toVal : R) * (2 : R) ^ k = g.toVal from hgv.symm]
-    exact round_idempotent (R := R) mode g (Or.inl hgs)
+    exact RModeIdem.round_idempotent (R := R) g (Or.inl hgs)
   · -- Negative f: work with -f which is positive
     have hfs_true : f.s = true := by revert hfs; cases f.s <;> simp
     obtain ⟨g, hgs, hgv⟩ := mul_pow2_representable (R := R) (-f) k
@@ -94,23 +96,25 @@ theorem fpMulFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
     have hgm : 0 < g.m := ((FiniteFp.toVal_pos_iff (R := R)).mpr hg_pos).2
     have hgv_neg : g.toVal (R := R) = -(f.toVal * (2 : R) ^ k) := by
       rw [hgv, FiniteFp.toVal_neg_eq_neg]; ring
-    intro mode
-    obtain ⟨hrnd, hval⟩ := round_neg_exact (R := R) mode _ g hgs hgm hgv_neg
-    exact ⟨-g, by rw [fpMulFinite_correct (R := R) mode f _ hprod_ne, pow2Float_toVal]; exact hrnd, hval⟩
+    have hng_val : (-g).toVal (R := R) = (f.toVal : R) * (2 : R) ^ k := by
+      rw [FiniteFp.toVal_neg_eq_neg, hgv_neg]
+      ring
+    refine ⟨-g, ?_, hng_val⟩
+    rw [hmul_corr, pow2Float_toVal, ← hng_val]
+    exact RModeIdem.round_idempotent (R := R) (-g) (Or.inr (by simpa using hgm))
 
 /-! ## Full fpMul wrapper -/
 
 /-- Lifting `fpMulFinite_pow2_exact` to the full `fpMul` operation. -/
 theorem fpMul_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
-    [FloorRing R]
+    [FloorRing R] [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R]
     (f : FiniteFp) (k : ℤ) (hf_nz : 0 < f.m)
     (hk_lo : FloatFormat.min_exp ≤ k) (hk_hi : k ≤ FloatFormat.max_exp)
     (he_lo : f.e + k ≥ FloatFormat.min_exp) (he_hi : f.e + k ≤ FloatFormat.max_exp) :
-    ∀ mode, ∃ g : FiniteFp,
-      fpMul mode (.finite f) (.finite (pow2Float k hk_lo hk_hi)) = Fp.finite g ∧
+    ∃ g : FiniteFp,
+      fpMul (.finite f) (.finite (pow2Float k hk_lo hk_hi)) = Fp.finite g ∧
         (g.toVal : R) = (f.toVal : R) * (2 : R) ^ k := by
-  intro mode
   simp only [fpMul]
-  exact fpMulFinite_pow2_exact (R := R) f k hf_nz hk_lo hk_hi he_lo he_hi mode
+  exact fpMulFinite_pow2_exact (R := R) f k hf_nz hk_lo hk_hi he_lo he_hi
 
 end MulPow2

@@ -2,43 +2,42 @@ import Flean.Operations.RoundIntSig
 
 /-! # Floating-Point Multiplication
 
-Softfloat-style floating-point multiplication using `roundIntSig` as the rounding primitive.
+Softfloat-style floating-point multiplication using `roundIntSigM` as the rounding primitive.
 
 The algorithm for multiplying two finite floats:
 1. Compute the sign as XOR of operand signs
 2. Compute the magnitude as the product of significands
 3. Compute the exponent base from the sum of operand exponents
-4. Delegate to `roundIntSig` for rounding
+4. Delegate to `roundIntSigM` for rounding
 
 The exact product `a.toVal * b.toVal` equals `±(a.m * b.m) * 2^(a.e + b.e - 2*prec + 2)`,
-which directly feeds into `roundIntSig`.
+which directly feeds into `roundIntSigM`.
 -/
 
 section Mul
 
 variable [FloatFormat]
 
-/-- Multiply two finite floating-point numbers with the given rounding mode.
+/-- Multiply two finite floating-point numbers with contextual rounding policy.
 
-The exact product `a.toVal * b.toVal` equals `±(a.m * b.m) * 2^(a.e + b.e - 2*prec + 2)`.
-When either operand is zero, `mag = 0` and `roundIntSig` correctly produces signed zero
-with sign = XOR (matching IEEE 754). -/
-def fpMulFinite (mode : RoundingMode) (a b : FiniteFp) : Fp :=
+The exact product `a.toVal * b.toVal` is represented as
+`intSigVal (a.s ^^ b.s) (a.m * b.m) (a.e + b.e - 2*prec + 2)`, then rounded via
+`roundIntSigM`. -/
+def fpMulFinite [RModeExec] (a b : FiniteFp) : Fp :=
   let sign := a.s ^^ b.s
   let mag := a.m * b.m
   let e_base := a.e + b.e - 2 * FloatFormat.prec + 2
-  letI : RModeExec := rModeExecOf mode
   roundIntSigM sign mag e_base
 
 /-- IEEE 754 floating-point multiplication with full special-case handling.
 
 Special cases:
 - Any NaN operand produces NaN
-- ∞ × 0 = NaN (indeterminate)
-- ∞ × ∞ = ∞ (sign = XOR)
-- ∞ × finite(nonzero) = ∞ (sign = XOR)
-- finite × finite delegates to `fpMulFinite` -/
-def fpMul (mode : RoundingMode) (x y : Fp) : Fp :=
+- `∞ * ∞` = `∞` (with XOR sign)
+- `∞ * 0` = NaN
+- `∞ * finite_nonzero` = `∞` (with XOR sign)
+- `finite * finite` delegates to `fpMulFinite` -/
+def fpMul [RModeExec] (x y : Fp) : Fp :=
   match x, y with
   | .NaN, _ | _, .NaN => .NaN
   | .infinite sx, .infinite sy => .infinite (sx ^^ sy)
@@ -46,14 +45,14 @@ def fpMul (mode : RoundingMode) (x y : Fp) : Fp :=
     if f.m = 0 then .NaN else .infinite (s ^^ f.s)
   | .finite f, .infinite s =>
     if f.m = 0 then .NaN else .infinite (f.s ^^ s)
-  | .finite a, .finite b => fpMulFinite mode a b
+  | .finite a, .finite b => fpMulFinite a b
 
 /-! ## Exact Product Representation -/
 
 /-- The exact product of two finite floats equals `intSigVal (a.s ^^ b.s) (a.m * b.m) (a.e + b.e - 2*prec + 2)`.
 
 This is the bridge between the real-valued product `a.toVal * b.toVal` and the
-integer-significand representation that `roundIntSig` expects. -/
+integer-significand representation that `roundIntSigM` expects. -/
 theorem fpMulFinite_exact_product {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
     (a b : FiniteFp) :
     (a.toVal : R) * b.toVal =
@@ -71,34 +70,34 @@ theorem fpMulFinite_exact_product {R : Type*} [Field R] [LinearOrder R] [IsStric
 
 /-! ## fpMulFinite Correctness -/
 
-/-- For nonzero products, `fpMulFinite` correctly rounds the exact product.
-
-The `hprod ≠ 0` condition excludes the signed-zero case where IEEE 754 prescribes
-`sign = XOR` behavior that differs from `mode.round(0) = +0`. -/
+/-- Class-driven correctness for nonzero finite products. -/
 theorem fpMulFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
-    (mode : RoundingMode) (a b : FiniteFp)
+    [RMode R] [RModeExec] [RoundIntSigMSound R]
+    (a b : FiniteFp)
     (hprod : (a.toVal : R) * b.toVal ≠ 0) :
-    fpMulFinite mode a b = mode.round ((a.toVal : R) * b.toVal) := by
-  -- Get the exact product representation
+    fpMulFinite a b = RMode.round ((a.toVal : R) * b.toVal) := by
   have hexact := fpMulFinite_exact_product (R := R) a b
-  -- The magnitude is nonzero (from hprod ≠ 0)
   have hmag_ne : a.m * b.m ≠ 0 := by
-    intro hzero; apply hprod; rw [hexact]; unfold intSigVal; simp [hzero]
-  -- Unfold fpMulFinite and apply generic roundIntSigM correctness
+    intro hzero
+    apply hprod
+    rw [hexact]
+    unfold intSigVal
+    simp [hzero]
   unfold fpMulFinite
-  rw [roundIntSigM_correct (R := R) mode _ _ _ hmag_ne]
-  congr 1; rw [hexact]
+  rw [roundIntSigM_correct_tc (R := R) _ _ _ hmag_ne]
+  congr 1
+  rw [hexact]
 
 /-! ## Commutativity -/
 
 /-- `fpMulFinite` is commutative. -/
-theorem fpMulFinite_comm (mode : RoundingMode) (a b : FiniteFp) :
-    fpMulFinite mode a b = fpMulFinite mode b a := by
+theorem fpMulFinite_comm [RModeExec] (a b : FiniteFp) :
+    fpMulFinite a b = fpMulFinite b a := by
   simp only [fpMulFinite, Bool.xor_comm a.s b.s, Nat.mul_comm a.m b.m, add_comm a.e b.e]
 
 /-- `fpMul` is commutative. -/
-theorem fpMul_comm (mode : RoundingMode) (x y : Fp) :
-    fpMul mode x y = fpMul mode y x := by
+theorem fpMul_comm [RModeExec] (x y : Fp) :
+    fpMul x y = fpMul y x := by
   cases x with
   | NaN => cases y <;> simp [fpMul]
   | infinite sx =>

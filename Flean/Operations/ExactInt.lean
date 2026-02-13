@@ -5,7 +5,7 @@ import Flean.Operations.Mul
 
 Integers in `[-2^prec, 2^prec]` are exactly representable as floats. When `+`, `-`, or `*`
 on such integers produces a result also in this range, the floating-point operation is exact
-(no rounding error, regardless of mode).
+(no rounding error, regardless of contextual rounding policy).
 -/
 
 section ExactInt
@@ -47,66 +47,73 @@ theorem int_representable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrdered
 
 /-! ## Layer 2: Rounding exactness -/
 
-/-- Rounding any nonzero integer with `|n| < 2^prec` in any mode returns the exact value. -/
+/-- Rounding any nonzero integer with `|n| < 2^prec` returns the exact value
+for the contextual rounding policy. -/
 theorem int_round_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
-    [FloorRing R]
+    [FloorRing R] [RMode R] [RModeIdem R]
     (n : ℤ) (hn_nz : n ≠ 0) (hn_bound : n.natAbs < 2 ^ FloatFormat.prec.toNat)
-    (h_exp : FloatFormat.prec - 1 ≤ FloatFormat.max_exp) (mode : RoundingMode) :
-    ∃ f : FiniteFp, mode.round ((n : ℤ) : R) = Fp.finite f ∧ (f.toVal : R) = (n : R) := by
+    (h_exp : FloatFormat.prec - 1 ≤ FloatFormat.max_exp) :
+    ∃ f : FiniteFp, RMode.round ((n : ℤ) : R) = Fp.finite f ∧ (f.toVal : R) = (n : R) := by
   obtain ⟨f, hfm, hfv⟩ := int_representable (R := R) n hn_nz hn_bound h_exp
-  exact ⟨f, hfv ▸ round_idempotent (R := R) mode f (Or.inr hfm), hfv⟩
+  exact ⟨f, hfv ▸ RModeIdem.round_idempotent (R := R) f (Or.inr hfm), hfv⟩
 
 /-! ## Layer 3: Operation corollaries -/
 
 /-- Floating-point addition of integer-valued operands is exact when the sum is a nonzero
 integer with absolute value less than `2^prec`. -/
 theorem fpAddFinite_int_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
-    [FloorRing R]
-    (mode : RoundingMode) (a b : FiniteFp) (n_a n_b : ℤ)
+    [FloorRing R] [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R]
+    (a b : FiniteFp) (n_a n_b : ℤ)
     (ha : (a.toVal : R) = (n_a : R)) (hb : (b.toVal : R) = (n_b : R))
     (hsum_nz : n_a + n_b ≠ 0)
     (hsum_bound : (n_a + n_b).natAbs < 2 ^ FloatFormat.prec.toNat)
     (h_exp : FloatFormat.prec - 1 ≤ FloatFormat.max_exp) :
-    ∃ f : FiniteFp, fpAddFinite mode a b = Fp.finite f ∧
+    ∃ f : FiniteFp, fpAddFinite a b = Fp.finite f ∧
       (f.toVal : R) = ((n_a + n_b : ℤ) : R) := by
   have hsum_ne : (a.toVal : R) + b.toVal ≠ 0 := by
     rw [ha, hb]; exact_mod_cast hsum_nz
-  rw [fpAddFinite_correct (R := R) mode a b hsum_ne, ha, hb,
+  have hadd_corr : fpAddFinite a b = RMode.round ((a.toVal : R) + b.toVal) := by
+    exact fpAddFinite_correct (R := R) a b hsum_ne
+  rw [hadd_corr, ha, hb,
       show (n_a : R) + (n_b : R) = ((n_a + n_b : ℤ) : R) from by push_cast; ring]
-  exact int_round_exact (R := R) (n_a + n_b) hsum_nz hsum_bound h_exp mode
+  exact int_round_exact (R := R) (n_a + n_b) hsum_nz hsum_bound h_exp
 
 /-- Floating-point subtraction of integer-valued operands is exact when the difference is a
 nonzero integer with absolute value less than `2^prec`. -/
 theorem fpSubFinite_int_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
-    [FloorRing R]
-    (mode : RoundingMode) (a b : FiniteFp) (n_a n_b : ℤ)
+    [FloorRing R] [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R]
+    (a b : FiniteFp) (n_a n_b : ℤ)
     (ha : (a.toVal : R) = (n_a : R)) (hb : (b.toVal : R) = (n_b : R))
     (hdiff_nz : n_a - n_b ≠ 0)
     (hdiff_bound : (n_a - n_b).natAbs < 2 ^ FloatFormat.prec.toNat)
     (h_exp : FloatFormat.prec - 1 ≤ FloatFormat.max_exp) :
-    ∃ f : FiniteFp, fpSubFinite mode a b = Fp.finite f ∧
+    ∃ f : FiniteFp, fpSubFinite a b = Fp.finite f ∧
       (f.toVal : R) = ((n_a - n_b : ℤ) : R) := by
   have hdiff_ne : (a.toVal : R) - b.toVal ≠ 0 := by
     rw [ha, hb]; exact_mod_cast hdiff_nz
-  rw [fpSubFinite_correct (R := R) mode a b hdiff_ne, ha, hb,
+  have hsub_corr : fpSubFinite a b = RMode.round ((a.toVal : R) - b.toVal) := by
+    exact fpSubFinite_correct (R := R) a b hdiff_ne
+  rw [hsub_corr, ha, hb,
       show (n_a : R) - (n_b : R) = ((n_a - n_b : ℤ) : R) from by push_cast; ring]
-  exact int_round_exact (R := R) (n_a - n_b) hdiff_nz hdiff_bound h_exp mode
+  exact int_round_exact (R := R) (n_a - n_b) hdiff_nz hdiff_bound h_exp
 
 /-- Floating-point multiplication of integer-valued operands is exact when the product is a
 nonzero integer with absolute value less than `2^prec`. -/
 theorem fpMulFinite_int_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
-    [FloorRing R]
-    (mode : RoundingMode) (a b : FiniteFp) (n_a n_b : ℤ)
+    [FloorRing R] [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R]
+    (a b : FiniteFp) (n_a n_b : ℤ)
     (ha : (a.toVal : R) = (n_a : R)) (hb : (b.toVal : R) = (n_b : R))
     (hprod_nz : n_a * n_b ≠ 0)
     (hprod_bound : (n_a * n_b).natAbs < 2 ^ FloatFormat.prec.toNat)
     (h_exp : FloatFormat.prec - 1 ≤ FloatFormat.max_exp) :
-    ∃ f : FiniteFp, fpMulFinite mode a b = Fp.finite f ∧
+    ∃ f : FiniteFp, fpMulFinite a b = Fp.finite f ∧
       (f.toVal : R) = ((n_a * n_b : ℤ) : R) := by
   have hprod_ne : (a.toVal : R) * b.toVal ≠ 0 := by
     rw [ha, hb]; exact_mod_cast hprod_nz
-  rw [fpMulFinite_correct (R := R) mode a b hprod_ne, ha, hb,
+  have hmul_corr : fpMulFinite a b = RMode.round ((a.toVal : R) * b.toVal) := by
+    exact fpMulFinite_correct (R := R) a b hprod_ne
+  rw [hmul_corr, ha, hb,
       show (n_a : R) * (n_b : R) = ((n_a * n_b : ℤ) : R) from by push_cast; ring]
-  exact int_round_exact (R := R) (n_a * n_b) hprod_nz hprod_bound h_exp mode
+  exact int_round_exact (R := R) (n_a * n_b) hprod_nz hprod_bound h_exp
 
 end ExactInt

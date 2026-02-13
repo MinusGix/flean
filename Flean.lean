@@ -6,6 +6,7 @@ import «Flean».FloatFormat
 import «Flean».Encoding
 import «Flean».Rounding.Rounding
 import «Flean».Rounding.ModeClass
+import «Flean».Rounding.PolicyInstances
 import «Flean».Ulp
 import «Flean».Linearize.Linearize
 import «Flean».Gsplit.Gsplit

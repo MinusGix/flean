@@ -1108,128 +1108,175 @@ private theorem rnTA_no_crossing {R : Type*} [Field R] [LinearOrder R]
     (fun x m p s h1 h2 h3 h4 h5 h6 => rnAway_ge_mid_roundUp x m p s h1 h2 h3 h4 h5 h6.le)
     rnAway_lt_mid_roundDown rnAway_ge_inf rnAway_pos_succ_overflow
 
-/-- Any rounding mode is constant on an odd interval `((n-1)*E, (n+1)*E)` with
-    `n` odd and `n > 2^(prec+3)`. This combines the directional constancy (Steps 1-2)
-    with the parity argument for roundNearest modes. -/
-theorem round_eq_on_odd_interval {R : Type*} [Field R] [LinearOrder R]
+private theorem odd_interval_pos_and_noRep {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R]
+    {n : ℕ} {e_base : ℤ}
+    (hn_odd : n % 2 = 1)
+    (hn_large : 2 ^ (FloatFormat.prec.toNat + 3) < n) :
+    0 < oddIntervalLo (R := R) n e_base ∧
+      noRepresentableIn (oddIntervalLo (R := R) n e_base) (oddIntervalHi (R := R) n e_base) := by
+  have hlo_pos : 0 < oddIntervalLo (R := R) n e_base := by
+    unfold oddIntervalLo
+    have hE_pos : (0 : R) < (2 : R) ^ e_base := zpow_pos (by norm_num : (0 : R) < 2) _
+    have hn_ge : (1 : ℤ) ≤ (n : ℤ) - 1 := by
+      have : 0 < 2 ^ (FloatFormat.prec.toNat + 3) := Nat.pos_of_ne_zero (by positivity)
+      omega
+    exact mul_pos (by exact_mod_cast hn_ge) hE_pos
+  have hn_prec : 2 ^ FloatFormat.prec.toNat < n := by
+    calc
+      2 ^ FloatFormat.prec.toNat
+          ≤ 2 ^ (FloatFormat.prec.toNat + 3) := Nat.pow_le_pow_right (by omega) (by omega)
+      _ < n := hn_large
+  have hno_rep :
+      noRepresentableIn (oddIntervalLo (R := R) n e_base) (oddIntervalHi (R := R) n e_base) := by
+    intro f hfs hfm
+    unfold oddIntervalLo oddIntervalHi
+    exact no_representable_in_odd_interval hn_odd hn_prec f hfs hfm
+  exact ⟨hlo_pos, hno_rep⟩
+
+/-- `roundDown` is constant on odd intervals with odd center and large index. -/
+theorem roundDown_eq_on_odd_interval {R : Type*} [Field R] [LinearOrder R]
     [IsStrictOrderedRing R] [FloorRing R]
-    (mode : RoundingMode) {n : ℕ} {e_base : ℤ}
+    {n : ℕ} {e_base : ℤ}
     (hn_odd : n % 2 = 1)
     (hn_large : 2 ^ (FloatFormat.prec.toNat + 3) < n)
     {v₁ v₂ : R}
     (hv₁_in : inOddInterval (R := R) n e_base v₁)
     (hv₂_in : inOddInterval (R := R) n e_base v₂) :
-    mode.round v₁ = mode.round v₂ := by
-  rcases hv₁_in with ⟨hv₁_lo_raw, hv₁_hi_raw⟩
-  rcases hv₂_in with ⟨hv₂_lo_raw, hv₂_hi_raw⟩
-  set lo := oddIntervalLo (R := R) n e_base with hlo_def
-  set hi := oddIntervalHi (R := R) n e_base with hhi_def
-  have hv₁_lo : lo < v₁ := by simpa [hlo_def] using hv₁_lo_raw
-  have hv₁_hi : v₁ < hi := by simpa [hhi_def] using hv₁_hi_raw
-  have hv₂_lo : lo < v₂ := by simpa [hlo_def] using hv₂_lo_raw
-  have hv₂_hi : v₂ < hi := by simpa [hhi_def] using hv₂_hi_raw
-  have hE_pos : (0 : R) < (2 : R) ^ e_base := zpow_pos (by norm_num : (0:R) < 2) _
-  have hn_ge : (1 : ℤ) ≤ (n : ℤ) - 1 := by
-    have : 0 < 2 ^ (FloatFormat.prec.toNat + 3) := Nat.pos_of_ne_zero (by positivity)
-    omega
-  have hlo_pos : 0 < lo := by
-    rw [hlo_def]; exact mul_pos (by exact_mod_cast hn_ge) hE_pos
-  have hn_prec : 2 ^ FloatFormat.prec.toNat < n := by
-    calc 2 ^ FloatFormat.prec.toNat
-        ≤ 2 ^ (FloatFormat.prec.toNat + 3) := Nat.pow_le_pow_right (by omega) (by omega)
-      _ < n := hn_large
-  have hno_rep : noRepresentableIn lo hi := by
-    intro f hfs hfm; rw [hlo_def, hhi_def, oddIntervalLo, oddIntervalHi]
-    exact no_representable_in_odd_interval hn_odd hn_prec f hfs hfm
-  -- Directional modes: use existing constancy lemmas
-  cases mode with
-  | Down =>
-    show roundDown v₁ = roundDown v₂
-    exact roundDown_eq_of_no_representable hlo_pos hno_rep hv₁_lo hv₁_hi hv₂_lo hv₂_hi
-  | Up =>
-    show roundUp v₁ = roundUp v₂
-    exact roundUp_eq_of_no_representable hlo_pos hno_rep hv₁_lo hv₁_hi hv₂_lo hv₂_hi
-  | TowardZero =>
-    show roundTowardZero v₁ = roundTowardZero v₂
-    exact roundTowardZero_eq_of_no_representable hlo_pos hno_rep hv₁_lo hv₁_hi hv₂_lo hv₂_hi
-  | NearestTiesToEven =>
-    show roundNearestTiesToEven v₁ = roundNearestTiesToEven v₂
-    have hrd : roundDown v₁ = roundDown v₂ :=
-      roundDown_eq_of_no_representable hlo_pos hno_rep hv₁_lo hv₁_hi hv₂_lo hv₂_hi
-    have hru : roundUp v₁ = roundUp v₂ :=
-      roundUp_eq_of_no_representable hlo_pos hno_rep hv₁_lo hv₁_hi hv₂_lo hv₂_hi
-    -- Both rnTE values are in {roundDown, roundUp}
-    rcases rnTE_eq_roundDown_or_roundUp' v₁ with h1 | h1 <;>
-    rcases rnTE_eq_roundDown_or_roundUp' v₂ with h2 | h2
-    · -- (roundDown, roundDown)
-      rw [h1, h2, hrd]
-    · -- (roundDown, roundUp): use le_total
-      rcases le_total v₁ v₂ with hle | hle
-      · -- v₁ ≤ v₂: crossing case
-        rw [h1, h2]
-        by_cases hrDU : roundDown v₁ = roundUp v₁
-        · exact hrDU.trans hru
-        · exfalso; exact rnTE_no_crossing hn_odd hn_large
-            (lt_trans hlo_pos hv₁_lo) (lt_trans hlo_pos hv₂_lo)
-            hv₁_lo hv₁_hi hv₂_hi hno_rep hrd hru hrDU h1 h2
-      · -- v₂ ≤ v₁: mono gives ru₂ ≤ rd₁ → rd = ru
-        have hmono := roundNearestTE_mono hle
-        rw [h2, h1] at hmono  -- roundUp v₂ ≤ roundDown v₁
-        rw [hrd] at hmono  -- roundUp v₂ ≤ roundDown v₂
-        have heq := Fp.le_antisymm (roundDown_le_roundUp v₂) hmono
-        rw [h1, h2]; exact hrd.trans heq
-    · -- (roundUp, roundDown): use le_total
-      rcases le_total v₁ v₂ with hle | hle
-      · -- v₁ ≤ v₂: mono gives ru₁ ≤ rd₂ → rd = ru
-        have hmono := roundNearestTE_mono hle
-        rw [h1, h2] at hmono  -- roundUp v₁ ≤ roundDown v₂
-        rw [← hrd] at hmono  -- roundUp v₁ ≤ roundDown v₁
-        have heq := Fp.le_antisymm (roundDown_le_roundUp v₁) hmono
-        rw [h1, h2, ← heq, hrd]
-      · -- v₂ ≤ v₁: crossing case (symmetric)
-        rw [h1, h2]
-        by_cases hrDU : roundDown v₂ = roundUp v₂
-        · exact hru.trans hrDU.symm
-        · exfalso; exact rnTE_no_crossing hn_odd hn_large
-            (lt_trans hlo_pos hv₂_lo) (lt_trans hlo_pos hv₁_lo)
-            hv₂_lo hv₂_hi hv₁_hi hno_rep hrd.symm hru.symm hrDU h2 h1
-    · -- (roundUp, roundUp)
-      rw [h1, h2, hru]
-  | NearestTiesAwayFromZero =>
-    show roundNearestTiesAwayFromZero v₁ = roundNearestTiesAwayFromZero v₂
-    have hrd : roundDown v₁ = roundDown v₂ :=
-      roundDown_eq_of_no_representable hlo_pos hno_rep hv₁_lo hv₁_hi hv₂_lo hv₂_hi
-    have hru : roundUp v₁ = roundUp v₂ :=
-      roundUp_eq_of_no_representable hlo_pos hno_rep hv₁_lo hv₁_hi hv₂_lo hv₂_hi
-    rcases rnTA_eq_roundDown_or_roundUp' v₁ with h1 | h1 <;>
-    rcases rnTA_eq_roundDown_or_roundUp' v₂ with h2 | h2
+    roundDown v₁ = roundDown v₂ := by
+  rcases hv₁_in with ⟨hv₁_lo, hv₁_hi⟩
+  rcases hv₂_in with ⟨hv₂_lo, hv₂_hi⟩
+  rcases odd_interval_pos_and_noRep (R := R) hn_odd hn_large with ⟨hlo_pos, hno_rep⟩
+  exact roundDown_eq_of_no_representable hlo_pos hno_rep hv₁_lo hv₁_hi hv₂_lo hv₂_hi
+
+/-- `roundUp` is constant on odd intervals with odd center and large index. -/
+theorem roundUp_eq_on_odd_interval {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] [FloorRing R]
+    {n : ℕ} {e_base : ℤ}
+    (hn_odd : n % 2 = 1)
+    (hn_large : 2 ^ (FloatFormat.prec.toNat + 3) < n)
+    {v₁ v₂ : R}
+    (hv₁_in : inOddInterval (R := R) n e_base v₁)
+    (hv₂_in : inOddInterval (R := R) n e_base v₂) :
+    roundUp v₁ = roundUp v₂ := by
+  rcases hv₁_in with ⟨hv₁_lo, hv₁_hi⟩
+  rcases hv₂_in with ⟨hv₂_lo, hv₂_hi⟩
+  rcases odd_interval_pos_and_noRep (R := R) hn_odd hn_large with ⟨hlo_pos, hno_rep⟩
+  exact roundUp_eq_of_no_representable hlo_pos hno_rep hv₁_lo hv₁_hi hv₂_lo hv₂_hi
+
+/-- `roundTowardZero` is constant on odd intervals with odd center and large index. -/
+theorem roundTowardZero_eq_on_odd_interval {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] [FloorRing R]
+    {n : ℕ} {e_base : ℤ}
+    (hn_odd : n % 2 = 1)
+    (hn_large : 2 ^ (FloatFormat.prec.toNat + 3) < n)
+    {v₁ v₂ : R}
+    (hv₁_in : inOddInterval (R := R) n e_base v₁)
+    (hv₂_in : inOddInterval (R := R) n e_base v₂) :
+    roundTowardZero v₁ = roundTowardZero v₂ := by
+  rcases hv₁_in with ⟨hv₁_lo, hv₁_hi⟩
+  rcases hv₂_in with ⟨hv₂_lo, hv₂_hi⟩
+  rcases odd_interval_pos_and_noRep (R := R) hn_odd hn_large with ⟨hlo_pos, hno_rep⟩
+  exact roundTowardZero_eq_of_no_representable hlo_pos hno_rep hv₁_lo hv₁_hi hv₂_lo hv₂_hi
+
+/-- `roundNearestTiesToEven` is constant on odd intervals with odd center and large index. -/
+theorem rnEven_eq_on_odd_interval {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] [FloorRing R]
+    {n : ℕ} {e_base : ℤ}
+    (hn_odd : n % 2 = 1)
+    (hn_large : 2 ^ (FloatFormat.prec.toNat + 3) < n)
+    {v₁ v₂ : R}
+    (hv₁_in : inOddInterval (R := R) n e_base v₁)
+    (hv₂_in : inOddInterval (R := R) n e_base v₂) :
+    roundNearestTiesToEven v₁ = roundNearestTiesToEven v₂ := by
+  rcases hv₁_in with ⟨hv₁_lo, hv₁_hi⟩
+  rcases hv₂_in with ⟨hv₂_lo, hv₂_hi⟩
+  rcases odd_interval_pos_and_noRep (R := R) hn_odd hn_large with ⟨hlo_pos, hno_rep⟩
+  have hv₁_pos : 0 < v₁ := lt_trans hlo_pos hv₁_lo
+  have hv₂_pos : 0 < v₂ := lt_trans hlo_pos hv₂_lo
+  have hrd : roundDown v₁ = roundDown v₂ :=
+    roundDown_eq_of_no_representable hlo_pos hno_rep hv₁_lo hv₁_hi hv₂_lo hv₂_hi
+  have hru : roundUp v₁ = roundUp v₂ :=
+    roundUp_eq_of_no_representable hlo_pos hno_rep hv₁_lo hv₁_hi hv₂_lo hv₂_hi
+  rcases rnTE_eq_roundDown_or_roundUp' v₁ with h1 | h1
+  · rcases rnTE_eq_roundDown_or_roundUp' v₂ with h2 | h2
     · rw [h1, h2, hrd]
     · rcases le_total v₁ v₂ with hle | hle
-      · -- crossing case: TA, h1=rd, h2=ru, v₁≤v₂
-        rw [h1, h2]
+      · rw [h1, h2]
         by_cases hrDU : roundDown v₁ = roundUp v₁
         · exact hrDU.trans hru
-        · exfalso; exact rnTA_no_crossing hn_odd hn_large
-            (lt_trans hlo_pos hv₁_lo) (lt_trans hlo_pos hv₂_lo)
-            hv₁_lo hv₁_hi hv₂_hi hno_rep hrd hru hrDU h1 h2
+        · exfalso
+          exact rnTE_no_crossing hn_odd hn_large hv₁_pos hv₂_pos hv₁_lo hv₁_hi hv₂_hi
+            hno_rep hrd hru hrDU h1 h2
+      · have hmono := roundNearestTE_mono hle
+        rw [h2, h1] at hmono
+        rw [hrd] at hmono
+        have heq := Fp.le_antisymm (roundDown_le_roundUp v₂) hmono
+        rw [h1, h2]
+        exact hrd.trans heq
+  · rcases rnTE_eq_roundDown_or_roundUp' v₂ with h2 | h2
+    · rcases le_total v₁ v₂ with hle | hle
+      · have hmono := roundNearestTE_mono hle
+        rw [h1, h2] at hmono
+        rw [← hrd] at hmono
+        have heq := Fp.le_antisymm (roundDown_le_roundUp v₁) hmono
+        rw [h1, h2, ← heq, hrd]
+      · rw [h1, h2]
+        by_cases hrDU : roundDown v₂ = roundUp v₂
+        · exact hru.trans hrDU.symm
+        · exfalso
+          exact rnTE_no_crossing hn_odd hn_large hv₂_pos hv₁_pos hv₂_lo hv₂_hi hv₁_hi
+            hno_rep hrd.symm hru.symm hrDU h2 h1
+    · rw [h1, h2, hru]
+
+/-- `roundNearestTiesAwayFromZero` is constant on odd intervals with odd center and large index. -/
+theorem rnAway_eq_on_odd_interval {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] [FloorRing R]
+    {n : ℕ} {e_base : ℤ}
+    (hn_odd : n % 2 = 1)
+    (hn_large : 2 ^ (FloatFormat.prec.toNat + 3) < n)
+    {v₁ v₂ : R}
+    (hv₁_in : inOddInterval (R := R) n e_base v₁)
+    (hv₂_in : inOddInterval (R := R) n e_base v₂) :
+    roundNearestTiesAwayFromZero v₁ = roundNearestTiesAwayFromZero v₂ := by
+  rcases hv₁_in with ⟨hv₁_lo, hv₁_hi⟩
+  rcases hv₂_in with ⟨hv₂_lo, hv₂_hi⟩
+  rcases odd_interval_pos_and_noRep (R := R) hn_odd hn_large with ⟨hlo_pos, hno_rep⟩
+  have hv₁_pos : 0 < v₁ := lt_trans hlo_pos hv₁_lo
+  have hv₂_pos : 0 < v₂ := lt_trans hlo_pos hv₂_lo
+  have hrd : roundDown v₁ = roundDown v₂ :=
+    roundDown_eq_of_no_representable hlo_pos hno_rep hv₁_lo hv₁_hi hv₂_lo hv₂_hi
+  have hru : roundUp v₁ = roundUp v₂ :=
+    roundUp_eq_of_no_representable hlo_pos hno_rep hv₁_lo hv₁_hi hv₂_lo hv₂_hi
+  rcases rnTA_eq_roundDown_or_roundUp' v₁ with h1 | h1
+  · rcases rnTA_eq_roundDown_or_roundUp' v₂ with h2 | h2
+    · rw [h1, h2, hrd]
+    · rcases le_total v₁ v₂ with hle | hle
+      · rw [h1, h2]
+        by_cases hrDU : roundDown v₁ = roundUp v₁
+        · exact hrDU.trans hru
+        · exfalso
+          exact rnTA_no_crossing hn_odd hn_large hv₁_pos hv₂_pos hv₁_lo hv₁_hi hv₂_hi
+            hno_rep hrd hru hrDU h1 h2
       · have hmono := roundNearestTA_mono hle
         rw [h2, h1] at hmono
         rw [hrd] at hmono
         have heq := Fp.le_antisymm (roundDown_le_roundUp v₂) hmono
-        rw [h1, h2]; exact hrd.trans heq
+        rw [h1, h2]
+        exact hrd.trans heq
+  · rcases rnTA_eq_roundDown_or_roundUp' v₂ with h2 | h2
     · rcases le_total v₁ v₂ with hle | hle
       · have hmono := roundNearestTA_mono hle
         rw [h1, h2] at hmono
         rw [← hrd] at hmono
         have heq := Fp.le_antisymm (roundDown_le_roundUp v₁) hmono
         rw [h1, h2, ← heq, hrd]
-      · -- crossing case: TA, h1=ru, h2=rd, v₂≤v₁
-        rw [h1, h2]
+      · rw [h1, h2]
         by_cases hrDU : roundDown v₂ = roundUp v₂
         · exact hru.trans hrDU.symm
-        · exfalso; exact rnTA_no_crossing hn_odd hn_large
-            (lt_trans hlo_pos hv₂_lo) (lt_trans hlo_pos hv₁_lo)
-            hv₂_lo hv₂_hi hv₁_hi hno_rep hrd.symm hru.symm hrDU h2 h1
+        · exfalso
+          exact rnTA_no_crossing hn_odd hn_large hv₂_pos hv₁_pos hv₂_lo hv₂_hi hv₁_hi
+            hno_rep hrd.symm hru.symm hrDU h2 h1
     · rw [h1, h2, hru]
 
 -- END EXTRACTED FROM Div.lean --

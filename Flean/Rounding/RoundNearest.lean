@@ -493,7 +493,7 @@ theorem rnAway_pos_unfold [FloatFormat]
 
 These lemmas directly give the rounding result based on the value's position relative to
 the midpoint between adjacent floats. They are key building blocks for proving that
-`roundIntSig` matches `mode.round`. -/
+`roundIntSigM` matches `RMode.round`. -/
 
 /-- TiesToEven: value above midpoint → rounds up -/
 theorem rnEven_above_mid_eq_roundUp [FloatFormat]

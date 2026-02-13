@@ -150,7 +150,7 @@ theorem List.flatMap_singleton_natCast_eq_map {l : List ℕ} : flatMap (fun x =>
   | cons x xs ih => aesop
 
 /-- `Int.log 2` of a scaled natural number: `Int.log 2 ((mag : R) * 2^e_base) = Nat.log2 mag + e_base`.
-This bridges the `Nat.log2` used in `roundIntSig` with the `Int.log 2` used in `findExponentDown`. -/
+This bridges the `Nat.log2` used in `roundIntSigM` with the `Int.log 2` used in `findExponentDown`. -/
 theorem int_log_nat_mul_zpow {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
     (mag : ℕ) (e_base : ℤ) (hmag : mag ≠ 0) :
     Int.log 2 ((mag : R) * (2 : R) ^ e_base) = (Nat.log2 mag : ℤ) + e_base := by

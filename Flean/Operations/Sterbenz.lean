@@ -118,13 +118,15 @@ theorem sterbenz_aligned_diff_bound (a b : FiniteFp) (ha : a.s = false) (hb : b.
 
 /-- **Sterbenz Lemma**: If `a` and `b` are positive finite floats with `b/2 ≤ a ≤ 2b`,
     then `a - b` is exactly representable — `fpSubFinite` returns a finite float whose
-    value is the exact difference, regardless of rounding mode. -/
+    value is the exact difference under the contextual rounding policy. -/
 theorem sterbenz (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
     (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
     (h_lb : (b.toVal : R) / 2 ≤ a.toVal)
-    (h_ub : (a.toVal : R) ≤ 2 * b.toVal) :
-    ∀ mode : RoundingMode, ∃ f : FiniteFp,
-      fpSubFinite mode a b = Fp.finite f ∧ f.toVal (R := R) = a.toVal - b.toVal := by
+    (h_ub : (a.toVal : R) ≤ 2 * b.toVal)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R] :
+    ∃ f : FiniteFp,
+      fpSubFinite a b = Fp.finite f ∧
+        f.toVal (R := R) = a.toVal - b.toVal := by
   have h_exp := sterbenz_exp_proximity (R := R) a b ha hb ha_nz hb_nz h_lb h_ub
   -- Set up the aligned integer sum
   set e_min := min a.e (-b).e with e_min_def
@@ -144,7 +146,6 @@ theorem sterbenz (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
       by_contra h
       exact absurd (sub_eq_zero.mpr hdiff)
         (by rw [hdiff_eq]; exact mul_ne_zero (Int.cast_ne_zero.mpr h) (zpow_ne_zero _ (by norm_num)))
-    intro mode
     unfold fpSubFinite fpAddFinite
     simp only [e_min_def.symm, isum_def.symm, hisum_zero, ↓reduceIte]
     refine ⟨_, rfl, ?_⟩
@@ -168,47 +169,64 @@ theorem sterbenz (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
     obtain ⟨f, hf_valid, hfv⟩ := exists_finiteFp_of_int_mul_zpow (R := R) isum e_base
       hsum_ne hisum_bound he_lo he_hi
     have hval_eq : (a.toVal : R) - b.toVal = f.toVal := hdiff_eq.trans hfv.symm
-    intro mode
     refine ⟨f, ?_, hval_eq.symm⟩
-    rw [fpSubFinite_correct (R := R) mode a b hdiff_ne, hval_eq]
-    exact round_idempotent (R := R) mode f hf_valid
+    have hsub_corr : fpSubFinite a b =
+        RMode.round ((a.toVal : R) - b.toVal) := by
+      simpa using (fpSubFinite_correct (R := R) a b hdiff_ne)
+    rw [hsub_corr, hval_eq]
+    exact RModeIdem.round_idempotent (R := R) f hf_valid
 
 /-! ## Corollaries -/
 
-/-- When `a ≠ b` in value, all rounding modes produce the same result. -/
+/-- Under Sterbenz conditions, subtraction returns an exact finite result,
+    and that finite result is invariant across any contextual rounding dictionaries. -/
 theorem sterbenz_unique (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
     (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
     (h_lb : (b.toVal : R) / 2 ≤ a.toVal)
     (h_ub : (a.toVal : R) ≤ 2 * b.toVal)
-    (hdiff : (a.toVal : R) ≠ b.toVal) :
+    (hdiff : (a.toVal : R) ≠ b.toVal)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R] :
     ∃ f : FiniteFp, f.toVal (R := R) = a.toVal - b.toVal ∧
-      ∀ mode : RoundingMode, fpSubFinite mode a b = Fp.finite f := by
-  have hs := sterbenz (R := R) a b ha hb ha_nz hb_nz h_lb h_ub
-  -- All modes produce finite results with the same toVal; since diff ≠ 0, the float is unique
-  obtain ⟨f₀, hf₀_eq, hf₀_val⟩ := hs .Up
-  refine ⟨f₀, hf₀_val, fun mode => ?_⟩
-  obtain ⟨f, hf_eq, hf_val⟩ := hs mode
-  rw [hf_eq]
-  congr 1
-  -- f and f₀ have the same toVal and the diff is nonzero, so they're equal
-  have hf_nz : ¬f.isZero := by
-    intro hz; rw [FiniteFp.toVal_isZero hz] at hf_val; exact absurd hf_val.symm (sub_ne_zero.mpr hdiff)
-  apply FiniteFp.eq_of_toVal_eq' (R := R) (Or.inl hf_nz)
-  rw [hf_val, hf₀_val]
+      fpSubFinite a b = Fp.finite f ∧
+      (∀ (RM' : RMode R) (RE' : RModeExec)
+          (RS' : @RoundIntSigMSound R _ _ _ _ _ RM' RE')
+          (RI' : @RModeIdem R _ _ RM'),
+          @fpSubFinite _ RE' a b = Fp.finite f) := by
+  obtain ⟨f, hf_eq, hf_val⟩ := sterbenz (R := R) a b ha hb ha_nz hb_nz h_lb h_ub
+  refine ⟨f, hf_val, hf_eq, ?_⟩
+  intro RM' RE' RS' RI'
+  letI : RMode R := RM'
+  letI : RModeExec := RE'
+  letI : RoundIntSigMSound R := RS'
+  letI : RModeIdem R := RI'
+  obtain ⟨g, hg_eq, hg_val⟩ := sterbenz (R := R) a b ha hb ha_nz hb_nz h_lb h_ub
+  have hf_toVal_ne : (f.toVal : R) ≠ 0 := by
+    rw [hf_val]
+    exact sub_ne_zero.mpr hdiff
+  have hf_m_ne : f.m ≠ 0 := by
+    intro hm
+    apply hf_toVal_ne
+    exact (FiniteFp.toVal_significand_zero_iff (R := R) (x := f)).mp hm
+  have hfg : f = g := by
+    apply FiniteFp.eq_of_toVal_eq' (R := R)
+      (Or.inl (by simpa [FiniteFp.isZero] using hf_m_ne))
+    rw [hf_val, hg_val]
+  simpa [hfg] using hg_eq
 
 /-- **Sterbenz for `fpSub`**: the full `Fp` subtraction also produces an exact finite result
     under Sterbenz conditions. -/
 theorem sterbenz_fpSub (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
     (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
     (h_lb : (b.toVal : R) / 2 ≤ a.toVal)
-    (h_ub : (a.toVal : R) ≤ 2 * b.toVal) :
-    ∀ mode : RoundingMode, ∃ f : FiniteFp,
-      fpSub mode (.finite a) (.finite b) = Fp.finite f ∧
+    (h_ub : (a.toVal : R) ≤ 2 * b.toVal)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R] :
+    ∃ f : FiniteFp,
+      fpSub (.finite a) (.finite b) = Fp.finite f ∧
         f.toVal (R := R) = a.toVal - b.toVal := by
-  intro mode
   -- fpSub on finite inputs is just fpSubFinite
-  have : fpSub mode (.finite a) (.finite b) = fpSubFinite mode a b := rfl
+  have : fpSub (.finite a) (.finite b) = fpSubFinite a b := by
+    simp [fpSub, fpSubFinite, fpAdd]
   rw [this]
-  exact sterbenz (R := R) a b ha hb ha_nz hb_nz h_lb h_ub mode
+  exact sterbenz (R := R) a b ha hb ha_nz hb_nz h_lb h_ub
 
 end Sterbenz

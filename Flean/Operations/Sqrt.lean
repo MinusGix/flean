@@ -5,7 +5,7 @@ import Mathlib.Data.Nat.Sqrt
 
 /-! # Floating-Point Square Root
 
-Softfloat-style floating-point square root using `roundIntSig` as the rounding primitive.
+Softfloat-style floating-point square root using `roundIntSigM` as the rounding primitive.
 Correctness is specialized to `ℝ` since `Real.sqrt` has no generic counterpart.
 -/
 
@@ -17,8 +17,8 @@ variable [FloatFormat]
 Chosen so that `q = Nat.sqrt(scaled) ≥ 2^(prec+2)`, ensuring `mag > 2^(prec+3)`. -/
 abbrev sqrtShift : ℕ := FloatFormat.prec.toNat + 2
 
-/-- Compute the square root of a finite positive floating-point number. -/
-def fpSqrtFinite (mode : RoundingMode) (a : FiniteFp) : Fp :=
+/-- Compute square root of a finite positive float using contextual rounding policy. -/
+def fpSqrtFinite [RModeExec] (a : FiniteFp) : Fp :=
   let e_val := a.e - FloatFormat.prec + 1
   let m' := if e_val % 2 = 0 then a.m else 2 * a.m
   let e_half := if e_val % 2 = 0 then e_val / 2 else (e_val - 1) / 2
@@ -27,11 +27,10 @@ def fpSqrtFinite (mode : RoundingMode) (a : FiniteFp) : Fp :=
   let rem := scaled - q * q
   let mag := 2 * q + (if rem = 0 then 0 else 1)
   let e_base := e_half - (sqrtShift : ℤ) - 1
-  letI : RModeExec := rModeExecOf mode
   roundIntSigM false mag e_base
 
-/-- IEEE 754 floating-point square root with full special-case handling. -/
-def fpSqrt (mode : RoundingMode) (x : Fp) : Fp :=
+/-- IEEE 754 floating-point square root with contextual rounding policy. -/
+def fpSqrt [RModeExec] (x : Fp) : Fp :=
   match x with
   | .NaN => .NaN
   | .infinite true => .NaN
@@ -40,7 +39,7 @@ def fpSqrt (mode : RoundingMode) (x : Fp) : Fp :=
     if a.m = 0 then
       Fp.finite ⟨a.s, FloatFormat.min_exp, 0, IsValidFiniteVal.zero⟩
     else if a.s then .NaN
-    else fpSqrtFinite mode a
+    else fpSqrtFinite a
 
 /-! ## Helper lemmas -/
 
@@ -53,10 +52,11 @@ private lemma sqrt_two_zpow_sq (k : ℤ) :
 /-! ## Full Correctness -/
 
 set_option maxHeartbeats 800000 in
-/-- `fpSqrtFinite` correctly rounds the exact square root for all rounding modes. -/
-theorem fpSqrtFinite_correct (mode : RoundingMode) (a : FiniteFp)
+/-- `fpSqrtFinite` correctly rounds the exact square root for all contextual policies. -/
+theorem fpSqrtFinite_correct [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+    (a : FiniteFp)
     (ha_pos : a.s = false) (ha_nz : a.m ≠ 0) :
-    fpSqrtFinite mode a = mode.round (Real.sqrt (a.toVal : ℝ)) := by
+    fpSqrtFinite a = RMode.round (R := ℝ) (Real.sqrt (a.toVal : ℝ)) := by
   -- Set up variables matching fpSqrtFinite's body
   set e_val := a.e - FloatFormat.prec + 1 with he_val_def
   set m' := (if e_val % 2 = 0 then a.m else 2 * a.m) with hm'_def
@@ -111,8 +111,8 @@ theorem fpSqrtFinite_correct (mode : RoundingMode) (a : FiniteFp)
   have hq_sq_le : q * q ≤ scaled := Nat.sqrt_le scaled
   have hlt_succ_sq : scaled < (q + 1) * (q + 1) := by rw [hq_def]; exact Nat.lt_succ_sqrt scaled
   -- Unfold fpSqrtFinite to roundIntSigM
-  have hfp_unfold : fpSqrtFinite mode a =
-      @roundIntSigM _ (rModeExecOf mode) false (2 * q + (if rem = 0 then 0 else 1)) e_base := by
+  have hfp_unfold : fpSqrtFinite a =
+      roundIntSigM false (2 * q + (if rem = 0 then 0 else 1)) e_base := by
     unfold fpSqrtFinite
     simp only [← he_val_def, ← hm'_def, ← he_half_def, ← hscaled_def,
                ← hq_def, ← hrem_def, ← he_base_def]
@@ -132,9 +132,9 @@ theorem fpSqrtFinite_correct (mode : RoundingMode) (a : FiniteFp)
       rw [show (↑(2 * q) : ℝ) = 2 * (q : ℝ) from by push_cast; ring]
       rw [hexp_split]; ring
     rw [hfp_unfold, if_pos hrem, show 2 * q + 0 = 2 * q from by omega,
-        roundIntSigM_correct (R := ℝ) mode _ _ _ hmag_ne]
+        roundIntSigM_correct_tc (R := ℝ) _ _ _ hmag_ne]
     rw [h_isv]
-  · -- === Sticky case: use sticky_roundIntSig_eq_round ===
+  · -- === Sticky case: use sticky_roundIntSig_eq_round_tc ===
     rw [hfp_unfold, if_neg hrem]
     -- q ≥ 2^(prec+2) (from Nat.sqrt bounds)
     have hq_lower : 2 ^ (FloatFormat.prec.toNat + 2) ≤ q := by
@@ -173,7 +173,7 @@ theorem fpSqrtFinite_correct (mode : RoundingMode) (a : FiniteFp)
             mul_lt_mul_of_pos_right hsqrt_lt (by linarith)
         _ = 2 * ((q : ℝ) + 1) * E := by ring
     -- Apply shared sticky-bit lemma (sign=false, so if-then-else simplifies)
-    rw [sticky_roundIntSig_eq_round (R := ℝ) (mode := mode) (sign := false) (q := q)
+    rw [sticky_roundIntSig_eq_round_tc (R := ℝ) (sign := false) (q := q)
       (e_base := e_base) (hq_lower := hq_lower) (abs_exact := Real.sqrt (a.toVal : ℝ))
       (h_exact_in := ⟨he_lo, he_hi⟩)]
     simp

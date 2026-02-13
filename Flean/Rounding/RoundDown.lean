@@ -205,10 +205,10 @@ theorem roundDown_pos_imp_pos [FloatFormat] (x : R) (hs : FiniteFp.smallestPosSu
 
 /-- Key bridge lemma: `roundDown` of a positive value `mag * 2^e_base` produces a float with
 significand `⌊val / 2^e_ulp⌋` and stored exponent `e_ulp + prec - 1`, where `e_ulp` is the
-ULP exponent computed by `roundIntSig`. This bridges `roundIntSig`'s Nat division with
+ULP exponent computed by `roundIntSigM`. This bridges `roundIntSigM`'s Nat division with
 `roundDown`'s floor computation.
 
-The hypotheses mirror the non-overflow, inexact case of `roundIntSig`:
+The hypotheses mirror the non-overflow, inexact case of `roundIntSigM`:
 - `hmag`: mag ≠ 0
 - `hval_pos`: val > 0
 - `hval_lt`: val < 2^(max_exp + 1) (non-overflow)

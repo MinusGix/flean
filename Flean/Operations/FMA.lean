@@ -11,7 +11,7 @@ The algorithm:
 3. Align with `c` to a common exponent base (same technique as fpAdd)
 4. Compute the signed integer sum of aligned significands
 5. Handle the zero-sum case (IEEE 754 signed zero rules)
-6. For nonzero sums, delegate to `roundIntSig`
+6. For nonzero sums, delegate to `roundIntSigM`
 
 Because the exact product and addend are both rationals with power-of-2 denominators,
 their sum is always exactly representable as an integer times a power of 2. This avoids
@@ -23,58 +23,41 @@ section FMA
 variable [FloatFormat]
 local notation "prec" => FloatFormat.prec
 
-/-- Fused multiply-add of three finite floating-point numbers.
+/-- Fused multiply-add of finite floats with contextual rounding policy.
 
-The exact value `a.toVal × b.toVal + c.toVal` equals `sum × 2^(e_min - prec + 1)` where
-`sum` is the signed integer sum of the aligned product and addend significands. -/
-def fpFMAFinite (mode : RoundingMode) (a b c : FiniteFp) : Fp :=
-  -- Product as a "virtual float": magnitude a.m * b.m, stored exponent prod_E
+Computes `round(a * b + c)` with a single final rounding:
+- product and addend are aligned to a common exponent,
+- exact integer sum is formed,
+- exact-cancellation signed-zero rule is applied,
+- nonzero sums are rounded via `roundIntSigM`. -/
+def fpFMAFinite [RModeExec] (a b c : FiniteFp) : Fp :=
   let prod_E := a.e + b.e - prec + 1
   let e_min := min prod_E c.e
-  -- Align signed significands to common exponent base e_min - prec + 1
   let sp : ℤ := condNeg (a.s ^^ b.s) ((a.m * b.m : ℕ) : ℤ) *
     2^(prod_E - e_min).toNat
   let sc : ℤ := condNeg c.s (c.m : ℤ) * 2^(c.e - e_min).toNat
   let sum := sp + sc
   if sum = 0 then
-    -- IEEE 754 signed zero rules (same as fpAdd):
-    -- If product and addend have the same sign, result has that sign
-    -- Otherwise, +0 (except in roundDown mode, which gives -0)
-    let result_sign : Bool :=
-      if (a.s ^^ b.s) = c.s then (a.s ^^ b.s)
-      else match mode with
-        | .Down => true
-        | _ => false
+    let result_sign : Bool := exactCancelSign (a.s ^^ b.s) c.s
     Fp.finite ⟨result_sign, FloatFormat.min_exp, 0, IsValidFiniteVal.zero⟩
   else
     let sign := decide (sum < 0)
     let mag := sum.natAbs
-    letI : RModeExec := rModeExecOf mode
     roundIntSigM sign mag (e_min - prec + 1)
 
-/-- IEEE 754 floating-point fused multiply-add with full special-case handling.
+/-- IEEE 754 fused multiply-add with full special-case handling.
 
-Computes `round(x × y + z)` with a single rounding.
-
-Special cases:
-- Any NaN operand produces NaN
-- ∞ × 0 + z = NaN (indeterminate product, regardless of z)
-- 0 × ∞ + z = NaN
-- ∞ × ∞ + z: product is ∞, then ∞ + z follows addition rules
-- ∞ × finite(nonzero) + z: product is ∞, then ∞ + z follows addition rules
-- finite × finite + ∞ = ∞
-- finite × finite + finite delegates to `fpFMAFinite` -/
-def fpFMA (mode : RoundingMode) (x y z : Fp) : Fp :=
+Includes NaN propagation, invalid forms like `∞ * 0`, and infinite-result sign
+rules; finite-finite-finite case delegates to `fpFMAFinite`. -/
+def fpFMA [RModeExec] (x y z : Fp) : Fp :=
   match x, y, z with
   | .NaN, _, _ | _, .NaN, _ | _, _, .NaN => .NaN
-  -- Both multiplicands infinite: product is ∞ with sign x.s ^^ y.s
   | .infinite sx, .infinite sy, .infinite sz =>
     if (sx ^^ sy) = sz then .infinite sz else .NaN
   | .infinite sx, .infinite sy, .finite _ =>
     .infinite (sx ^^ sy)
-  -- One multiplicand infinite, one finite
   | .infinite sx, .finite fy, .infinite sz =>
-    if fy.m = 0 then .NaN  -- ∞ × 0 = NaN
+    if fy.m = 0 then .NaN
     else if (sx ^^ fy.s) = sz then .infinite sz else .NaN
   | .infinite sx, .finite fy, .finite _ =>
     if fy.m = 0 then .NaN else .infinite (sx ^^ fy.s)
@@ -83,10 +66,8 @@ def fpFMA (mode : RoundingMode) (x y z : Fp) : Fp :=
     else if (fx.s ^^ sy) = sz then .infinite sz else .NaN
   | .finite fx, .infinite sy, .finite _ =>
     if fx.m = 0 then .NaN else .infinite (fx.s ^^ sy)
-  -- Both multiplicands finite, addend infinite: finite + ∞ = ∞
   | .finite _, .finite _, .infinite sz => .infinite sz
-  -- All finite
-  | .finite a, .finite b, .finite c => fpFMAFinite mode a b c
+  | .finite a, .finite b, .finite c => fpFMAFinite a b c
 
 /-! ## Representation Lemma -/
 
@@ -110,6 +91,33 @@ abbrev fmaAlignedAddInt (a b c : FiniteFp) : ℤ :=
 /-- Signed aligned integer sum for the exact fused product-add value. -/
 abbrev fmaAlignedSumInt (a b c : FiniteFp) : ℤ :=
   fmaAlignedProdInt a b c + fmaAlignedAddInt a b c
+
+/-- Exact-cancellation branch of `fpFMAFinite`: result is signed zero with
+    sign chosen by `exactCancelSign` from product-sign and addend-sign. -/
+theorem fpFMAFinite_exact_cancel_sign [RModeExec] (a b c : FiniteFp)
+    (hsum : fmaAlignedSumInt a b c = 0) :
+    fpFMAFinite a b c =
+      Fp.finite
+        ⟨exactCancelSign (a.s ^^ b.s) c.s, FloatFormat.min_exp, 0, IsValidFiniteVal.zero⟩ := by
+  have hsum' :
+      condNeg (a.s ^^ b.s) (((a.m : ℤ) * (b.m : ℤ))) *
+          2 ^ (fmaProdE a b - fmaEMin a b c).toNat +
+        condNeg c.s (c.m : ℤ) * 2 ^ (c.e - fmaEMin a b c).toNat = 0 := by
+    simpa [fmaAlignedSumInt, fmaAlignedProdInt, fmaAlignedAddInt] using hsum
+  simp [fpFMAFinite, hsum']
+
+/-- Policy-facing form of `fpFMAFinite_exact_cancel_sign`. -/
+theorem fpFMAFinite_exact_cancel_sign_eq_policy {R : Type*}
+    [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    [RMode R] [RModeExec] [RModePolicySpec R]
+    (a b c : FiniteFp) (hsum : fmaAlignedSumInt a b c = 0) :
+    fpFMAFinite a b c =
+      Fp.finite
+        ⟨if (a.s ^^ b.s) = c.s then (a.s ^^ b.s)
+          else policyCancelSignOnExactZero (RModePolicyTag.kind (R := R)),
+          FloatFormat.min_exp, 0, IsValidFiniteVal.zero⟩ := by
+  rw [fpFMAFinite_exact_cancel_sign (a := a) (b := b) (c := c) hsum]
+  simp [exactCancelSign_eq_policy (R := R)]
 
 /-- The signed product `±(a.m * b.m)`, aligned to exponent `e_min` and scaled by
     `2^(e_min - prec + 1)`, equals `a.toVal * b.toVal`.
@@ -165,51 +173,36 @@ theorem fpFMAFinite_exact_sum (R : Type*) [Field R] [LinearOrder R] [IsStrictOrd
 
 /-! ## fpFMAFinite Correctness -/
 
-/-- For nonzero results, `fpFMAFinite` correctly rounds the exact fused product-sum.
-
-Note: the `hsum ≠ 0` condition excludes the signed-zero case where IEEE 754 prescribes
-special behavior that differs from `mode.round 0 = +0`. -/
+/-- Class-driven correctness for nonzero fused finite results. -/
 theorem fpFMAFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
-    [FloorRing R]
-    (mode : RoundingMode) (a b c : FiniteFp)
+    [FloorRing R] [RMode R] [RModeExec] [RoundIntSigMSound R]
+    (a b c : FiniteFp)
     (hsum : (a.toVal : R) * b.toVal + c.toVal ≠ 0) :
-    fpFMAFinite mode a b c = mode.round ((a.toVal : R) * b.toVal + c.toVal) := by
-  -- Get the exact sum representation
+    fpFMAFinite a b c = RMode.round ((a.toVal : R) * b.toVal + c.toVal) := by
   have hexact := fpFMAFinite_exact_sum R a b c
-  -- Name the aligned integer sum and base exponent
   set e_min := fmaEMin a b c with e_min_def
   set isum : ℤ := fmaAlignedSumInt a b c with isum_def
-  -- The integer sum is nonzero
   have hsum_ne : isum ≠ 0 := by
     intro hzero
     apply hsum
     rw [hexact, hzero, Int.cast_zero, zero_mul]
-  -- Unfold fpFMAFinite
   simp only [fpFMAFinite, e_min_def.symm]
   rw [if_neg hsum_ne]
-  -- Apply generic roundIntSigM correctness
   have hmag_ne : isum.natAbs ≠ 0 := by rwa [Int.natAbs_ne_zero]
-  have hround :
-      @roundIntSigM _ (rModeExecOf mode) (decide (isum < 0)) isum.natAbs (e_min - prec + 1) =
-        mode.round (intSigVal (R := R) (decide (isum < 0)) isum.natAbs (e_min - prec + 1)) := by
-    simpa using
-      (roundIntSigM_correct (R := R) mode
-        (decide (isum < 0)) isum.natAbs (e_min - prec + 1) hmag_ne)
-  rw [hround]
-  -- Show the arguments to mode.round are equal
+  rw [roundIntSigM_correct_tc (R := R) _ _ _ hmag_ne]
   congr 1
   rw [intSigVal_eq_int_mul (R := R) hsum_ne, hexact]
 
 /-! ## Commutativity -/
 
 /-- `fpFMAFinite` is commutative in the first two operands. -/
-theorem fpFMAFinite_comm_ab (mode : RoundingMode) (a b c : FiniteFp) :
-    fpFMAFinite mode a b c = fpFMAFinite mode b a c := by
+theorem fpFMAFinite_comm_ab [RModeExec] (a b c : FiniteFp) :
+    fpFMAFinite a b c = fpFMAFinite b a c := by
   simp only [fpFMAFinite, Bool.xor_comm a.s b.s, Nat.mul_comm a.m b.m, add_comm a.e b.e]
 
 /-- `fpFMA` is commutative in the first two operands. -/
-theorem fpFMA_comm_ab (mode : RoundingMode) (x y z : Fp) :
-    fpFMA mode x y z = fpFMA mode y x z := by
+theorem fpFMA_comm_ab [RModeExec] (x y z : Fp) :
+    fpFMA x y z = fpFMA y x z := by
   cases x with
   | NaN => cases y <;> cases z <;> simp [fpFMA]
   | infinite sx =>
@@ -228,13 +221,13 @@ theorem fpFMA_comm_ab (mode : RoundingMode) (x y z : Fp) :
 /-! ## Negation of both multiplicands -/
 
 /-- Negating both multiplicands in `fpFMAFinite` is a no-op, since `(-a) × (-b) = a × b`. -/
-theorem fpFMAFinite_neg_mul_neg (mode : RoundingMode) (a b c : FiniteFp) :
-    fpFMAFinite mode (-a) (-b) c = fpFMAFinite mode a b c := by
+theorem fpFMAFinite_neg_mul_neg [RModeExec] (a b c : FiniteFp) :
+    fpFMAFinite (-a) (-b) c = fpFMAFinite a b c := by
   simp only [fpFMAFinite, FiniteFp.neg_def, Bool.not_xor_not]
 
 /-- Negating both multiplicands in `fpFMA` is a no-op, since `(-x) × (-y) = x × y`. -/
-theorem fpFMA_neg_mul_neg (mode : RoundingMode) (x y z : Fp) :
-    fpFMA mode (-x) (-y) z = fpFMA mode x y z := by
+theorem fpFMA_neg_mul_neg [RModeExec] (x y z : Fp) :
+    fpFMA (-x) (-y) z = fpFMA x y z := by
   cases x with
   | NaN => cases y <;> cases z <;> simp [fpFMA]
   | infinite sx =>
@@ -253,30 +246,32 @@ theorem fpFMA_neg_mul_neg (mode : RoundingMode) (x y z : Fp) :
 
 /-! ## Reduction to simpler operations -/
 
-/-- `fpFMAFinite mode a b 0 = fpMulFinite mode a b` when the product is nonzero.
+/-- `fpFMAFinite a b 0 = fpMulFinite a b` when the product is nonzero.
 
 This shows FMA generalizes multiplication: `round(a × b + 0) = round(a × b)`. -/
 theorem fpFMAFinite_zero_eq_fpMulFinite {R : Type*} [Field R] [LinearOrder R]
-    [IsStrictOrderedRing R] [FloorRing R]
-    (mode : RoundingMode) (a b : FiniteFp)
+    [IsStrictOrderedRing R] [FloorRing R] [RMode R] [RModeExec] [RoundIntSigMSound R]
+    (a b : FiniteFp)
     (hprod : (a.toVal : R) * b.toVal ≠ 0) :
-    fpFMAFinite mode a b 0 = fpMulFinite mode a b := by
-  have hfma := fpFMAFinite_correct (R := R) mode a b 0
-    (by rw [FiniteFp.toVal_zero, add_zero]; exact hprod)
-  have hmul := fpMulFinite_correct (R := R) mode a b hprod
+    fpFMAFinite a b 0 = fpMulFinite a b := by
+  have hfma : fpFMAFinite a b 0 = RMode.round ((a.toVal : R) * b.toVal + (0 : FiniteFp).toVal) := by
+    exact fpFMAFinite_correct (R := R) a b 0 (by rw [FiniteFp.toVal_zero, add_zero]; exact hprod)
+  have hmul : fpMulFinite a b = RMode.round ((a.toVal : R) * b.toVal) := by
+    exact fpMulFinite_correct (R := R) a b hprod
   rw [hfma, hmul, FiniteFp.toVal_zero, add_zero]
 
-/-- `fpFMAFinite mode 1 a c = fpAddFinite mode a c` when the sum `a + c` is nonzero.
+/-- `fpFMAFinite 1 a c = fpAddFinite a c` when the sum `a + c` is nonzero.
 
 This shows FMA generalizes addition: `round(1 × a + c) = round(a + c)`. -/
 theorem fpFMAFinite_one_eq_fpAddFinite {R : Type*} [Field R] [LinearOrder R]
-    [IsStrictOrderedRing R] [FloorRing R]
-    (mode : RoundingMode) (a c : FiniteFp)
+    [IsStrictOrderedRing R] [FloorRing R] [RMode R] [RModeExec] [RoundIntSigMSound R]
+    (a c : FiniteFp)
     (hsum : (a.toVal : R) + c.toVal ≠ 0) :
-    fpFMAFinite mode 1 a c = fpAddFinite mode a c := by
-  have hfma := fpFMAFinite_correct (R := R) mode 1 a c
-    (by rw [FiniteFp.toVal_one, one_mul]; exact hsum)
-  have hadd := fpAddFinite_correct (R := R) mode a c hsum
+    fpFMAFinite 1 a c = fpAddFinite a c := by
+  have hfma : fpFMAFinite 1 a c = RMode.round ((1 : FiniteFp).toVal * (a.toVal : R) + c.toVal) := by
+    exact fpFMAFinite_correct (R := R) 1 a c (by rw [FiniteFp.toVal_one, one_mul]; exact hsum)
+  have hadd : fpAddFinite a c = RMode.round ((a.toVal : R) + c.toVal) := by
+    exact fpAddFinite_correct (R := R) a c hsum
   rw [hfma, hadd, FiniteFp.toVal_one, one_mul]
 
 end FMA

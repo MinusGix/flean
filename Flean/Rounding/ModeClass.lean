@@ -5,9 +5,6 @@ Typeclass-oriented rounding-mode API.
 
 This is the context-style version: one rounding policy is available in typeclass
 context at a time (similar to `FloatFormat`).
-
-`RoundingMode` remains available as a temporary compatibility surface while we
-migrate callsites away from value-level mode arguments.
 -/
 
 section ModeClass
@@ -65,11 +62,15 @@ class RModeNearest (R : Type*)
     ∀ (x : R),
       FloatFormat.overflowThreshold R ≤ x →
       RMode.round (R := R) x = Fp.infinite false
+  round_le_two_x_sub_pred :
+    ∀ (x : R) (hxpos : 0 < x) (_hx : isNormalRange x) (f : FiniteFp),
+      RMode.round (R := R) x = Fp.finite f →
+      (f.toVal : R) ≤ 2 * x - (findPredecessorPos x hxpos).toVal
 
 /-- RoundIntSig-facing execution hooks.
 
 `RModeExec` contains only the operational branch decisions needed by the
-`roundIntSig` algorithm. Semantic correctness is tracked separately in
+`roundIntSigM` algorithm. Semantic correctness is tracked separately in
 `RModeExecSound`.
 
 `cancelSignOnExactZero` is used by add/FMA exact-cancellation cases: when the
@@ -79,9 +80,6 @@ class RModeExec [FloatFormat] where
   shouldRoundUp : Bool → ℕ → ℕ → ℕ → Bool
   handleOverflow : Bool → Fp
   cancelSignOnExactZero : Bool := false
-
-/-- Backward-compatible alias (deprecated in favor of `RModeExec`). -/
-abbrev RModeRoundIntPolicy [FloatFormat] := RModeExec
 
 /-- Canonical scaled value used by execution-soundness laws. -/
 def execScaledVal (R : Type) [Field R] (sign : Bool) (q r shift : ℕ) : R :=
@@ -115,51 +113,126 @@ class RModeTieAway [FloatFormat] [RModeExec] : Prop where
       0 < shift →
       RModeExec.shouldRoundUp sign q (2 ^ (shift - 1)) shift = true
 
-/-- Value-level branch logic for `shouldRoundUp`, used for compatibility shims. -/
-def shouldRoundUpMode (mode : RoundingMode) (sign : Bool) (q r : ℕ) (shift : ℕ) : Bool :=
-  if r = 0 then false
-  else match mode with
-  | .Down => sign
-  | .Up => !sign
-  | .TowardZero => false
-  | .NearestTiesToEven =>
-    let half := 2^(shift - 1)
-    if r > half then true
-    else if r < half then false
-    else q % 2 ≠ 0
-  | .NearestTiesAwayFromZero =>
-    let half := 2^(shift - 1)
-    r ≥ half
+/-! ## Policy Markers -/
 
-/-- IEEE-754 overflow target for a value-level rounding mode. -/
-def handleOverflowMode [FloatFormat] (mode : RoundingMode) (sign : Bool) : Fp :=
-  match mode with
-  | .Down =>
-    if sign then Fp.infinite true
-    else Fp.finite FiniteFp.largestFiniteFloat
-  | .Up =>
-    if sign then Fp.finite (-FiniteFp.largestFiniteFloat)
-    else Fp.infinite false
-  | .TowardZero =>
-    if sign then Fp.finite (-FiniteFp.largestFiniteFloat)
-    else Fp.finite FiniteFp.largestFiniteFloat
-  | .NearestTiesToEven => Fp.infinite sign
-  | .NearestTiesAwayFromZero => Fp.infinite sign
+/-- Marker type for round-toward-negative-infinity policy. -/
+inductive RoundTowardNegPolicy : Type
+| tag
 
-/-- Signed-zero choice for exact cancellation (`+0` vs `-0`). -/
-def cancelSignOnExactZeroMode (mode : RoundingMode) : Bool :=
-  mode = .Down
+/-- Marker type for round-toward-positive-infinity policy. -/
+inductive RoundTowardPosPolicy : Type
+| tag
 
-/-- Compatibility dictionary: build an `RModeExec` from a value-level mode. -/
-def rModeExecOf (mode : RoundingMode) [FloatFormat] : RModeExec where
-  shouldRoundUp := shouldRoundUpMode mode
-  handleOverflow := handleOverflowMode mode
-  cancelSignOnExactZero := cancelSignOnExactZeroMode mode
+/-- Marker type for round-toward-zero policy. -/
+inductive RoundTowardZeroPolicy : Type
+| tag
 
-/-- Compatibility dictionary: build an `RMode` from a value-level mode. -/
-def rModeOf (mode : RoundingMode) (R : Type*)
-    [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] [FloatFormat] :
-    RMode R where
-  round := mode.round
+/-- Marker type for round-to-nearest, ties-to-even policy. -/
+inductive RoundNearestEvenPolicy : Type
+| tag
+
+/-- Marker type for round-to-nearest, ties-away-from-zero policy. -/
+inductive RoundNearestAwayPolicy : Type
+| tag
+
+/-- Activates a contextual rounding-policy marker type. -/
+class UseRoundingPolicy (P : Type) : Prop where
+
+/-- Canonical policy identity used for shared adapter theorems. -/
+inductive RModePolicyKind : Type
+| towardNeg
+| towardPos
+| towardZero
+| nearestEven
+| nearestAway
+deriving DecidableEq
+
+/-- Canonical policy-level rounding function. -/
+def policyRound (R : Type*) [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    [FloorRing R] [FloatFormat] (k : RModePolicyKind) : R → Fp :=
+  match k with
+  | .towardNeg => roundDown
+  | .towardPos => roundUp
+  | .towardZero => roundTowardZero
+  | .nearestEven => roundNearestTiesToEven
+  | .nearestAway => roundNearestTiesAwayFromZero
+
+/-- Canonical policy-level tie decision function used by `roundIntSigM`. -/
+def policyShouldRoundUp (k : RModePolicyKind) (sign : Bool) (q r shift : ℕ) : Bool :=
+  match k with
+  | .towardNeg => if r = 0 then false else sign
+  | .towardPos => if r = 0 then false else !sign
+  | .towardZero => false
+  | .nearestEven =>
+      if r = 0 then false
+      else
+        let half := 2 ^ (shift - 1)
+        if r > half then true
+        else if r < half then false
+        else q % 2 ≠ 0
+  | .nearestAway =>
+      if r = 0 then false
+      else
+        let half := 2 ^ (shift - 1)
+        r ≥ half
+
+/-- Canonical policy-level overflow result. -/
+def policyHandleOverflow [FloatFormat] (k : RModePolicyKind) (sign : Bool) : Fp :=
+  match k with
+  | .towardNeg =>
+      if sign then Fp.infinite true else Fp.finite FiniteFp.largestFiniteFloat
+  | .towardPos =>
+      if sign then Fp.finite (-FiniteFp.largestFiniteFloat) else Fp.infinite false
+  | .towardZero =>
+      if sign then Fp.finite (-FiniteFp.largestFiniteFloat) else Fp.finite FiniteFp.largestFiniteFloat
+  | .nearestEven => Fp.infinite sign
+  | .nearestAway => Fp.infinite sign
+
+/-- Canonical exact-cancellation signed-zero behavior for each policy. -/
+def policyCancelSignOnExactZero (k : RModePolicyKind) : Bool :=
+  decide (k = .towardNeg)
+
+/-- Signed-zero selection for exact cancellation between two signed terms. -/
+def exactCancelSign [FloatFormat] [RModeExec] (sx sy : Bool) : Bool :=
+  if sx = sy then sx else RModeExec.cancelSignOnExactZero
+
+/-- Policy conjugate used by sign-transport lemmas. -/
+def RModePolicyKind.conjugate : RModePolicyKind → RModePolicyKind
+  | .towardNeg => .towardPos
+  | .towardPos => .towardNeg
+  | .towardZero => .towardZero
+  | .nearestEven => .nearestEven
+  | .nearestAway => .nearestAway
+
+/-- Bridge class exposing which concrete policy dictionary is active. -/
+class RModePolicyTag (R : Type*)
+    [FloatFormat] [RMode R] [RModeExec] where
+  kind : RModePolicyKind
+
+/-- Adapter laws tying contextual dictionaries to the canonical policy profile. -/
+class RModePolicySpec (R : Type*)
+    [FloatFormat] [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    [RMode R] [RModeExec] extends RModePolicyTag R where
+  round_eq_policy :
+    ∀ (x : R),
+      RMode.round (R := R) x = policyRound R kind x
+  shouldRoundUp_eq_policy :
+    ∀ (sign : Bool) (q r shift : ℕ),
+      RModeExec.shouldRoundUp sign q r shift =
+        policyShouldRoundUp kind sign q r shift
+  handleOverflow_eq_policy :
+    ∀ (sign : Bool),
+      RModeExec.handleOverflow sign = policyHandleOverflow kind sign
+  cancelSignOnExactZero_eq_policy :
+    RModeExec.cancelSignOnExactZero = policyCancelSignOnExactZero kind
+
+/-- `exactCancelSign` reduced to the canonical policy profile. -/
+theorem exactCancelSign_eq_policy {R : Type*}
+    [FloatFormat] [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    [RMode R] [RModeExec] [RModePolicySpec R]
+    (sx sy : Bool) :
+    exactCancelSign sx sy =
+      (if sx = sy then sx else policyCancelSignOnExactZero (RModePolicyTag.kind (R := R))) := by
+  simp [exactCancelSign, RModePolicySpec.cancelSignOnExactZero_eq_policy (R := R)]
 
 end ModeClass
