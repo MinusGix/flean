@@ -128,7 +128,9 @@ theorem sterbenz_sub_sa (a b : FiniteFp)
     ((FiniteFp.toVal_pos_iff (R := R)).mpr (by linarith)).1
   have hs_m : 0 < s_fp.m :=
     ((FiniteFp.toVal_pos_iff (R := R)).mpr (by linarith)).2
-  exact sterbenz (R := R) s_fp a hs_s ha hs_m ha_nz (by linarith) hs_le_2a
+  obtain ⟨z_fp, hz_sub, hz_repr⟩ :=
+    sterbenz (R := R) s_fp a hs_s ha hs_m ha_nz (by linarith) hs_le_2a
+  exact ⟨z_fp, hz_sub, by simpa [Fp.Represents] using hz_repr⟩
 
 /-! ## Layer 2: Subtraction of equal-valued floats yields finite zero -/
 
@@ -228,9 +230,14 @@ theorem add_error_representable (a b : FiniteFp)
       have : 2 ^ (precNat - 1) + 2 ^ (precNat - 1) = 2 ^ precNat := by
         set k := precNat - 1; rw [show precNat = k + 1 from by omega, pow_succ]; omega
       omega
-    obtain ⟨g, _, hgv, hround⟩ := subnormal_sum_exact (R := R) a b ha hb hb_nz.ne' ha_sub hb_sub hfit
-    have : s_fp = g := Fp.finite.inj (by rw [← hs_correct, hround])
-    exact absurd (show (a.toVal : R) + b.toVal - s_fp.toVal = 0 by rw [this, hgv]; ring) herr
+    obtain ⟨g, _, hg_exact⟩ := subnormal_sum_exact (R := R) a b ha hb hb_nz.ne' ha_sub hb_sub hfit
+    have hgv : (g.toVal : R) = a.toVal + b.toVal := by
+      simpa [Fp.Represents] using hg_exact.2
+    have hround_g : ○((a.toVal : R) + b.toVal) = Fp.finite g := by
+      simpa using hg_exact.1
+    have : s_fp = g := Fp.finite.inj (by rw [← hs_correct, hround_g])
+    exact absurd (show (a.toVal : R) + b.toVal - s_fp.toVal = 0 by
+      rw [this, hgv]; ring) herr
   -- Step C: isNormalRange(a+b)
   have hNR : isNormalRange ((a.toVal : R) + b.toVal) := by
     constructor

@@ -589,6 +589,14 @@ namespace Fp
 
 variable [FloatFormat]
 
+/-- `f` represents the real value `x`. -/
+def Represents {R : Type*} [Field R] (x : R) (f : FiniteFp) : Prop :=
+  ⌞f⌟ = x
+
+@[simp] theorem represents_iff {R : Type*} [Field R] (x : R) (f : FiniteFp) :
+    Represents x f ↔ ⌞f⌟ = x := by
+  rfl
+
 def toVal? {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] (x : Fp) : Option R :=
   match x with
   | .finite x => some (FiniteFp.toVal x)

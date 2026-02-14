@@ -228,8 +228,7 @@ theorem subnormal_sum_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
     (ha_sub : isSubnormal a.e a.m) (hb_sub : isSubnormal b.e b.m)
     (hfit : a.m + b.m < 2 ^ precNat) :
     ∃ g : FiniteFp, g.s = false ∧
-      (g.toVal : R) = (a.toVal : R) + b.toVal ∧
-      ○((a.toVal : R) + b.toVal) = Fp.finite g := by
+      Fp.ExactRound (⌞a⌟[R] + ⌞b⌟) g := by
   have hmag_pos : 0 < a.m + b.m := by omega
   obtain ⟨g, hgs, hgv⟩ := exists_finiteFp_of_nat_mul_zpow (R := R) (a.m + b.m)
     (FloatFormat.min_exp - prec + 1) hmag_pos hfit
@@ -239,6 +238,6 @@ theorem subnormal_sum_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
     push_cast; ring
   have hround := RModeIdem.round_idempotent (R := R) g (Or.inl hgs)
   rw [hgv_eq] at hround
-  exact ⟨g, hgs, hgv_eq, hround⟩
+  exact ⟨g, hgs, ⟨by simpa using hround, by simpa [Fp.Represents] using hgv_eq⟩⟩
 
 end Add

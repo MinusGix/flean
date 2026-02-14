@@ -16,6 +16,44 @@ class RMode (R : Type*) [FloatFormat] where
 /-- Notation for contextual rounding. -/
 prefix:max "○" => RMode.round
 
+namespace Fp
+
+variable [FloatFormat]
+
+/-- Explicit-map exactness: `f` is the exact finite result of applying `ρ` to `x`. -/
+def ExactRoundWith {R : Type*} [Field R] (ρ : R → Fp) (x : R) (f : FiniteFp) : Prop :=
+  ρ x = Fp.finite f ∧ Represents x f
+
+/-- Contextual exactness under the active rounding dictionary. -/
+abbrev ExactRound {R : Type*} [Field R] [RMode R] (x : R) (f : FiniteFp) : Prop :=
+  ExactRoundWith (fun y => ○y) x f
+
+@[simp] theorem exactRoundWith_iff {R : Type*} [Field R] (ρ : R → Fp) (x : R) (f : FiniteFp) :
+    ExactRoundWith ρ x f ↔ ρ x = Fp.finite f ∧ ⌞f⌟ = x := by
+  rfl
+
+@[simp] theorem exactRound_iff {R : Type*} [Field R] [RMode R] (x : R) (f : FiniteFp) :
+    ExactRound x f ↔ ○x = Fp.finite f ∧ ⌞f⌟ = x := by
+  rfl
+
+theorem ExactRoundWith.round_eq {R : Type*} [Field R] {ρ : R → Fp} {x : R} {f : FiniteFp}
+    (h : ExactRoundWith ρ x f) : ρ x = Fp.finite f :=
+  h.1
+
+theorem ExactRoundWith.toVal_eq {R : Type*} [Field R] {ρ : R → Fp} {x : R} {f : FiniteFp}
+    (h : ExactRoundWith ρ x f) : ⌞f⌟ = x :=
+  h.2
+
+theorem ExactRound.round_eq {R : Type*} [Field R] [RMode R] {x : R} {f : FiniteFp}
+    (h : ExactRound x f) : ○x = Fp.finite f :=
+  h.1
+
+theorem ExactRound.toVal_eq {R : Type*} [Field R] [RMode R] {x : R} {f : FiniteFp}
+    (h : ExactRound x f) : ⌞f⌟ = x :=
+  h.2
+
+end Fp
+
 /-- Rounding preserves exact zero. -/
 class RModeZero (R : Type*) [FloatFormat] [Zero R] [RMode R] : Prop where
   round_zero :
