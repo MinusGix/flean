@@ -171,7 +171,7 @@ theorem sterbenz (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
     have hval_eq : (a.toVal : R) - b.toVal = f.toVal := hdiff_eq.trans hfv.symm
     refine ⟨f, ?_, hval_eq.symm⟩
     have hsub_corr : a - b =
-        RMode.round ((a.toVal : R) - b.toVal) := by
+        ○((a.toVal : R) - b.toVal) := by
       simpa using (fpSubFinite_correct (R := R) a b hdiff_ne)
     rw [hsub_corr, hval_eq]
     exact RModeIdem.round_idempotent (R := R) f hf_valid

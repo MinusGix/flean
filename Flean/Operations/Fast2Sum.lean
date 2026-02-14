@@ -32,13 +32,13 @@ theorem round_sum_ge_left (a b : FiniteFp)
     (hs : a + b = Fp.finite s_fp) :
     (a.toVal : R) ≤ s_fp.toVal := by
   have hsum_round : a + b =
-      RMode.round ((a.toVal : R) + b.toVal) := by
+      ○((a.toVal : R) + b.toVal) := by
     simpa using (fpAddFinite_correct (R := R) a b hsum_ne)
   have hb_nonneg : (0 : R) ≤ b.toVal := by
     rw [FiniteFp.toVal_pos_eq b hb]; positivity
-  have hmono : RMode.round (a.toVal (R := R)) ≤ RMode.round (a.toVal + b.toVal) :=
+  have hmono : ○(a.toVal (R := R)) ≤ ○(a.toVal + b.toVal) :=
     RModeMono.round_mono (R := R) (le_add_of_nonneg_right hb_nonneg)
-  have hround_a : RMode.round (a.toVal (R := R)) = Fp.finite a :=
+  have hround_a : ○(a.toVal (R := R)) = Fp.finite a :=
     RModeIdem.round_idempotent (R := R) a (Or.inl ha)
   rw [hsum_round] at hs
   rw [hround_a] at hmono; rw [hs] at hmono
@@ -54,7 +54,7 @@ theorem round_sum_le_double (a b : FiniteFp)
     (hs : a + b = Fp.finite s_fp) :
     (s_fp.toVal : R) ≤ 2 * a.toVal := by
   have hsum_round : a + b =
-      RMode.round ((a.toVal : R) + b.toVal) := by
+      ○((a.toVal : R) + b.toVal) := by
     simpa using (fpAddFinite_correct (R := R) a b hsum_ne)
   have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
   have hab_le : (a.toVal : R) + b.toVal ≤ 2 * a.toVal := by linarith
@@ -64,7 +64,7 @@ theorem round_sum_le_double (a b : FiniteFp)
     obtain ⟨d, hds, hdv⟩ := mul_pow2_representable (R := R) a 1 ha_nz ha
       (by have := a.valid.1; omega) he
     have hdv' : (d.toVal : R) = 2 * a.toVal := by rw [hdv, zpow_one]; ring
-    have hmono : RMode.round ((a.toVal : R) + b.toVal) ≤ RMode.round (d.toVal (R := R)) :=
+    have hmono : ○((a.toVal : R) + b.toVal) ≤ ○(d.toVal (R := R)) :=
       RModeMono.round_mono (R := R) (by rw [hdv']; exact hab_le)
     have hround_d := RModeIdem.round_idempotent (R := R) d (Or.inl hds)
     rw [hround_d] at hmono; rw [hs] at hmono
@@ -104,7 +104,7 @@ theorem round_sum_le_double (a b : FiniteFp)
         (a.e - prec + 1) (by omega) h2m_bound (by omega) (by omega)
       have hdv' : (d.toVal : R) = 2 * a.toVal := by
         rw [hdv, h2a_eq]; push_cast; ring
-      have hmono : RMode.round ((a.toVal : R) + b.toVal) ≤ RMode.round (d.toVal (R := R)) :=
+      have hmono : ○((a.toVal : R) + b.toVal) ≤ ○(d.toVal (R := R)) :=
         RModeMono.round_mono (R := R) (by rw [hdv']; exact hab_le)
       rw [RModeIdem.round_idempotent (R := R) d (Or.inl hds)] at hmono; rw [hs] at hmono
       linarith [FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff s_fp d).mp hmono)]
@@ -175,7 +175,7 @@ The error `(a + b) - s` is exactly representable as a float for round-to-nearest
 private theorem nearest_round_le_two_x_sub_pred
     [RMode R] [RModeNearest R]
     (x : R) (hxpos : 0 < x) (hx : isNormalRange x)
-    (f : FiniteFp) (hf : RMode.round x = Fp.finite f) :
+    (f : FiniteFp) (hf : ○x = Fp.finite f) :
     (f.toVal : R) ≤ 2 * x - (findPredecessorPos x hxpos).toVal := by
   exact RModeNearest.round_le_two_x_sub_pred (R := R) x hxpos hx f hf
 
@@ -241,7 +241,7 @@ theorem add_error_representable (a b : FiniteFp)
     · by_contra h_high; push_neg at h_high
       have h_ot_le : FloatFormat.overflowThreshold R ≤ (a.toVal : R) + b.toVal :=
         le_of_lt (lt_of_lt_of_le FloatFormat.overflowThreshold_lt_zpow_max_exp_succ h_high)
-      have hround_inf : RMode.round ((a.toVal : R) + b.toVal) = Fp.infinite false :=
+      have hround_inf : ○((a.toVal : R) + b.toVal) = Fp.infinite false :=
         RModeNearest.overflow_pos_inf (R := R) _ h_ot_le
       exact absurd (hs_correct.symm.trans hround_inf) (by simp)
   -- Step D: Error bound |error| ≤ b via helper + roundDown ≥ a
@@ -375,7 +375,7 @@ theorem fast2Sum_pos_exact (a b : FiniteFp)
       rw [hz_val, herr_val]; ring
     have hsub_eq : b - z_fp = Fp.finite err_fp := by
       have hsub_corr : b - z_fp =
-          RMode.round ((b.toVal : R) - z_fp.toVal) := by
+          ○((b.toVal : R) - z_fp.toVal) := by
         simpa using (fpSubFinite_correct (R := R) b z_fp htz)
       rw [hsub_corr, hbz_val,
           RModeIdem.round_idempotent (R := R) err_fp herr_valid]

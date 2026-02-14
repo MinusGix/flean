@@ -32,7 +32,7 @@ theorem fpSubFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
     [FloorRing R] [RMode R] [RModeExec] [RoundIntSigMSound R]
     (a b : FiniteFp)
     (hdiff : (a.toVal : R) - b.toVal ≠ 0) :
-    a - b = RMode.round ((a.toVal : R) - b.toVal) := by
+    a - b = ○((a.toVal : R) - b.toVal) := by
   have hdiff' : (a.toVal : R) + (-b).toVal ≠ 0 := by
     simpa [FiniteFp.toVal_neg_eq_neg, sub_eq_add_neg] using hdiff
   simpa [sub_finite_eq_fpSubFinite, fpSubFinite, FiniteFp.toVal_neg_eq_neg, sub_eq_add_neg] using

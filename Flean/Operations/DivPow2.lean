@@ -51,7 +51,7 @@ theorem fpDivFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
   have hquot_ne : (f.toVal : R) / (pow2Float k hk_lo hk_hi).toVal ≠ 0 := by
     rw [pow2Float_toVal]; exact div_ne_zero hf_ne (zpow_ne_zero _ (by norm_num))
   have hdiv_corr : f / pow2Float k hk_lo hk_hi =
-      RMode.round ((f.toVal : R) / (pow2Float k hk_lo hk_hi).toVal) := by
+      ○((f.toVal : R) / (pow2Float k hk_lo hk_hi).toVal) := by
     exact fpDivFinite_correct_exact (R := R) f (pow2Float k hk_lo hk_hi) hb_nz hquot_ne hexact
   by_cases hfs : f.s = false
   · -- Positive f: mul_pow2_representable gives exact representative

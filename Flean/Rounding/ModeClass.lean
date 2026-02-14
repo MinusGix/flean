@@ -13,6 +13,9 @@ section ModeClass
 class RMode (R : Type*) [FloatFormat] where
   round : R → Fp
 
+/-- Notation for contextual rounding. -/
+prefix:max "○" => RMode.round
+
 /-- Rounding preserves exact zero. -/
 class RModeZero (R : Type*) [FloatFormat] [Zero R] [RMode R] : Prop where
   round_zero :

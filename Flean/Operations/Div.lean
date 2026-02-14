@@ -145,7 +145,7 @@ theorem fpDivFinite_correct_exact {R : Type*} [Field R] [LinearOrder R] [IsStric
     (hb : b.m ≠ 0)
     (hquot : (a.toVal : R) / b.toVal ≠ 0)
     (hexact : (a.m * 2 ^ divShift) % b.m = 0) :
-    a / b = RMode.round ((a.toVal : R) / b.toVal) := by
+    a / b = ○((a.toVal : R) / b.toVal) := by
   -- When remainder = 0, mag = 2*q and intSigVal equals exact quotient
   set q := (a.m * 2 ^ divShift) / b.m with hq_def
   -- mag = 2 * q (since r = 0)
@@ -191,7 +191,7 @@ theorem fpDivFinite_correct {R : Type*} [Field R] [LinearOrder R]
     (a b : FiniteFp)
     (hb : b.m ≠ 0)
     (hquot : (a.toVal : R) / b.toVal ≠ 0) :
-    a / b = RMode.round ((a.toVal : R) / b.toVal) := by
+    a / b = ○((a.toVal : R) / b.toVal) := by
   set q := (a.m * 2 ^ divShift) / b.m with hq_def
   set r := (a.m * 2 ^ divShift) % b.m with hr_def
   -- Case split: exact (r = 0) vs sticky (r ≠ 0)

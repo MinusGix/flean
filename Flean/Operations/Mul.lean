@@ -85,7 +85,7 @@ theorem fpMulFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
     [RMode R] [RModeExec] [RoundIntSigMSound R]
     (a b : FiniteFp)
     (hprod : (a.toVal : R) * b.toVal ≠ 0) :
-    a * b = RMode.round ((a.toVal : R) * b.toVal) := by
+    a * b = ○((a.toVal : R) * b.toVal) := by
   have hexact := fpMulFinite_exact_product (R := R) a b
   have hmag_ne : a.m * b.m ≠ 0 := by
     intro hzero

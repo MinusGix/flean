@@ -178,7 +178,7 @@ theorem fpFMAFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
     [FloorRing R] [RMode R] [RModeExec] [RoundIntSigMSound R]
     (a b c : FiniteFp)
     (hsum : (a.toVal : R) * b.toVal + c.toVal ≠ 0) :
-    fpFMAFinite a b c = RMode.round ((a.toVal : R) * b.toVal + c.toVal) := by
+    fpFMAFinite a b c = ○((a.toVal : R) * b.toVal + c.toVal) := by
   have hexact := fpFMAFinite_exact_sum R a b c
   set e_min := fmaEMin a b c with e_min_def
   set isum : ℤ := fmaAlignedSumInt a b c with isum_def
@@ -254,9 +254,9 @@ theorem fpFMAFinite_zero_eq_fpMulFinite {R : Type*} [Field R] [LinearOrder R]
     (a b : FiniteFp)
     (hprod : (a.toVal : R) * b.toVal ≠ 0) :
     fpFMAFinite a b 0 = a * b := by
-  have hfma : fpFMAFinite a b 0 = RMode.round ((a.toVal : R) * b.toVal + (0 : FiniteFp).toVal) := by
+  have hfma : fpFMAFinite a b 0 = ○((a.toVal : R) * b.toVal + (0 : FiniteFp).toVal) := by
     exact fpFMAFinite_correct (R := R) a b 0 (by rw [FiniteFp.toVal_zero, add_zero]; exact hprod)
-  have hmul : a * b = RMode.round ((a.toVal : R) * b.toVal) := by
+  have hmul : a * b = ○((a.toVal : R) * b.toVal) := by
     exact fpMulFinite_correct (R := R) a b hprod
   rw [hfma, hmul, FiniteFp.toVal_zero, add_zero]
 
@@ -268,9 +268,9 @@ theorem fpFMAFinite_one_eq_fpAddFinite {R : Type*} [Field R] [LinearOrder R]
     (a c : FiniteFp)
     (hsum : (a.toVal : R) + c.toVal ≠ 0) :
     fpFMAFinite 1 a c = a + c := by
-  have hfma : fpFMAFinite 1 a c = RMode.round ((1 : FiniteFp).toVal * (a.toVal : R) + c.toVal) := by
+  have hfma : fpFMAFinite 1 a c = ○((1 : FiniteFp).toVal * (a.toVal : R) + c.toVal) := by
     exact fpFMAFinite_correct (R := R) 1 a c (by rw [FiniteFp.toVal_one, one_mul]; exact hsum)
-  have hadd : a + c = RMode.round ((a.toVal : R) + c.toVal) := by
+  have hadd : a + c = ○((a.toVal : R) + c.toVal) := by
     exact fpAddFinite_correct (R := R) a c hsum
   rw [hfma, hadd, FiniteFp.toVal_one, one_mul]
 

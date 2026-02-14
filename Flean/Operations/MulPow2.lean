@@ -75,7 +75,7 @@ theorem fpMulFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
   have hprod_ne : (f.toVal : R) * (pow2Float k hk_lo hk_hi).toVal ≠ 0 :=
     mul_ne_zero hf_toVal_ne (ne_of_gt hp_toVal_pos)
   have hmul_corr : f * pow2Float k hk_lo hk_hi =
-      RMode.round ((f.toVal : R) * (pow2Float k hk_lo hk_hi).toVal) := by
+      ○((f.toVal : R) * (pow2Float k hk_lo hk_hi).toVal) := by
     exact fpMulFinite_correct (R := R) f (pow2Float k hk_lo hk_hi) hprod_ne
   by_cases hfs : f.s = false
   · -- Positive f
