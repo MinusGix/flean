@@ -598,6 +598,18 @@ theorem overflowThreshold_lt_zpow_max_exp_succ [FloatFormat] {R : Type*} [Field 
     _ = (2 : R) ^ (FloatFormat.max_exp + 1) := by
         rw [mul_comm, ← zpow_add_one₀ (by norm_num : (2:R) ≠ 0)]
 
+/-- Machine epsilon: the value of the least significant bit of 1.0. -/
+@[reducible] def eps [FloatFormat] (R : Type*) [Field R] : R := (2 : R) ^ (1 - (FloatFormat.prec : ℤ))
+
+/-- Half machine epsilon: commonly used in relative error bounds for round-to-nearest. -/
+@[reducible] def hEps [FloatFormat] (R : Type*) [Field R] : R := (2 : R) ^ (-(FloatFormat.prec : ℤ))
+
+@[simp] theorem eps_def [FloatFormat] {R : Type*} [Field R] : eps R = (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) := rfl
+@[simp] theorem hEps_def [FloatFormat] {R : Type*} [Field R] : hEps R = (2 : R) ^ (-(FloatFormat.prec : ℤ)) := rfl
+
+notation "ε" => eps _
+notation "η" => hEps _
+
 end FloatFormat
 
 namespace StdFloatFormat

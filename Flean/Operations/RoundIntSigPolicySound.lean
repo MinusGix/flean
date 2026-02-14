@@ -397,10 +397,10 @@ theorem round_neg_exact (mode : RoundingMode) (val : R)
     rw [FiniteFp.toVal_neg_eq_neg, hgv]; ring
   exact ⟨hng_val ▸ round_idempotent (R := R) mode (-g) (Or.inr (by simp; exact hgm)), hng_val⟩
 
+omit [FloorRing R] in
 /-- When the predecessor significand is `2^prec - 1` at the maximum exponent,
 the midpoint between the predecessor and its (overflowing) successor equals the
 nearest-mode overflow threshold `(2 - 2^(1-prec)/2) * 2^max_exp`. -/
-omit [FloorRing R] in
 private theorem mid_val_eq_overflow_threshold (q : ℕ) (e_ulp : ℤ)
     (hq_eq : q + 1 = 2 ^ FloatFormat.prec.toNat)
     (he_ulp : e_ulp = FloatFormat.max_exp - FloatFormat.prec + 1) :

@@ -407,6 +407,12 @@ def toReal (x : FiniteFp) : ℝ := x.toVal
 
 end toVal
 
+/-- Bracket notation for the field value of a finite float. -/
+notation "⌞" x "⌟" => FiniteFp.toVal x
+
+/-- Typed bracket notation for the field value of a finite float. -/
+notation "⌞" x "⌟[" R "]" => @FiniteFp.toVal _ R _ x
+
 end FiniteFp
 
 /-! ## Constructing a FiniteFp with a given value -/
