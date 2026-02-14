@@ -56,6 +56,11 @@ def fpDivFinite [RModeExec] (a b : FiniteFp) : Fp :=
   let e_base := a.e - b.e - (2 * FloatFormat.prec + 2) - 1
   roundIntSigM sign mag e_base
 
+instance [RModeExec] : HDiv FiniteFp FiniteFp Fp where
+  hDiv := fpDivFinite
+
+@[simp] theorem div_finite_eq_fpDivFinite [RModeExec] (x y : FiniteFp) : x / y = fpDivFinite x y := rfl
+
 /-- IEEE 754 floating-point division with full special-case handling.
 
 Special cases:
@@ -77,7 +82,14 @@ def fpDiv [RModeExec] (x y : Fp) : Fp :=
     if b.m = 0 then
       if a.m = 0 then .NaN
       else .infinite (a.s ^^ b.s)
-    else fpDivFinite a b
+    else a / b
+
+instance [RModeExec] : HDiv Fp Fp Fp where
+  hDiv := fpDiv
+
+@[simp] theorem div_eq_fpDiv [RModeExec] (x y : Fp) : x / y = fpDiv x y := rfl
+
+variable [RModeExec]
 
 /-! ## Exact Quotient Representation -/
 
@@ -133,7 +145,7 @@ theorem fpDivFinite_correct_exact {R : Type*} [Field R] [LinearOrder R] [IsStric
     (hb : b.m ≠ 0)
     (hquot : (a.toVal : R) / b.toVal ≠ 0)
     (hexact : (a.m * 2 ^ divShift) % b.m = 0) :
-    fpDivFinite a b = RMode.round ((a.toVal : R) / b.toVal) := by
+    a / b = RMode.round ((a.toVal : R) / b.toVal) := by
   -- When remainder = 0, mag = 2*q and intSigVal equals exact quotient
   set q := (a.m * 2 ^ divShift) / b.m with hq_def
   -- mag = 2 * q (since r = 0)
@@ -163,9 +175,7 @@ theorem fpDivFinite_correct_exact {R : Type*} [Field R] [LinearOrder R] [IsStric
       rw [zpow_sub₀ (by norm_num : (2:R) ≠ 0), zpow_one]
     split_ifs <;> rw [h2q, hexp] <;> ring
   -- Unfold and apply generic roundIntSigM correctness
-  change roundIntSigM (a.s ^^ b.s)
-    (2 * q + (if (a.m * 2 ^ divShift) % b.m = 0 then 0 else 1))
-    (a.e - b.e - (2 * FloatFormat.prec + 2) - 1) = _
+  simp only [div_finite_eq_fpDivFinite, fpDivFinite]
   rw [hmag_eq, roundIntSigM_correct_tc (R := R) _ _ _ hmag_ne]
   rw [hbridge]
 
@@ -181,7 +191,7 @@ theorem fpDivFinite_correct {R : Type*} [Field R] [LinearOrder R]
     (a b : FiniteFp)
     (hb : b.m ≠ 0)
     (hquot : (a.toVal : R) / b.toVal ≠ 0) :
-    fpDivFinite a b = RMode.round ((a.toVal : R) / b.toVal) := by
+    a / b = RMode.round ((a.toVal : R) / b.toVal) := by
   set q := (a.m * 2 ^ divShift) / b.m with hq_def
   set r := (a.m * 2 ^ divShift) % b.m with hr_def
   -- Case split: exact (r = 0) vs sticky (r ≠ 0)
@@ -190,9 +200,9 @@ theorem fpDivFinite_correct {R : Type*} [Field R] [LinearOrder R]
   · -- Sticky bit case: use sticky_roundIntSig_eq_round
     set e_base := a.e - b.e - (2 * FloatFormat.prec + 2) - 1 with he_base_def
     -- fpDivFinite unfolds to roundIntSigM (a.s ^^ b.s) (2*q+1) e_base
-    have hfpDiv_eq : fpDivFinite a b =
+    have hfpDiv_eq : a / b =
         roundIntSigM (a.s ^^ b.s) (2 * q + 1) e_base := by
-      unfold fpDivFinite; simp only [he_base_def, hq_def]
+      simp only [div_finite_eq_fpDivFinite, fpDivFinite, he_base_def, hq_def]
       congr 1; simp [show a.m * 2 ^ divShift % b.m ≠ 0 from hr]
     rw [hfpDiv_eq]
     -- q ≥ 2^(prec+2) (operation-specific bound)

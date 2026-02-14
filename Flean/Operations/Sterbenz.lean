@@ -125,7 +125,7 @@ theorem sterbenz (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
     (h_ub : (a.toVal : R) ≤ 2 * b.toVal)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R] :
     ∃ f : FiniteFp,
-      fpSubFinite a b = Fp.finite f ∧
+      a - b = Fp.finite f ∧
         f.toVal (R := R) = a.toVal - b.toVal := by
   have h_exp := sterbenz_exp_proximity (R := R) a b ha hb ha_nz hb_nz h_lb h_ub
   -- Set up the aligned integer sum
@@ -146,7 +146,7 @@ theorem sterbenz (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
       by_contra h
       exact absurd (sub_eq_zero.mpr hdiff)
         (by rw [hdiff_eq]; exact mul_ne_zero (Int.cast_ne_zero.mpr h) (zpow_ne_zero _ (by norm_num)))
-    unfold fpSubFinite fpAddFinite
+    rw [sub_finite_eq_fpSubFinite, fpSubFinite, add_finite_eq_fpAddFinite, fpAddFinite]
     simp only [e_min_def.symm, isum_def.symm, hisum_zero, ↓reduceIte]
     refine ⟨_, rfl, ?_⟩
     rw [show (a.toVal : R) - b.toVal = 0 from sub_eq_zero.mpr hdiff]
@@ -170,7 +170,7 @@ theorem sterbenz (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
       hsum_ne hisum_bound he_lo he_hi
     have hval_eq : (a.toVal : R) - b.toVal = f.toVal := hdiff_eq.trans hfv.symm
     refine ⟨f, ?_, hval_eq.symm⟩
-    have hsub_corr : fpSubFinite a b =
+    have hsub_corr : a - b =
         RMode.round ((a.toVal : R) - b.toVal) := by
       simpa using (fpSubFinite_correct (R := R) a b hdiff_ne)
     rw [hsub_corr, hval_eq]
@@ -187,7 +187,7 @@ theorem sterbenz_unique (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
     (hdiff : (a.toVal : R) ≠ b.toVal)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R] :
     ∃ f : FiniteFp, f.toVal (R := R) = a.toVal - b.toVal ∧
-      fpSubFinite a b = Fp.finite f ∧
+      a - b = Fp.finite f ∧
       (∀ (RM' : RMode R) (RE' : RModeExec)
           (RS' : @RoundIntSigMSound R _ _ _ _ _ RM' RE')
           (RI' : @RModeIdem R _ _ RM'),
@@ -221,11 +221,11 @@ theorem sterbenz_fpSub (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
     (h_ub : (a.toVal : R) ≤ 2 * b.toVal)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R] :
     ∃ f : FiniteFp,
-      fpSub (.finite a) (.finite b) = Fp.finite f ∧
+      Fp.finite a - Fp.finite b = Fp.finite f ∧
         f.toVal (R := R) = a.toVal - b.toVal := by
   -- fpSub on finite inputs is just fpSubFinite
-  have : fpSub (.finite a) (.finite b) = fpSubFinite a b := by
-    simp [fpSub, fpSubFinite, fpAdd]
+  have : Fp.finite a - Fp.finite b = a - b := by
+    simp [sub_eq_fpSub, fpSub, sub_finite_eq_fpSubFinite, fpSubFinite, add_eq_fpAdd, fpAdd]
   rw [this]
   exact sterbenz (R := R) a b ha hb ha_nz hb_nz h_lb h_ub
 

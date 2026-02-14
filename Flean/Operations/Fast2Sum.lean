@@ -29,9 +29,9 @@ theorem round_sum_ge_left (a b : FiniteFp)
     (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     (s_fp : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeMono R] [RModeIdem R]
-    (hs : fpAddFinite a b = Fp.finite s_fp) :
+    (hs : a + b = Fp.finite s_fp) :
     (a.toVal : R) ≤ s_fp.toVal := by
-  have hsum_round : fpAddFinite a b =
+  have hsum_round : a + b =
       RMode.round ((a.toVal : R) + b.toVal) := by
     simpa using (fpAddFinite_correct (R := R) a b hsum_ne)
   have hb_nonneg : (0 : R) ≤ b.toVal := by
@@ -51,9 +51,9 @@ theorem round_sum_le_double (a b : FiniteFp)
     (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     (s_fp : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeMono R] [RModeIdem R]
-    (hs : fpAddFinite a b = Fp.finite s_fp) :
+    (hs : a + b = Fp.finite s_fp) :
     (s_fp.toVal : R) ≤ 2 * a.toVal := by
-  have hsum_round : fpAddFinite a b =
+  have hsum_round : a + b =
       RMode.round ((a.toVal : R) + b.toVal) := by
     simpa using (fpAddFinite_correct (R := R) a b hsum_ne)
   have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
@@ -117,9 +117,9 @@ theorem sterbenz_sub_sa (a b : FiniteFp)
     (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     (s_fp : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeMono R] [RModeIdem R]
-    (hs : fpAddFinite a b = Fp.finite s_fp) :
+    (hs : a + b = Fp.finite s_fp) :
     ∃ z_fp : FiniteFp,
-      fpSubFinite s_fp a = Fp.finite z_fp ∧
+      s_fp - a = Fp.finite z_fp ∧
         z_fp.toVal (R := R) = s_fp.toVal - a.toVal := by
   have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
   have hs_ge_a := round_sum_ge_left (R := R) a b ha hb ha_nz hsum_ne s_fp hs
@@ -136,7 +136,7 @@ omit [FloorRing R] in
 /-- When `a.toVal = b.toVal`, `fpSubFinite` returns a finite zero. -/
 theorem fpSubFinite_zero_of_eq_toVal [RModeExec] (a b : FiniteFp)
     (heq : (a.toVal : R) = b.toVal) :
-    ∃ f : FiniteFp, fpSubFinite a b = Fp.finite f ∧
+    ∃ f : FiniteFp, a - b = Fp.finite f ∧
       f.toVal (R := R) = 0 := by
   -- fpSubFinite = fpAddFinite a (-b)
   -- The exact sum a + (-b) = a - b = 0
@@ -161,7 +161,7 @@ theorem fpSubFinite_zero_of_eq_toVal [RModeExec] (a b : FiniteFp)
   -- fpSubFinite unfolds to fpAddFinite which checks if the integer sum is 0
   let fz : FiniteFp := ⟨exactCancelSign a.s (!b.s), FloatFormat.min_exp, 0, IsValidFiniteVal.zero⟩
   refine ⟨fz, ?_, FiniteFp.toVal_isZero rfl⟩
-  unfold fpSubFinite fpAddFinite
+  rw [sub_finite_eq_fpSubFinite, fpSubFinite, add_finite_eq_fpAddFinite, fpAddFinite]
   simp [hkey', fz, exactCancelSign, FiniteFp.neg_def]
 
 /-! ## Layer 2b: Rounding error representability
@@ -188,7 +188,7 @@ theorem add_error_representable (a b : FiniteFp)
     (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     (s_fp : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R]
-    (hs : fpAddFinite a b = Fp.finite s_fp) :
+    (hs : a + b = Fp.finite s_fp) :
     ∃ t_fp : FiniteFp,
       (t_fp.s = false ∨ 0 < t_fp.m) ∧
         (t_fp.toVal : R) = (a.toVal : R) + b.toVal - s_fp.toVal := by
@@ -200,7 +200,7 @@ theorem add_error_representable (a b : FiniteFp)
   have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
   have hb_pos : (0 : R) < b.toVal := FiniteFp.toVal_pos b hb hb_nz
   have hval_pos : (0 : R) < a.toVal + b.toVal := by linarith
-  have hsum_round : fpAddFinite a b =
+  have hsum_round : a + b =
       RMode.round ((a.toVal : R) + b.toVal) := by
     simpa using (fpAddFinite_correct (R := R) a b hsum_ne)
   have hs_correct : RMode.round ((a.toVal : R) + b.toVal) = Fp.finite s_fp := by
@@ -345,10 +345,10 @@ theorem fast2Sum_pos_exact (a b : FiniteFp)
     (hab : (b.toVal : R) ≤ a.toVal)
     (s_fp : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R]
-    (hs : fpAddFinite a b = Fp.finite s_fp) :
+    (hs : a + b = Fp.finite s_fp) :
     ∃ z_fp t_fp : FiniteFp,
-      fpSubFinite s_fp a = Fp.finite z_fp ∧
-        fpSubFinite b z_fp = Fp.finite t_fp ∧
+      s_fp - a = Fp.finite z_fp ∧
+        b - z_fp = Fp.finite t_fp ∧
           (s_fp.toVal : R) + t_fp.toVal = a.toVal + b.toVal := by
   have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
   have hb_pos : (0 : R) < b.toVal := FiniteFp.toVal_pos b hb hb_nz
@@ -359,7 +359,7 @@ theorem fast2Sum_pos_exact (a b : FiniteFp)
   -- Step 2: b - z is exact
   -- b.toVal - z_fp.toVal = b.toVal - (s.toVal - a.toVal) = (a + b) - s
   suffices h_bz : ∃ t_fp : FiniteFp,
-      fpSubFinite b z_fp = Fp.finite t_fp ∧
+      b - z_fp = Fp.finite t_fp ∧
         (t_fp.toVal : R) = b.toVal - z_fp.toVal by
     obtain ⟨t_fp, ht_eq, ht_val⟩ := h_bz
     exact ⟨z_fp, t_fp, hz_eq, ht_eq, by rw [ht_val, hz_val]; ring⟩
@@ -373,8 +373,8 @@ theorem fast2Sum_pos_exact (a b : FiniteFp)
       add_error_representable (R := R) a b ha hb ha_nz hb_nz hab hsum_ne s_fp hs
     have hbz_val : (b.toVal : R) - z_fp.toVal = err_fp.toVal := by
       rw [hz_val, herr_val]; ring
-    have hsub_eq : fpSubFinite b z_fp = Fp.finite err_fp := by
-      have hsub_corr : fpSubFinite b z_fp =
+    have hsub_eq : b - z_fp = Fp.finite err_fp := by
+      have hsub_corr : b - z_fp =
           RMode.round ((b.toVal : R) - z_fp.toVal) := by
         simpa using (fpSubFinite_correct (R := R) b z_fp htz)
       rw [hsub_corr, hbz_val,

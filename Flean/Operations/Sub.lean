@@ -8,13 +8,22 @@ section Sub
 
 variable [FloatFormat]
 
-/-- Subtract finite floats using contextual rounding policy. -/
 def fpSubFinite [RModeExec] (a b : FiniteFp) : Fp :=
-  fpAddFinite a (-b)
+  a + (-b)
+
+instance [RModeExec] : HSub FiniteFp FiniteFp Fp where
+  hSub := fpSubFinite
+
+@[simp] theorem sub_finite_eq_fpSubFinite [RModeExec] (x y : FiniteFp) : x - y = fpSubFinite x y := rfl
 
 /-- IEEE 754 subtraction with contextual rounding policy. -/
 def fpSub [RModeExec] (x y : Fp) : Fp :=
-  fpAdd x (-y)
+  x + (-y)
+
+instance [RModeExec] : HSub Fp Fp Fp where
+  hSub := fpSub
+
+@[simp] theorem sub_eq_fpSub [RModeExec] (x y : Fp) : x - y = fpSub x y := rfl
 
 /-! ## Correctness -/
 
@@ -23,20 +32,20 @@ theorem fpSubFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
     [FloorRing R] [RMode R] [RModeExec] [RoundIntSigMSound R]
     (a b : FiniteFp)
     (hdiff : (a.toVal : R) - b.toVal ≠ 0) :
-    fpSubFinite a b = RMode.round ((a.toVal : R) - b.toVal) := by
+    a - b = RMode.round ((a.toVal : R) - b.toVal) := by
   have hdiff' : (a.toVal : R) + (-b).toVal ≠ 0 := by
     simpa [FiniteFp.toVal_neg_eq_neg, sub_eq_add_neg] using hdiff
-  simpa [fpSubFinite, FiniteFp.toVal_neg_eq_neg, sub_eq_add_neg] using
+  simpa [sub_finite_eq_fpSubFinite, fpSubFinite, FiniteFp.toVal_neg_eq_neg, sub_eq_add_neg] using
     (fpAddFinite_correct (R := R) a (-b) hdiff')
 
 /-! ## Relationship to fpAdd -/
 
 /-- `fpSub` is just `fpAdd` with negated second operand. -/
 theorem fpSub_eq_fpAdd_neg [RModeExec] (x y : Fp) :
-    fpSub x y = fpAdd x (-y) := rfl
+    x - y = x + (-y) := rfl
 
 /-- `fpSubFinite` is just `fpAddFinite` with negated second operand. -/
 theorem fpSubFinite_eq_fpAddFinite_neg [RModeExec] (a b : FiniteFp) :
-    fpSubFinite a b = fpAddFinite a (-b) := rfl
+    a - b = a + (-b) := rfl
 
 end Sub

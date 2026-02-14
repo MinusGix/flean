@@ -63,7 +63,7 @@ theorem fpMulFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
     (hk_lo : FloatFormat.min_exp ≤ k) (hk_hi : k ≤ FloatFormat.max_exp)
     (he_lo : f.e + k ≥ FloatFormat.min_exp) (he_hi : f.e + k ≤ FloatFormat.max_exp) :
     ∃ g : FiniteFp,
-      fpMulFinite f (pow2Float k hk_lo hk_hi) = Fp.finite g ∧
+      f * pow2Float k hk_lo hk_hi = Fp.finite g ∧
         (g.toVal : R) = (f.toVal : R) * (2 : R) ^ k := by
   -- Product is nonzero because both operands are nonzero
   have hf_toVal_ne : (f.toVal : R) ≠ 0 := by
@@ -74,7 +74,7 @@ theorem fpMulFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
     rw [pow2Float_toVal]; exact two_zpow_pos' k
   have hprod_ne : (f.toVal : R) * (pow2Float k hk_lo hk_hi).toVal ≠ 0 :=
     mul_ne_zero hf_toVal_ne (ne_of_gt hp_toVal_pos)
-  have hmul_corr : fpMulFinite f (pow2Float k hk_lo hk_hi) =
+  have hmul_corr : f * pow2Float k hk_lo hk_hi =
       RMode.round ((f.toVal : R) * (pow2Float k hk_lo hk_hi).toVal) := by
     exact fpMulFinite_correct (R := R) f (pow2Float k hk_lo hk_hi) hprod_ne
   by_cases hfs : f.s = false
@@ -112,9 +112,9 @@ theorem fpMul_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedR
     (hk_lo : FloatFormat.min_exp ≤ k) (hk_hi : k ≤ FloatFormat.max_exp)
     (he_lo : f.e + k ≥ FloatFormat.min_exp) (he_hi : f.e + k ≤ FloatFormat.max_exp) :
     ∃ g : FiniteFp,
-      fpMul (.finite f) (.finite (pow2Float k hk_lo hk_hi)) = Fp.finite g ∧
+      Fp.finite f * Fp.finite (pow2Float k hk_lo hk_hi) = Fp.finite g ∧
         (g.toVal : R) = (f.toVal : R) * (2 : R) ^ k := by
-  simp only [fpMul]
+  simp only [mul_eq_fpMul, fpMul]
   exact fpMulFinite_pow2_exact (R := R) f k hf_nz hk_lo hk_hi he_lo he_hi
 
 end MulPow2

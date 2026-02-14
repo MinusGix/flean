@@ -68,11 +68,11 @@ theorem fpAddFinite_int_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
     (hsum_nz : n_a + n_b ≠ 0)
     (hsum_bound : (n_a + n_b).natAbs < 2 ^ FloatFormat.prec.toNat)
     (h_exp : FloatFormat.prec - 1 ≤ FloatFormat.max_exp) :
-    ∃ f : FiniteFp, fpAddFinite a b = Fp.finite f ∧
+    ∃ f : FiniteFp, a + b = Fp.finite f ∧
       (f.toVal : R) = ((n_a + n_b : ℤ) : R) := by
   have hsum_ne : (a.toVal : R) + b.toVal ≠ 0 := by
     rw [ha, hb]; exact_mod_cast hsum_nz
-  have hadd_corr : fpAddFinite a b = RMode.round ((a.toVal : R) + b.toVal) := by
+  have hadd_corr : a + b = RMode.round ((a.toVal : R) + b.toVal) := by
     exact fpAddFinite_correct (R := R) a b hsum_ne
   rw [hadd_corr, ha, hb,
       show (n_a : R) + (n_b : R) = ((n_a + n_b : ℤ) : R) from by push_cast; ring]
@@ -87,11 +87,11 @@ theorem fpSubFinite_int_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
     (hdiff_nz : n_a - n_b ≠ 0)
     (hdiff_bound : (n_a - n_b).natAbs < 2 ^ FloatFormat.prec.toNat)
     (h_exp : FloatFormat.prec - 1 ≤ FloatFormat.max_exp) :
-    ∃ f : FiniteFp, fpSubFinite a b = Fp.finite f ∧
+    ∃ f : FiniteFp, a - b = Fp.finite f ∧
       (f.toVal : R) = ((n_a - n_b : ℤ) : R) := by
   have hdiff_ne : (a.toVal : R) - b.toVal ≠ 0 := by
     rw [ha, hb]; exact_mod_cast hdiff_nz
-  have hsub_corr : fpSubFinite a b = RMode.round ((a.toVal : R) - b.toVal) := by
+  have hsub_corr : a - b = RMode.round ((a.toVal : R) - b.toVal) := by
     exact fpSubFinite_correct (R := R) a b hdiff_ne
   rw [hsub_corr, ha, hb,
       show (n_a : R) - (n_b : R) = ((n_a - n_b : ℤ) : R) from by push_cast; ring]
@@ -106,11 +106,11 @@ theorem fpMulFinite_int_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
     (hprod_nz : n_a * n_b ≠ 0)
     (hprod_bound : (n_a * n_b).natAbs < 2 ^ FloatFormat.prec.toNat)
     (h_exp : FloatFormat.prec - 1 ≤ FloatFormat.max_exp) :
-    ∃ f : FiniteFp, fpMulFinite a b = Fp.finite f ∧
+    ∃ f : FiniteFp, a * b = Fp.finite f ∧
       (f.toVal : R) = ((n_a * n_b : ℤ) : R) := by
   have hprod_ne : (a.toVal : R) * b.toVal ≠ 0 := by
     rw [ha, hb]; exact_mod_cast hprod_nz
-  have hmul_corr : fpMulFinite a b = RMode.round ((a.toVal : R) * b.toVal) := by
+  have hmul_corr : a * b = RMode.round ((a.toVal : R) * b.toVal) := by
     exact fpMulFinite_correct (R := R) a b hprod_ne
   rw [hmul_corr, ha, hb,
       show (n_a : R) * (n_b : R) = ((n_a * n_b : ℤ) : R) from by push_cast; ring]

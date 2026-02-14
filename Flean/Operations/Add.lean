@@ -36,6 +36,11 @@ def fpAddFinite [RModeExec] (a b : FiniteFp) : Fp :=
     let mag := sum.natAbs
     roundIntSigM sign mag (e_min - prec + 1)
 
+instance [RModeExec] : HAdd FiniteFp FiniteFp Fp where
+  hAdd := fpAddFinite
+
+@[simp] theorem add_finite_eq_fpAddFinite [RModeExec] (x y : FiniteFp) : x + y = fpAddFinite x y := rfl
+
 /-- IEEE 754 floating-point addition with full special-case handling.
 
 Special cases:
@@ -52,7 +57,12 @@ def fpAdd [RModeExec] (x y : Fp) : Fp :=
     else .NaN
   | .infinite s, .finite _ => .infinite s
   | .finite _, .infinite s => .infinite s
-  | .finite a, .finite b => fpAddFinite a b
+  | .finite a, .finite b => a + b
+
+instance [RModeExec] : HAdd Fp Fp Fp where
+  hAdd := fpAdd
+
+@[simp] theorem add_eq_fpAdd [RModeExec] (x y : Fp) : x + y = fpAdd x y := rfl
 
 /-! ## Commutativity -/
 
@@ -71,24 +81,24 @@ theorem fpAddFinite_comm [RModeExec] (a b : FiniteFp) :
 
 /-- `fpAdd` is commutative. -/
 theorem fpAdd_comm [RModeExec] (x y : Fp) :
-    fpAdd x y = fpAdd y x := by
+    x + y = y + x := by
   cases x with
-  | NaN => cases y <;> simp [fpAdd]
+  | NaN => cases y <;> simp [add_eq_fpAdd, fpAdd]
   | infinite sx =>
     cases y with
-    | NaN => simp [fpAdd]
+    | NaN => simp [add_eq_fpAdd, fpAdd]
     | infinite sy =>
-      simp only [fpAdd]
+      simp only [add_eq_fpAdd, fpAdd]
       by_cases h : sx = sy
       · simp [h]
       · have h' : ¬(sy = sx) := fun h' => h (h'.symm)
         simp [h, h']
-    | finite b => simp [fpAdd]
+    | finite b => simp [add_eq_fpAdd, fpAdd]
   | finite a =>
     cases y with
-    | NaN => simp [fpAdd]
-    | infinite sy => simp [fpAdd]
-    | finite b => simp [fpAdd, fpAddFinite_comm]
+    | NaN => simp [add_eq_fpAdd, fpAdd]
+    | infinite sy => simp [add_eq_fpAdd, fpAdd]
+    | finite b => simp [add_eq_fpAdd, fpAdd, fpAddFinite_comm]
 
 /-! ## Representation Lemma -/
 
@@ -193,7 +203,7 @@ theorem fpAddFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
     [RMode R] [RModeExec] [RoundIntSigMSound R]
     (a b : FiniteFp)
     (hsum : (a.toVal : R) + b.toVal ≠ 0) :
-    fpAddFinite a b = RMode.round ((a.toVal : R) + b.toVal) := by
+    a + b = RMode.round ((a.toVal : R) + b.toVal) := by
   have hexact := fpAddFinite_exact_sum R a b
   set e_min := min a.e b.e with e_min_def
   set isum : ℤ := addAlignedSumInt a b with isum_def
@@ -201,7 +211,7 @@ theorem fpAddFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
     intro hzero
     apply hsum
     rw [hexact, hzero, Int.cast_zero, zero_mul]
-  simp only [fpAddFinite, e_min_def.symm]
+  simp only [add_finite_eq_fpAddFinite, fpAddFinite, e_min_def.symm]
   rw [if_neg hsum_ne]
   have hmag_ne : isum.natAbs ≠ 0 := by rwa [Int.natAbs_ne_zero]
   rw [roundIntSigM_correct_tc (R := R) _ _ _ hmag_ne]
@@ -211,7 +221,7 @@ theorem fpAddFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
 /-- When both positive operands are subnormal and their significands fit in one word,
     rounding their sum under the contextual policy returns their exact sum. -/
 theorem subnormal_sum_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
-    [FloorRing R] [RMode R] [RModeIdem R]
+    [FloorRing R] [RMode R] [RModeExec] [RModeIdem R]
     (a b : FiniteFp)
     (ha : a.s = false) (hb : b.s = false)
     (hb_nz : b.m ≠ 0)

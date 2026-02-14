@@ -6,7 +6,6 @@ import Flean.Operations.Sub
 import Flean.Operations.Div
 import Flean.Operations.Sqrt
 import Flean.Operations.FMA
-import Flean.Operations.Instances
 import Flean.Operations.Sterbenz
 import Flean.Operations.MulPow2
 import Flean.Operations.ExactInt

@@ -29,6 +29,11 @@ def fpMulFinite [RModeExec] (a b : FiniteFp) : Fp :=
   let e_base := a.e + b.e - 2 * FloatFormat.prec + 2
   roundIntSigM sign mag e_base
 
+instance [RModeExec] : HMul FiniteFp FiniteFp Fp where
+  hMul := fpMulFinite
+
+@[simp] theorem mul_finite_eq_fpMulFinite [RModeExec] (x y : FiniteFp) : x * y = fpMulFinite x y := rfl
+
 /-- IEEE 754 floating-point multiplication with full special-case handling.
 
 Special cases:
@@ -45,7 +50,12 @@ def fpMul [RModeExec] (x y : Fp) : Fp :=
     if f.m = 0 then .NaN else .infinite (s ^^ f.s)
   | .finite f, .infinite s =>
     if f.m = 0 then .NaN else .infinite (f.s ^^ s)
-  | .finite a, .finite b => fpMulFinite a b
+  | .finite a, .finite b => a * b
+
+instance [RModeExec] : HMul Fp Fp Fp where
+  hMul := fpMul
+
+@[simp] theorem mul_eq_fpMul [RModeExec] (x y : Fp) : x * y = fpMul x y := rfl
 
 /-! ## Exact Product Representation -/
 
@@ -75,7 +85,7 @@ theorem fpMulFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
     [RMode R] [RModeExec] [RoundIntSigMSound R]
     (a b : FiniteFp)
     (hprod : (a.toVal : R) * b.toVal ≠ 0) :
-    fpMulFinite a b = RMode.round ((a.toVal : R) * b.toVal) := by
+    a * b = RMode.round ((a.toVal : R) * b.toVal) := by
   have hexact := fpMulFinite_exact_product (R := R) a b
   have hmag_ne : a.m * b.m ≠ 0 := by
     intro hzero
@@ -83,7 +93,7 @@ theorem fpMulFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
     rw [hexact]
     unfold intSigVal
     simp [hzero]
-  unfold fpMulFinite
+  simp only [mul_finite_eq_fpMulFinite, fpMulFinite]
   rw [roundIntSigM_correct_tc (R := R) _ _ _ hmag_ne]
   congr 1
   rw [hexact]
@@ -97,26 +107,26 @@ theorem fpMulFinite_comm [RModeExec] (a b : FiniteFp) :
 
 /-- `fpMul` is commutative. -/
 theorem fpMul_comm [RModeExec] (x y : Fp) :
-    fpMul x y = fpMul y x := by
+    x * y = y * x := by
   cases x with
-  | NaN => cases y <;> simp [fpMul]
+  | NaN => cases y <;> simp [mul_eq_fpMul, fpMul]
   | infinite sx =>
     cases y with
-    | NaN => simp [fpMul]
-    | infinite sy => simp [fpMul, Bool.xor_comm]
+    | NaN => simp [mul_eq_fpMul, fpMul]
+    | infinite sy => simp [mul_eq_fpMul, fpMul, Bool.xor_comm]
     | finite b =>
-      simp only [fpMul]
+      simp only [mul_eq_fpMul, fpMul]
       by_cases hm : b.m = 0
       · simp [hm]
       · simp [hm, Bool.xor_comm]
   | finite a =>
     cases y with
-    | NaN => simp [fpMul]
+    | NaN => simp [mul_eq_fpMul, fpMul]
     | infinite sy =>
-      simp only [fpMul]
+      simp only [mul_eq_fpMul, fpMul]
       by_cases hm : a.m = 0
       · simp [hm]
       · simp [hm, Bool.xor_comm]
-    | finite b => simp [fpMul, fpMulFinite_comm]
+    | finite b => simp [mul_eq_fpMul, fpMul, fpMulFinite_comm]
 
 end Mul

@@ -21,7 +21,7 @@ theorem fpDivFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
     (hk_lo : FloatFormat.min_exp ≤ k) (hk_hi : k ≤ FloatFormat.max_exp)
     (he_lo : f.e - k ≥ FloatFormat.min_exp) (he_hi : f.e - k ≤ FloatFormat.max_exp) :
     ∃ g : FiniteFp,
-      fpDivFinite f (pow2Float k hk_lo hk_hi) = Fp.finite g ∧
+      f / pow2Float k hk_lo hk_hi = Fp.finite g ∧
         (g.toVal : R) = (f.toVal : R) / (2 : R) ^ k := by
   -- Key reduction: x / 2^k = x * 2^(-k)
   have hdiv_eq : ∀ (x : R), x / (2 : R) ^ k = x * (2 : R) ^ (-k) := fun x => by
@@ -50,7 +50,7 @@ theorem fpDivFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
     intro h; have := (FiniteFp.toVal_significand_zero_iff (R := R)).mpr h; omega
   have hquot_ne : (f.toVal : R) / (pow2Float k hk_lo hk_hi).toVal ≠ 0 := by
     rw [pow2Float_toVal]; exact div_ne_zero hf_ne (zpow_ne_zero _ (by norm_num))
-  have hdiv_corr : fpDivFinite f (pow2Float k hk_lo hk_hi) =
+  have hdiv_corr : f / pow2Float k hk_lo hk_hi =
       RMode.round ((f.toVal : R) / (pow2Float k hk_lo hk_hi).toVal) := by
     exact fpDivFinite_correct_exact (R := R) f (pow2Float k hk_lo hk_hi) hb_nz hquot_ne hexact
   by_cases hfs : f.s = false
@@ -86,9 +86,9 @@ theorem fpDiv_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedR
     (hk_lo : FloatFormat.min_exp ≤ k) (hk_hi : k ≤ FloatFormat.max_exp)
     (he_lo : f.e - k ≥ FloatFormat.min_exp) (he_hi : f.e - k ≤ FloatFormat.max_exp) :
     ∃ g : FiniteFp,
-      fpDiv (.finite f) (.finite (pow2Float k hk_lo hk_hi)) = Fp.finite g ∧
+      Fp.finite f / Fp.finite (pow2Float k hk_lo hk_hi) = Fp.finite g ∧
         (g.toVal : R) = (f.toVal : R) / (2 : R) ^ k := by
-  simp only [fpDiv]
+  simp only [div_eq_fpDiv, fpDiv]
   rw [if_neg (pow2Float_m_pos k hk_lo hk_hi).ne']
   exact fpDivFinite_pow2_exact (R := R) f k hf_nz hk_lo hk_hi he_lo he_hi
 
