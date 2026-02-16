@@ -228,7 +228,7 @@ theorem roundNearestTiesToEven_is_roundDown_or_roundUp (x : R) (hx : isNormalRan
       exact hf'
     | NaN =>
       exfalso
-      exact findSuccessorPos_ne_nan x hxpos (by simpa [hsucc])
+      exact findSuccessorPos_ne_nan x hxpos (by simp [hsucc])
 
 /-- **Machine Epsilon Bound for Round-Nearest-Ties-to-Even**: For positive x in the normal range,
 the relative error of rounding to nearest (ties to even) is at most 2^(1-prec) (machine epsilon). -/
@@ -281,7 +281,7 @@ theorem roundNearestTiesAwayFromZero_is_roundDown_or_roundUp (x : R) (hx : isNor
       exact hf'
     | NaN =>
       exfalso
-      exact findSuccessorPos_ne_nan x hxpos (by simpa [hsucc])
+      exact findSuccessorPos_ne_nan x hxpos (by simp [hsucc])
 
 /-- **Machine Epsilon Bound for Round-Nearest-Ties-Away**: For positive x in the normal range,
 the relative error of rounding to nearest (ties away from zero) is at most 2^(1-prec) (machine epsilon). -/
@@ -435,7 +435,7 @@ theorem roundNearestTiesToEven_abs_error_le_ulp_half (x : R) (hx : isNormalRange
         have hf_lff : f = FiniteFp.largestFiniteFloat := by
           have hff : Fp.finite f = Fp.finite FiniteFp.largestFiniteFloat := by
             calc
-              Fp.finite f = roundDown x := by simpa [hrd_f]
+              Fp.finite f = roundDown x := by simp [hrd_f]
               _ = Fp.finite FiniteFp.largestFiniteFloat := hrd_lff
           exact Fp.finite.inj hff
         -- Convert overflow-threshold bound into half-ulp bound at top exponent.
@@ -451,7 +451,7 @@ theorem roundNearestTiesToEven_abs_error_le_ulp_half (x : R) (hx : isNormalRange
           unfold Fp.ulp
           rw [abs_of_pos hxpos, hlog]
           have hge : FloatFormat.min_exp ≤ Int.log 2 x := by rw [hlog]; exact FloatFormat.exp_order_le
-          simp [max_eq_left hge]
+          simp
         rw [hf_lff]
         rw [abs_of_nonneg (by linarith)]
         have hbound : x - FiniteFp.largestFiniteFloat.toVal <
@@ -477,7 +477,7 @@ theorem roundNearestTiesToEven_abs_error_le_ulp_half (x : R) (hx : isNormalRange
         linarith
     | NaN =>
       exfalso
-      exact findSuccessorPos_ne_nan x hxpos (by simpa [hsucc])
+      exact findSuccessorPos_ne_nan x hxpos (by simp [hsucc])
 
 /-- For positive x in the normal range, roundNearestTiesAwayFromZero has absolute error ≤ ulp(x)/2. -/
 theorem roundNearestTiesAwayFromZero_abs_error_le_ulp_half (x : R) (hx : isNormalRange x) (f : FiniteFp)
@@ -600,7 +600,7 @@ theorem roundNearestTiesAwayFromZero_abs_error_le_ulp_half (x : R) (hx : isNorma
         have hf_lff : f = FiniteFp.largestFiniteFloat := by
           have hff : Fp.finite f = Fp.finite FiniteFp.largestFiniteFloat := by
             calc
-              Fp.finite f = roundDown x := by simpa [hrd_f]
+              Fp.finite f = roundDown x := by simp [hrd_f]
               _ = Fp.finite FiniteFp.largestFiniteFloat := hrd_lff
           exact Fp.finite.inj hff
         -- Convert overflow-threshold bound into half-ulp bound at top exponent.
@@ -616,7 +616,7 @@ theorem roundNearestTiesAwayFromZero_abs_error_le_ulp_half (x : R) (hx : isNorma
           unfold Fp.ulp
           rw [abs_of_pos hxpos, hlog]
           have hge : FloatFormat.min_exp ≤ Int.log 2 x := by rw [hlog]; exact FloatFormat.exp_order_le
-          simp [max_eq_left hge]
+          simp
         rw [hf_lff]
         rw [abs_of_nonneg (by linarith)]
         have hbound : x - FiniteFp.largestFiniteFloat.toVal <
@@ -642,7 +642,7 @@ theorem roundNearestTiesAwayFromZero_abs_error_le_ulp_half (x : R) (hx : isNorma
         linarith
     | NaN =>
       exfalso
-      exact findSuccessorPos_ne_nan x hxpos (by simpa [hsucc])
+      exact findSuccessorPos_ne_nan x hxpos (by simp [hsucc])
 
 /-- **Half Machine Epsilon for Round-Nearest-Ties-to-Even**: For positive x in the normal range,
 the relative error is at most 2^(-prec), half the machine epsilon bound for directed rounding. -/

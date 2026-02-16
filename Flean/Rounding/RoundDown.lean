@@ -52,7 +52,7 @@ theorem roundDown_ne_pos_inf [FloatFormat] (x : R) : roundDown x ≠ Fp.infinite
     cases result with
     | finite f => simp_all
     | infinite b =>
-      simp_all only [Bool.not_eq_false]
+      simp_all only []
       rw [← heq] at this
       simp_all
     | NaN => simp_all
@@ -221,9 +221,9 @@ The hypotheses mirror the non-overflow, inexact case of `roundIntSigM`:
 private lemma isValid_roundDownNatMulZpowTarget [FloatFormat]
     (mag : ℕ) (e_base e_ulp : ℤ) (q : ℕ)
     (hmag : mag ≠ 0)
-    (hval_pos : (0 : R) < (mag : R) * (2 : R) ^ e_base)
+    (_hval_pos : (0 : R) < (mag : R) * (2 : R) ^ e_base)
     (hfloor : ⌊(mag : R) * (2 : R) ^ e_base / (2 : R) ^ e_ulp⌋ = (q : ℤ))
-    (hint_log : Int.log 2 ((mag : R) * (2 : R) ^ e_base) = (Nat.log2 mag : ℤ) + e_base)
+    (_hint_log : Int.log 2 ((mag : R) * (2 : R) ^ e_base) = (Nat.log2 mag : ℤ) + e_base)
     (he_ulp_ge_sub : e_ulp ≥ FloatFormat.min_exp - FloatFormat.prec + 1)
     (he_stored_le : e_ulp + FloatFormat.prec - 1 ≤ FloatFormat.max_exp)
     (hq_bound : q < 2 ^ FloatFormat.prec.toNat)
@@ -312,7 +312,7 @@ theorem roundDown_nat_mul_zpow [FloatFormat]
     (he_ulp_ge_sub : e_ulp ≥ FloatFormat.min_exp - FloatFormat.prec + 1)
     (he_stored_le : e_ulp + FloatFormat.prec - 1 ≤ FloatFormat.max_exp)
     (hq_bound : q < 2 ^ FloatFormat.prec.toNat)
-    (hq_pos_or_zero : True) -- placeholder, q can be 0
+    (_hq_pos_or_zero : True) -- placeholder, q can be 0
     (h_e_ulp_eq_normal_or_sub : e_ulp = max (e_base + ↑(Nat.log2 mag + 1) - FloatFormat.prec)
         (FloatFormat.min_exp - FloatFormat.prec + 1)) :
     roundDown ((mag : R) * (2 : R) ^ e_base) =
@@ -373,7 +373,6 @@ theorem roundDown_nat_mul_zpow [FloatFormat]
       -- Now goal: Fp.finite 0 = Fp.finite ⟨false, e_ulp + prec - 1, q, _⟩
       -- Goal: Fp.finite 0 = Fp.finite ⟨false, e_ulp + prec - 1, q, _⟩
       -- Both are Fp.finite of the zero FiniteFp
-      congr 1
       rw [FiniteFp.eq_def, FiniteFp.zero_def]
       exact ⟨rfl, he_stored.symm, hq0.symm⟩
     · -- k ≠ 0
@@ -500,7 +499,7 @@ theorem roundDown_mono [FloatFormat] {x y : R} (h : x ≤ y) : roundDown x ≤ r
         exact Fp.finite_le_trans h1 h2
       | Fp.infinite false =>
         -- -(+∞) = -∞ ≤ anything
-        show Fp.infinite true ≤ _; rw [Fp.le_def]; left; simp [Fp.lt_def]
+        show Fp.infinite true ≤ _; rw [Fp.le_def]; left; simp
       | Fp.infinite true =>
         exfalso; exact findSuccessorPos_ne_neg_inf (-x) hnx hfsx
       | Fp.NaN => exact absurd hfsx (findSuccessorPos_ne_nan (-x) hnx)

@@ -347,7 +347,7 @@ theorem rnEven_neg_overflow [FloatFormat] (y : R) (hy_pos : 0 < y)
       _ ≤ _ := FloatFormat.zpow_max_exp_le_overflow_threshold]
   have hge : |-y| ≥ FloatFormat.overflowThreshold R := by
     rw [habs_eq]; exact hy_ge
-  simp only [hne, hsmall, hge, ↓reduceIte, ite_true, ite_false, not_true_eq_false, not_false_eq_true]
+  simp only [hne, hsmall, hge, ↓reduceIte]
   congr 1; exact decide_eq_true (by linarith : -y < 0)
 
 /-- roundNearestTiesAwayFromZero of a sufficiently negative value gives negative infinity. -/
@@ -366,7 +366,7 @@ theorem rnAway_neg_overflow [FloatFormat] (y : R) (hy_pos : 0 < y)
       _ ≤ _ := FloatFormat.zpow_max_exp_le_overflow_threshold]
   have hge : |-y| ≥ FloatFormat.overflowThreshold R := by
     rw [habs_eq]; exact hy_ge
-  simp only [hne, hsmall, hge, ↓reduceIte, ite_true, ite_false, not_true_eq_false, not_false_eq_true]
+  simp only [hne, hsmall, hge, ↓reduceIte]
   congr 1; exact decide_eq_true (by linarith : -y < 0)
 
 /-! ### Nearest mode unfolding lemmas
@@ -416,19 +416,19 @@ theorem rnEven_pos_of_roundDown_roundUp [FloatFormat]
   rcases hmid_cases with ⟨hmid_lt, hmid_gt, hmid_even, hmid_odd⟩
   by_cases hlt : val < rnMidpoint pred_fp succ_fp
   · rw [hmid_lt hlt, hroundDown]
-    simpa [rnEvenPosCore, hlt]
+    simp [rnEvenPosCore, hlt]
   · by_cases hgt : val > rnMidpoint pred_fp succ_fp
     · rw [hmid_gt hgt, hroundUp]
-      simpa [rnEvenPosCore, hlt, hgt]
+      simp [rnEvenPosCore, hlt, hgt]
     · have hmid : val = rnMidpoint pred_fp succ_fp := by
         exact le_antisymm (le_of_not_gt hgt) (not_lt.mp hlt)
       by_cases heven : isEvenSignificand pred_fp = true
       · rw [hmid_even hmid heven, hroundDown]
-        simpa [rnEvenPosCore, hmid, heven]
+        simp [rnEvenPosCore, hmid, heven]
       · have hodd : isEvenSignificand pred_fp = false := by
           cases hsig : isEvenSignificand pred_fp <;> simp [hsig] at heven ⊢
         rw [hmid_odd hmid hodd, hroundUp]
-        simpa [rnEvenPosCore, hmid, hodd]
+        simp [rnEvenPosCore, hmid, hodd]
 
 -- The actual workhorse: unfold roundNearestTiesToEven for positive val in range
 theorem rnEven_pos_unfold [FloatFormat]
@@ -708,6 +708,7 @@ theorem rnAway_lt_mid_roundDown [FloatFormat]
       (by have := not_lt.mp hsmall; rwa [abs_of_pos hval_pos] at this)
       hval_lt hrD hrU (by rw [hmid_eq]; exact hmid)
 
+omit [FloorRing R] in
 theorem largestFiniteFloat_lt_overflow_threshold [FloatFormat] :
     FiniteFp.largestFiniteFloat.toVal <
     FloatFormat.overflowThreshold R := by
@@ -820,7 +821,7 @@ private theorem rnAway_neg_eq_neg_pos [FloatFormat] (x : R) (hx : 0 < x) :
       · -- findSuccessorPos = Fp.finite f: split all if-conditions
         dsimp only
         simp only [FiniteFp.toVal_neg_eq_neg]
-        split_ifs <;> simp_all [Fp.neg_finite] <;> linarith
+        split_ifs <;> simp_all <;> linarith
       · -- findSuccessorPos = Fp.infinite b
         dsimp only
         rfl
@@ -870,11 +871,11 @@ private theorem rnEven_neg_eq_neg_pos [FloatFormat] (x : R) (hx : 0 < x) :
         by_cases hpred_eq : findPredecessorPos x hx = f
         · -- pred = succ: x is exactly a float, both sides trivially equal
           subst hpred_eq; simp only [heven_neg]
-          split_ifs <;> simp_all [Fp.neg_finite] <;> linarith
+          split_ifs <;> simp_all
         · -- pred ≠ succ: use opposite parity
           have hparity := roundDown_roundUp_opposite_parity x _ _ hx hrD hrU hpred_eq
           simp only [heven_neg]
-          split_ifs <;> simp_all [Fp.neg_finite] <;> linarith
+          split_ifs <;> simp_all <;> linarith
       · -- findSuccessorPos = Fp.infinite b
         dsimp only
         rfl

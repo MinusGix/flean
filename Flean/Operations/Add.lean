@@ -174,9 +174,9 @@ theorem signed_int_mul_zpow_eq_toVal {R : Type*} [Field R] [LinearOrder R] [IsSt
     rw [two_zpow_mul]; congr 1; omega
   split_ifs with hs
   · rw [mul_assoc, hexp]
-    simp [hs, mul_assoc, mul_left_comm, mul_comm]
+    simp [mul_comm]
   · rw [mul_assoc, hexp]
-    simp [hs, mul_assoc, mul_left_comm, mul_comm]
+    simp [mul_comm]
 
 /-- The integer sum in fpAddFinite exactly represents `a.toVal + b.toVal`.
 

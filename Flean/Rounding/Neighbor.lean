@@ -335,7 +335,6 @@ private theorem roundNormalUp_inf_imp_gt_lff (x : R) (hx : isNormalRange x) (b :
       rw [mul_assoc, two_zpow_mul]; congr 1; ring
     linarith [hcollapse, hms_rearr]
   -- All other branches return Fp.finite, contradicting h : ... = Fp.infinite b
-  all_goals (first | exact absurd h (by simp) | cases h)
 
 /-- findSuccessorPos is monotone: if 0 < x ≤ y then findSuccessorPos x ≤ findSuccessorPos y.
     The ceiling analogue of findPredecessorPos_toVal_mono / findPredecessorPos_mono. -/
@@ -469,7 +468,7 @@ theorem findPredecessor_neg_eq (x : R) (hneg : x < 0) :
   findPredecessor x = -(findSuccessorPos (-x) (neg_pos.mpr hneg)) := by
   have hnz : x ≠ 0 := by linarith
   have hnpos : ¬0 < x := by linarith
-  simp [findPredecessor, hneg, hnz, hnpos]
+  simp [findPredecessor, hnz, hnpos]
 
 /-- findPredecessor is monotone on negative values.
     For x ≤ y < 0, findPredecessor x ≤ findPredecessor y.
@@ -511,7 +510,7 @@ theorem findPredecessor_mono_neg {x y : R} (hx : x < 0) (hy : y < 0) (h : x ≤ 
     | inr heq => simp at heq
   | Fp.infinite false, Fp.finite fy =>
     -- findSuccessorPos(-x) = +∞, so -(+∞) = -∞ ≤ anything
-    simp only [Fp.neg_finite, Fp.le_def, Fp.lt_def]
+    simp only [Fp.neg_finite, Fp.le_def]
     left; rfl
   | Fp.infinite false, Fp.infinite false =>
     -- Both +∞, both negate to -∞
@@ -577,7 +576,7 @@ theorem findSuccessor_neg_eq (x : R) (hneg : x < 0) :
   findSuccessor x = Fp.finite (-findPredecessorPos (-x) (neg_pos.mpr hneg)) := by
   have hnz : x ≠ 0 := by linarith
   have hnpos : ¬0 < x := by linarith
-  simp [findSuccessor, hneg, hnz, hnpos]
+  simp [findSuccessor, hnz, hnpos]
 
 /-- findSuccessor is monotone on negative values.
     For x ≤ y < 0, findSuccessor x ≤ findSuccessor y.
@@ -614,20 +613,20 @@ theorem findSuccessor_mono_neg {x y : R} (hx : x < 0) (hy : y < 0) (h : x ≤ y)
       -- But -0 = ⟨true, 0, 0⟩ ≠ ⟨false, 0, 0⟩ = 0
       exfalso
       rw [FiniteFp.neg_def, FiniteFp.eq_def] at h1
-      simp only [FiniteFp.zero_def, Bool.not_false] at h1
+      simp only [FiniteFp.zero_def] at h1
       have := h1.left
       rw [hsx] at this
       simp at this
     · -- -f_x = 0, -f_y = -0: contradiction since -f_x has sign = !f_x.s = !false = true ≠ false
       exfalso
       rw [FiniteFp.neg_def, FiniteFp.eq_def] at h1
-      simp only [FiniteFp.zero_def, Bool.not_false] at h1
+      simp only [FiniteFp.zero_def] at h1
       rw [hsx] at h1
       simp at h1
     · -- -f_x = -0, -f_y = 0: same contradiction for -f_y
       exfalso
       rw [FiniteFp.neg_def, FiniteFp.eq_def] at h3
-      simp only [FiniteFp.zero_def, Bool.not_false] at h3
+      simp only [FiniteFp.zero_def] at h3
       rw [hsy] at h3
       simp at h3
     · -- Both are -0: -f_x = -0 and -f_y = -0, so they're equal

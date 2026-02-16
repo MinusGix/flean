@@ -43,6 +43,7 @@ def fpSqrt [RModeExec] (x : Fp) : Fp :=
 
 /-! ## Helper lemmas -/
 
+omit [FloatFormat] in
 private lemma sqrt_two_zpow_sq (k : ℤ) :
     Real.sqrt ((2 : ℝ) ^ (2 * k)) = (2 : ℝ) ^ k := by
   conv_lhs => rw [show (2 : ℤ) * k = k * 2 from by ring]
@@ -78,11 +79,11 @@ theorem fpSqrtFinite_correct [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RM
     by_cases h : e_val % 2 = 0
     · rw [show m' = a.m from if_pos h, show e_half = e_val / 2 from if_pos h]
       congr 1; congr 1
-      have := Int.ediv_add_emod e_val 2; omega
+      have := Int.mul_ediv_add_emod e_val 2; omega
     · rw [show m' = 2 * a.m from if_neg h, show e_half = (e_val - 1) / 2 from if_neg h]
       rw [show (↑(2 * a.m) : ℝ) = 2 * (↑a.m : ℝ) from by push_cast; ring]
       have heval : e_val = 2 * ((e_val - 1) / 2) + 1 := by
-        have := Int.ediv_add_emod (e_val - 1) 2; omega
+        have := Int.mul_ediv_add_emod (e_val - 1) 2; omega
       rw [show a.e - FloatFormat.prec + 1 = 2 * ((e_val - 1) / 2) + 1 from
         he_val_def ▸ heval]
       norm_num

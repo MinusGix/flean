@@ -112,7 +112,7 @@ def FpQuotient.fake_sign [FloatFormat] (f : FpQuotient) : Bool :=
     cases h with
     | inl h =>
       subst h
-      simp only [FloatBits.sign]
+      simp only []
     | inr h =>
       unfold FloatBits.fake_sign
       simp only [h, ↓reduceIte]

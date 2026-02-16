@@ -93,6 +93,7 @@ variable [RModeExec]
 
 /-! ## Exact Quotient Representation -/
 
+omit [RModeExec] in
 /-- The exact quotient of two finite floats in terms of the scaled Euclidean division.
 
 `a.toVal / b.toVal = ±(q + r/b.m) * 2^(a.e - b.e - shift)`
@@ -135,6 +136,7 @@ theorem fpDivFinite_exact_quotient {R : Type*} [Field R] [LinearOrder R] [IsStri
 
 /-! ## Correctness for Exact Division -/
 
+omit [RModeExec] in
 /-- When the division is exact (no remainder), `fpDivFinite` correctly rounds the quotient.
 
 This is a special case of the full correctness theorem, covering cases like
@@ -187,6 +189,7 @@ theorem fpDivFinite_correct_exact {R : Type*} [Field R] [LinearOrder R] [IsStric
 -- Note: The interval-constancy lemmas (no_representable_in_odd_interval,
 -- round_eq_on_odd_interval, etc.) have been extracted to Flean.Rounding.OddInterval.
 
+omit [RModeExec] in
 /-- `fpDivFinite` correctly rounds the exact quotient for all contextual policies. -/
 theorem fpDivFinite_correct {R : Type*} [Field R] [LinearOrder R]
     [IsStrictOrderedRing R] [FloorRing R]

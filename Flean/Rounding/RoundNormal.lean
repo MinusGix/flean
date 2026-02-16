@@ -21,6 +21,7 @@ variable [FloatFormat]
 
 /-! ## Helper theorems for normal rounding -/
 
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloatFormat] in
 /-- When n > 0, casting natAbs to R equals casting n directly -/
 theorem Int.cast_natAbs_of_pos {n : ℤ} (hn : 0 < n) : (↑n.natAbs : R) = (↑n : R) := by
   rw [Nat.cast_natAbs, abs_of_nonneg (le_of_lt hn)]
@@ -34,6 +35,7 @@ theorem floor_scaled_normal_pos (x : R) (hx : isNormalRange x) :
   · have hp := FloatFormat.prec_sub_one_pos
     exact one_le_zpow₀ (by norm_num : (1 : R) ≤ 2) (by omega)
 
+omit [FloorRing R] in
 /-- Scaling preserves inequalities in the same binade -/
 theorem scaled_le_of_le {x y : R} (e : ℤ) (h : x ≤ y) :
     x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1) ≤
@@ -50,6 +52,7 @@ These helper lemmas convert ℤ power inequalities to ℕ inequalities that omeg
 The key pattern is: `(2 : ℤ)^n.toNat = ↑((2 : ℕ)^n.toNat)` via Int.two_pow_eq_nat_cast,
 then omega can compare natural numbers directly. -/
 
+omit [FloatFormat] in
 /-- Convert a lower bound from ℤ power to ℕ for omega -/
 theorem int_pow_le_natAbs_of_nonneg {m : ℤ} (hm_pos : 0 < m) (n : ℕ)
     (h : (2 : ℤ)^n ≤ m) : 2^n ≤ m.natAbs := by
@@ -58,6 +61,7 @@ theorem int_pow_le_natAbs_of_nonneg {m : ℤ} (hm_pos : 0 < m) (n : ℕ)
   simp only [Int.two_pow_eq_nat_cast] at h1
   omega
 
+omit [FloatFormat] in
 /-- Convert an upper bound from ℤ power to ℕ for omega -/
 theorem natAbs_lt_int_pow_of_nonneg {m : ℤ} (hm_pos : 0 < m) (n : ℕ)
     (h : m < (2 : ℤ)^n) : m.natAbs < 2^n := by
@@ -130,7 +134,7 @@ def roundNormalDown (x : R) (h : isNormalRange x) : FiniteFp :=
   -- scaled is now in [1, 2)
   let m_scaled := scaled * (2 : R) ^ (FloatFormat.prec - 1)
   let m := ⌊m_scaled⌋
-  have mpos : m > 0 := floor_scaled_normal_pos x h
+  have _mpos : m > 0 := floor_scaled_normal_pos x h
   have vf : IsValidFiniteVal e m.natAbs :=
     findExponentDown_IsValidFiniteVal_normal x m.natAbs (floor_isNormal_of_bounds x h)
   FiniteFp.mk false e m.natAbs vf
@@ -170,7 +174,7 @@ theorem roundNormalDown_pos (x : R) (h : isNormalRange x) : (0 : R) < (roundNorm
   unfold FiniteFp.toVal FiniteFp.sign'
   simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
   apply mul_pos
-  rw [Int.cast_natAbs]
+  rw [Nat.cast_natAbs]
   apply Int.cast_pos.mpr
   obtain ⟨h3, h4⟩ := findExponentDown_div_binade_normal h
   rw [abs_of_pos]
@@ -256,7 +260,7 @@ theorem roundNormalDown_ge_zpow_exp (y : R) (h : isNormalRange y) :
       _ = ↑⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ *
           (2 : R) ^ (findExponentDown y - ↑FloatFormat.prec + 1) := by
             rw [hexp_eq2]
-  convert hmain using 2 <;> norm_cast
+  convert hmain using 2; norm_cast
 
 /-- roundNormalDown y has toVal ≥ 2^min_exp (the smallest normal value) -/
 theorem roundNormalDown_ge_zpow_min_exp (y : R) (h : isNormalRange y) :
@@ -292,7 +296,7 @@ theorem roundNormalDown_toVal_mono {x y : R} (hx : isNormalRange x) (hy : isNorm
     have hscaled_le := scaled_le_of_le (findExponentDown y) h
     -- Use Nat.cast_natAbs and abs_of_nonneg to simplify
     simp only [Nat.cast_natAbs, abs_of_nonneg (le_of_lt hfloor_x_pos),
-               abs_of_nonneg (le_of_lt hfloor_y_pos), Nat.cast_ofNat]
+               abs_of_nonneg (le_of_lt hfloor_y_pos)]
     apply mul_le_mul_of_nonneg_right
     · -- ⌊scaled_x⌋ ≤ ⌊scaled_y⌋
       apply Int.cast_le.mpr
@@ -432,13 +436,13 @@ lemma roundNormalUp_ge (x : R) (hnr : isNormalRange x) (f : FiniteFp)
     by_cases he : e + 1 > FloatFormat.max_exp
     · -- Overflow to infinity case - contradiction since h says result is finite
       unfold e at he
-      simp only [ge_iff_le, hm, he, ↓reduceDIte] at h
+      simp only [hm, he, ↓reduceDIte] at h
       -- This returns Fp.infinite false, but h says result is Fp.finite f
       exfalso
       cases h
     · -- Move to next exponent case
       unfold e at he
-      simp only [ge_iff_le, hm, he, ↓reduceDIte, Fp.finite.injEq] at h
+      simp only [hm, he, ↓reduceDIte, Fp.finite.injEq] at h
       rw [← h]
       unfold FiniteFp.toVal FiniteFp.sign'
       rw [FloatFormat.radix_val_eq_two]
@@ -468,11 +472,11 @@ lemma roundNormalUp_ge (x : R) (hnr : isNormalRange x) (f : FiniteFp)
       norm_num
   · -- Case: no overflow, m < 2^prec
     unfold m m_scaled scaled binade_base e at hm
-    simp only [ge_iff_le, hm, ↓reduceDIte, Fp.finite.injEq] at h
+    simp only [hm, ↓reduceDIte, Fp.finite.injEq] at h
     rw [← h]
     unfold FiniteFp.toVal FiniteFp.sign'
     rw [FloatFormat.radix_val_eq_two]
-    simp only [Bool.false_eq_true, ↓reduceIte, FloatFormat.pow_prec_sub_one_nat_int, one_mul,
+    simp only [Bool.false_eq_true, ↓reduceIte, one_mul,
       Int.cast_ofNat, ge_iff_le]
     -- Goal: x ≤ m.natAbs * 2^(e - prec + 1)
     -- First we need to show m > 0 and m.natAbs = m
@@ -481,7 +485,7 @@ lemma roundNormalUp_ge (x : R) (hnr : isNormalRange x) (f : FiniteFp)
     have m_pos' : 0 < x / (2 : R) ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1) := by
       apply Int.ceil_pos.mp
       trivial
-    simp_all only [FloatFormat.pow_prec_sub_one_nat_int, Int.ceil_pos, ge_iff_le]
+    simp_all only [Int.ceil_pos, ge_iff_le]
 
     -- Now x ≤ m * 2^(e - prec + 1)
     have h_pos : (0 : R) < (2 : R) ^ ((e : ℤ) - (FloatFormat.prec : ℤ) + 1) := by linearize
@@ -715,6 +719,7 @@ theorem ceil_scaled_eq_ceil_div_ulp_step (x : R) (e : ℤ) :
     rw [two_zpow_mul]; congr 1; ring
   rw [this, div_mul_eq_div_div, div_mul_cancel₀ _ (two_zpow_ne_zero _)]
 
+omit [FloatFormat] in
 /-- For b > 0, ⌈a/b⌉ * b - a < b. Ceiling analog of `Int.sub_floor_div_mul_lt`. -/
 private theorem ceil_div_mul_sub_lt (a : R) {b : R} (hb : 0 < b) :
     (↑⌈a / b⌉ : R) * b - a < b := by
@@ -840,7 +845,7 @@ theorem roundNormalUp_sub_roundNormalDown_le_ulp (x : R) (h : isNormalRange x) (
   · -- Binade overflow case: f.toVal = 2^(prec-1) * 2^(e+1-prec+1) = 2^(e+1)
     rw [Fp.finite.injEq] at hf
     rw [← hf]
-    simp only [FiniteFp.toVal, Bool.false_eq_true, ↓reduceIte, one_mul]
+    simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
     push_cast
     rw [← zpow_natCast (2 : R) (FloatFormat.prec.toNat - 1),
         show ((FloatFormat.prec.toNat - 1 : ℕ) : ℤ) = FloatFormat.prec - 1
@@ -888,7 +893,7 @@ theorem roundNormalUp_sub_roundNormalDown_le_ulp (x : R) (h : isNormalRange x) (
   · -- Normal case: f = ⟨false, e, m.natAbs, vf⟩
     rw [Fp.finite.injEq] at hf
     rw [← hf]
-    simp only [FiniteFp.toVal, Bool.false_eq_true, ↓reduceIte, one_mul]
+    simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
     rw [Int.cast_natAbs_of_pos mpos]
     push_cast
     -- Goal: ⌈m_scaled⌉ * 2^(e-prec+1) - ⌊m_scaled⌋ * 2^(e-prec+1) ≤ 2^(e-prec+1)

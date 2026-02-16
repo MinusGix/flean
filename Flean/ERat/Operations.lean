@@ -245,9 +245,9 @@ theorem neg_strictAnti : StrictAnti (- · : ERat → ERat) :=
     ⟨coe_strictMono.comp_strictAnti fun _ _ => neg_lt_neg, fun _ => bot_lt_coe _⟩,
       WithTop.forall.2 ⟨bot_lt_top, fun _ => coe_lt_top _⟩⟩
 
-@[simp] theorem neg_le_neg_iff {a b : ERat} : -a ≤ -b ↔ b ≤ a := neg_strictAnti.le_iff_le
+@[simp] theorem neg_le_neg_iff {a b : ERat} : -a ≤ -b ↔ b ≤ a := neg_strictAnti.le_iff_ge
 
-@[simp] theorem neg_lt_neg_iff {a b : ERat} : -a < -b ↔ b < a := neg_strictAnti.lt_iff_lt
+@[simp] theorem neg_lt_neg_iff {a b : ERat} : -a < -b ↔ b < a := neg_strictAnti.lt_iff_gt
 
 /-- `-a ≤ b` if and only if `-b ≤ a` on `ERat`. -/
 protected theorem neg_le {a b : ERat} : -a ≤ b ↔ -b ≤ a := by
@@ -844,7 +844,7 @@ lemma right_distrib_of_nonneg {a b c : ERat} (ha : 0 ≤ a) (hb : 0 ≤ b) :
         have hbb : b ≠ ⊥ := ne_bot_of_le_ne_bot (ne_of_gt bot_lt_zero) hb
         lift a to ℚ using ⟨ha', hab⟩
         lift b to ℚ using ⟨hb', hbb⟩
-        simp only [← coe_add, ← coe_mul, ERat.coe_eq_coe_iff, add_mul]
+        simp only [← coe_add, ← coe_mul, add_mul]
   | top =>
     by_cases hab : a + b = 0
     · obtain ⟨ha0, hb0⟩ := add_eq_zero_of_nonneg ha hb hab

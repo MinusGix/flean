@@ -39,15 +39,15 @@ def is_lt (x y : FiniteFp) : Prop :=
 
 /-- is_mag_lt with zero left operand: 0 < y iff y.m > 0 -/
 theorem is_mag_lt_zero_left {x y : FiniteFp} (hx : x.m = 0) (hy : 0 < y.m) : x.is_mag_lt y := by
-  unfold is_mag_lt; split_ifs <;> simp_all <;> omega
+  unfold is_mag_lt; split_ifs <;> simp_all
 
 /-- is_mag_lt into zero right operand is impossible -/
 theorem not_is_mag_lt_zero_right {x y : FiniteFp} (hy : y.m = 0) : ¬x.is_mag_lt y := by
-  unfold is_mag_lt; split_ifs <;> simp_all <;> omega
+  unfold is_mag_lt; split_ifs <;> simp_all
 
 /-- is_mag_lt from zero right operand is impossible -/
 theorem not_is_mag_lt_into_zero {x y : FiniteFp} (hx : x.m = 0) (hy : y.m = 0) : ¬x.is_mag_lt y := by
-  unfold is_mag_lt; split_ifs <;> simp_all <;> omega
+  unfold is_mag_lt; split_ifs <;> simp_all
 
 /-- If x.is_mag_lt y, then y.m > 0 -/
 theorem is_mag_lt_imp_right_pos {x y : FiniteFp} (h : x.is_mag_lt y) : 0 < y.m := by
@@ -133,7 +133,7 @@ theorem is_mag_eq_imp_is_mag_le {x y : FiniteFp} : is_mag_eq x y → is_mag_le x
 
 
 theorem neg_zero_lt_zero : (-0 : FiniteFp) < 0 := by
-  simp [lt_def, zero_def, neg_def, isZero]
+  simp [lt_def, zero_def, neg_def]
 
 theorem zero_le_zero : (0 : FiniteFp) ≤ 0 := by
   simp only [zero_def, le_def, or_true]
@@ -417,8 +417,7 @@ theorem toVal_le (R : Type*) [Field R] [LinearOrder R] [IsStrictOrderedRing R]
 /-- toVal_le but where you handle the case where the values are zero, proving it manually, since 0 and -0 are not necessarily distinguished in R -/
 theorem toVal_le_handle (R : Type*) [Field R] [LinearOrder R] [IsStrictOrderedRing R]
   {x y : FiniteFp} : x.toVal (R := R) ≤ y.toVal (R := R) → ((x.isZero ∧ y.isZero) → x ≤ y) → x ≤ y := by
-  intro hxy
-  intro hnz
+  intro hxy hnz
   if hz : x.isZero ∧ y.isZero then
     apply hnz hz
   else
@@ -497,7 +496,7 @@ theorem is_lt_trans {a b c : FiniteFp} : a < b → b < c → a < c := by
     · have := is_mag_lt_trans h2.right.right h1.right.right
       grind
 
-theorem pos_nz_is_mag_lt_imp_nz {x y : FiniteFp} (hs : x.s = false) (hnz : ¬x.isZero): x.is_mag_lt y → ¬y.isZero := by
+theorem pos_nz_is_mag_lt_imp_nz {x y : FiniteFp} (_hs : x.s = false) (hnz : ¬x.isZero): x.is_mag_lt y → ¬y.isZero := by
   intro hm
   unfold isZero at hnz ⊢
   unfold is_mag_lt at hm
@@ -574,7 +573,7 @@ theorem mag_le_imp_le_of_neg {x y : FiniteFp} : x.s → y.s → x.is_mag_le y �
       rename_i hb ha
       rw [h1] at ha
       rw [h4] at hb
-      simp_all only [zero_def, Bool.not_false, neg_def, Bool.not_true, Bool.false_eq_true]
+      simp_all only [zero_def, Bool.not_false, neg_def, Bool.false_eq_true]
     · simp [neg_zero_le_zero, h2, h3]
     · simp [le_def, h2, h4]
 
@@ -586,7 +585,7 @@ def beq (x y : FiniteFp) : Bool :=
 
 -- Boolean version of is_mag_lt
 def bmag_lt (x y : FiniteFp) : Bool :=
-  if h : x.e = y.e then x.m < y.m
+  if _h : x.e = y.e then x.m < y.m
   else if x.e > y.e then x.m * 2^((x.e - y.e).natAbs) < y.m
   else x.m < y.m * 2^((y.e - x.e).natAbs)
 

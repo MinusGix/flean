@@ -35,6 +35,7 @@ variable [FloatFormat]
 
 /-! ## Step 1: Normal positive helpers -/
 
+omit [FloorRing R] in
 /-- For a positive normal float, its toVal lies in [2^e, 2^(e+1)). -/
 theorem toVal_normal_bounds (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m) :
     (2 : R) ^ f.e ≤ f.toVal ∧ f.toVal < (2 : R) ^ (f.e + 1) := by
@@ -93,6 +94,7 @@ theorem findExponentDown_of_normal_toVal (f : FiniteFp) (hs : f.s = false) (hn :
             two_zpow_mono (by linarith [f.valid_max_exp])
   rw [findExponentDown_normal _ hnr, Int_log_of_normal_toVal f hs hn]
 
+omit [FloorRing R] in
 /-- The scaled significand of a normal positive float equals its significand:
     f.toVal / 2^f.e * 2^(prec-1) = f.m -/
 theorem scaled_significand_eq_m (f : FiniteFp) (hs : f.s = false) :
@@ -107,6 +109,7 @@ theorem scaled_significand_eq_m (f : FiniteFp) (hs : f.s = false) :
 
 /-! ## Step 2: roundNormalDown idempotence -/
 
+omit [FloorRing R] in
 /-- Helper: positive normal float has isNormalRange toVal -/
 private theorem toVal_normal_isNormalRange (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m) :
     isNormalRange (f.toVal (R := R)) := by
@@ -146,6 +149,7 @@ theorem roundNormalDown_of_normal_toVal (f : FiniteFp) (hs : f.s = false) (hn : 
 
 /-! ## Step 3: Subnormal positive helpers + roundSubnormalDown idempotence -/
 
+omit [FloorRing R] in
 /-- For a positive subnormal float with m > 0, its toVal is in the subnormal range. -/
 theorem toVal_subnormal_isSubnormalRange (f : FiniteFp) (hs : f.s = false)
     (hsub : isSubnormal f.e f.m) (hm : 0 < f.m) :
@@ -173,6 +177,7 @@ theorem toVal_subnormal_isSubnormalRange (f : FiniteFp) (hs : f.s = false)
       _ = (2 : R) ^ FloatFormat.min_exp := by
           rw [two_zpow_mul]; congr 1; ring
 
+omit [FloorRing R] in
 /-- f.toVal / 2^(min_exp - prec + 1) = f.m for a subnormal float. -/
 theorem subnormal_toVal_div_ulp_eq_m (f : FiniteFp) (hs : f.s = false)
     (hsub : isSubnormal f.e f.m) :
@@ -397,6 +402,7 @@ theorem roundTowardZero_idempotent (f : FiniteFp) (h : f.s = false ∨ 0 < f.m) 
       rw [roundTowardZero_neg_eq _ hfneg]
       exact roundUp_idempotent_neg f hs_true hm_pos
 
+omit [FloorRing R] in
 /-- Helper: toVal of a nonzero float has |toVal| ≥ smallestPosSubnormal.toVal -/
 theorem toVal_abs_ge_smallest (f : FiniteFp) (hm : 0 < f.m) :
     FiniteFp.smallestPosSubnormal.toVal ≤ |f.toVal (R := R)| := by
@@ -447,6 +453,7 @@ theorem toVal_abs_ge_smallest (f : FiniteFp) (hm : 0 < f.m) :
           · exact le_of_lt (two_zpow_pos' _)
           · exact Nat.cast_nonneg _
 
+omit [FloorRing R] in
 /-- Helper: toVal of any finite float has |toVal| < overflow threshold -/
 theorem toVal_abs_lt_overflow (f : FiniteFp) :
     |f.toVal (R := R)| < FloatFormat.overflowThreshold R := by

@@ -73,7 +73,7 @@ theorem roundUp_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs :
     have hnat : 1 < (2 : ℕ) ^ (FloatFormat.prec.toNat - 1) := Nat.one_lt_pow hne (by norm_num : 1 < 2)
     -- (2 : ℤ)^n = (↑(2 : ℕ))^n = ↑((2 : ℕ)^n) by Nat.cast_pow
     calc (2 : ℤ) ^ (FloatFormat.prec.toNat - 1)
-        = ((2 : ℕ) ^ (FloatFormat.prec.toNat - 1) : ℤ) := by simp only [Nat.cast_pow, Nat.cast_ofNat]
+        = ((2 : ℕ) ^ (FloatFormat.prec.toNat - 1) : ℤ) := by simp only [Nat.cast_ofNat]
       _ > 1 := by omega
   have h_not_ge : ¬((2 : ℤ) ^ (FloatFormat.prec.toNat - 1) ≤ 1) := not_le.mpr h_k_lt
   simp only [h_not_ge, ↓reduceDIte]
@@ -158,9 +158,9 @@ Mirror of `roundDown_nat_mul_zpow` for the ceiling direction. -/
 private lemma isValid_roundUpNatMulZpowTarget [FloatFormat]
     (mag : ℕ) (e_base e_ulp : ℤ) (q : ℕ)
     (hmag : mag ≠ 0)
-    (hval_pos : (0 : R) < (mag : R) * (2 : R) ^ e_base)
+    (_hval_pos : (0 : R) < (mag : R) * (2 : R) ^ e_base)
     (hceil : ⌈(mag : R) * (2 : R) ^ e_base / (2 : R) ^ e_ulp⌉ = (q : ℤ) + 1)
-    (hint_log : Int.log 2 ((mag : R) * (2 : R) ^ e_base) = (Nat.log2 mag : ℤ) + e_base)
+    (_hint_log : Int.log 2 ((mag : R) * (2 : R) ^ e_base) = (Nat.log2 mag : ℤ) + e_base)
     (he_ulp_ge_sub : e_ulp ≥ FloatFormat.min_exp - FloatFormat.prec + 1)
     (he_stored_le : e_ulp + FloatFormat.prec - 1 ≤ FloatFormat.max_exp)
     (hq1_bound : q + 1 < 2 ^ FloatFormat.prec.toNat)
@@ -305,7 +305,7 @@ theorem roundUp_nat_mul_zpow [FloatFormat]
           zify; exact hq1_eq
         omega
     · -- q + 1 < 2^(prec-1): roundSubnormalUp returns ⟨false, min_exp, (q+1).natAbs, _⟩
-      simp only [hk_ge, ↓reduceDIte, not_false_eq_true]
+      simp only [hk_ge, ↓reduceDIte]
       have hnatabs : ((q : ℤ) + 1).natAbs = q + 1 := by
         rw [show (q : ℤ) + 1 = ((q + 1 : ℕ) : ℤ) from by push_cast; ring]
         exact Int.natAbs_natCast (q + 1)
@@ -390,7 +390,7 @@ private abbrev roundUpNatMulZpowCarryTarget [FloatFormat]
 
 theorem roundUp_nat_mul_zpow_carry [FloatFormat]
     (mag : ℕ) (e_base e_ulp : ℤ) (q : ℕ)
-    (hmag : mag ≠ 0)
+    (_hmag : mag ≠ 0)
     (hval_pos : (0 : R) < (mag : R) * (2 : R) ^ e_base)
     (hval_lt : (mag : R) * (2 : R) ^ e_base < (2 : R) ^ (FloatFormat.max_exp + 1))
     (hceil : ⌈(mag : R) * (2 : R) ^ e_base / (2 : R) ^ e_ulp⌉ = (q : ℤ) + 1)
@@ -470,7 +470,7 @@ theorem roundUp_nat_mul_zpow_carry [FloatFormat]
   have hno_overflow : ¬(findExponentDown ((mag : R) * (2 : R) ^ e_base) + 1 >
       FloatFormat.max_exp) := by
     push_neg; exact hfed_le_max
-  simp only [hceil_scaled, hbinade, hno_overflow, ↓reduceDIte, ite_false]
+  simp only [hceil_scaled, hbinade, hno_overflow, ↓reduceDIte]
   -- Goal: Fp.finite ⟨false, fed+1, 2^(prec-1).toNat, _⟩ = Fp.finite ⟨false, e_ulp+prec, 2^(prec.toNat-1), _⟩
   have he_eq : findExponentDown ((mag : R) * (2 : R) ^ e_base) + 1 =
       e_ulp + FloatFormat.prec := by

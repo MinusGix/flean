@@ -143,9 +143,9 @@ theorem signed_product_mul_zpow_eq_product {R : Type*} [Field R] [LinearOrder R]
     rw [two_zpow_mul]; congr 1; omega
   split_ifs with hs
   · rw [mul_assoc, hexp]
-    simp [hs, mul_assoc, mul_left_comm, mul_comm]
+    simp [mul_assoc, mul_comm]
   · rw [mul_assoc, hexp]
-    simp [hs, mul_assoc, mul_left_comm, mul_comm]
+    simp [mul_assoc, mul_comm]
 
 /-- The integer sum in fpFMAFinite exactly represents `a.toVal * b.toVal + c.toVal`.
 
@@ -232,15 +232,15 @@ theorem fpFMA_neg_mul_neg [RModeExec] (x y z : Fp) :
   | NaN => cases y <;> cases z <;> simp [fpFMA]
   | infinite sx =>
     cases y with
-    | NaN => cases z <;> simp [fpFMA, Fp.neg_def]
-    | infinite sy => cases z <;> simp [fpFMA, Fp.neg_def, Bool.not_xor_not]
+    | NaN => cases z <;> simp [fpFMA]
+    | infinite sy => cases z <;> simp [fpFMA]
     | finite fy =>
-      cases z <;> simp [fpFMA, Fp.neg_def, Fp.neg_finite, FiniteFp.neg_def, Bool.not_xor_not]
+      cases z <;> simp [fpFMA, FiniteFp.neg_def]
   | finite fx =>
     cases y with
-    | NaN => cases z <;> simp [fpFMA, Fp.neg_def]
+    | NaN => cases z <;> simp [fpFMA]
     | infinite sy =>
-      cases z <;> simp [fpFMA, Fp.neg_def, Fp.neg_finite, FiniteFp.neg_def, Bool.not_xor_not]
+      cases z <;> simp [fpFMA, FiniteFp.neg_def]
     | finite fy =>
       cases z <;> simp [fpFMA, fpFMAFinite_neg_mul_neg]
 

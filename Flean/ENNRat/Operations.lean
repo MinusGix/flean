@@ -39,7 +39,7 @@ theorem mul_left_strictMono (h0 : a ≠ 0) (hinf : a ≠ ∞) : StrictMono (a * 
   intro x y h
   contrapose! h
   simpa only [← mul_assoc, ofNNRat_eq_NNRatCast, ← coe_mul, inv_mul_cancel₀ h0, coe_one, one_mul]
-    using mul_le_mul_left' h (↑a⁻¹)
+    using mul_le_mul_right h (↑a⁻¹)
 
 @[gcongr] protected theorem mul_lt_mul_left' (h0 : a ≠ 0) (hinf : a ≠ ⊤) (bc : b < c) :
     a * b < a * c :=
@@ -241,7 +241,7 @@ end OperationsAndInfty
   cases c;
   · simp [ac, ENNRat.ofNNRat_lt_top b]
   cases d; · simp [bd, ENNRat.ofNNRat_lt_top a]
-  simp only [← coe_add, coe_lt_coe] at *
+  simp only [← coe_add] at *
   have ac := ENNRat.ofNNRat_lt.mp ac
   have bd := ENNRat.ofNNRat_lt.mp bd
   rw [ENNRat.ofNNRat_add]
@@ -402,7 +402,7 @@ theorem sub_right_inj {a b c : ℚ≥0∞} (ha : a ≠ ∞) (hb : b ≤ a) (hc :
     (cancel_of_ne <| ne_top_of_le_ne_top ha hc) hb hc
 
 protected theorem sub_mul (h : 0 < b → b < a → c ≠ ∞) : (a - b) * c = a * c - b * c := by
-  rcases le_or_gt a b with hab | hab; · simp [hab, tsub_eq_zero_of_le, mul_le_mul_right' hab]
+  rcases le_or_gt a b with hab | hab; · simp [hab, tsub_eq_zero_of_le, _root_.mul_le_mul_left hab]
   rcases eq_or_lt_of_le (zero_le b) with (rfl | hb); · simp
   exact (cancel_of_ne <| mul_ne_top hab.ne_top (h hb hab)).tsub_mul
 
@@ -417,13 +417,13 @@ theorem sub_le_sub_iff_left (h : c ≤ a) (h' : a ≠ ∞) :
 theorem le_toRat_sub {a b : ℚ≥0∞} (hb : b ≠ ∞) : a.toRat - b.toRat ≤ (a - b).toRat := by
   lift b to ℚ≥0 using hb
   induction a
-  · simp [ENNRat.ofNNRat_eq_NNRatCast, WithTop.top_sub_coe]
+  · simp [ENNRat.ofNNRat_eq_NNRatCast]
   · simp only [← coe_sub, NNRat.sub_def, Rat.coe_toNNRat', coe_toRat, ENNRat.ofNNRat_eq_NNRatCast]
     exact le_max_left _ _
 
 @[simp]
 lemma toNNRat_sub (hb : b ≠ ∞) : (a - b).toNNRat = a.toNNRat - b.toNNRat := by
-  lift b to ℚ≥0 using hb; induction a <;> simp [← coe_sub, WithTop.top_sub_coe, ENNRat.ofNNRat_eq_NNRatCast]
+  lift b to ℚ≥0 using hb; induction a <;> simp [← coe_sub, ENNRat.ofNNRat_eq_NNRatCast]
 
 @[simp]
 lemma toRat_sub_of_le (hba : b ≤ a) (ha : a ≠ ∞) : (a - b).toRat = a.toRat - b.toRat := by

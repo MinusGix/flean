@@ -406,7 +406,7 @@ lemma toENNRat_of_nonpos {x : ERat} (hx : x ≤ 0) : x.toENNRat = 0 := by
   · simp only [toENNRat_of_ne_top h, ENNRat.ofRat_eq_zero]
     exact toRat_nonpos hx
 
-lemma toENNRat_of_nonneg {x : ERat} (hx : 0 ≤ x) (hx' : x ≠ ⊤) :
+lemma toENNRat_of_nonneg {x : ERat} (_hx : 0 ≤ x) (hx' : x ≠ ⊤) :
     x.toENNRat = ENNRat.ofRat x.toRat := toENNRat_of_ne_top hx'
 
 theorem eq_top_iff_forall_lt (x : ERat) : x = ⊤ ↔ ∀ y : ℚ, (y : ERat) < x := by
@@ -471,7 +471,7 @@ lemma recENNRat {P : ERat → Prop}
 @[elab_as_elim]
 lemma recENNRat' {P : ERat → Prop}
     (hneg : ∀ x : ERat, x < 0 → P x)
-    (hnneg : ∀ x : ℚ≥0∞, ∀ hx : 0 ≤ (x : ERat), P x) :
+    (hnneg : ∀ x : ℚ≥0∞, ∀ _hx : 0 ≤ (x : ERat), P x) :
     ∀ x, P x := by
   intro x
   rcases lt_trichotomy x 0 with hx | rfl | hx

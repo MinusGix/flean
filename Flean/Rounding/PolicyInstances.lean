@@ -212,7 +212,7 @@ instance [UseRoundingPolicy RoundTowardNegPolicy] : RModeExecSound R where
         roundUp_gt_largestFiniteFloat x hx_pos hx_gt_lff
       have hrd_neg : roundDown (-x) = -(roundUp x) :=
         roundDown_neg_eq_neg_roundUp x hx_ne
-      simpa [RModeExec.handleOverflow, RMode.round, hru, hrd_neg, Fp.neg_def]
+      simp [RModeExec.handleOverflow, RMode.round, hru, hrd_neg, Fp.neg_def]
 
 instance [UseRoundingPolicy RoundTowardNegPolicy] : RModePolicyTag R where
   kind := .towardNeg
@@ -275,7 +275,7 @@ instance [UseRoundingPolicy RoundTowardPosPolicy] : RModeExecSound R where
       have hru_neg : roundUp (-x) = Fp.finite (-FiniteFp.largestFiniteFloat) := by
         have hsym : roundUp (-x) = -(roundDown x) :=
           roundUp_neg_eq_neg_roundDown x hx_ne
-        simpa [hsym, hrd, Fp.neg_def]
+        simp [hsym, hrd, Fp.neg_def]
       simpa [RModeExec.handleOverflow, RMode.round] using hru_neg.symm
 
 instance [UseRoundingPolicy RoundTowardPosPolicy] : RModePolicyTag R where
@@ -345,7 +345,7 @@ instance [UseRoundingPolicy RoundTowardZeroPolicy] : RModeExecSound R where
       have hru_neg : roundUp (-x) = Fp.finite (-FiniteFp.largestFiniteFloat) := by
         have hsym : roundUp (-x) = -(roundDown x) :=
           roundUp_neg_eq_neg_roundDown x hx_ne
-        simpa [hsym, hrd, Fp.neg_def]
+        simp [hsym, hrd, Fp.neg_def]
       simpa [RModeExec.handleOverflow, RMode.round, htz] using hru_neg.symm
 
 instance [UseRoundingPolicy RoundTowardZeroPolicy] : RModePolicyTag R where

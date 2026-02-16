@@ -75,7 +75,7 @@ def roundSubnormalUp (x : R) (h : isSubnormalRange x) : FiniteFp :=
 
 theorem roundSubnormalDown_eq_zero_iff {x : R} {h : isSubnormalRange x} : roundSubnormalDown x h = 0 ↔ x < FiniteFp.smallestPosSubnormal.toVal := by
   unfold roundSubnormalDown
-  simp only [ne_eq, reduceCtorEq, not_false_eq_true]
+  simp only []
   rw [FiniteFp.smallestPosSubnormal_toVal]
   have hz := FloatFormat.zpow_min_exp_prec_plus_one_le_zpow_min_exp (R := R)
   split_ifs with h1
@@ -113,13 +113,13 @@ lemma roundSubnormalUp_ge (x : R) (hsr : isSubnormalRange x) (f : FiniteFp)
   by_cases hk : k ≥ (2 : ℤ)^(FloatFormat.prec - 1).toNat
   · -- Case: k ≥ 2^(prec-1), transition to normal range
     unfold k at hk
-    simp only [ge_iff_le, hk, ↓reduceDIte, Fp.finite.injEq] at h
+    simp only [ge_iff_le, hk, ↓reduceDIte] at h
     -- h now shows: f = FiniteFp.smallestPosNormal
     rw [← h, FiniteFp.smallestPosNormal_toVal]
     exact le_of_lt (hsr.right)
   · -- Case: k < 2^(prec-1), stays in subnormal range
     unfold k at hk
-    simp only [ge_iff_le, hk, ↓reduceDIte, Fp.finite.injEq] at h
+    simp only [ge_iff_le, hk, ↓reduceDIte] at h
     rw [← h]
     unfold FiniteFp.toVal FiniteFp.sign'
     rw [FloatFormat.radix_val_eq_two]

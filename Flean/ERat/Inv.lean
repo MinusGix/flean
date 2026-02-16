@@ -206,8 +206,8 @@ instance : CommMonoidWithZero ERat :=
 instance : PosMulMono ERat := posMulMono_iff_covariant_pos.2 <| .mk <| by
   rintro ⟨x, x0⟩ a b h
   simp only [le_iff_sign, ERat.sign_mul, sign_pos x0, one_mul, ERat.abs_mul] at h ⊢
-  exact h.imp_right <| Or.imp (And.imp_right <| And.imp_right (mul_le_mul_left' · _)) <|
-    Or.imp_right <| And.imp_right <| And.imp_right (mul_le_mul_left' · _)
+  exact h.imp_right <| Or.imp (And.imp_right <| And.imp_right (_root_.mul_le_mul_right · _)) <|
+    Or.imp_right <| And.imp_right <| And.imp_right (_root_.mul_le_mul_right · _)
 
 instance : MulPosMono ERat := posMulMono_iff_mulPosMono.1 inferInstance
 
@@ -622,7 +622,7 @@ lemma div_right_distrib_of_nonneg (h : 0 ≤ a) (h' : 0 ≤ b) :
 
 /-- Division distributes over addition when the divisor is nonnegative.
     Note: This is only true when the divisor is nonnegative (or when both a, b are nonnegative). -/
-lemma add_div_of_nonneg_right (ha : 0 ≤ a) (hb : 0 ≤ b) (hc : 0 ≤ c) :
+lemma add_div_of_nonneg_right (ha : 0 ≤ a) (hb : 0 ≤ b) (_hc : 0 ≤ c) :
     (a + b) / c = a / c + b / c :=
   div_right_distrib_of_nonneg ha hb
 

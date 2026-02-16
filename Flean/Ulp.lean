@@ -84,6 +84,7 @@ def machineEpsilon [FloatFormat] : R := ulp (1 : R)
 
 theorem ulp_zero [FloatFormat] : ulp (0 : R) = 2 ^ (-(FloatFormat.prec : ℤ) + 1) := by simp [ulp]
 
+omit [IsStrictOrderedRing R] in
 /-- Symmetric about 0. Which makes sense because floating point formats are symmetric about 0. -/
 theorem ulp_eq_neg [FloatFormat] (v : R) : ulp (-v) = ulp v := by simp [ulp]
 
@@ -92,6 +93,7 @@ theorem ulp_ge [FloatFormat] : ∀ (v : R), 2^(FloatFormat.min_exp - FloatFormat
   delta ulp
   norm_num
 
+omit [IsStrictOrderedRing R] in
 /-- Being in the same power of two interval means the ULP is the same. -/
 theorem ulp_step_log [FloatFormat] (v x : R) : Int.log 2 (|v|) = Int.log 2 (|x|) → ulp v = ulp x := by
   delta ulp
@@ -112,7 +114,7 @@ theorem ulp_step_log' [FloatFormat] (v x : R) : ulp v = ulp x →
   <;> cases' max_cases (Int.log 2 (|x|)) FloatFormat.min_exp with h' h'
   <;> rw [h.left, h'.left] at hv
   <;> rw [hv]
-  <;> simp [hv, h, h']
+  <;> simp [h, h']
 
 
 -- theorem ulp_pow_mul [FloatFormat] (v : ℝ) (k : ℤ) : ulp (2^k * v) = 2^k * ulp v := by

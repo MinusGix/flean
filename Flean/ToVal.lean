@@ -71,7 +71,7 @@ theorem toVal_one [Field R] [LinearOrder R] [IsStrictOrderedRing R] : toVal (1 :
         = (FloatFormat.prec.toNat : ℤ) - 1 + (-FloatFormat.prec + 1) := by rw [Nat.cast_sub h_toNat_ge]; norm_num
       _ = FloatFormat.prec - 1 + (-FloatFormat.prec + 1) := by rw [h_prec_nat]
       _ = 0 := by ring
-  simp only [h_exp_zero, add_zero, zpow_zero, mul_one]
+  simp only [h_exp_zero, zpow_zero]
 
 theorem toVal_mag_one [Field R] [LinearOrder R] [IsStrictOrderedRing R] : toVal_mag (1 : FiniteFp) = (1 : R) := by
   rw [toVal_mag_toVal_abs, toVal_one, abs_one]

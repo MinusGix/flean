@@ -72,7 +72,7 @@ theorem sterbenz_aligned_diff_bound (a b : FiniteFp) (ha : a.s = false) (hb : b.
     (h_exp : a.e - 1 ≤ b.e ∧ b.e - 1 ≤ a.e) :
     (sterbenzAlignedDiffInt a b).natAbs < 2 ^ precNat := by
   unfold sterbenzAlignedDiffInt sterbenzEMin
-  simp only [FiniteFp.neg_def, ha, hb, Bool.false_eq_true, ↓reduceIte, Bool.not_false,
+  simp only [FiniteFp.neg_def, ha, hb, Bool.not_false,
     condNeg_false, condNeg_true, Int.neg_mul]
   set e_min := min a.e b.e
   have ha_bnd := a.valid.2.2.1
@@ -157,7 +157,7 @@ theorem sterbenz (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
           condNeg (!b.s) (b.m : ℤ) * 2 ^ (b.e - min a.e b.e).toNat = 0 := by
       simpa [isum_def, e_min_def, hnb_e] using hisum_zero
     refine ⟨z, ?_, ?_⟩
-    · simpa [sub_finite_eq_fpSubFinite, fpSubFinite, add_eq_fpAdd, fpAdd,
+    · simp [sub_finite_eq_fpSubFinite, fpSubFinite, add_eq_fpAdd, fpAdd,
         add_finite_eq_fpAddFinite, fpAddFinite, hsum0, z]
     rw [Fp.Represents]
     rw [show ⌞a⌟[R] - ⌞b⌟[R] = 0 from sub_eq_zero.mpr hdiff]

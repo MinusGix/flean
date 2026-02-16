@@ -81,11 +81,13 @@ theorem representable_value_div_16 {R : Type*} [Field R] [LinearOrder R]
     omega
   rw [← hd_eq]; exact dvd_mul_of_dvd_right (Nat.pow_dvd_pow 2 hd_ge) _
 
+omit [FloatFormat] in
 /-- The sum of two multiples of 16 cannot equal `2*n` when `n` is odd.
     Key: `16 ∣ (a+b)` implies `4 ∣ (a+b)`, but `n` odd means `2n ≡ 2 (mod 4)`. -/
 theorem sum_ne_double_odd {a b n : ℕ} (hn_odd : n % 2 = 1)
     (h16a : 16 ∣ a) (h16b : 16 ∣ b) : a + b ≠ 2 * n := by omega
 
+omit [FloatFormat] in
 /-- Two even numbers `a` and `b` with `a + 2 = b` cannot both be divisible by 4.
     (Because `b - a = 2` and `4 ∤ 2`.) -/
 private theorem not_both_div_four {a b : ℕ} (hab : a + 2 = b)
@@ -208,6 +210,7 @@ theorem not_both_representable_close {R : Type*} [Field R] [LinearOrder R]
   have : 16 ∣ (b - a) := Nat.dvd_sub h16_b h16_a
   omega
 
+omit [FloatFormat] in
 /-- Midpoint of (rd, ru) is ≤ (n-1)*E when rd ≤ (n-3)*E and ru ≤ (n+1)*E. -/
 theorem mid_le_of_rd_low_ru_tight {R : Type*} [Field R] [LinearOrder R]
     [IsStrictOrderedRing R]
@@ -222,6 +225,7 @@ theorem mid_le_of_rd_low_ru_tight {R : Type*} [Field R] [LinearOrder R]
       2 * (((n : ℤ) - 1 : R) * (2:R)^e_base) := by ring
   linarith
 
+omit [FloatFormat] in
 /-- Midpoint of (rd, ru) is ≥ (n+1)*E when rd ≥ (n-1)*E and ru ≥ (n+3)*E. -/
 theorem mid_ge_of_rd_tight_ru_high {R : Type*} [Field R] [LinearOrder R]
     [IsStrictOrderedRing R]
@@ -518,7 +522,6 @@ private theorem exists_representable_pow2 {R : Type*} [Field R] [LinearOrder R]
     · exact Nat.pow_lt_pow_right (by omega) (by omega)
   · exact Nat.pos_of_ne_zero (by positivity)
   · unfold FiniteFp.toVal FiniteFp.sign'; simp [FloatFormat.radix_val_eq_two]
-    push_cast
     rw [← zpow_natCast (2 : R) (p - 1), ← zpow_add₀ (by norm_num : (2:R) ≠ 0)]
     congr 1
     have : (FloatFormat.prec - 1).toNat = p - 1 := by
@@ -625,7 +628,7 @@ private theorem midpoint_outside_odd_interval {R : Type*} [Field R] [LinearOrder
         omega
       -- So succ.toVal = m_s * E
       have hexp_eq : succ_fp.e - FloatFormat.prec + 1 = e_base := by
-        simp only [hd_s_def, hp_def] at hd_s_eq
+        simp only [hd_s_def] at hd_s_eq
         omega
       have hsucc_eq : (succ_fp.toVal : R) = ↑succ_fp.m * E := by
         rw [hsucc_toVal, hE_def, hexp_eq]

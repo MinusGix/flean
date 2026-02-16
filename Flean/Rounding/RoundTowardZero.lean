@@ -60,7 +60,7 @@ theorem roundTowardZero_isFinite [FloatFormat] (x : R) : ∃ f : FiniteFp, round
   · -- x < 0: roundUp x = findSuccessor x
     have hneg : x < 0 := lt_of_le_of_ne (le_of_not_gt h2) h1
     unfold roundUp findSuccessor
-    simp only [h1, ↓reduceDIte, h2, not_lt.mpr (le_of_lt hneg)]
+    simp only [h1, ↓reduceDIte, h2]
     exact ⟨-findPredecessorPos (-x) (neg_pos.mpr hneg), rfl⟩
 
 -- Helper: for positive x, roundTowardZero result has toVal in [0, x]
@@ -153,7 +153,7 @@ theorem roundTowardZero_zero_le_pos [FloatFormat] (y : R) (hpos : 0 < y) :
     · -- 0.e > f.e: impossible since 0.e = min_exp is minimum
       exfalso
       have he_ge := (findPredecessorPos y hpos).valid_min_exp
-      simp only [FiniteFp.zero_def] at hgt
+      simp only [] at hgt
       omega
     · -- 0.e < f.e: need 0 < f.m * 2^(...)
       apply Nat.mul_pos hfm_pos

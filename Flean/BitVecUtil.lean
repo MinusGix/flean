@@ -268,7 +268,7 @@ theorem extractBreakup₃ {n m r : Nat} {s : BitVec (n + m + r)} : s.extractLsb'
       else
         simp only [h3, decide_false, Bool.false_and, Bool.false_or]
         simp_all only [not_le, decide_true, Bool.true_and, Bool.or_eq_left_iff_imp,
-          Bool.and_eq_true, decide_eq_true_eq, and_imp, implies_true]
+          Bool.and_eq_true, decide_eq_true_eq, implies_true]
 
 
 end BitVec

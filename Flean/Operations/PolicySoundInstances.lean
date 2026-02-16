@@ -46,6 +46,7 @@ private theorem sticky_interval_to_odd {R : Type*} [Field R] [LinearOrder R]
             push_cast
             ring
 
+omit [FloatFormat] in
 private theorem stickyAbs_pos {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
     (q : ℕ) (e_base : ℤ) :
     0 < stickyAbs (R := R) q e_base := by
@@ -55,6 +56,7 @@ private theorem stickyAbs_pos {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
     exact_mod_cast (Nat.succ_pos (2 * q))
   exact mul_pos hcoeff_pos hE_pos
 
+omit [FloatFormat] in
 private theorem abs_exact_pos_of_inSticky {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
     {q : ℕ} {e_base : ℤ} {abs_exact : R}
     (h_exact_in : inStickyInterval (R := R) q e_base abs_exact) :

@@ -3,7 +3,7 @@ import Mathlib.Order.TypeTags
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.FieldSimp
 import Mathlib.Algebra.Algebra.Defs
-import Mathlib.Algebra.Order.Module.OrderedSMul
+import Mathlib.Algebra.Order.Module.Defs
 import Mathlib.Algebra.Order.Ring.WithTop
 import Mathlib.Algebra.Order.Sub.WithTop
 import Mathlib.Order.Interval.Set.WithBotTop
@@ -442,7 +442,7 @@ instance _root_.fact_one_le_top_ennRat : Fact ((1 : ℚ≥0∞) ≤ ∞) :=
 def neTopEquivNNRat : { a | a ≠ ∞ } ≃ ℚ≥0 where
   toFun x := ENNRat.toNNRat x
   invFun x := ⟨x, coe_ne_top⟩
-  left_inv := fun x => Subtype.eq <| coe_toNNRat x.2
+  left_inv := fun x => Subtype.ext <| coe_toNNRat x.2
   right_inv := toNNRat_coe
 
 theorem iInf_ennRat {α : Type*} [CompleteLattice α] {f : ℚ≥0∞ → α} :
@@ -552,7 +552,7 @@ theorem lt_iff_exists_coe : a < b ↔ ∃ p : ℚ≥0, a = p ∧ ↑p < b :=
 
 theorem toRat_le_coe_of_le_coe {a : ℚ≥0∞} {b : ℚ≥0} (h : a ≤ b) : a.toRat ≤ b := by
   lift a to ℚ≥0 using ne_top_of_le_ne_top coe_ne_top h
-  simp [h, ENNRat.toRat]
+  simp [ENNRat.toRat]
   rw [ENNRat.toNNRat, ENNRat.ofNNRat, WithTop.untopD_coe]
   apply ENNRat.ofNNRat_le.mp h
 
