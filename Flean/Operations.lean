@@ -13,3 +13,5 @@ import Flean.Operations.DivPow2
 import Flean.Operations.AddErrorRepresentable
 import Flean.Operations.Fast2Sum
 import Flean.Operations.TwoSum
+import Flean.Operations.MulErrorRepresentable
+import Flean.Operations.TwoProduct

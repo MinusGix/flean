@@ -118,6 +118,16 @@ theorem toVal_pos [Field R] [LinearOrder R] [IsStrictOrderedRing R] (x : FiniteF
     Int.cast_ofNat, Nat.cast_pos, hm, mul_pos_iff_of_pos_left]
   linearize
 
+/-- A float with nonzero significand has nonzero value, regardless of sign. -/
+theorem toVal_ne_zero_of_m_pos [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (x : FiniteFp) (hm : 0 < x.m) : (toVal x : R) ≠ 0 := by
+  rcases Bool.eq_false_or_eq_true x.s with hs | hs
+  · have hnf_s : (-x).s = false := by rw [FiniteFp.neg_def]; simp [hs]
+    have hnf_m : 0 < (-x).m := by rw [FiniteFp.neg_def]; exact hm
+    have := toVal_pos (-x) hnf_s hnf_m (R := R)
+    rw [toVal_neg_eq_neg] at this; linarith
+  · exact ne_of_gt (toVal_pos x hs hm)
+
 /-- The float is positive iff the significand is positive and the sign is false -/
 theorem toVal_pos_iff [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x : FiniteFp} : x.s = false ∧ 0 < x.m ↔ (0 : R) < toVal x := by
   constructor
