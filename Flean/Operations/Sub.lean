@@ -25,6 +25,10 @@ instance [RModeExec] : HSub Fp Fp Fp where
 
 @[simp] theorem sub_eq_fpSub [RModeExec] (x y : Fp) : x - y = fpSub x y := rfl
 
+/-- Bridge: Fp-level subtraction of coerced FiniteFps reduces to fpSubFinite. -/
+@[simp] theorem fpSub_coe_coe [RModeExec] (a b : FiniteFp) :
+    fpSub (↑a) (↑b) = fpSubFinite a b := rfl
+
 /-! ## Correctness -/
 
 /-- Class-driven correctness for nonzero finite differences. -/

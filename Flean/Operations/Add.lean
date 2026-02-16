@@ -62,6 +62,10 @@ def fpAdd [RModeExec] (x y : Fp) : Fp :=
 instance [RModeExec] : HAdd Fp Fp Fp where
   hAdd := fpAdd
 
+/-- Bridge: Fp-level addition of coerced FiniteFps reduces to fpAddFinite. -/
+@[simp] theorem fpAdd_coe_coe [RModeExec] (a b : FiniteFp) :
+    fpAdd (↑a) (↑b) = fpAddFinite a b := rfl
+
 @[simp] theorem add_eq_fpAdd [RModeExec] (x y : Fp) : x + y = fpAdd x y := rfl
 
 /-! ## Commutativity -/
@@ -127,7 +131,7 @@ abbrev addAlignedSumInt (a b : FiniteFp) : ℤ :=
 theorem fpAddFinite_exact_cancel_sign [RModeExec] (a b : FiniteFp)
     (hsum : addAlignedSumInt a b = 0) :
     fpAddFinite a b =
-      Fp.finite ⟨exactCancelSign a.s b.s, FloatFormat.min_exp, 0, IsValidFiniteVal.zero⟩ := by
+      (⟨exactCancelSign a.s b.s, FloatFormat.min_exp, 0, IsValidFiniteVal.zero⟩ : FiniteFp) := by
   simp [fpAddFinite, hsum]
 
 /-- Policy-facing form of `fpAddFinite_exact_cancel_sign`. -/
@@ -136,10 +140,9 @@ theorem fpAddFinite_exact_cancel_sign_eq_policy {R : Type*}
     [RMode R] [RModeExec] [RModePolicySpec R]
     (a b : FiniteFp) (hsum : addAlignedSumInt a b = 0) :
     fpAddFinite a b =
-      Fp.finite
-        ⟨if a.s = b.s then a.s
-          else policyCancelSignOnExactZero (RModePolicyTag.kind (R := R)),
-          FloatFormat.min_exp, 0, IsValidFiniteVal.zero⟩ := by
+      (⟨if a.s = b.s then a.s
+        else policyCancelSignOnExactZero (RModePolicyTag.kind (R := R)),
+        FloatFormat.min_exp, 0, IsValidFiniteVal.zero⟩ : FiniteFp) := by
   rw [fpAddFinite_exact_cancel_sign (a := a) (b := b) hsum]
   simp [exactCancelSign_eq_policy (R := R)]
 
@@ -211,7 +214,7 @@ theorem fpAddFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
     intro hzero
     apply hsum
     rw [hexact, hzero, Int.cast_zero, zero_mul]
-  simp only [add_finite_eq_fpAddFinite, fpAddFinite, e_min_def.symm]
+  simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd, fpAddFinite, e_min_def.symm]
   rw [if_neg hsum_ne]
   have hmag_ne : isum.natAbs ≠ 0 := by rwa [Int.natAbs_ne_zero]
   rw [roundIntSigM_correct_tc (R := R) _ _ _ hmag_ne]

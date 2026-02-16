@@ -21,7 +21,7 @@ theorem fpDivFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
     (hk_lo : FloatFormat.min_exp ≤ k) (hk_hi : k ≤ FloatFormat.max_exp)
     (he_lo : f.e - k ≥ FloatFormat.min_exp) (he_hi : f.e - k ≤ FloatFormat.max_exp) :
     ∃ g : FiniteFp,
-      f / pow2Float k hk_lo hk_hi = Fp.finite g ∧
+      f / pow2Float k hk_lo hk_hi = g ∧
         (g.toVal : R) = (f.toVal : R) / (2 : R) ^ k := by
   -- Key reduction: x / 2^k = x * 2^(-k)
   have hdiv_eq : ∀ (x : R), x / (2 : R) ^ k = x * (2 : R) ^ (-k) := fun x => by
@@ -50,14 +50,16 @@ theorem fpDivFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
     intro h; have := (FiniteFp.toVal_significand_zero_iff (R := R)).mpr h; omega
   have hquot_ne : (f.toVal : R) / (pow2Float k hk_lo hk_hi).toVal ≠ 0 := by
     rw [pow2Float_toVal]; exact div_ne_zero hf_ne (zpow_ne_zero _ (by norm_num))
-  have hdiv_corr : f / pow2Float k hk_lo hk_hi =
-      ○((f.toVal : R) / (pow2Float k hk_lo hk_hi).toVal) := by
-    exact fpDivFinite_correct_exact (R := R) f (pow2Float k hk_lo hk_hi) hb_nz hquot_ne hexact
+  have hdiv_corr := fpDivFinite_correct_exact (R := R) f (pow2Float k hk_lo hk_hi) hb_nz hquot_ne hexact
+  simp only [div_finite_eq_fpDivFinite, div_eq_fpDiv, fpDiv,
+    (pow2Float_m_pos k hk_lo hk_hi).ne', ite_false] at hdiv_corr
+  -- hdiv_corr : fpDivFinite f (pow2Float k hk_lo hk_hi) = ○(...)
   by_cases hfs : f.s = false
   · -- Positive f: mul_pow2_representable gives exact representative
     obtain ⟨g, hgs, hgv⟩ := mul_pow2_representable (R := R) f (-k) hf_nz hfs
       (by omega) (by omega)
     refine ⟨g, ?_, by rw [hgv, ← hdiv_eq]⟩
+    simp only [div_finite_eq_fpDivFinite] at ⊢
     rw [hdiv_corr, pow2Float_toVal, hdiv_eq,
         show (f.toVal : R) * (2 : R) ^ (-k) = g.toVal from hgv.symm]
     exact RModeIdem.round_idempotent (R := R) g (Or.inl hgs)
@@ -76,6 +78,7 @@ theorem fpDivFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
       rw [FiniteFp.toVal_neg_eq_neg, hgv_neg]
       ring
     refine ⟨-g, ?_, hng_val⟩
+    simp only [div_finite_eq_fpDivFinite] at ⊢
     rw [hdiv_corr, pow2Float_toVal, ← hng_val]
     exact RModeIdem.round_idempotent (R := R) (-g) (Or.inr (by simpa using hgm))
 
@@ -86,10 +89,8 @@ theorem fpDiv_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedR
     (hk_lo : FloatFormat.min_exp ≤ k) (hk_hi : k ≤ FloatFormat.max_exp)
     (he_lo : f.e - k ≥ FloatFormat.min_exp) (he_hi : f.e - k ≤ FloatFormat.max_exp) :
     ∃ g : FiniteFp,
-      Fp.finite f / Fp.finite (pow2Float k hk_lo hk_hi) = Fp.finite g ∧
+      f / pow2Float k hk_lo hk_hi = g ∧
         (g.toVal : R) = (f.toVal : R) / (2 : R) ^ k := by
-  simp only [div_eq_fpDiv, fpDiv]
-  rw [if_neg (pow2Float_m_pos k hk_lo hk_hi).ne']
   exact fpDivFinite_pow2_exact (R := R) f k hf_nz hk_lo hk_hi he_lo he_hi
 
 end DivPow2

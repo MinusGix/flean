@@ -29,19 +29,18 @@ theorem round_sum_ge_left (a b : FiniteFp)
     (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     (s_fp : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeMono R] [RModeIdem R]
-    (hs : a + b = Fp.finite s_fp) :
+    (hs : a + b = s_fp) :
     (a.toVal : R) ≤ s_fp.toVal := by
-  have hsum_round : a + b =
-      ○((a.toVal : R) + b.toVal) := by
-    simpa using (fpAddFinite_correct (R := R) a b hsum_ne)
+  have hcorr := fpAddFinite_correct (R := R) a b hsum_ne
+  simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe] at hs hcorr
+  have hs_round := hcorr.symm.trans hs
   have hb_nonneg : (0 : R) ≤ b.toVal := by
     rw [FiniteFp.toVal_pos_eq b hb]; positivity
   have hmono : ○(a.toVal (R := R)) ≤ ○(a.toVal + b.toVal) :=
     RModeMono.round_mono (R := R) (le_add_of_nonneg_right hb_nonneg)
-  have hround_a : ○(a.toVal (R := R)) = Fp.finite a :=
+  have hround_a : ○(a.toVal (R := R)) = a :=
     RModeIdem.round_idempotent (R := R) a (Or.inl ha)
-  rw [hsum_round] at hs
-  rw [hround_a] at hmono; rw [hs] at hmono
+  rw [hround_a] at hmono; rw [hs_round] at hmono
   exact FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff a s_fp).mp hmono)
 
 /-- The rounded sum of positive values with `a ≥ b` is at most `2a`. -/
@@ -51,14 +50,14 @@ theorem round_sum_le_double (a b : FiniteFp)
     (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     (s_fp : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeMono R] [RModeIdem R]
-    (hs : a + b = Fp.finite s_fp) :
+    (hs : a + b = s_fp) :
     (s_fp.toVal : R) ≤ 2 * a.toVal := by
-  have hsum_round : a + b =
-      ○((a.toVal : R) + b.toVal) := by
-    simpa using (fpAddFinite_correct (R := R) a b hsum_ne)
+  have hs_orig := hs
+  have hcorr := fpAddFinite_correct (R := R) a b hsum_ne
+  simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe] at hs hcorr
+  have hs_round := hcorr.symm.trans hs
   have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
   have hab_le : (a.toVal : R) + b.toVal ≤ 2 * a.toVal := by linarith
-  rw [hsum_round] at hs
   by_cases he : a.e + 1 ≤ FloatFormat.max_exp
   · -- Case 1: 2a representable via exponent shift
     obtain ⟨d, hds, hdv⟩ := mul_pow2_representable (R := R) a 1 ha_nz ha
@@ -67,14 +66,13 @@ theorem round_sum_le_double (a b : FiniteFp)
     have hmono : ○((a.toVal : R) + b.toVal) ≤ ○(d.toVal (R := R)) :=
       RModeMono.round_mono (R := R) (by rw [hdv']; exact hab_le)
     have hround_d := RModeIdem.round_idempotent (R := R) d (Or.inl hds)
-    rw [hround_d] at hmono; rw [hs] at hmono
+    rw [hround_d] at hmono; rw [hs_round] at hmono
     linarith [FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff s_fp d).mp hmono)]
   · -- Case 2: a.e = max_exp
     push_neg at he
     have ha_e_eq : a.e = FloatFormat.max_exp := le_antisymm a.valid.2.1 (by omega)
     have hs_s : s_fp.s = false := by
-      have hs_ge := round_sum_ge_left (R := R) a b ha hb ha_nz hsum_ne s_fp
-        (by rw [hsum_round]; exact hs)
+      have hs_ge := round_sum_ge_left (R := R) a b ha hb ha_nz hsum_ne s_fp hs_orig
       exact ((FiniteFp.toVal_pos_iff (R := R)).mpr (by linarith)).1
     have hs_bound : s_fp.toVal (R := R) < (2 : R) ^ (FloatFormat.max_exp + 1) :=
       calc s_fp.toVal (R := R) < (2 : R) ^ (s_fp.e + 1) :=
@@ -106,7 +104,7 @@ theorem round_sum_le_double (a b : FiniteFp)
         rw [hdv, h2a_eq]; push_cast; ring
       have hmono : ○((a.toVal : R) + b.toVal) ≤ ○(d.toVal (R := R)) :=
         RModeMono.round_mono (R := R) (by rw [hdv']; exact hab_le)
-      rw [RModeIdem.round_idempotent (R := R) d (Or.inl hds)] at hmono; rw [hs] at hmono
+      rw [RModeIdem.round_idempotent (R := R) d (Or.inl hds)] at hmono; rw [hs_round] at hmono
       linarith [FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff s_fp d).mp hmono)]
 
 /-- Sterbenz conditions hold for `(s_fp, a)` when `a, b` are positive with `a ≥ b`. -/
@@ -117,9 +115,9 @@ theorem sterbenz_sub_sa (a b : FiniteFp)
     (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     (s_fp : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeMono R] [RModeIdem R]
-    (hs : a + b = Fp.finite s_fp) :
+    (hs : a + b = s_fp) :
     ∃ z_fp : FiniteFp,
-      s_fp - a = Fp.finite z_fp ∧
+      s_fp - a = z_fp ∧
         z_fp.toVal (R := R) = s_fp.toVal - a.toVal := by
   have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
   have hs_ge_a := round_sum_ge_left (R := R) a b ha hb ha_nz hsum_ne s_fp hs
@@ -138,7 +136,7 @@ omit [FloorRing R] in
 /-- When `a.toVal = b.toVal`, `fpSubFinite` returns a finite zero. -/
 theorem fpSubFinite_zero_of_eq_toVal [RModeExec] (a b : FiniteFp)
     (heq : (a.toVal : R) = b.toVal) :
-    ∃ f : FiniteFp, a - b = Fp.finite f ∧
+    ∃ f : FiniteFp, a - b = f ∧
       f.toVal (R := R) = 0 := by
   -- fpSubFinite = fpAddFinite a (-b)
   -- The exact sum a + (-b) = a - b = 0
@@ -163,8 +161,7 @@ theorem fpSubFinite_zero_of_eq_toVal [RModeExec] (a b : FiniteFp)
   -- fpSubFinite unfolds to fpAddFinite which checks if the integer sum is 0
   let fz : FiniteFp := ⟨exactCancelSign a.s (!b.s), FloatFormat.min_exp, 0, IsValidFiniteVal.zero⟩
   refine ⟨fz, ?_, FiniteFp.toVal_isZero rfl⟩
-  rw [sub_finite_eq_fpSubFinite, fpSubFinite, add_finite_eq_fpAddFinite, fpAddFinite]
-  simp [hkey', fz, exactCancelSign, FiniteFp.neg_def]
+  simp [fpSubFinite, fpAddFinite, hkey', fz, exactCancelSign, FiniteFp.neg_def]
 
 /-! ## Layer 2b: Rounding error representability
 
@@ -177,7 +174,7 @@ The error `(a + b) - s` is exactly representable as a float for round-to-nearest
 private theorem nearest_round_le_two_x_sub_pred
     [RMode R] [RModeNearest R]
     (x : R) (hxpos : 0 < x) (hx : isNormalRange x)
-    (f : FiniteFp) (hf : ○x = Fp.finite f) :
+    (f : FiniteFp) (hf : ○x = f) :
     (f.toVal : R) ≤ 2 * x - (findPredecessorPos x hxpos).toVal := by
   exact RModeNearest.round_le_two_x_sub_pred (R := R) x hxpos hx f hf
 
@@ -190,7 +187,7 @@ theorem add_error_representable (a b : FiniteFp)
     (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     (s_fp : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R]
-    (hs : a + b = Fp.finite s_fp) :
+    (hs : a + b = s_fp) :
     ∃ t_fp : FiniteFp,
       (t_fp.s = false ∨ 0 < t_fp.m) ∧
         (t_fp.toVal : R) = (a.toVal : R) + b.toVal - s_fp.toVal := by
@@ -205,7 +202,7 @@ theorem add_error_representable (a b : FiniteFp)
   have hsum_round : a + b =
       RMode.round ((a.toVal : R) + b.toVal) := by
     simpa using (fpAddFinite_correct (R := R) a b hsum_ne)
-  have hs_correct : RMode.round ((a.toVal : R) + b.toVal) = Fp.finite s_fp := by
+  have hs_correct : RMode.round ((a.toVal : R) + b.toVal) = s_fp := by
     rw [← hsum_round]
     exact hs
   have hs_ge_a := round_sum_ge_left (R := R) a b ha hb ha_nz hsum_ne s_fp hs
@@ -233,9 +230,9 @@ theorem add_error_representable (a b : FiniteFp)
     obtain ⟨g, _, hg_exact⟩ := subnormal_sum_exact (R := R) a b ha hb hb_nz.ne' ha_sub hb_sub hfit
     have hgv : (g.toVal : R) = a.toVal + b.toVal := by
       simpa [Fp.Represents] using hg_exact.2
-    have hround_g : ○((a.toVal : R) + b.toVal) = Fp.finite g := by
+    have hround_g : ○((a.toVal : R) + b.toVal) = g := by
       simpa using hg_exact.1
-    have : s_fp = g := Fp.finite.inj (by rw [← hs_correct, hround_g])
+    have : s_fp = g := Fp.finite.inj (hs_correct.symm.trans hround_g)
     exact absurd (show (a.toVal : R) + b.toVal - s_fp.toVal = 0 by
       rw [this, hgv]; ring) herr
   -- Step C: isNormalRange(a+b)
@@ -352,10 +349,10 @@ theorem fast2Sum_pos_exact (a b : FiniteFp)
     (hab : (b.toVal : R) ≤ a.toVal)
     (s_fp : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R]
-    (hs : a + b = Fp.finite s_fp) :
+    (hs : a + b = s_fp) :
     ∃ z_fp t_fp : FiniteFp,
-      s_fp - a = Fp.finite z_fp ∧
-        b - z_fp = Fp.finite t_fp ∧
+      s_fp - a = z_fp ∧
+        b - z_fp = t_fp ∧
           (s_fp.toVal : R) + t_fp.toVal = a.toVal + b.toVal := by
   have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
   have hb_pos : (0 : R) < b.toVal := FiniteFp.toVal_pos b hb hb_nz
@@ -366,7 +363,7 @@ theorem fast2Sum_pos_exact (a b : FiniteFp)
   -- Step 2: b - z is exact
   -- b.toVal - z_fp.toVal = b.toVal - (s.toVal - a.toVal) = (a + b) - s
   suffices h_bz : ∃ t_fp : FiniteFp,
-      b - z_fp = Fp.finite t_fp ∧
+      b - z_fp = t_fp ∧
         (t_fp.toVal : R) = b.toVal - z_fp.toVal by
     obtain ⟨t_fp, ht_eq, ht_val⟩ := h_bz
     exact ⟨z_fp, t_fp, hz_eq, ht_eq, by rw [ht_val, hz_val]; ring⟩
@@ -380,10 +377,9 @@ theorem fast2Sum_pos_exact (a b : FiniteFp)
       add_error_representable (R := R) a b ha hb ha_nz hb_nz hab hsum_ne s_fp hs
     have hbz_val : (b.toVal : R) - z_fp.toVal = err_fp.toVal := by
       rw [hz_val, herr_val]; ring
-    have hsub_eq : b - z_fp = Fp.finite err_fp := by
-      have hsub_corr : b - z_fp =
-          ○((b.toVal : R) - z_fp.toVal) := by
-        simpa using (fpSubFinite_correct (R := R) b z_fp htz)
+    have hsub_eq : b - z_fp = err_fp := by
+      have hsub_corr := fpSubFinite_correct (R := R) b z_fp htz
+      simp only [sub_finite_eq_fpSubFinite, sub_eq_fpSub, fpSub_coe_coe] at hsub_corr ⊢
       rw [hsub_corr, hbz_val,
           RModeIdem.round_idempotent (R := R) err_fp herr_valid]
     exact ⟨err_fp, hsub_eq, hbz_val.symm⟩

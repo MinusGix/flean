@@ -63,7 +63,7 @@ theorem fpMulFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
     (hk_lo : FloatFormat.min_exp ≤ k) (hk_hi : k ≤ FloatFormat.max_exp)
     (he_lo : f.e + k ≥ FloatFormat.min_exp) (he_hi : f.e + k ≤ FloatFormat.max_exp) :
     ∃ g : FiniteFp,
-      f * pow2Float k hk_lo hk_hi = Fp.finite g ∧
+      f * pow2Float k hk_lo hk_hi = g ∧
         (g.toVal : R) = (f.toVal : R) * (2 : R) ^ k := by
   -- Product is nonzero because both operands are nonzero
   have hf_toVal_ne : (f.toVal : R) ≠ 0 := by
@@ -76,15 +76,18 @@ theorem fpMulFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
     mul_ne_zero hf_toVal_ne (ne_of_gt hp_toVal_pos)
   have hmul_corr : f * pow2Float k hk_lo hk_hi =
       ○((f.toVal : R) * (pow2Float k hk_lo hk_hi).toVal) := by
-    exact fpMulFinite_correct (R := R) f (pow2Float k hk_lo hk_hi) hprod_ne
+    simpa [mul_finite_eq_fpMulFinite, mul_eq_fpMul, fpMul] using
+      (fpMulFinite_correct (R := R) f (pow2Float k hk_lo hk_hi) hprod_ne)
   by_cases hfs : f.s = false
   · -- Positive f
     obtain ⟨g, hgs, hgv⟩ := mul_pow2_representable (R := R) f k hf_nz hfs he_lo he_hi
     refine ⟨g, ?_, hgv⟩
-    rw [hmul_corr,
-        pow2Float_toVal,
-        show (f.toVal : R) * (2 : R) ^ k = g.toVal from hgv.symm]
-    exact RModeIdem.round_idempotent (R := R) g (Or.inl hgs)
+    calc
+      f * pow2Float k hk_lo hk_hi
+          = ○((f.toVal : R) * (pow2Float k hk_lo hk_hi).toVal) := hmul_corr
+      _ = ○((f.toVal : R) * (2 : R) ^ k) := by rw [pow2Float_toVal]
+      _ = ○(g.toVal (R := R)) := by rw [hgv]
+      _ = g := RModeIdem.round_idempotent (R := R) g (Or.inl hgs)
   · -- Negative f: work with -f which is positive
     have hfs_true : f.s = true := by revert hfs; cases f.s <;> simp
     obtain ⟨g, hgs, hgv⟩ := mul_pow2_representable (R := R) (-f) k
@@ -100,8 +103,12 @@ theorem fpMulFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
       rw [FiniteFp.toVal_neg_eq_neg, hgv_neg]
       ring
     refine ⟨-g, ?_, hng_val⟩
-    rw [hmul_corr, pow2Float_toVal, ← hng_val]
-    exact RModeIdem.round_idempotent (R := R) (-g) (Or.inr (by simpa using hgm))
+    calc
+      f * pow2Float k hk_lo hk_hi
+          = ○((f.toVal : R) * (pow2Float k hk_lo hk_hi).toVal) := hmul_corr
+      _ = ○((f.toVal : R) * (2 : R) ^ k) := by rw [pow2Float_toVal]
+      _ = ○((-g).toVal (R := R)) := by rw [hng_val]
+      _ = -g := RModeIdem.round_idempotent (R := R) (-g) (Or.inr (by simpa using hgm))
 
 /-! ## Full fpMul wrapper -/
 
@@ -112,9 +119,8 @@ theorem fpMul_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedR
     (hk_lo : FloatFormat.min_exp ≤ k) (hk_hi : k ≤ FloatFormat.max_exp)
     (he_lo : f.e + k ≥ FloatFormat.min_exp) (he_hi : f.e + k ≤ FloatFormat.max_exp) :
     ∃ g : FiniteFp,
-      Fp.finite f * Fp.finite (pow2Float k hk_lo hk_hi) = Fp.finite g ∧
+      f * pow2Float k hk_lo hk_hi = g ∧
         (g.toVal : R) = (f.toVal : R) * (2 : R) ^ k := by
-  simp only [mul_eq_fpMul, fpMul]
   exact fpMulFinite_pow2_exact (R := R) f k hf_nz hk_lo hk_hi he_lo he_hi
 
 end MulPow2

@@ -353,6 +353,10 @@ namespace Fp
 
 variable [FloatFormat]
 
+instance : Coe FiniteFp Fp := ⟨Fp.finite⟩
+
+@[simp] theorem coe_finite (x : FiniteFp) : ((x : Fp) = Fp.finite x) := rfl
+
 instance : Zero Fp := ⟨.finite 0⟩
 
 instance : Inhabited Fp := ⟨0⟩

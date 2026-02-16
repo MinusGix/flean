@@ -125,7 +125,7 @@ theorem sterbenz (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
     (h_ub : ⌞a⌟[R] ≤ 2 * ⌞b⌟[R])
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R] :
     ∃ f : FiniteFp,
-      a - b = Fp.finite f ∧
+      a - b = f ∧
         Fp.Represents (⌞a⌟[R] - ⌞b⌟[R]) f := by
   have h_exp := sterbenz_exp_proximity a b ha hb ha_nz hb_nz h_lb h_ub
   -- Set up the aligned integer sum
@@ -146,12 +146,22 @@ theorem sterbenz (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
       by_contra h
       exact absurd (sub_eq_zero.mpr hdiff)
         (by rw [hdiff_eq]; exact mul_ne_zero (Int.cast_ne_zero.mpr h) (zpow_ne_zero _ (by norm_num)))
-    rw [sub_finite_eq_fpSubFinite, fpSubFinite, add_finite_eq_fpAddFinite, fpAddFinite]
-    simp only [e_min_def.symm, isum_def.symm, hisum_zero, ↓reduceIte]
-    refine ⟨_, rfl, ?_⟩
+    let z : FiniteFp := {
+      s := exactCancelSign a.s (!b.s)
+      e := FloatFormat.min_exp
+      m := 0
+      valid := IsValidFiniteVal.zero
+    }
+    have hsum0 :
+        condNeg a.s (a.m : ℤ) * 2 ^ (a.e - min a.e b.e).toNat +
+          condNeg (!b.s) (b.m : ℤ) * 2 ^ (b.e - min a.e b.e).toNat = 0 := by
+      simpa [isum_def, e_min_def, hnb_e] using hisum_zero
+    refine ⟨z, ?_, ?_⟩
+    · simpa [sub_finite_eq_fpSubFinite, fpSubFinite, add_eq_fpAdd, fpAdd,
+        add_finite_eq_fpAddFinite, fpAddFinite, hsum0, z]
     rw [Fp.Represents]
     rw [show ⌞a⌟[R] - ⌞b⌟[R] = 0 from sub_eq_zero.mpr hdiff]
-    exact FiniteFp.toVal_isZero rfl
+    exact FiniteFp.toVal_isZero (R := R) (by simp [z, FiniteFp.isZero])
   · -- Nonzero difference: use round_idempotent
     have hsum_ne : isum ≠ 0 := by
       intro hzero; apply hdiff
@@ -173,66 +183,12 @@ theorem sterbenz (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
     refine ⟨f, ?_, ?_⟩
     have hsub_corr : a - b =
         ○(⌞a⌟[R] - ⌞b⌟[R]) := by
-      simpa using (fpSubFinite_correct (R := R) a b hdiff_ne)
-    rw [hsub_corr, hval_eq]
-    exact RModeIdem.round_idempotent (R := R) f hf_valid
+      simpa [sub_finite_eq_fpSubFinite, fpSubFinite, add_eq_fpAdd, fpAdd, add_finite_eq_fpAddFinite] using
+        (fpSubFinite_correct (R := R) a b hdiff_ne)
+    calc
+      a - b = ○(⌞a⌟[R] - ⌞b⌟[R]) := hsub_corr
+      _ = ○(⌞f⌟[R]) := by rw [hval_eq]
+      _ = f := RModeIdem.round_idempotent (R := R) f hf_valid
     simpa [Fp.Represents] using hval_eq.symm
-
-/-! ## Corollaries -/
-
-/-- Under Sterbenz conditions, subtraction returns an exact finite result,
-    and that finite result is invariant across any contextual rounding dictionaries. -/
-theorem sterbenz_unique (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
-    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
-    (h_lb : ⌞b⌟[R] / 2 ≤ ⌞a⌟[R])
-  (h_ub : ⌞a⌟[R] ≤ 2 * ⌞b⌟[R])
-  (hdiff : ⌞a⌟[R] ≠ ⌞b⌟[R])
-  [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R] :
-    ∃ f : FiniteFp, ⌞f⌟[R] = ⌞a⌟[R] - ⌞b⌟[R] ∧
-      a - b = Fp.finite f ∧
-      (∀ (RM' : RMode R) (RE' : RModeExec)
-          (RS' : @RoundIntSigMSound R _ _ _ _ _ RM' RE')
-          (RI' : @RModeIdem R _ _ RM'),
-          @fpSubFinite _ RE' a b = Fp.finite f) := by
-  obtain ⟨f, hf_eq, hf_repr⟩ := sterbenz a b ha hb ha_nz hb_nz h_lb h_ub
-  have hf_val : ⌞f⌟[R] = ⌞a⌟[R] - ⌞b⌟[R] := by
-    simpa [Fp.Represents] using hf_repr
-  refine ⟨f, hf_val, hf_eq, ?_⟩
-  intro RM' RE' RS' RI'
-  letI : RMode R := RM'
-  letI : RModeExec := RE'
-  letI : RoundIntSigMSound R := RS'
-  letI : RModeIdem R := RI'
-  obtain ⟨g, hg_eq, hg_repr⟩ := sterbenz a b ha hb ha_nz hb_nz h_lb h_ub
-  have hg_val : ⌞g⌟[R] = ⌞a⌟[R] - ⌞b⌟[R] := by
-    simpa [Fp.Represents] using hg_repr
-  have hf_toVal_ne : ⌞f⌟[R] ≠ 0 := by
-    rw [hf_val]
-    exact sub_ne_zero.mpr hdiff
-  have hf_m_ne : f.m ≠ 0 := by
-    intro hm
-    apply hf_toVal_ne
-    exact (FiniteFp.toVal_significand_zero_iff (R := R) (x := f)).mp hm
-  have hfg : f = g := by
-    apply FiniteFp.eq_of_toVal_eq' (R := R)
-      (Or.inl (by simpa [FiniteFp.isZero] using hf_m_ne))
-    rw [hf_val, hg_val]
-  simpa [hfg] using hg_eq
-
-/-- **Sterbenz for `fpSub`**: the full `Fp` subtraction also produces an exact finite result
-    under Sterbenz conditions. -/
-theorem sterbenz_fpSub (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
-    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
-    (h_lb : ⌞b⌟[R] / 2 ≤ ⌞a⌟[R])
-    (h_ub : ⌞a⌟[R] ≤ 2 * ⌞b⌟[R])
-    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R] :
-    ∃ f : FiniteFp,
-      Fp.finite a - Fp.finite b = Fp.finite f ∧
-        Fp.Represents (⌞a⌟[R] - ⌞b⌟[R]) f := by
-  -- fpSub on finite inputs is just fpSubFinite
-  have : Fp.finite a - Fp.finite b = a - b := by
-    simp [sub_eq_fpSub, fpSub, sub_finite_eq_fpSubFinite, fpSubFinite, add_eq_fpAdd, fpAdd]
-  rw [this]
-  exact sterbenz a b ha hb ha_nz hb_nz h_lb h_ub
 
 end Sterbenz

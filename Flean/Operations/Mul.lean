@@ -57,6 +57,10 @@ instance [RModeExec] : HMul Fp Fp Fp where
 
 @[simp] theorem mul_eq_fpMul [RModeExec] (x y : Fp) : x * y = fpMul x y := rfl
 
+/-- Bridge: Fp-level multiplication of coerced FiniteFps reduces to fpMulFinite. -/
+@[simp] theorem fpMul_coe_coe [RModeExec] (a b : FiniteFp) :
+    fpMul (↑a) (↑b) = fpMulFinite a b := rfl
+
 /-! ## Exact Product Representation -/
 
 /-- The exact product of two finite floats equals `intSigVal (a.s ^^ b.s) (a.m * b.m) (a.e + b.e - 2*prec + 2)`.
@@ -93,7 +97,7 @@ theorem fpMulFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
     rw [hexact]
     unfold intSigVal
     simp [hzero]
-  simp only [mul_finite_eq_fpMulFinite, fpMulFinite]
+  simp only [mul_finite_eq_fpMulFinite, mul_eq_fpMul, fpMul, fpMulFinite]
   rw [roundIntSigM_correct_tc (R := R) _ _ _ hmag_ne]
   congr 1
   rw [hexact]
