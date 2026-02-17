@@ -171,6 +171,98 @@ private theorem rnAway_le_two_x_sub_pred {R : Type*}
         simpa [mid] using (not_lt.mp h_not_lt_mid)
       linarith
 
+private theorem rnEven_ge_two_x_sub_succ {R : Type*}
+    [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    (x : R) (hxpos : 0 < x) (hx : isNormalRange x)
+    (f : FiniteFp) (hf : roundNearestTiesToEven x = Fp.finite f)
+    (succ : FiniteFp) (hsucc : findSuccessorPos x hxpos = Fp.finite succ) :
+    (2 * x - succ.toVal : R) ≤ f.toVal := by
+  have hru : roundUp x = Fp.finite succ := by
+    rw [roundUp, findSuccessor_pos_eq x hxpos]; exact hsucc
+  rcases roundNearestTiesToEven_is_roundDown_or_roundUp x hx f hf with hdown | hup
+  · by_cases hsucc_eq : succ = f
+    · have hsucc_ge : x ≤ (succ.toVal : R) :=
+        findSuccessorPos_ge x hxpos succ hsucc
+      have hf_ge : x ≤ (f.toVal : R) := by
+        simpa [hsucc_eq] using hsucc_ge
+      linarith
+    · have hx_lt_thresh : x < FloatFormat.overflowThreshold R :=
+        val_lt_thresh_of_roundUp_finite x succ hxpos hru
+      let mid : R := ((f.toVal : R) + succ.toVal) / 2
+      have h_not_gt_mid : ¬mid < x := by
+        intro hgt
+        have hrd : roundDown x = Fp.finite f := hdown
+        have hnear_up : roundNearestTiesToEven x = roundUp x :=
+          rnEven_above_mid_roundUp x mid f succ
+            hxpos hx_lt_thresh hrd hru (by simp [mid]) hgt
+        have hup_eq_hdown : roundUp x = roundDown x := by
+          calc
+            roundUp x = roundNearestTiesToEven x := hnear_up.symm
+            _ = Fp.finite f := hf
+            _ = roundDown x := hdown.symm
+        have hsucc_eq' : succ = f :=
+          Fp.finite.inj (by simpa [hru, hdown] using hup_eq_hdown)
+        exact hsucc_eq hsucc_eq'
+      have hmid_ge : x ≤ ((f.toVal : R) + succ.toVal) / 2 := by
+        simpa [mid] using (not_lt.mp h_not_gt_mid)
+      linarith
+  · have hsucc_eq : succ = f := by
+      apply Fp.finite.inj
+      calc
+        Fp.finite succ = roundUp x := hru.symm
+        _ = Fp.finite f := hup
+    have hsucc_ge : x ≤ (succ.toVal : R) :=
+      findSuccessorPos_ge x hxpos succ hsucc
+    have hf_ge : x ≤ (f.toVal : R) := by
+      simpa [hsucc_eq] using hsucc_ge
+    linarith
+
+private theorem rnAway_ge_two_x_sub_succ {R : Type*}
+    [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    (x : R) (hxpos : 0 < x) (hx : isNormalRange x)
+    (f : FiniteFp) (hf : roundNearestTiesAwayFromZero x = Fp.finite f)
+    (succ : FiniteFp) (hsucc : findSuccessorPos x hxpos = Fp.finite succ) :
+    (2 * x - succ.toVal : R) ≤ f.toVal := by
+  have hru : roundUp x = Fp.finite succ := by
+    rw [roundUp, findSuccessor_pos_eq x hxpos]; exact hsucc
+  rcases roundNearestTiesAwayFromZero_is_roundDown_or_roundUp x hx f hf with hdown | hup
+  · by_cases hsucc_eq : succ = f
+    · have hsucc_ge : x ≤ (succ.toVal : R) :=
+        findSuccessorPos_ge x hxpos succ hsucc
+      have hf_ge : x ≤ (f.toVal : R) := by
+        simpa [hsucc_eq] using hsucc_ge
+      linarith
+    · have hx_lt_thresh : x < FloatFormat.overflowThreshold R :=
+        val_lt_thresh_of_roundUp_finite x succ hxpos hru
+      let mid : R := ((f.toVal : R) + succ.toVal) / 2
+      have h_not_gt_mid : ¬mid < x := by
+        intro hgt
+        have hrd : roundDown x = Fp.finite f := hdown
+        have hnear_up : roundNearestTiesAwayFromZero x = roundUp x :=
+          rnAway_ge_mid_roundUp x mid f succ
+            hxpos hx_lt_thresh hrd hru (by simp [mid]) hgt.le
+        have hup_eq_hdown : roundUp x = roundDown x := by
+          calc
+            roundUp x = roundNearestTiesAwayFromZero x := hnear_up.symm
+            _ = Fp.finite f := hf
+            _ = roundDown x := hdown.symm
+        have hsucc_eq' : succ = f :=
+          Fp.finite.inj (by simpa [hru, hdown] using hup_eq_hdown)
+        exact hsucc_eq hsucc_eq'
+      have hmid_ge : x ≤ ((f.toVal : R) + succ.toVal) / 2 := by
+        simpa [mid] using (not_lt.mp h_not_gt_mid)
+      linarith
+  · have hsucc_eq : succ = f := by
+      apply Fp.finite.inj
+      calc
+        Fp.finite succ = roundUp x := hru.symm
+        _ = Fp.finite f := hup
+    have hsucc_ge : x ≤ (succ.toVal : R) :=
+      findSuccessorPos_ge x hxpos succ hsucc
+    have hf_ge : x ≤ (f.toVal : R) := by
+      simpa [hsucc_eq] using hsucc_ge
+    linarith
+
 section TowardNeg
 
 variable {R : Type*}
@@ -412,6 +504,11 @@ instance [UseRoundingPolicy RoundNearestEvenPolicy] : RModeNearest R where
     have hf' : roundNearestTiesToEven x = Fp.finite f := by
       simpa [RMode.round] using hf
     simpa [RMode.round] using (rnEven_le_two_x_sub_pred (R := R) x hxpos hx f hf')
+  round_ge_two_x_sub_succ := by
+    intro x hxpos hx f succ hf hsucc
+    have hf' : roundNearestTiesToEven x = Fp.finite f := by
+      simpa [RMode.round] using hf
+    exact rnEven_ge_two_x_sub_succ (R := R) x hxpos hx f hf' succ hsucc
 
 instance [UseRoundingPolicy RoundNearestEvenPolicy] : RModeExecSound R where
   chooseUp_exact := by
@@ -495,6 +592,11 @@ instance [UseRoundingPolicy RoundNearestAwayPolicy] : RModeNearest R where
     have hf' : roundNearestTiesAwayFromZero x = Fp.finite f := by
       simpa [RMode.round] using hf
     simpa [RMode.round] using (rnAway_le_two_x_sub_pred (R := R) x hxpos hx f hf')
+  round_ge_two_x_sub_succ := by
+    intro x hxpos hx f succ hf hsucc
+    have hf' : roundNearestTiesAwayFromZero x = Fp.finite f := by
+      simpa [RMode.round] using hf
+    exact rnAway_ge_two_x_sub_succ (R := R) x hxpos hx f hf' succ hsucc
 
 instance [UseRoundingPolicy RoundNearestAwayPolicy] : RModeExecSound R where
   chooseUp_exact := by

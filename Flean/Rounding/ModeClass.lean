@@ -107,6 +107,12 @@ class RModeNearest (R : Type*)
     ∀ (x : R) (hxpos : 0 < x) (_hx : isNormalRange x) (f : FiniteFp),
       RMode.round (R := R) x = Fp.finite f →
       (f.toVal : R) ≤ 2 * x - (findPredecessorPos x hxpos).toVal
+  round_ge_two_x_sub_succ :
+    ∀ (x : R) (hxpos : 0 < x) (_hx : isNormalRange x)
+      (f : FiniteFp) (succ : FiniteFp),
+      RMode.round (R := R) x = Fp.finite f →
+      findSuccessorPos x hxpos = Fp.finite succ →
+      (2 * x - succ.toVal : R) ≤ f.toVal
 
 /-- RoundIntSig-facing execution hooks.
 
