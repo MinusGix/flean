@@ -7,6 +7,9 @@ import «Flean».Encoding
 import «Flean».Rounding.Rounding
 import «Flean».Rounding.ModeClass
 import «Flean».Rounding.PolicyInstances
+import «Flean».Rounding.GridInstance
+import «Flean».Rounding.SplitPositive
+import «Flean».Rounding.SplitInstance
 import «Flean».Ulp
 import «Flean».Linearize.Linearize
 import «Flean».Gsplit.Gsplit

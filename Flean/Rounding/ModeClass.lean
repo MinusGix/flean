@@ -85,6 +85,54 @@ class RModeConj (R : Type*)
       RMode.round (R := R) (-x) =
         -(RMode.round (R := R) x)
 
+/-- Rounding preserves grid alignment.
+
+If `x = n * 2^g` for integer `n` and grid level `g` at or above the finest
+FP grid, then `round(x)` (when finite) is also a multiple of `2^g`.
+
+This holds for all IEEE rounding modes: at any binade whose ULP divides
+`2^g`, every candidate float is already a multiple of `2^g`. -/
+class RModeGrid (R : Type*)
+    [FloatFormat] [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    [RMode R] : Prop where
+  round_preserves_grid :
+    ∀ (n : ℤ) (g : ℤ),
+      g ≥ FloatFormat.min_exp - FloatFormat.prec + 1 →
+      ∀ (f : FiniteFp), ○((n : R) * (2 : R) ^ g) = Fp.finite f →
+        ∃ m : ℤ, f.toVal (R := R) = (m : R) * (2 : R) ^ g
+
+/-- 2Sum splitting properties under nearest rounding.
+
+For `s = round(a + b)` and `bv = round(s − a)`, the intermediate values
+`s − bv` and `b − bv` are always exactly representable. These are the key
+exactness properties that make the 6-operation 2Sum algorithm correct.
+
+These hold for all IEEE nearest-rounding modes (ties-to-even and
+ties-away-from-zero). The proof uses grid analysis: both `s` and `bv`
+inherit the grid alignment of `a + b`, and the coefficient bounds follow
+from the nearest-rounding error constraints. -/
+class RModeSplit (R : Type*)
+    [FloatFormat] [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    [RMode R] : Prop where
+  /-- After `s = round(a+b)` and `bv = round(s−a)`, the value `s − bv`
+      is representable (the "splitting" property). -/
+  split_s_sub_bv :
+    ∀ (a b s : FiniteFp),
+      ○((a.toVal : R) + b.toVal) = Fp.finite s →
+      ∀ (bv : FiniteFp),
+        ○((s.toVal : R) - a.toVal) = Fp.finite bv →
+        ∃ f : FiniteFp, (f.s = false ∨ 0 < f.m) ∧
+          f.toVal (R := R) = s.toVal - bv.toVal
+  /-- After `s = round(a+b)` and `bv = round(s−a)`, the value `b − bv`
+      is representable. -/
+  split_b_sub_bv :
+    ∀ (a b s : FiniteFp),
+      ○((a.toVal : R) + b.toVal) = Fp.finite s →
+      ∀ (bv : FiniteFp),
+        ○((s.toVal : R) - a.toVal) = Fp.finite bv →
+        ∃ f : FiniteFp, (f.s = false ∨ 0 < f.m) ∧
+          f.toVal (R := R) = b.toVal - bv.toVal
+
 /-- Nearest-mode behavior patterns, stated via observable properties. -/
 class RModeNearest (R : Type*)
     [FloatFormat] [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]

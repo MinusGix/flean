@@ -15,3 +15,4 @@ import Flean.Operations.Fast2Sum
 import Flean.Operations.TwoSum
 import Flean.Operations.MulErrorRepresentable
 import Flean.Operations.TwoProduct
+import Flean.Operations.TwoSum6Op
