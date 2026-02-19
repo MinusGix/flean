@@ -154,9 +154,14 @@ private theorem negate_split_s [RMode R]
     f'.toVal (R := R) = -(s.toVal - (-hbv'_val)) := by
   rw [hf'_val, FiniteFp.toVal_neg_eq_neg]; ring
 
-instance nearest_RModeSplit [RMode R] [RModeExec] [RoundIntSigMSound R]
-    [RModeNearest R] [RModeConj R] : RModeSplit R where
-  split_s_sub_bv a b s hs bv hbv := by
+private theorem split_s_sub_bv_inst
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
+    (a b s : FiniteFp)
+    (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s)
+    (bv : FiniteFp)
+    (hbv : ○((s.toVal : R) - a.toVal) = Fp.finite bv) :
+    ∃ f : FiniteFp, (f.s = false ∨ 0 < f.m) ∧
+      f.toVal (R := R) = s.toVal - bv.toVal := by
     by_cases ha_nz : 0 < a.m
     · by_cases hb_nz : 0 < b.m
       · by_cases hsum_ne : (a.toVal : R) + b.toVal ≠ 0
@@ -243,7 +248,15 @@ instance nearest_RModeSplit [RMode R] [RModeExec] [RoundIntSigMSound R]
         rw [ha0, sub_zero] at hbv; exact round_fp_toVal (R := R) s bv hbv
       exact ⟨0, Or.inl rfl, by
         rw [FiniteFp.toVal_isZero (R := R) rfl, hbv_val]; ring⟩
-  split_b_sub_bv a b s hs bv hbv := by
+
+private theorem split_b_sub_bv_inst
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
+    (a b s : FiniteFp)
+    (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s)
+    (bv : FiniteFp)
+    (hbv : ○((s.toVal : R) - a.toVal) = Fp.finite bv) :
+    ∃ f : FiniteFp, (f.s = false ∨ 0 < f.m) ∧
+      f.toVal (R := R) = b.toVal - bv.toVal := by
     by_cases ha_nz : 0 < a.m
     · by_cases hb_nz : 0 < b.m
       · by_cases hsum_ne : (a.toVal : R) + b.toVal ≠ 0
@@ -326,5 +339,25 @@ instance nearest_RModeSplit [RMode R] [RModeExec] [RoundIntSigMSound R]
         rw [ha0, sub_zero] at hbv; exact round_fp_toVal (R := R) s bv hbv
       exact ⟨0, Or.inl rfl, by
         rw [FiniteFp.toVal_isZero (R := R) rfl, hbv_val, hs_val]; ring⟩
+
+noncomputable instance nearest_RModeSplit [RMode R] [RModeExec] [RoundIntSigMSound R]
+    [RModeNearest R] [RModeConj R] : RModeSplit R where
+  split_witness a b s hs bv hbv := by
+    classical
+    let hs_sub := split_s_sub_bv_inst (R := R) a b s hs bv hbv
+    let hb_sub := split_b_sub_bv_inst (R := R) a b s hs bv hbv
+    let avRep : FiniteFp := Classical.choose hs_sub
+    let brRep : FiniteFp := Classical.choose hb_sub
+    have av_spec : (avRep.s = false ∨ 0 < avRep.m) ∧
+        avRep.toVal (R := R) = s.toVal - bv.toVal := by
+      exact Classical.choose_spec hs_sub
+    have br_spec : (brRep.s = false ∨ 0 < brRep.m) ∧
+        brRep.toVal (R := R) = b.toVal - bv.toVal := by
+      exact Classical.choose_spec hb_sub
+    let avValid : avRep.s = false ∨ 0 < avRep.m := av_spec.1
+    let brValid : brRep.s = false ∨ 0 < brRep.m := br_spec.1
+    let avVal : avRep.toVal (R := R) = s.toVal - bv.toVal := av_spec.2
+    let brVal : brRep.toVal (R := R) = b.toVal - bv.toVal := br_spec.2
+    exact ⟨avRep, brRep, avValid, brValid, avVal, brVal⟩
 
 end SplitInstance

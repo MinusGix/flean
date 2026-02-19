@@ -101,7 +101,7 @@ class RModeGrid (R : Type*)
       ∀ (f : FiniteFp), ○((n : R) * (2 : R) ^ g) = Fp.finite f →
         ∃ m : ℤ, f.toVal (R := R) = (m : R) * (2 : R) ^ g
 
-/-- 2Sum splitting properties under nearest rounding.
+/- 2Sum splitting properties under nearest rounding.
 
 For `s = round(a + b)` and `bv = round(s − a)`, the intermediate values
 `s − bv` and `b − bv` are always exactly representable. These are the key
@@ -111,27 +111,62 @@ These hold for all IEEE nearest-rounding modes (ties-to-even and
 ties-away-from-zero). The proof uses grid analysis: both `s` and `bv`
 inherit the grid alignment of `a + b`, and the coefficient bounds follow
 from the nearest-rounding error constraints. -/
+/-- Combined representability witness for 2Sum splitting intermediates. -/
+structure SplitWitness (R : Type*)
+    [FloatFormat] [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    (a b s bv : FiniteFp) where
+  /-- Witness for representability of `s - bv` (virtual `a` part). -/
+  avRep : FiniteFp
+  /-- Witness for representability of `b - bv` (roundoff part). -/
+  brRep : FiniteFp
+  avValid : avRep.s = false ∨ 0 < avRep.m
+  brValid : brRep.s = false ∨ 0 < brRep.m
+  avVal : avRep.toVal (R := R) = s.toVal - bv.toVal
+  brVal : brRep.toVal (R := R) = b.toVal - bv.toVal
+
 class RModeSplit (R : Type*)
     [FloatFormat] [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
-    [RMode R] : Prop where
-  /-- After `s = round(a+b)` and `bv = round(s−a)`, the value `s − bv`
-      is representable (the "splitting" property). -/
-  split_s_sub_bv :
+    [RMode R] where
+  /-- After `s = round(a+b)` and `bv = round(s−a)`, both `s − bv` and
+      `b − bv` are representable. -/
+  split_witness :
     ∀ (a b s : FiniteFp),
       ○((a.toVal : R) + b.toVal) = Fp.finite s →
       ∀ (bv : FiniteFp),
         ○((s.toVal : R) - a.toVal) = Fp.finite bv →
-        ∃ f : FiniteFp, (f.s = false ∨ 0 < f.m) ∧
-          f.toVal (R := R) = s.toVal - bv.toVal
-  /-- After `s = round(a+b)` and `bv = round(s−a)`, the value `b − bv`
-      is representable. -/
-  split_b_sub_bv :
-    ∀ (a b s : FiniteFp),
-      ○((a.toVal : R) + b.toVal) = Fp.finite s →
-      ∀ (bv : FiniteFp),
-        ○((s.toVal : R) - a.toVal) = Fp.finite bv →
-        ∃ f : FiniteFp, (f.s = false ∨ 0 < f.m) ∧
-          f.toVal (R := R) = b.toVal - bv.toVal
+        SplitWitness (R := R) a b s bv
+
+namespace RModeSplit
+
+/-- Projection: representability of `s - bv` from `split_witness`. -/
+theorem split_s_sub_bv
+    {R : Type*}
+    [FloatFormat] [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    [RMode R] [RModeSplit R]
+    (a b s : FiniteFp)
+    (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s)
+    (bv : FiniteFp)
+    (hbv : ○((s.toVal : R) - a.toVal) = Fp.finite bv) :
+    ∃ f : FiniteFp, (f.s = false ∨ 0 < f.m) ∧
+      f.toVal (R := R) = s.toVal - bv.toVal := by
+  let w := RModeSplit.split_witness (R := R) a b s hs bv hbv
+  exact ⟨w.avRep, w.avValid, w.avVal⟩
+
+/-- Projection: representability of `b - bv` from `split_witness`. -/
+theorem split_b_sub_bv
+    {R : Type*}
+    [FloatFormat] [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    [RMode R] [RModeSplit R]
+    (a b s : FiniteFp)
+    (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s)
+    (bv : FiniteFp)
+    (hbv : ○((s.toVal : R) - a.toVal) = Fp.finite bv) :
+    ∃ f : FiniteFp, (f.s = false ∨ 0 < f.m) ∧
+      f.toVal (R := R) = b.toVal - bv.toVal := by
+  let w := RModeSplit.split_witness (R := R) a b s hs bv hbv
+  exact ⟨w.brRep, w.brValid, w.brVal⟩
+
+end RModeSplit
 
 /-- Nearest-mode behavior patterns, stated via observable properties. -/
 class RModeNearest (R : Type*)
