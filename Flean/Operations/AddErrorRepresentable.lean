@@ -638,4 +638,42 @@ theorem add_error_representable_general (a b : FiniteFp)
              abs_of_pos (FiniteFp.toVal_pos a ha_s ha_nz)] at hab
       exact add_error_representable (R := R) a b ha_s hb_s ha_nz hb_nz hab' hsum_ne s_fp hs
 
+/-- One-sided nonzero variant of `add_error_representable_general`.
+
+When only the left operand is known nonzero, the rounding error is still
+representable. This is useful in mixed constructions where the right operand
+may be an exact zero produced by earlier cancellation. -/
+theorem add_error_representable_general_left_nz (a b : FiniteFp)
+    (ha_nz : 0 < a.m)
+    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
+    (s_fp : FiniteFp)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
+    (hs : a + b = s_fp) :
+    ∃ t_fp : FiniteFp,
+      (t_fp.s = false ∨ 0 < t_fp.m) ∧
+        (t_fp.toVal : R) = (a.toVal : R) + b.toVal - s_fp.toVal := by
+  by_cases hb_nz : 0 < b.m
+  · rcases le_or_gt |b.toVal (R := R)| |a.toVal| with hab | hab
+    · exact add_error_representable_general (R := R) a b
+        ha_nz hb_nz hab hsum_ne s_fp hs
+    · have hs' : b + a = s_fp := by
+        simp only [add_finite_eq_fpAddFinite] at hs ⊢
+        rw [fpAddFinite_comm]
+        exact hs
+      obtain ⟨t, ht_valid, ht_eq⟩ := add_error_representable_general (R := R) b a
+        hb_nz ha_nz (le_of_lt hab) (by rwa [add_comm]) s_fp hs'
+      exact ⟨t, ht_valid, by rw [ht_eq]; ring⟩
+  · have hb0 : b.toVal (R := R) = 0 := by
+      exact (FiniteFp.toVal_significand_zero_iff (R := R)).mp (by omega)
+    have hs_round : (s_fp : Fp) = ○((a.toVal : R) + b.toVal) :=
+      hs.symm.trans (fpAddFinite_correct (R := R) a b hsum_ne)
+    have hs_eq_a : (s_fp : Fp) = (a : Fp) := by
+      rw [hs_round, hb0, add_zero, RModeIdem.round_idempotent (R := R) a (Or.inr ha_nz)]
+    have hs_val : s_fp.toVal (R := R) = a.toVal := by
+      simpa using congrArg (fun x : FiniteFp => x.toVal (R := R)) (Fp.finite.inj hs_eq_a)
+    exact ⟨0, Or.inl rfl, by
+      rw [show (0 : FiniteFp).toVal (R := R) = 0 from FiniteFp.toVal_isZero rfl]
+      rw [hs_val, hb0]
+      ring⟩
+
 end AddErrorRepresentable

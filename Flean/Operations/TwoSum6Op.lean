@@ -266,6 +266,7 @@ is always representable. This gives `av = round(s − bv) = s − bv` exactly,
 hence `av + bv = s`. -/
 private theorem sub_round_sub_representable
     (a b : FiniteFp)
+    (ha_nz : 0 < a.m)
     (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     (s : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
@@ -281,7 +282,11 @@ private theorem sub_round_sub_representable
     obtain ⟨f, hf_eq, hf_val⟩ := fpSubFinite_zero_of_eq_toVal (R := R) s a (by linarith)
     have hbv0 : bv.toVal (R := R) = 0 :=
       (toVal_of_fp_eq (R := R) bv f (hbv.symm.trans hf_eq)).trans hf_val
-    have hs_nz : 0 < s.m := nonzero_sum_round_m_pos (R := R) a b hsum_ne s hs
+    have hs_eq_a : s = a := by
+      exact FiniteFp.eq_of_toVal_eq' (R := R) (Or.inr (by
+        unfold FiniteFp.isZero
+        omega)) (by linarith [hsa_zero])
+    have hs_nz : 0 < s.m := by simpa [hs_eq_a] using ha_nz
     exact ⟨s, Or.inr hs_nz, by rw [hbv0, sub_zero]⟩
   · have hbv_round : ○((s.toVal : R) - a.toVal) = Fp.finite bv :=
       (fpSubFinite_correct (R := R) s a hsa_zero).symm.trans hbv
@@ -289,6 +294,7 @@ private theorem sub_round_sub_representable
 
 private theorem weak_splitting
     (a b : FiniteFp)
+    (ha_nz : 0 < a.m)
     (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     (s : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
@@ -306,7 +312,7 @@ private theorem weak_splitting
     exact ⟨by rw [hav_val, zero_add]; linarith, by rw [hav_val, hsbv]⟩
   · -- s ≠ bv: use representability to show round(s - bv) = s - bv
     obtain ⟨rep, hrep_valid, hrep_val⟩ :=
-      sub_round_sub_representable (R := R) a b hsum_ne s hs bv hbv
+      sub_round_sub_representable (R := R) a b ha_nz hsum_ne s hs bv hbv
     have hav_corr := fpSubFinite_correct (R := R) s bv hsbv
     simp only [] at hav_corr hav
     rw [hav_corr, ← hrep_val, RModeIdem.round_idempotent (R := R) rep hrep_valid] at hav
@@ -327,7 +333,7 @@ private theorem twoSum_6op_of_weak_splitting (a b : FiniteFp)
     (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
     [RModeSplit R]
-    (s : FiniteFp) (hs : a + b = s) (hs_nz : 0 < s.m)
+    (s : FiniteFp) (hs : a + b = s)
     (bv av : FiniteFp)
     (hbv : s - a = (bv : Fp))
     (hsplit : av.toVal (R := R) + bv.toVal = s.toVal)
@@ -357,8 +363,10 @@ private theorem twoSum_6op_of_weak_splitting (a b : FiniteFp)
       have hbv' : s + (-a) = (bv : Fp) := by
         -- s - a = bv → s + (-a) = bv since fpSubFinite = fpAddFinite ∘ neg (rfl)
         exact hbv
-      obtain ⟨err, herr_valid, herr_eq⟩ := error_representable (R := R) s (-a)
-        hs_nz hna_nz hsa_ne bv hbv'
+      have hbv'_comm : (-a) + s = (bv : Fp) := by
+        simpa [add_finite_eq_fpAddFinite, fpAddFinite_comm] using hbv'
+      obtain ⟨err, herr_valid, herr_eq⟩ := add_error_representable_general_left_nz (R := R)
+        (-a) s hna_nz (by simpa [add_comm] using hsa_ne) bv hbv'_comm
       -- err.toVal = s.toVal - a.toVal - bv.toVal, so a - av = -err.toVal
       have hnerr_toVal : (-err).toVal (R := R) = a.toVal - av.toVal := by
         rw [FiniteFp.toVal_neg_eq_neg, hav_exact, herr_eq, FiniteFp.toVal_neg_eq_neg]; ring
@@ -484,15 +492,13 @@ theorem twoSum_6op (a b : FiniteFp)
       (toVal_of_fp_eq (R := R) t ft (ht.symm.trans hft_eq)).trans hft_val
     rw [ht_val]; linarith
   · -- Nonzero sum: use weak splitting + post-processing
-    have hs_nz : 0 < s.m :=
-      nonzero_sum_round_m_pos (R := R) a b hsum_ne s hs
     -- Sterbenz shortcut: both positive, a ≥ b gives strong splitting
     -- All other cases: weak splitting via RModeSplit
     by_cases hSterbenz : a.s = false ∧ b.s = false ∧ (b.toVal (R := R)) ≤ a.toVal
     · obtain ⟨ha, hb, hab⟩ := hSterbenz
       exact twoSum_6op_pos (R := R) a b ha hb ha_nz hb_nz hab s hs bv hbv av hav br hbr ar har t ht
-    · obtain ⟨hsplit, hav_exact⟩ := weak_splitting (R := R) a b hsum_ne s hs bv hbv av hav
-      exact twoSum_6op_of_weak_splitting (R := R) a b ha_nz hb_nz hsum_ne s hs hs_nz
+    · obtain ⟨hsplit, hav_exact⟩ := weak_splitting (R := R) a b ha_nz hsum_ne s hs bv hbv av hav
+      exact twoSum_6op_of_weak_splitting (R := R) a b ha_nz hb_nz hsum_ne s hs
         bv av hbv hsplit hav_exact br hbr ar har t ht
 
 end TwoSum6Op
