@@ -40,6 +40,24 @@ private theorem toVal_of_fp_eq (x y : FiniteFp) (h : (x : Fp) = (y : Fp)) :
   have := Fp.finite.inj h; subst this; rfl
 
 omit [FloorRing R] in
+/-- If rounding of an FP value is finite, it preserves the exact value. -/
+private theorem round_fp_toVal
+    [RMode R] [RModeExec] [RModeZero R] [RModeIdem R]
+    (f g : FiniteFp) (h : ○(f.toVal (R := R)) = Fp.finite g) :
+    g.toVal (R := R) = f.toVal := by
+  by_cases hfm : f.m = 0
+  · have hfv : f.toVal (R := R) = 0 :=
+      FiniteFp.toVal_isZero (show f.isZero from by
+        simp [FiniteFp.isZero, hfm])
+    rw [hfv, RModeZero.round_zero] at h
+    rw [show g = (0 : FiniteFp) from Fp.finite.inj h.symm,
+        FiniteFp.toVal_isZero (R := R) (show (0 : FiniteFp).isZero from rfl), hfv]
+  · have hfm_pos : 0 < f.m := by
+      exact Nat.pos_of_ne_zero hfm
+    rw [RModeIdem.round_idempotent (R := R) f (Or.inr hfm_pos)] at h
+    rw [show g = f from Fp.finite.inj h.symm]
+
+omit [FloorRing R] in
 /-- When the exact sum of two FiniteFp is zero, their fp-addition yields a zero. -/
 private theorem fpAddFinite_zero_of_eq_sum [RModeExec] (a b : FiniteFp)
     (hsum : (a.toVal : R) + b.toVal = 0) :
@@ -550,6 +568,113 @@ private theorem twoSum_6op_zero_sum (a b : FiniteFp)
   rw [ht_val]
   linarith
 
+private theorem twoSum_6op_a_zero (a b : FiniteFp)
+    (ha0 : a.m = 0)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
+    (s : FiniteFp) (hs : a + b = s)
+    (bv : FiniteFp) (hbv : s - a = (bv : Fp))
+    (av : FiniteFp) (hav : s - bv = (av : Fp))
+    (br : FiniteFp) (hbr : b - bv = (br : Fp))
+    (ar : FiniteFp) (har : a - av = (ar : Fp))
+    (t : FiniteFp) (ht : ar + br = (t : Fp)) :
+    (s.toVal : R) + t.toVal = a.toVal + b.toVal := by
+  have ha_val0 : a.toVal (R := R) = 0 := FiniteFp.toVal_isZero (show a.isZero from ha0)
+  have hs_val : s.toVal (R := R) = b.toVal := by
+    by_cases hb_val0 : b.toVal (R := R) = 0
+    · have hsum0 : (a.toVal : R) + b.toVal = 0 := by rw [ha_val0, hb_val0, zero_add]
+      obtain ⟨f, hf_eq, hf_val⟩ := fpAddFinite_zero_of_eq_sum (R := R) a b hsum0
+      have hs0 : s.toVal (R := R) = 0 :=
+        (toVal_of_fp_eq (R := R) s f (hs.symm.trans hf_eq)).trans hf_val
+      rw [hs0, hb_val0]
+    · have hsum_ne : (a.toVal : R) + b.toVal ≠ 0 := by simpa [ha_val0, zero_add] using hb_val0
+      have hs_round : (s : Fp) = ○((a.toVal : R) + b.toVal) :=
+        hs.symm.trans (fpAddFinite_correct (R := R) a b hsum_ne)
+      have hs_round_b : ○(b.toVal (R := R)) = Fp.finite s := by
+        simpa [ha_val0, zero_add] using hs_round.symm
+      exact round_fp_toVal (R := R) b s hs_round_b
+  have hbv_val : bv.toVal (R := R) = s.toVal := by
+    by_cases hs0 : s.toVal (R := R) = 0
+    · obtain ⟨f, hf_eq, hf_val⟩ := fpSubFinite_zero_of_eq_toVal (R := R) s a
+        (by linarith [hs0, ha_val0])
+      have hbv0 : bv.toVal (R := R) = 0 :=
+        (toVal_of_fp_eq (R := R) bv f (hbv.symm.trans hf_eq)).trans hf_val
+      rw [hs0, hbv0]
+    · have hsa_ne : s.toVal (R := R) - a.toVal ≠ 0 := by simpa [ha_val0, sub_zero] using hs0
+      have hbv_round : (bv : Fp) = ○((s.toVal : R) - a.toVal) :=
+        hbv.symm.trans (fpSubFinite_correct (R := R) s a hsa_ne)
+      have hbv_round_s : ○(s.toVal (R := R)) = Fp.finite bv := by
+        simpa [ha_val0, sub_zero] using hbv_round.symm
+      exact round_fp_toVal (R := R) s bv hbv_round_s
+  obtain ⟨fav, hfav_eq, hfav_val⟩ := fpSubFinite_zero_of_eq_toVal (R := R) s bv (by linarith [hbv_val])
+  have hav_val0 : av.toVal (R := R) = 0 :=
+    (toVal_of_fp_eq (R := R) av fav (hav.symm.trans hfav_eq)).trans hfav_val
+  obtain ⟨fbr, hfbr_eq, hfbr_val⟩ := fpSubFinite_zero_of_eq_toVal (R := R) b bv (by linarith [hs_val, hbv_val])
+  have hbr_val0 : br.toVal (R := R) = 0 :=
+    (toVal_of_fp_eq (R := R) br fbr (hbr.symm.trans hfbr_eq)).trans hfbr_val
+  obtain ⟨far, hfar_eq, hfar_val⟩ := fpSubFinite_zero_of_eq_toVal (R := R) a av (by rw [ha_val0, hav_val0])
+  have har_val0 : ar.toVal (R := R) = 0 :=
+    (toVal_of_fp_eq (R := R) ar far (har.symm.trans hfar_eq)).trans hfar_val
+  obtain ⟨ft, hft_eq, hft_val⟩ := fpAddFinite_zero_of_eq_sum (R := R) ar br
+    (by rw [har_val0, hbr_val0, add_zero])
+  have ht_val0 : t.toVal (R := R) = 0 :=
+    (toVal_of_fp_eq (R := R) t ft (ht.symm.trans hft_eq)).trans hft_val
+  rw [ht_val0, ha_val0, zero_add, add_zero]
+  exact hs_val
+
+private theorem twoSum_6op_b_zero (a b : FiniteFp)
+    (hb0 : b.m = 0)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
+    (s : FiniteFp) (hs : a + b = s)
+    (bv : FiniteFp) (hbv : s - a = (bv : Fp))
+    (av : FiniteFp) (hav : s - bv = (av : Fp))
+    (br : FiniteFp) (hbr : b - bv = (br : Fp))
+    (ar : FiniteFp) (har : a - av = (ar : Fp))
+    (t : FiniteFp) (ht : ar + br = (t : Fp)) :
+    (s.toVal : R) + t.toVal = a.toVal + b.toVal := by
+  have hb_val0 : b.toVal (R := R) = 0 := FiniteFp.toVal_isZero (show b.isZero from hb0)
+  have hs_val : s.toVal (R := R) = a.toVal := by
+    by_cases ha_val0 : a.toVal (R := R) = 0
+    · have hsum0 : (a.toVal : R) + b.toVal = 0 := by rw [ha_val0, hb_val0, add_zero]
+      obtain ⟨f, hf_eq, hf_val⟩ := fpAddFinite_zero_of_eq_sum (R := R) a b hsum0
+      have hs0 : s.toVal (R := R) = 0 :=
+        (toVal_of_fp_eq (R := R) s f (hs.symm.trans hf_eq)).trans hf_val
+      rw [hs0, ha_val0]
+    · have hsum_ne : (a.toVal : R) + b.toVal ≠ 0 := by simpa [hb_val0, add_zero] using ha_val0
+      have hs_round : (s : Fp) = ○((a.toVal : R) + b.toVal) :=
+        hs.symm.trans (fpAddFinite_correct (R := R) a b hsum_ne)
+      have hs_round_a : ○(a.toVal (R := R)) = Fp.finite s := by
+        simpa [hb_val0, add_zero] using hs_round.symm
+      exact round_fp_toVal (R := R) a s hs_round_a
+  obtain ⟨fbv, hfbv_eq, hfbv_val⟩ := fpSubFinite_zero_of_eq_toVal (R := R) s a (by linarith [hs_val])
+  have hbv_val0 : bv.toVal (R := R) = 0 :=
+    (toVal_of_fp_eq (R := R) bv fbv (hbv.symm.trans hfbv_eq)).trans hfbv_val
+  have hav_val : av.toVal (R := R) = s.toVal := by
+    by_cases hs0 : s.toVal (R := R) = 0
+    · obtain ⟨f, hf_eq, hf_val⟩ := fpSubFinite_zero_of_eq_toVal (R := R) s bv
+        (by linarith [hs0, hbv_val0])
+      have hav0 : av.toVal (R := R) = 0 :=
+        (toVal_of_fp_eq (R := R) av f (hav.symm.trans hf_eq)).trans hf_val
+      rw [hs0, hav0]
+    · have hsbv_ne : s.toVal (R := R) - bv.toVal ≠ 0 := by simpa [hbv_val0, sub_zero] using hs0
+      have hav_round : (av : Fp) = ○((s.toVal : R) - bv.toVal) :=
+        hav.symm.trans (fpSubFinite_correct (R := R) s bv hsbv_ne)
+      have hav_round_s : ○(s.toVal (R := R)) = Fp.finite av := by
+        simpa [hbv_val0, sub_zero] using hav_round.symm
+      exact round_fp_toVal (R := R) s av hav_round_s
+  obtain ⟨fbr, hfbr_eq, hfbr_val⟩ := fpSubFinite_zero_of_eq_toVal (R := R) b bv
+    (by linarith [hb_val0, hbv_val0])
+  have hbr_val0 : br.toVal (R := R) = 0 :=
+    (toVal_of_fp_eq (R := R) br fbr (hbr.symm.trans hfbr_eq)).trans hfbr_val
+  obtain ⟨far, hfar_eq, hfar_val⟩ := fpSubFinite_zero_of_eq_toVal (R := R) a av (by linarith [hs_val, hav_val])
+  have har_val0 : ar.toVal (R := R) = 0 :=
+    (toVal_of_fp_eq (R := R) ar far (har.symm.trans hfar_eq)).trans hfar_val
+  obtain ⟨ft, hft_eq, hft_val⟩ := fpAddFinite_zero_of_eq_sum (R := R) ar br
+    (by rw [har_val0, hbr_val0, add_zero])
+  have ht_val0 : t.toVal (R := R) = 0 :=
+    (toVal_of_fp_eq (R := R) t ft (ht.symm.trans hft_eq)).trans hft_val
+  rw [ht_val0, hb_val0, add_zero, add_zero]
+  exact hs_val
+
 /-- 6-op correctness from explicit nonzero-branch split witnesses. -/
 theorem twoSum_6op_of_witnesses (a b : FiniteFp)
     (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
@@ -602,9 +727,9 @@ theorem twoSum_6op_of_bv_exact (a b : FiniteFp)
 
 /-! ## Main theorem -/
 
-/-- **6-op 2Sum correctness** for arbitrary finite floats, with exactness of
+/-- **6-op 2Sum correctness** for nonzero inputs, with exactness of
 the first split subtraction on the nonzero-sum branch. -/
-theorem twoSum_6op (a b : FiniteFp)
+theorem twoSum_6op_nonzero (a b : FiniteFp)
     (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
     (s : FiniteFp) (hs : a + b = s)
@@ -619,5 +744,28 @@ theorem twoSum_6op (a b : FiniteFp)
     (s.toVal : R) + t.toVal = a.toVal + b.toVal := by
   exact twoSum_6op_of_bv_exact (R := R) a b ha_nz hb_nz s hs bv hbv
     hbv_exact av hav br hbr ar har t ht
+
+/-- **6-op 2Sum correctness** for arbitrary finite floats, with exactness of
+the first split subtraction on the nonzero-sum branch. -/
+theorem twoSum_6op (a b : FiniteFp)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
+    (s : FiniteFp) (hs : a + b = s)
+    (bv : FiniteFp) (hbv : s - a = (bv : Fp))
+    (hbv_exact :
+      ((a.toVal : R) + b.toVal ≠ 0) →
+      bv.toVal (R := R) = s.toVal - a.toVal)
+    (av : FiniteFp) (hav : s - bv = (av : Fp))
+    (br : FiniteFp) (hbr : b - bv = (br : Fp))
+    (ar : FiniteFp) (har : a - av = (ar : Fp))
+    (t : FiniteFp) (ht : ar + br = (t : Fp)) :
+    (s.toVal : R) + t.toVal = a.toVal + b.toVal := by
+  by_cases ha_nz : 0 < a.m
+  · by_cases hb_nz : 0 < b.m
+    · exact twoSum_6op_nonzero (R := R) a b ha_nz hb_nz s hs bv hbv
+        hbv_exact av hav br hbr ar har t ht
+    · have hb0 : b.m = 0 := Nat.eq_zero_of_not_pos hb_nz
+      exact twoSum_6op_b_zero (R := R) a b hb0 s hs bv hbv av hav br hbr ar har t ht
+  · have ha0 : a.m = 0 := Nat.eq_zero_of_not_pos ha_nz
+    exact twoSum_6op_a_zero (R := R) a b ha0 s hs bv hbv av hav br hbr ar har t ht
 
 end TwoSum6Op
