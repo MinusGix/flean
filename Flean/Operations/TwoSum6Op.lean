@@ -259,48 +259,41 @@ private theorem nonzero_sum_round_m_pos (a b : FiniteFp)
 For any two FP numbers `x` and `z = round(x − y)`, the value `x − z`
 is always representable. -/
 
-/-- **Weak splitting** (Boldo-Muller Prop 5): `s − round(s − a)` is representable.
+/-- Flocq-style residual bound (mixed-sign positive-sum branch).
 
-Given FP numbers `s` and `a`, and `bv = round(s − a)`, the value `s − bv`
-is always representable. This gives `av = round(s − bv) = s − bv` exactly,
-hence `av + bv = s`. -/
-private theorem sub_round_sub_representable
-    (a b : FiniteFp)
-    (ha_nz : 0 < a.m)
+This is the `TwoSumProp`-shaped inequality used in Flocq proofs:
+the first-add residual is bounded by the right operand magnitude. -/
+private theorem mixed_pos_twoSumProp (a b s : FiniteFp)
+    (ha : a.s = false) (hb : b.s = true)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (hsum_pos : (0 : R) < (a.toVal : R) + b.toVal)
     (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
-    (s : FiniteFp)
-    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
-    [RModeSplit R]
-    (hs : a + b = s)
-    (bv : FiniteFp) (hbv : s - a = (bv : Fp)) :
-    ∃ f : FiniteFp, (f.s = false ∨ 0 < f.m) ∧
-      f.toVal (R := R) = s.toVal - bv.toVal := by
-  have hs_round : ○((a.toVal : R) + b.toVal) = Fp.finite s :=
-    (fpAddFinite_correct (R := R) a b hsum_ne).symm.trans hs
-  by_cases hsa_zero : s.toVal (R := R) - a.toVal = 0
-  · -- s = a, so bv = round(0) is a zero, and s - bv = s, representable
-    obtain ⟨f, hf_eq, hf_val⟩ := fpSubFinite_zero_of_eq_toVal (R := R) s a (by linarith)
-    have hbv0 : bv.toVal (R := R) = 0 :=
-      (toVal_of_fp_eq (R := R) bv f (hbv.symm.trans hf_eq)).trans hf_val
-    have hs_eq_a : s = a := by
-      exact FiniteFp.eq_of_toVal_eq' (R := R) (Or.inr (by
-        unfold FiniteFp.isZero
-        omega)) (by linarith [hsa_zero])
-    have hs_nz : 0 < s.m := by simpa [hs_eq_a] using ha_nz
-    exact ⟨s, Or.inr hs_nz, by rw [hbv0, sub_zero]⟩
-  · have hbv_round : ○((s.toVal : R) - a.toVal) = Fp.finite bv :=
-      (fpSubFinite_correct (R := R) s a hsa_zero).symm.trans hbv
-    exact RModeSplit.split_s_sub_bv a b s hs_round bv hbv_round
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R]
+    (hs : a + b = s) :
+    |((a.toVal : R) + b.toVal - s.toVal)| ≤ |b.toVal| := by
+  have hs_round : ○((a.toVal : R) + b.toVal) = Fp.finite s := by
+    exact (fpAddFinite_correct (R := R) a b hsum_ne).symm.trans hs
+  exact mixed_pos_residual_abs_le_abs_right (R := R)
+    a b s ha hb ha_nz hb_nz hsum_pos hsum_ne hs_round
 
-private theorem weak_splitting
-    (a b : FiniteFp)
-    (ha_nz : 0 < a.m)
-    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
-    (s : FiniteFp)
+/-- Flocq-style residual bound (mixed-sign negative-sum branch). -/
+private theorem mixed_neg_twoSumProp (a b s : FiniteFp)
+    (ha : a.s = false) (hb : b.s = true)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (hsum_neg : (a.toVal : R) + b.toVal < 0)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
-    [RModeSplit R]
-    (hs : a + b = s)
-    (bv : FiniteFp) (hbv : s - a = (bv : Fp))
+    (hs : a + b = s) :
+    |((a.toVal : R) + b.toVal - s.toVal)| ≤ |a.toVal| := by
+  have hs_round : ○((a.toVal : R) + b.toVal) = Fp.finite s := by
+    exact (fpAddFinite_correct (R := R) a b (ne_of_lt hsum_neg)).symm.trans hs
+  exact mixed_neg_residual_abs_le_abs_left (R := R)
+    a b s ha hb ha_nz hb_nz hsum_neg hs_round
+
+private theorem weak_splitting_core
+    (s bv : FiniteFp)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
+    (hs_sub_rep : ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+      rep.toVal (R := R) = s.toVal - bv.toVal)
     (av : FiniteFp) (hav : s - bv = (av : Fp)) :
     av.toVal (R := R) + bv.toVal = s.toVal ∧
       av.toVal (R := R) = s.toVal - bv.toVal := by
@@ -311,8 +304,7 @@ private theorem weak_splitting
       (toVal_of_fp_eq (R := R) av f (hav.symm.trans hf_eq)).trans hf_val
     exact ⟨by rw [hav_val, zero_add]; linarith, by rw [hav_val, hsbv]⟩
   · -- s ≠ bv: use representability to show round(s - bv) = s - bv
-    obtain ⟨rep, hrep_valid, hrep_val⟩ :=
-      sub_round_sub_representable (R := R) a b ha_nz hsum_ne s hs bv hbv
+    obtain ⟨rep, hrep_valid, hrep_val⟩ := hs_sub_rep
     have hav_corr := fpSubFinite_correct (R := R) s bv hsbv
     simp only [] at hav_corr hav
     rw [hav_corr, ← hrep_val, RModeIdem.round_idempotent (R := R) rep hrep_valid] at hav
@@ -328,16 +320,17 @@ subtractions and the final addition are exact, yielding `s + t = a + b`. -/
 
 Given `av + bv = s` (weak splitting), derive that `ar`, `br`, and `t` are
 all computed exactly and `s + t = a + b`. -/
-private theorem twoSum_6op_of_weak_splitting (a b : FiniteFp)
+private theorem twoSum_6op_of_weak_splitting_core (a b : FiniteFp)
     (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
     (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
-    [RModeSplit R]
     (s : FiniteFp) (hs : a + b = s)
     (bv av : FiniteFp)
     (hbv : s - a = (bv : Fp))
     (hsplit : av.toVal (R := R) + bv.toVal = s.toVal)
     (hav_exact : av.toVal (R := R) = s.toVal - bv.toVal)
+    (hbbv_rep : ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+      rep.toVal (R := R) = b.toVal - bv.toVal)
     (br : FiniteFp) (hbr : b - bv = (br : Fp))
     (ar : FiniteFp) (har : a - av = (ar : Fp))
     (t : FiniteFp) (ht : ar + br = (t : Fp)) :
@@ -386,34 +379,17 @@ private theorem twoSum_6op_of_weak_splitting (a b : FiniteFp)
       rw [har_corr, ← hnerr_toVal,
           RModeIdem.round_idempotent (R := R) (-err) hnerr_valid] at har
       exact (toVal_of_fp_eq (R := R) ar (-err) har.symm).trans hnerr_toVal
-  -- Step 2: b - bv is exact (from RModeSplit.split_b_sub_bv)
+  -- Step 2: b - bv is exact (from representability witness)
   have hbr_val : br.toVal (R := R) = b.toVal - bv.toVal := by
     by_cases hbbv : b.toVal (R := R) - bv.toVal = 0
     · obtain ⟨f, hf_eq, hf_val⟩ := fpSubFinite_zero_of_eq_toVal (R := R) b bv (by linarith)
       exact (toVal_of_fp_eq (R := R) br f (hbr.symm.trans hf_eq)).trans (hf_val.trans hbbv.symm)
-    · -- Get round equations for splitting axiom
-      have hs_round : ○((a.toVal : R) + b.toVal) = Fp.finite s :=
-        (fpAddFinite_correct (R := R) a b hsum_ne).symm.trans hs
-      by_cases hsa_zero : s.toVal (R := R) - a.toVal = 0
-      · -- s = a, so bv is zero, b - bv = b, representable by idempotency
-        obtain ⟨f, hf_eq, hf_val⟩ := fpSubFinite_zero_of_eq_toVal (R := R) s a (by linarith)
-        have hbv0 : bv.toVal (R := R) = 0 :=
-          (toVal_of_fp_eq (R := R) bv f (hbv.symm.trans hf_eq)).trans hf_val
-        have hbbv' : b.toVal (R := R) - bv.toVal = b.toVal := by rw [hbv0, sub_zero]
-        have hbr_corr := fpSubFinite_correct (R := R) b bv hbbv
-        rw [hbbv'] at hbr_corr
-        rw [hbr_corr, RModeIdem.round_idempotent (R := R) b (Or.inr hb_nz)] at hbr
-        exact (toVal_of_fp_eq (R := R) br b hbr.symm).trans hbbv'.symm
-      · -- Main case: both nonzero, apply RModeSplit
-        have hbv_round : ○((s.toVal : R) - a.toVal) = Fp.finite bv :=
-          (fpSubFinite_correct (R := R) s a hsa_zero).symm.trans hbv
-        obtain ⟨rep, hrep_valid, hrep_val⟩ :=
-          RModeSplit.split_b_sub_bv (R := R) a b s hs_round bv hbv_round
-        have hbr_corr := fpSubFinite_correct (R := R) b bv hbbv
-        simp only [] at hbr_corr hbr
-        rw [hbr_corr, ← hrep_val,
-            RModeIdem.round_idempotent (R := R) rep hrep_valid] at hbr
-        exact (toVal_of_fp_eq (R := R) br rep hbr.symm).trans hrep_val
+    · obtain ⟨rep, hrep_valid, hrep_val⟩ := hbbv_rep
+      have hbr_corr := fpSubFinite_correct (R := R) b bv hbbv
+      simp only [] at hbr_corr hbr
+      rw [hbr_corr, ← hrep_val,
+          RModeIdem.round_idempotent (R := R) rep hrep_valid] at hbr
+      exact (toVal_of_fp_eq (R := R) br rep hbr.symm).trans hrep_val
   -- Step 3: ar + br = a + b - s (from splitting + exactness)
   have ht_sum : ar.toVal (R := R) + br.toVal = a.toVal + b.toVal - s.toVal := by
     rw [har_val, hbr_val]; linarith
@@ -431,16 +407,98 @@ private theorem twoSum_6op_of_weak_splitting (a b : FiniteFp)
       exact (toVal_of_fp_eq (R := R) t err ht.symm).trans ht_err.symm
   rw [ht_val, ht_sum]; ring
 
-/-! ## Main theorem -/
-
-/-- **6-op 2Sum correctness** for arbitrary finite floats.
-
-For any two nonzero finite floats, the branchless 6-operation 2Sum algorithm
-produces `(s, t)` satisfying `s + t = a + b` exactly. -/
-theorem twoSum_6op (a b : FiniteFp)
+private theorem b_sub_bv_representable_of_bv_exact (a b s bv : FiniteFp)
     (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
-    [RModeSplit R]
+    (hs : a + b = s)
+    (hbv_exact : bv.toVal (R := R) = s.toVal - a.toVal) :
+    ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+      rep.toVal (R := R) = b.toVal - bv.toVal := by
+  obtain ⟨err, herr_valid, herr_eq⟩ := error_representable (R := R)
+    a b ha_nz hb_nz hsum_ne s hs
+  refine ⟨err, herr_valid, ?_⟩
+  rw [herr_eq, hbv_exact]
+  ring
+
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
+private theorem s_sub_bv_representable_of_bv_exact (a s bv : FiniteFp)
+    (ha_nz : 0 < a.m)
+    (hbv_exact : bv.toVal (R := R) = s.toVal - a.toVal) :
+    ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+      rep.toVal (R := R) = s.toVal - bv.toVal := by
+  exact ⟨a, Or.inr ha_nz, by rw [hbv_exact]; ring⟩
+
+/-! ## Nonzero-sum variant with explicit split witnesses -/
+
+/-- 6-op correctness for nonzero exact sum, assuming explicit split witnesses.
+
+Callers provide the two representability witnesses directly (`s-bv` and `b-bv`). -/
+theorem twoSum_6op_nonzero_sum_of_witnesses (a b : FiniteFp)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
+    (s : FiniteFp) (hs : a + b = s)
+    (bv : FiniteFp) (hbv : s - a = (bv : Fp))
+    (hs_sub_rep : ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+      rep.toVal (R := R) = s.toVal - bv.toVal)
+    (av : FiniteFp) (hav : s - bv = (av : Fp))
+    (hbbv_rep : ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+      rep.toVal (R := R) = b.toVal - bv.toVal)
+    (br : FiniteFp) (hbr : b - bv = (br : Fp))
+    (ar : FiniteFp) (har : a - av = (ar : Fp))
+    (t : FiniteFp) (ht : ar + br = (t : Fp)) :
+    (s.toVal : R) + t.toVal = a.toVal + b.toVal := by
+  obtain ⟨hsplit, hav_exact⟩ := weak_splitting_core (R := R) s bv hs_sub_rep av hav
+  exact twoSum_6op_of_weak_splitting_core (R := R) a b ha_nz hb_nz hsum_ne s hs
+    bv av hbv hsplit hav_exact hbbv_rep br hbr ar har t ht
+
+/-- Nonzero-sum 6-op correctness from `s-bv` witness plus exact `bv = s-a`.
+
+This discharges the `b-bv` witness automatically via
+`b_sub_bv_representable_of_bv_exact`. -/
+theorem twoSum_6op_nonzero_sum_of_s_witness_and_bv_exact (a b : FiniteFp)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
+    (s : FiniteFp) (hs : a + b = s)
+    (bv : FiniteFp) (hbv : s - a = (bv : Fp))
+    (hbv_exact : bv.toVal (R := R) = s.toVal - a.toVal)
+    (hs_sub_rep : ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+      rep.toVal (R := R) = s.toVal - bv.toVal)
+    (av : FiniteFp) (hav : s - bv = (av : Fp))
+    (br : FiniteFp) (hbr : b - bv = (br : Fp))
+    (ar : FiniteFp) (har : a - av = (ar : Fp))
+    (t : FiniteFp) (ht : ar + br = (t : Fp)) :
+    (s.toVal : R) + t.toVal = a.toVal + b.toVal := by
+  have hbbv_rep := b_sub_bv_representable_of_bv_exact (R := R)
+    a b s bv ha_nz hb_nz hsum_ne hs hbv_exact
+  exact twoSum_6op_nonzero_sum_of_witnesses (R := R)
+    a b ha_nz hb_nz hsum_ne s hs bv hbv hs_sub_rep av hav hbbv_rep br hbr ar har t ht
+
+/-- Nonzero-sum 6-op correctness from exact `bv = s-a`.
+
+This discharges both split witnesses (`s-bv`, `b-bv`) automatically. -/
+theorem twoSum_6op_nonzero_sum_of_bv_exact (a b : FiniteFp)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
+    (s : FiniteFp) (hs : a + b = s)
+    (bv : FiniteFp) (hbv : s - a = (bv : Fp))
+    (hbv_exact : bv.toVal (R := R) = s.toVal - a.toVal)
+    (av : FiniteFp) (hav : s - bv = (av : Fp))
+    (br : FiniteFp) (hbr : b - bv = (br : Fp))
+    (ar : FiniteFp) (har : a - av = (ar : Fp))
+    (t : FiniteFp) (ht : ar + br = (t : Fp)) :
+    (s.toVal : R) + t.toVal = a.toVal + b.toVal := by
+  have hs_sub_rep := s_sub_bv_representable_of_bv_exact (R := R) a s bv ha_nz hbv_exact
+  exact twoSum_6op_nonzero_sum_of_s_witness_and_bv_exact (R := R)
+    a b ha_nz hb_nz hsum_ne s hs bv hbv hbv_exact hs_sub_rep av hav br hbr ar har t ht
+
+private theorem twoSum_6op_zero_sum (a b : FiniteFp)
+    (ha_nz : 0 < a.m) (_hb_nz : 0 < b.m)
+    (hsum_zero : (a.toVal : R) + b.toVal = 0)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
     (s : FiniteFp) (hs : a + b = s)
     (bv : FiniteFp) (hbv : s - a = (bv : Fp))
     (av : FiniteFp) (hav : s - bv = (av : Fp))
@@ -448,57 +506,118 @@ theorem twoSum_6op (a b : FiniteFp)
     (ar : FiniteFp) (har : a - av = (ar : Fp))
     (t : FiniteFp) (ht : ar + br = (t : Fp)) :
     (s.toVal : R) + t.toVal = a.toVal + b.toVal := by
-  -- Handle exact cancellation (a + b = 0) separately
-  by_cases hsum_ne : (a.toVal : R) + b.toVal = 0
-  · -- When a + b = 0: s is a signed zero, then bv = round(-a) = -a,
-    -- av = round(a) = a, ar = 0, br = round(b + a) = 0, t = 0.
-    have ha_nz_val : (a.toVal : R) ≠ 0 := FiniteFp.toVal_ne_zero_of_m_pos a ha_nz
-    obtain ⟨sz, hsz_eq, hsz_val⟩ := fpAddFinite_zero_of_eq_sum (R := R) a b hsum_ne
-    simp only [add_finite_eq_fpAddFinite] at hs hsz_eq
-    have hs_eq : s = sz := Fp.finite.inj (hs.symm.trans hsz_eq)
-    subst hs_eq; rw [hsz_val, zero_add]
-    -- bv: s - a = round(0 - a) = round(-a) = -round(a) = -a
-    have hsa_ne : s.toVal (R := R) - a.toVal ≠ 0 := by rw [hsz_val, zero_sub]; exact neg_ne_zero.mpr ha_nz_val
-    have hbv_round : (bv : Fp) = ○(s.toVal (R := R) - a.toVal) :=
-      hbv.symm.trans (fpSubFinite_correct (R := R) s a hsa_ne)
-    have ha_idem : ○(a.toVal (R := R)) = Fp.finite a :=
-      RModeIdem.round_idempotent (R := R) a (Or.inr ha_nz)
-    have hbv_neg_a : (bv : Fp) = Fp.finite (-a) := by
-      rw [hbv_round, hsz_val, zero_sub, RModeConj.round_neg _ ha_nz_val,
-          ha_idem, Fp.neg_finite]
-    have hbv_val : bv.toVal (R := R) = -a.toVal := by
-      rw [toVal_of_fp_eq (R := R) bv (-a) hbv_neg_a, FiniteFp.toVal_neg_eq_neg]
-    -- av: s - bv = round(0 - (-a)) = round(a) = a
-    have hsbv_ne : s.toVal (R := R) - bv.toVal ≠ 0 := by
-      rw [hsz_val, zero_sub, hbv_val, neg_neg]; exact ha_nz_val
-    have hav_round : (av : Fp) = ○(s.toVal (R := R) - bv.toVal) :=
-      hav.symm.trans (fpSubFinite_correct (R := R) s bv hsbv_ne)
-    have hav_eq_a : (av : Fp) = Fp.finite a := by
-      rw [hav_round, hsz_val, zero_sub, hbv_val, neg_neg, ha_idem]
-    have hav_val : av.toVal (R := R) = a.toVal := toVal_of_fp_eq (R := R) av a hav_eq_a
-    -- ar = round(a - a) = 0
-    obtain ⟨far, hfar_eq, hfar_val⟩ := fpSubFinite_zero_of_eq_toVal (R := R) a av (by rw [hav_val])
-    have har_val : ar.toVal (R := R) = 0 :=
-      (toVal_of_fp_eq (R := R) ar far (har.symm.trans hfar_eq)).trans hfar_val
-    -- br = round(b - bv) = round(b + a) = round(0) → signed zero
-    have hbbv : b.toVal (R := R) - bv.toVal = 0 := by rw [hbv_val]; linarith
-    obtain ⟨fbr, hfbr_eq, hfbr_val⟩ := fpSubFinite_zero_of_eq_toVal (R := R) b bv (by linarith)
-    have hbr_val : br.toVal (R := R) = 0 :=
-      (toVal_of_fp_eq (R := R) br fbr (hbr.symm.trans hfbr_eq)).trans hfbr_val
-    -- t = round(ar + br) = round(0 + 0) → signed zero
-    have harb0 : ar.toVal (R := R) + br.toVal = 0 := by rw [har_val, hbr_val, add_zero]
-    obtain ⟨ft, hft_eq, hft_val⟩ := fpAddFinite_zero_of_eq_sum (R := R) ar br harb0
-    have ht_val : t.toVal (R := R) = 0 :=
-      (toVal_of_fp_eq (R := R) t ft (ht.symm.trans hft_eq)).trans hft_val
-    rw [ht_val]; linarith
-  · -- Nonzero sum: use weak splitting + post-processing
-    -- Sterbenz shortcut: both positive, a ≥ b gives strong splitting
-    -- All other cases: weak splitting via RModeSplit
-    by_cases hSterbenz : a.s = false ∧ b.s = false ∧ (b.toVal (R := R)) ≤ a.toVal
-    · obtain ⟨ha, hb, hab⟩ := hSterbenz
-      exact twoSum_6op_pos (R := R) a b ha hb ha_nz hb_nz hab s hs bv hbv av hav br hbr ar har t ht
-    · obtain ⟨hsplit, hav_exact⟩ := weak_splitting (R := R) a b ha_nz hsum_ne s hs bv hbv av hav
-      exact twoSum_6op_of_weak_splitting (R := R) a b ha_nz hb_nz hsum_ne s hs
-        bv av hbv hsplit hav_exact br hbr ar har t ht
+  have ha_nz_val : (a.toVal : R) ≠ 0 := FiniteFp.toVal_ne_zero_of_m_pos a ha_nz
+  obtain ⟨sz, hsz_eq, hsz_val⟩ := fpAddFinite_zero_of_eq_sum (R := R) a b hsum_zero
+  simp only [add_finite_eq_fpAddFinite] at hs hsz_eq
+  have hs_eq : s = sz := Fp.finite.inj (hs.symm.trans hsz_eq)
+  subst hs_eq; rw [hsz_val, zero_add]
+  -- bv: s - a = round(0 - a) = round(-a) = -round(a) = -a
+  have hsa_ne : s.toVal (R := R) - a.toVal ≠ 0 := by
+    rw [hsz_val, zero_sub]
+    exact neg_ne_zero.mpr ha_nz_val
+  have hbv_round : (bv : Fp) = ○(s.toVal (R := R) - a.toVal) :=
+    hbv.symm.trans (fpSubFinite_correct (R := R) s a hsa_ne)
+  have ha_idem : ○(a.toVal (R := R)) = Fp.finite a :=
+    RModeIdem.round_idempotent (R := R) a (Or.inr ha_nz)
+  have hbv_neg_a : (bv : Fp) = Fp.finite (-a) := by
+    rw [hbv_round, hsz_val, zero_sub, RModeConj.round_neg _ ha_nz_val,
+        ha_idem, Fp.neg_finite]
+  have hbv_val : bv.toVal (R := R) = -a.toVal := by
+    rw [toVal_of_fp_eq (R := R) bv (-a) hbv_neg_a, FiniteFp.toVal_neg_eq_neg]
+  -- av: s - bv = round(0 - (-a)) = round(a) = a
+  have hsbv_ne : s.toVal (R := R) - bv.toVal ≠ 0 := by
+    rw [hsz_val, zero_sub, hbv_val, neg_neg]
+    exact ha_nz_val
+  have hav_round : (av : Fp) = ○(s.toVal (R := R) - bv.toVal) :=
+    hav.symm.trans (fpSubFinite_correct (R := R) s bv hsbv_ne)
+  have hav_eq_a : (av : Fp) = Fp.finite a := by
+    rw [hav_round, hsz_val, zero_sub, hbv_val, neg_neg, ha_idem]
+  have hav_val : av.toVal (R := R) = a.toVal := toVal_of_fp_eq (R := R) av a hav_eq_a
+  -- ar = round(a - a) = 0
+  obtain ⟨far, hfar_eq, hfar_val⟩ := fpSubFinite_zero_of_eq_toVal (R := R) a av (by rw [hav_val])
+  have har_val : ar.toVal (R := R) = 0 :=
+    (toVal_of_fp_eq (R := R) ar far (har.symm.trans hfar_eq)).trans hfar_val
+  -- br = round(b - bv) = round(b + a) = round(0) → signed zero
+  have hbbv : b.toVal (R := R) - bv.toVal = 0 := by rw [hbv_val]; linarith
+  obtain ⟨fbr, hfbr_eq, hfbr_val⟩ := fpSubFinite_zero_of_eq_toVal (R := R) b bv (by linarith)
+  have hbr_val : br.toVal (R := R) = 0 :=
+    (toVal_of_fp_eq (R := R) br fbr (hbr.symm.trans hfbr_eq)).trans hfbr_val
+  -- t = round(ar + br) = round(0 + 0) → signed zero
+  have harb0 : ar.toVal (R := R) + br.toVal = 0 := by rw [har_val, hbr_val, add_zero]
+  obtain ⟨ft, hft_eq, hft_val⟩ := fpAddFinite_zero_of_eq_sum (R := R) ar br harb0
+  have ht_val : t.toVal (R := R) = 0 :=
+    (toVal_of_fp_eq (R := R) t ft (ht.symm.trans hft_eq)).trans hft_val
+  rw [ht_val]
+  linarith
+
+/-- 6-op correctness from explicit nonzero-branch split witnesses. -/
+theorem twoSum_6op_of_witnesses (a b : FiniteFp)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
+    (s : FiniteFp) (hs : a + b = s)
+    (bv : FiniteFp) (hbv : s - a = (bv : Fp))
+    (hs_sub_rep :
+      ((a.toVal : R) + b.toVal ≠ 0) →
+      ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+        rep.toVal (R := R) = s.toVal - bv.toVal)
+    (av : FiniteFp) (hav : s - bv = (av : Fp))
+    (hbbv_rep :
+      ((a.toVal : R) + b.toVal ≠ 0) →
+      ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+        rep.toVal (R := R) = b.toVal - bv.toVal)
+    (br : FiniteFp) (hbr : b - bv = (br : Fp))
+    (ar : FiniteFp) (har : a - av = (ar : Fp))
+    (t : FiniteFp) (ht : ar + br = (t : Fp)) :
+    (s.toVal : R) + t.toVal = a.toVal + b.toVal := by
+  by_cases hsum_zero : (a.toVal : R) + b.toVal = 0
+  · exact twoSum_6op_zero_sum (R := R) a b ha_nz hb_nz hsum_zero
+      s hs bv hbv av hav br hbr ar har t ht
+  · have hsum_ne : (a.toVal : R) + b.toVal ≠ 0 := hsum_zero
+    exact twoSum_6op_nonzero_sum_of_witnesses (R := R) a b ha_nz hb_nz hsum_ne
+      s hs bv hbv (hs_sub_rep hsum_ne) av hav (hbbv_rep hsum_ne) br hbr ar har t ht
+
+/-- 6-op correctness from exact `bv = s-a` on the nonzero-sum branch.
+
+This is a practical top-level theorem without explicit split witnesses. -/
+theorem twoSum_6op_of_bv_exact (a b : FiniteFp)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
+    (s : FiniteFp) (hs : a + b = s)
+    (bv : FiniteFp) (hbv : s - a = (bv : Fp))
+    (hbv_exact :
+      ((a.toVal : R) + b.toVal ≠ 0) →
+      bv.toVal (R := R) = s.toVal - a.toVal)
+    (av : FiniteFp) (hav : s - bv = (av : Fp))
+    (br : FiniteFp) (hbr : b - bv = (br : Fp))
+    (ar : FiniteFp) (har : a - av = (ar : Fp))
+    (t : FiniteFp) (ht : ar + br = (t : Fp)) :
+    (s.toVal : R) + t.toVal = a.toVal + b.toVal := by
+  by_cases hsum_zero : (a.toVal : R) + b.toVal = 0
+  · exact twoSum_6op_zero_sum (R := R) a b ha_nz hb_nz hsum_zero
+      s hs bv hbv av hav br hbr ar har t ht
+  · have hsum_ne : (a.toVal : R) + b.toVal ≠ 0 := hsum_zero
+    exact twoSum_6op_nonzero_sum_of_bv_exact (R := R)
+      a b ha_nz hb_nz hsum_ne s hs bv hbv (hbv_exact hsum_ne)
+      av hav br hbr ar har t ht
+
+/-! ## Main theorem -/
+
+/-- **6-op 2Sum correctness** for arbitrary finite floats, with exactness of
+the first split subtraction on the nonzero-sum branch. -/
+theorem twoSum_6op (a b : FiniteFp)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
+    (s : FiniteFp) (hs : a + b = s)
+    (bv : FiniteFp) (hbv : s - a = (bv : Fp))
+    (hbv_exact :
+      ((a.toVal : R) + b.toVal ≠ 0) →
+      bv.toVal (R := R) = s.toVal - a.toVal)
+    (av : FiniteFp) (hav : s - bv = (av : Fp))
+    (br : FiniteFp) (hbr : b - bv = (br : Fp))
+    (ar : FiniteFp) (har : a - av = (ar : Fp))
+    (t : FiniteFp) (ht : ar + br = (t : Fp)) :
+    (s.toVal : R) + t.toVal = a.toVal + b.toVal := by
+  exact twoSum_6op_of_bv_exact (R := R) a b ha_nz hb_nz s hs bv hbv
+    hbv_exact av hav br hbr ar har t ht
 
 end TwoSum6Op

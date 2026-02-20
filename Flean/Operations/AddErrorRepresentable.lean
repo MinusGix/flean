@@ -302,11 +302,21 @@ private theorem add_error_representable_mixed (a b : FiniteFp)
     (hs : a + b = s_fp) :
     ∃ t_fp : FiniteFp,
       (t_fp.s = false ∨ 0 < t_fp.m) ∧
-        (t_fp.toVal : R) = (a.toVal : R) + b.toVal - s_fp.toVal := by
+        (t_fp.toVal : R) = (a.toVal : R) + b.toVal - s_fp.toVal ∧
+        ((a.toVal : R) + 2 * b.toVal ≤ s_fp.toVal) := by
   -- Step A: Handle error = 0
   by_cases herr : (a.toVal : R) + b.toVal - s_fp.toVal = 0
-  · exact ⟨0, Or.inl rfl, by
-      rw [show (0 : FiniteFp).toVal (R := R) = 0 from FiniteFp.toVal_isZero rfl]; linarith⟩
+  · have hb_neg : (b.toVal : R) < 0 := by
+      have := FiniteFp.toVal_pos (-b) (by simp [FiniteFp.neg_def, hb]) (by simp; exact hb_nz) (R := R)
+      rw [FiniteFp.toVal_neg_eq_neg] at this
+      linarith
+    have hs_ge : ((a.toVal : R) + 2 * b.toVal) ≤ s_fp.toVal := by
+      rw [show s_fp.toVal = (a.toVal : R) + b.toVal from by linarith [herr]]
+      linarith
+    exact ⟨0, Or.inl rfl, by
+      refine ⟨?_, hs_ge⟩
+      rw [show (0 : FiniteFp).toVal (R := R) = 0 from FiniteFp.toVal_isZero rfl]
+      linarith⟩
   -- Step B: Basic facts
   have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
   have hb_neg : (b.toVal : R) < 0 := by
@@ -540,7 +550,196 @@ private theorem add_error_representable_mixed (a b : FiniteFp)
     simp only [e₀_def, e_min_def]; have := min_le_left a.e b.e; have := a.valid.2.1; omega
   obtain ⟨f, hf_valid, hfv⟩ := exists_finiteFp_of_int_mul_zpow (R := R) r e₀
     hr_ne hr_natAbs_lt he_lo he_hi
-  exact ⟨f, hf_valid, by rw [hfv, herr_eq]⟩
+  exact ⟨f, hf_valid, by
+    refine ⟨?_, hs_ge⟩
+    rw [hfv, herr_eq]⟩
+
+/-- Mixed-sign positive-sum lower bound for nearest rounding.
+
+When `a > 0`, `b < 0`, and `|b| ≤ a` (so the exact sum is positive if nonzero),
+the rounded sum satisfies `a + 2*b ≤ s`. -/
+theorem mixed_pos_round_ge_a_plus_two_b (a b s_fp : FiniteFp)
+    (ha : a.s = false) (hb : b.s = true)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (hab : |b.toVal (R := R)| ≤ a.toVal)
+    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R]
+    (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s_fp) :
+    (a.toVal : R) + 2 * b.toVal ≤ s_fp.toVal := by
+  have hs_add : a + b = s_fp := by
+    have hcorr := fpAddFinite_correct (R := R) a b hsum_ne
+    exact hcorr.trans hs
+  obtain ⟨_, _, _, hs_ge⟩ := add_error_representable_mixed (R := R)
+    a b ha hb ha_nz hb_nz hab hsum_ne s_fp hs_add
+  exact hs_ge
+
+/-- Mixed-sign positive-sum upper bound for nearest rounding.
+
+When `a > 0`, `b < 0`, and `a + b > 0`, monotonicity gives `s ≤ a` for
+`s = round(a+b)`. -/
+theorem mixed_pos_round_le_a (a b s_fp : FiniteFp)
+    (ha : a.s = false) (hb : b.s = true)
+    (_ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (_hsum_pos : (0 : R) < (a.toVal : R) + b.toVal)
+    [RMode R] [RModeNearest R]
+    (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s_fp) :
+    (s_fp.toVal : R) ≤ a.toVal := by
+  have hb_neg : (b.toVal : R) < 0 := by
+    have : (0 : R) < (-b).toVal := FiniteFp.toVal_pos (-b)
+      (by simp [FiniteFp.neg_def, hb])
+      (by simp; exact hb_nz)
+    rw [FiniteFp.toVal_neg_eq_neg] at this
+    linarith
+  have hab_le_a : (a.toVal : R) + b.toVal ≤ a.toVal := by linarith
+  have hmono : ○((a.toVal : R) + b.toVal) ≤ ○(a.toVal (R := R)) :=
+    RModeMono.round_mono (R := R) hab_le_a
+  have hround_a : ○(a.toVal (R := R)) = Fp.finite a :=
+    RModeIdem.round_idempotent (R := R) a (Or.inl ha)
+  rw [hs, hround_a] at hmono
+  exact FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff s_fp a).mp hmono)
+
+/-- Nonzero-subtraction mixed-sign positive-sum implies strict `s < a`. -/
+theorem mixed_pos_round_lt_a_of_sub_nonzero (a b s_fp : FiniteFp)
+    (ha : a.s = false) (hb : b.s = true)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (hsum_pos : (0 : R) < (a.toVal : R) + b.toVal)
+    [RMode R] [RModeNearest R]
+    (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s_fp)
+    (hsa_ne : (s_fp.toVal (R := R) : R) - a.toVal ≠ 0) :
+    (s_fp.toVal (R := R) : R) < a.toVal := by
+  have hs_le_a : (s_fp.toVal (R := R) : R) ≤ a.toVal :=
+    mixed_pos_round_le_a (R := R) a b s_fp ha hb ha_nz hb_nz hsum_pos hs
+  exact lt_of_le_of_ne hs_le_a (by
+    intro hEq
+    apply hsa_ne
+    linarith)
+
+/-- Bounds on `s - a` in the mixed-sign positive-sum branch.
+
+For `a > 0`, `b < 0`, `a + b > 0`, and `s = round(a+b)`, we have
+`2*b ≤ s-a ≤ 0`. -/
+theorem mixed_pos_s_sub_a_bounds (a b s_fp : FiniteFp)
+    (ha : a.s = false) (hb : b.s = true)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (hsum_pos : (0 : R) < (a.toVal : R) + b.toVal)
+    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R]
+    (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s_fp) :
+    (2 * (b.toVal (R := R)) : R) ≤ s_fp.toVal (R := R) - a.toVal ∧
+      s_fp.toVal (R := R) - a.toVal ≤ 0 := by
+  have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
+  have hb_neg : (b.toVal : R) < 0 := by
+    have := FiniteFp.toVal_pos (-b)
+      (by simp [FiniteFp.neg_def, hb])
+      (by simp; exact hb_nz) (R := R)
+    rw [FiniteFp.toVal_neg_eq_neg] at this
+    linarith
+  have hab_abs : |b.toVal (R := R)| ≤ a.toVal := by
+    rw [abs_of_neg hb_neg]
+    linarith [hsum_pos]
+  have hs_ge : (a.toVal : R) + 2 * b.toVal ≤ s_fp.toVal (R := R) :=
+    mixed_pos_round_ge_a_plus_two_b (R := R)
+      a b s_fp ha hb ha_nz hb_nz hab_abs hsum_ne hs
+  have hs_le_a : (s_fp.toVal (R := R) : R) ≤ a.toVal :=
+    mixed_pos_round_le_a (R := R) a b s_fp ha hb ha_nz hb_nz hsum_pos hs
+  constructor
+  · linarith
+  · exact sub_nonpos.mpr hs_le_a
+
+/-- TwoSumProp-style residual bound in the mixed-sign positive-sum branch.
+
+For `a > 0`, `b < 0`, `a + b > 0`, and `s = round(a+b)`, the rounding
+residual is bounded by the right operand magnitude:
+`|(a+b) - s| ≤ |b|`. -/
+theorem mixed_pos_residual_abs_le_abs_right (a b s_fp : FiniteFp)
+    (ha : a.s = false) (hb : b.s = true)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (hsum_pos : (0 : R) < (a.toVal : R) + b.toVal)
+    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R]
+    (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s_fp) :
+    |((a.toVal : R) + b.toVal - s_fp.toVal)| ≤ |b.toVal| := by
+  have hb_neg : (b.toVal : R) < 0 := by
+    have := FiniteFp.toVal_pos (-b)
+      (by simp [FiniteFp.neg_def, hb])
+      (by simp; exact hb_nz) (R := R)
+    rw [FiniteFp.toVal_neg_eq_neg] at this
+    linarith
+  have hs_bounds := mixed_pos_s_sub_a_bounds (R := R)
+    a b s_fp ha hb ha_nz hb_nz hsum_pos hsum_ne hs
+  have hs_ge : (a.toVal : R) + 2 * b.toVal ≤ s_fp.toVal := by
+    linarith [hs_bounds.1]
+  have hs_le : (s_fp.toVal : R) ≤ a.toVal := by
+    linarith [hs_bounds.2]
+  have herr_lo : (b.toVal : R) ≤ (a.toVal : R) + b.toVal - s_fp.toVal := by
+    linarith [hs_le]
+  have herr_hi : (a.toVal : R) + b.toVal - s_fp.toVal ≤ -b.toVal := by
+    linarith [hs_ge]
+  have herr_abs : |((a.toVal : R) + b.toVal - s_fp.toVal)| ≤ -b.toVal := by
+    exact abs_le.mpr ⟨by linarith [herr_lo], herr_hi⟩
+  simpa [abs_of_neg hb_neg] using herr_abs
+
+/-- TwoSumProp-style residual bound in the mixed-sign negative-sum branch.
+
+For `a > 0`, `b < 0`, `a + b < 0`, and `s = round(a+b)`, the rounding
+residual is bounded by the left operand magnitude:
+`|(a+b) - s| ≤ |a|`. -/
+theorem mixed_neg_residual_abs_le_abs_left (a b s_fp : FiniteFp)
+    (ha : a.s = false) (hb : b.s = true)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (hsum_neg : (a.toVal : R) + b.toVal < 0)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
+    (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s_fp) :
+    |((a.toVal : R) + b.toVal - s_fp.toVal)| ≤ |a.toVal| := by
+  have hsum_ne : (a.toVal : R) + b.toVal ≠ 0 := ne_of_lt hsum_neg
+  have hA : (-b).s = false := by
+    rw [FiniteFp.neg_def]
+    simp [hb]
+  have hB : (-a).s = true := by
+    rw [FiniteFp.neg_def]
+    simp [ha]
+  have hA_nz : 0 < (-b).m := by
+    rw [FiniteFp.neg_def]
+    exact hb_nz
+  have hB_nz : 0 < (-a).m := by
+    rw [FiniteFp.neg_def]
+    exact ha_nz
+  have hsum_pos' : (0 : R) < ((-b).toVal : R) + (-a).toVal := by
+    rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg]
+    linarith
+  have hs' : ○(((-b).toVal : R) + (-a).toVal) = Fp.finite (-s_fp) := by
+    rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg]
+    rw [show (-(b.toVal : R) + -a.toVal) = -((a.toVal : R) + b.toVal) from by ring]
+    rw [RModeConj.round_neg _ hsum_ne, hs, Fp.neg_finite]
+  have hpos := mixed_pos_residual_abs_le_abs_right (R := R)
+    (-b) (-a) (-s_fp) hA hB hA_nz hB_nz hsum_pos' (ne_of_gt hsum_pos') hs'
+  have hlhs :
+      |(((-b).toVal : R) + (-a).toVal - (-s_fp).toVal)| =
+      |((a.toVal : R) + b.toVal - s_fp.toVal)| := by
+    rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg]
+    have hneg :
+        (-(b.toVal : R) + -a.toVal - -s_fp.toVal) =
+        -((a.toVal : R) + b.toVal - s_fp.toVal) := by
+      ring
+    rw [hneg, abs_neg]
+  have hrhs : |(-a).toVal (R := R)| = |a.toVal| := by
+    rw [FiniteFp.toVal_neg_eq_neg, abs_neg]
+  rw [hlhs] at hpos
+  simpa [hrhs] using hpos
+
+/-- Strict negativity of `s - a` in the nonzero mixed-sign positive-sum branch. -/
+theorem mixed_pos_s_sub_a_lt_zero (a b s_fp : FiniteFp)
+    (ha : a.s = false) (hb : b.s = true)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (hsum_pos : (0 : R) < (a.toVal : R) + b.toVal)
+    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R]
+    (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s_fp)
+    (hsa_ne : (s_fp.toVal (R := R) : R) - a.toVal ≠ 0) :
+    (s_fp.toVal (R := R) : R) - a.toVal < 0 := by
+  have hbounds := mixed_pos_s_sub_a_bounds (R := R)
+    a b s_fp ha hb ha_nz hb_nz hsum_pos hsum_ne hs
+  exact lt_of_le_of_ne hbounds.2 hsa_ne
 
 /-! ## General error representability -/
 
@@ -623,7 +822,7 @@ theorem add_error_representable_general (a b : FiniteFp)
           have := FiniteFp.toVal_pos (-a) hna hna_nz (R := R)
           rw [FiniteFp.toVal_neg_eq_neg] at this; linarith
         rwa [abs_of_neg ha_neg] at hab
-      obtain ⟨t', ht'_valid, ht'_val⟩ := add_error_representable_mixed (R := R)
+      obtain ⟨t', ht'_valid, ht'_val, _⟩ := add_error_representable_mixed (R := R)
         (-a) (-b) hna hnb hna_nz hnb_nz hnab hnsum_ne (-s_fp) hns_eq
       exact neg_lift t' ht'_valid ht'_val
   · -- a.s = false (a ≥ 0)
@@ -631,7 +830,9 @@ theorem add_error_representable_general (a b : FiniteFp)
     · -- a > 0, b < 0 → mixed sign
       have hab' : |b.toVal (R := R)| ≤ a.toVal := by
         rwa [abs_of_pos (FiniteFp.toVal_pos a ha_s ha_nz)] at hab
-      exact add_error_representable_mixed (R := R) a b ha_s hb_s ha_nz hb_nz hab' hsum_ne s_fp hs
+      obtain ⟨t, ht_valid, ht_val, _⟩ := add_error_representable_mixed (R := R)
+        a b ha_s hb_s ha_nz hb_nz hab' hsum_ne s_fp hs
+      exact ⟨t, ht_valid, ht_val⟩
     · -- Both positive
       have hab' : (b.toVal : R) ≤ a.toVal := by
         rwa [abs_of_pos (FiniteFp.toVal_pos b hb_s hb_nz),
