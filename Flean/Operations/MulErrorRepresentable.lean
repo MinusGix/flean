@@ -225,7 +225,7 @@ theorem mul_error_representable (a b : FiniteFp)
     (hno_underflow : fmaProdE a b ≥ FloatFormat.min_exp)
     (herr : (a.toVal : R) * b.toVal - p.toVal ≠ 0) :
     ∃ e : FiniteFp,
-      (e.s = false ∨ 0 < e.m) ∧
+      (e.notNegZero) ∧
         (e.toVal : R) = (a.toVal : R) * b.toVal - p.toVal := by
   -- Express the error via FMA exact sum: a*b + (-p) = isum * 2^ebase
   set c := (-p : FiniteFp)

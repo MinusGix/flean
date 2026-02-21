@@ -86,7 +86,7 @@ private theorem error_representable (a b : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
     (s : FiniteFp) (hs : a + b = s) :
     ∃ t_fp : FiniteFp,
-      (t_fp.s = false ∨ 0 < t_fp.m) ∧
+      (t_fp.notNegZero) ∧
         (t_fp.toVal : R) = (a.toVal : R) + b.toVal - s.toVal := by
   rcases le_or_gt |b.toVal (R := R)| |a.toVal| with hab | hab
   · exact add_error_representable_general (R := R) a b ha_nz hb_nz hab hsum_ne s hs
@@ -151,7 +151,7 @@ private theorem twoSum_6op_of_strong_splitting (a b : FiniteFp)
 private theorem weak_splitting_core
     (s bv : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
-    (hs_sub_rep : ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+    (hs_sub_rep : ∃ rep : FiniteFp, (rep.notNegZero) ∧
       rep.toVal (R := R) = s.toVal - bv.toVal)
     (av : FiniteFp) (hav : s - bv = (av : Fp)) :
     av.toVal (R := R) + bv.toVal = s.toVal ∧
@@ -188,7 +188,7 @@ private theorem twoSum_6op_of_weak_splitting_core (a b : FiniteFp)
     (hbv : s - a = (bv : Fp))
     (hsplit : av.toVal (R := R) + bv.toVal = s.toVal)
     (hav_exact : av.toVal (R := R) = s.toVal - bv.toVal)
-    (hbbv_rep : ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+    (hbbv_rep : ∃ rep : FiniteFp, (rep.notNegZero) ∧
       rep.toVal (R := R) = b.toVal - bv.toVal)
     (br : FiniteFp) (hbr : b - bv = (br : Fp))
     (ar : FiniteFp) (har : a - av = (ar : Fp))
@@ -222,7 +222,7 @@ private theorem twoSum_6op_of_weak_splitting_core (a b : FiniteFp)
       -- err.toVal = s.toVal - a.toVal - bv.toVal, so a - av = -err.toVal
       have hnerr_toVal : (-err).toVal (R := R) = a.toVal - av.toVal := by
         rw [FiniteFp.toVal_neg_eq_neg, hav_exact, herr_eq, FiniteFp.toVal_neg_eq_neg]; ring
-      have hnerr_valid : (-err).s = false ∨ 0 < (-err).m := by
+      have hnerr_valid : (-err).notNegZero := by
         -- Need: err.m > 0 (since err.toVal ≠ 0, as a - av ≠ 0)
         have herr_m_pos : 0 < err.m := by
           by_contra hm; push_neg at hm
@@ -272,7 +272,7 @@ private theorem b_sub_bv_representable_of_bv_exact (a b s bv : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
     (hs : a + b = s)
     (hbv_exact : bv.toVal (R := R) = s.toVal - a.toVal) :
-    ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+    ∃ rep : FiniteFp, (rep.notNegZero) ∧
       rep.toVal (R := R) = b.toVal - bv.toVal := by
   obtain ⟨err, herr_valid, herr_eq⟩ := error_representable (R := R)
     a b ha_nz hb_nz hsum_ne s hs
@@ -284,7 +284,7 @@ omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
 private theorem s_sub_bv_representable_of_bv_exact (a s bv : FiniteFp)
     (ha_nz : 0 < a.m)
     (hbv_exact : bv.toVal (R := R) = s.toVal - a.toVal) :
-    ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+    ∃ rep : FiniteFp, (rep.notNegZero) ∧
       rep.toVal (R := R) = s.toVal - bv.toVal := by
   exact ⟨a, Or.inr ha_nz, by rw [hbv_exact]; ring⟩
 
@@ -299,10 +299,10 @@ theorem twoSum_6op_nonzero_sum_of_witnesses (a b : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
     (s : FiniteFp) (hs : a + b = s)
     (bv : FiniteFp) (hbv : s - a = (bv : Fp))
-    (hs_sub_rep : ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+    (hs_sub_rep : ∃ rep : FiniteFp, (rep.notNegZero) ∧
       rep.toVal (R := R) = s.toVal - bv.toVal)
     (av : FiniteFp) (hav : s - bv = (av : Fp))
-    (hbbv_rep : ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+    (hbbv_rep : ∃ rep : FiniteFp, (rep.notNegZero) ∧
       rep.toVal (R := R) = b.toVal - bv.toVal)
     (br : FiniteFp) (hbr : b - bv = (br : Fp))
     (ar : FiniteFp) (har : a - av = (ar : Fp))
@@ -323,7 +323,7 @@ theorem twoSum_6op_nonzero_sum_of_s_witness_and_bv_exact (a b : FiniteFp)
     (s : FiniteFp) (hs : a + b = s)
     (bv : FiniteFp) (hbv : s - a = (bv : Fp))
     (hbv_exact : bv.toVal (R := R) = s.toVal - a.toVal)
-    (hs_sub_rep : ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+    (hs_sub_rep : ∃ rep : FiniteFp, (rep.notNegZero) ∧
       rep.toVal (R := R) = s.toVal - bv.toVal)
     (av : FiniteFp) (hav : s - bv = (av : Fp))
     (br : FiniteFp) (hbr : b - bv = (br : Fp))
@@ -524,12 +524,12 @@ theorem twoSum_6op_of_witnesses (a b : FiniteFp)
     (bv : FiniteFp) (hbv : s - a = (bv : Fp))
     (hs_sub_rep :
       ((a.toVal : R) + b.toVal ≠ 0) →
-      ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+      ∃ rep : FiniteFp, (rep.notNegZero) ∧
         rep.toVal (R := R) = s.toVal - bv.toVal)
     (av : FiniteFp) (hav : s - bv = (av : Fp))
     (hbbv_rep :
       ((a.toVal : R) + b.toVal ≠ 0) →
-      ∃ rep : FiniteFp, (rep.s = false ∨ 0 < rep.m) ∧
+      ∃ rep : FiniteFp, (rep.notNegZero) ∧
         rep.toVal (R := R) = b.toVal - bv.toVal)
     (br : FiniteFp) (hbr : b - bv = (br : Fp))
     (ar : FiniteFp) (har : a - av = (ar : Fp))

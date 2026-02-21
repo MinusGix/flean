@@ -27,7 +27,7 @@ theorem split_s_sub_bv_sterbenz
     (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s)
     (bv : FiniteFp)
     (hbv : ○((s.toVal : R) - a.toVal) = Fp.finite bv) :
-    ∃ f : FiniteFp, (f.s = false ∨ 0 < f.m) ∧
+    ∃ f : FiniteFp, (f.notNegZero) ∧
       f.toVal (R := R) = s.toVal - bv.toVal := by
   -- Link ○(a+b) to fpAddFinite
   have hs_fp : (a : Fp) + b = Fp.finite s := by
@@ -81,7 +81,7 @@ theorem split_b_sub_bv_sterbenz
     (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s)
     (bv : FiniteFp)
     (hbv : ○((s.toVal : R) - a.toVal) = Fp.finite bv) :
-    ∃ f : FiniteFp, (f.s = false ∨ 0 < f.m) ∧
+    ∃ f : FiniteFp, (f.notNegZero) ∧
       f.toVal (R := R) = b.toVal - bv.toVal := by
   -- First establish bv.toVal = s.toVal - a.toVal (by Sterbenz, same as s_sub_bv)
   have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
@@ -323,7 +323,7 @@ theorem split_s_sub_bv_grid
     (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s)
     (bv : FiniteFp)
     (hbv : ○((s.toVal : R) - a.toVal) = Fp.finite bv) :
-    ∃ f : FiniteFp, (f.s = false ∨ 0 < f.m) ∧
+    ∃ f : FiniteFp, (f.notNegZero) ∧
       f.toVal (R := R) = s.toVal - bv.toVal := by
   -- Trivial case
   by_cases hval : (s.toVal : R) - bv.toVal = 0
@@ -411,7 +411,7 @@ theorem split_b_sub_bv_grid
     (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s)
     (bv : FiniteFp)
     (hbv : ○((s.toVal : R) - a.toVal) = Fp.finite bv) :
-    ∃ f : FiniteFp, (f.s = false ∨ 0 < f.m) ∧
+    ∃ f : FiniteFp, (f.notNegZero) ∧
       f.toVal (R := R) = b.toVal - bv.toVal := by
   -- Step 0: Basic positivity
   have hb_pos : (0 : R) < b.toVal := FiniteFp.toVal_pos b hb hb_nz
@@ -572,7 +572,7 @@ theorem split_s_sub_bv_pos
     (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s)
     (bv : FiniteFp)
     (hbv : ○((s.toVal : R) - a.toVal) = Fp.finite bv) :
-    ∃ f : FiniteFp, (f.s = false ∨ 0 < f.m) ∧
+    ∃ f : FiniteFp, (f.notNegZero) ∧
       f.toVal (R := R) = s.toVal - bv.toVal := by
   rcases le_or_gt (b.toVal (R := R)) a.toVal with hab | hab
   · exact split_s_sub_bv_sterbenz a b s ha hb ha_nz hb_nz hab hsum_ne hs bv hbv
@@ -589,7 +589,7 @@ theorem split_b_sub_bv_pos
     (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s)
     (bv : FiniteFp)
     (hbv : ○((s.toVal : R) - a.toVal) = Fp.finite bv) :
-    ∃ f : FiniteFp, (f.s = false ∨ 0 < f.m) ∧
+    ∃ f : FiniteFp, (f.notNegZero) ∧
       f.toVal (R := R) = b.toVal - bv.toVal := by
   rcases le_or_gt (b.toVal (R := R)) a.toVal with hab | hab
   · exact split_b_sub_bv_sterbenz a b s ha hb ha_nz hb_nz hab hsum_ne hs bv hbv

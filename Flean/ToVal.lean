@@ -307,7 +307,7 @@ theorem imp_toVal_ne [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : Fi
     The hypothesis excludes negative zero, which is the only case where
     two distinct floats can have the same toVal (since (+0).toVal = (-0).toVal = 0). -/
 theorem toVal_injective [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y : FiniteFp}
-    (hx : x.s = false ∨ 0 < x.m) (hy : y.s = false ∨ 0 < y.m)
+    (hx : x.notNegZero) (hy : y.notNegZero)
     (hv : x.toVal (R := R) = y.toVal (R := R)) : x = y := by
   by_cases hxm : 0 < x.m
   · -- x is nonzero, so ¬x.isZero
@@ -319,7 +319,7 @@ theorem toVal_injective [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x y :
       push_neg at hxm hym
       have hxm0 : x.m = 0 := by omega
       have hym0 : y.m = 0 := by omega
-      -- From hypotheses: s = false ∨ 0 < 0, so s = false
+      -- From `notNegZero` and `m = 0`, we get `s = false`.
       have hxs : x.s = false := by rcases hx with hs | hm <;> [exact hs; omega]
       have hys : y.s = false := by rcases hy with hs | hm <;> [exact hs; omega]
       -- From validity: m = 0 → not normal → subnormal → e = min_exp
@@ -495,14 +495,14 @@ theorem exists_finiteFp_of_nat_mul_zpow {R : Type*} [Field R] [LinearOrder R]
     bounds, there exists a `FiniteFp` whose value equals `r * 2^e_base`.
 
     For `r > 0` the result has `s = false`; for `r < 0` it has `0 < m`.
-    Either way, `f.s = false ∨ 0 < f.m` holds, which is exactly the condition
+    Either way, `f.notNegZero` holds, which is exactly the condition
     needed for `round_idempotent`. -/
 theorem exists_finiteFp_of_int_mul_zpow {R : Type*} [Field R] [LinearOrder R]
     [IsStrictOrderedRing R] (r : ℤ) (e_base : ℤ)
     (hr : r ≠ 0) (hr_bound : r.natAbs < 2 ^ FloatFormat.prec.toNat)
     (he_lo : e_base ≥ FloatFormat.min_exp - FloatFormat.prec + 1)
     (he_hi : e_base + FloatFormat.prec - 1 ≤ FloatFormat.max_exp) :
-    ∃ f : FiniteFp, (f.s = false ∨ 0 < f.m) ∧
+    ∃ f : FiniteFp, (f.notNegZero) ∧
       (f.toVal : R) = (r : R) * (2 : R) ^ e_base := by
   have hmag_pos : 0 < r.natAbs := Int.natAbs_pos.mpr hr
   obtain ⟨g, hgs, hgv⟩ := exists_finiteFp_of_nat_mul_zpow (R := R) r.natAbs e_base

@@ -13,7 +13,7 @@ import Flean.Basic
 import Flean.Ulp
 import Flean.Ufp
 import Flean.Linearize.Linearize
-import Flean.Rounding.Neighbor
+import Flean.Rounding.Neighbor.Basic
 
 section Rounding
 section RoundDown

@@ -990,6 +990,38 @@ theorem not_lt_neg_inf_of_not_nan (x : Fp) (hx : x ≠ Fp.NaN) : ¬x < Fp.infini
 theorem nan_lt_nan_false : ¬(Fp.NaN < Fp.NaN) := by
   simp [lt_def, is_total_lt]
 
+section CanonicalOrderRegression
+
+theorem neg_inf_lt_pos_inf : (Fp.infinite true : Fp) < Fp.infinite false := by
+  simp [lt_def, is_total_lt]
+
+theorem neg_inf_le_pos_inf : (Fp.infinite true : Fp) ≤ Fp.infinite false := by
+  rw [le_def]
+  left
+  exact neg_inf_lt_pos_inf
+
+theorem pos_inf_not_lt_pos_inf : ¬((Fp.infinite false : Fp) < Fp.infinite false) := by
+  exact not_pos_inf_lt (Fp.infinite false)
+
+theorem neg_inf_not_lt_neg_inf : ¬((Fp.infinite true : Fp) < Fp.infinite true) := by
+  exact not_lt_neg_inf_of_not_nan (Fp.infinite true) (by simp)
+
+theorem pos_inf_le_iff_eq_pos_inf (x : Fp) :
+    Fp.infinite false ≤ x ↔ x = Fp.infinite false := pos_inf_le_iff x
+
+theorem le_neg_inf_iff_nan_or_eq_neg_inf (x : Fp) :
+    x ≤ Fp.infinite true ↔ x = Fp.NaN ∨ x = Fp.infinite true := le_neg_inf_iff x
+
+theorem nan_lt_neg_inf : (Fp.NaN : Fp) < Fp.infinite true := by
+  simp [lt_def, is_total_lt]
+
+theorem nan_le_neg_inf : (Fp.NaN : Fp) ≤ Fp.infinite true := by
+  rw [le_def]
+  left
+  exact nan_lt_neg_inf
+
+end CanonicalOrderRegression
+
 protected theorem lt_imp_le {x y : Fp} : x < y → x ≤ y := by
   intro h
   rw [le_def]
@@ -1315,6 +1347,46 @@ theorem le_iff_stdLe_of_not_nan_of_not_both_zero
 @[simp] theorem stdLe_finite_iff (x y : FiniteFp) :
     stdLe (.finite x) (.finite y) ↔ x.stdLe y := by
   rfl
+
+section Decidable
+
+def bstdLt (x y : Fp) : Bool :=
+  match (x, y) with
+  | (.NaN, _) => false
+  | (_, .NaN) => false
+  | (.finite a, .finite b) => FiniteFp.bstdLt a b
+  | (.infinite sx, .infinite sy) => sx && !sy
+  | (.infinite sx, .finite _) => sx
+  | (.finite _, .infinite sy) => !sy
+
+def bstdEquiv (x y : Fp) : Bool :=
+  match (x, y) with
+  | (.finite a, .finite b) => (a.isZero && b.isZero) || FiniteFp.beq a b
+  | (.infinite sx, .infinite sy) => sx == sy
+  | _ => false
+
+def bstdLe (x y : Fp) : Bool :=
+  bstdLt x y || bstdEquiv x y
+
+theorem bstdLt_iff_stdLt {x y : Fp} : bstdLt x y = true ↔ stdLt x y := by
+  cases x <;> cases y <;> simp [bstdLt, stdLt, FiniteFp.bstdLt_iff_stdLt]
+
+theorem bstdEquiv_iff_stdEquiv {x y : Fp} : bstdEquiv x y = true ↔ stdEquiv x y := by
+  cases x <;> cases y <;> simp [bstdEquiv, stdEquiv, FiniteFp.beq_iff_eq]
+
+theorem bstdLe_iff_stdLe {x y : Fp} : bstdLe x y = true ↔ stdLe x y := by
+  simp [bstdLe, stdLe, bstdLt_iff_stdLt, bstdEquiv_iff_stdEquiv]
+
+instance (x y : Fp) : Decidable (stdLt x y) :=
+  decidable_of_iff (bstdLt x y = true) bstdLt_iff_stdLt
+
+instance (x y : Fp) : Decidable (stdEquiv x y) :=
+  decidable_of_iff (bstdEquiv x y = true) bstdEquiv_iff_stdEquiv
+
+instance (x y : Fp) : Decidable (stdLe x y) :=
+  decidable_of_iff (bstdLe x y = true) bstdLe_iff_stdLe
+
+end Decidable
 
 end StdOrder
 

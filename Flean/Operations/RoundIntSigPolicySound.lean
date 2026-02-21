@@ -377,7 +377,7 @@ private theorem handleOverflow_eq_round_intSigVal
 
 /-- All rounding modes are idempotent on non-negative-zero floats. -/
 theorem round_idempotent (mode : RoundingMode) (f : FiniteFp)
-    (h : f.s = false ∨ 0 < f.m) :
+    (h : f.notNegZero) :
     mode.round (f.toVal (R := R)) = Fp.finite f := by
   cases mode with
   | Down => exact roundDown_idempotent f h
@@ -868,7 +868,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
           rw [show e_ulp + ↑FloatFormat.prec - 1 - ↑FloatFormat.prec + 1 = e_ulp from by omega]
           rw [hf_exact_val hr0]
           split_ifs <;> ring
-        have hm_pos_or_sign : f.s = false ∨ 0 < f.m := by
+        have hm_pos_or_sign : f.notNegZero := by
           right; exact Nat.pos_of_ne_zero hq_ne_zero
         -- The goal has m_rounded but f has m = q. Unfold m_rounded → q.
         simp only [hm_eq]

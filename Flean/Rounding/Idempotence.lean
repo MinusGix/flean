@@ -40,7 +40,7 @@ available before this module. -/
 /-! ## Step 7: Other rounding modes -/
 
 /-- roundTowardZero is idempotent on non-negative-zero floats. -/
-theorem roundTowardZero_idempotent (f : FiniteFp) (h : f.s = false ∨ 0 < f.m) :
+theorem roundTowardZero_idempotent (f : FiniteFp) (h : f.notNegZero) :
     roundTowardZero (f.toVal (R := R)) = Fp.finite f := by
   by_cases hm : f.m = 0
   · rcases h with hs | hm'
@@ -156,7 +156,7 @@ theorem toVal_abs_lt_overflow (f : FiniteFp) :
   linarith
 
 /-- roundNearestTiesToEven is idempotent on non-negative-zero floats. -/
-theorem roundNearestTiesToEven_idempotent (f : FiniteFp) (h : f.s = false ∨ 0 < f.m) :
+theorem roundNearestTiesToEven_idempotent (f : FiniteFp) (h : f.notNegZero) :
     roundNearestTiesToEven (f.toVal (R := R)) = Fp.finite f := by
   unfold roundNearestTiesToEven
   by_cases hm : f.m = 0
@@ -190,7 +190,7 @@ theorem roundNearestTiesToEven_idempotent (f : FiniteFp) (h : f.s = false ∨ 0 
   split_ifs <;> rfl
 
 /-- roundNearestTiesAwayFromZero is idempotent on non-negative-zero floats. -/
-theorem roundNearestTiesAwayFromZero_idempotent (f : FiniteFp) (h : f.s = false ∨ 0 < f.m) :
+theorem roundNearestTiesAwayFromZero_idempotent (f : FiniteFp) (h : f.notNegZero) :
     roundNearestTiesAwayFromZero (f.toVal (R := R)) = Fp.finite f := by
   unfold roundNearestTiesAwayFromZero
   by_cases hm : f.m = 0
@@ -520,7 +520,7 @@ theorem roundNearestTA_le_roundUp (x : R) :
 /-- If x ≤ y and roundUp(x) = Fp.finite f with f.toVal ≤ y, then roundUp(x) ≤ roundDown(y). -/
 private theorem roundUp_le_roundDown_of_toVal_le {x y : R} (f : FiniteFp)
     (hfU : roundUp x = Fp.finite f) (hf_le : (f.toVal : R) ≤ y)
-    (hvalid : f.s = false ∨ 0 < f.m) : roundUp x ≤ roundDown y := by
+    (hvalid : f.notNegZero) : roundUp x ≤ roundDown y := by
   rw [hfU]; exact roundDown_ge_of_fp_le y f hvalid hf_le
 
 /-! ### Same-interval and dispatch lemmas for round-to-nearest monotonicity -/
@@ -533,7 +533,7 @@ private theorem same_interval_pos {x y : R} (hx : 0 < x) (hlt : x < y)
     roundDown x = roundDown y ∧ roundUp x = roundUp y := by
   have hfy : (f.toVal : R) > y := hval_gt
   have hfpos : (0 : R) < f.toVal := lt_of_lt_of_le hx (roundUp_ge x f hfU)
-  have hfs : f.s = false ∨ 0 < f.m := by
+  have hfs : f.notNegZero := by
     exact Or.inl (FiniteFp.toVal_pos_iff.mpr hfpos).1
   constructor
   · -- roundDown equality
@@ -555,7 +555,7 @@ private theorem same_interval_pos {x y : R} (hx : 0 < x) (hlt : x < y)
           exact (Fp.finite.injEq g _).mp hgD'.symm
         have hgs : g.s = false := by rw [hg_eq]; exact findPredecessorPos_sign_false y hy
         have hgv : (g.toVal : R) ≤ y := by rw [hg_eq]; exact findPredecessorPos_le y hy
-        have hgvalid : g.s = false ∨ 0 < g.m := Or.inl hgs
+        have hgvalid : g.notNegZero := Or.inl hgs
         -- g.toVal ≤ y < f.toVal
         by_contra hne
         -- If g.toVal ≥ x, then roundUp(x) ≤ Fp.finite g
@@ -563,7 +563,24 @@ private theorem same_interval_pos {x y : R} (hx : 0 < x) (hlt : x < y)
         · have hUg := roundUp_le_of_fp_ge x g hgvalid hgx
           -- But Fp.finite f = roundUp(x) ≤ Fp.finite g, so f.toVal ≤ g.toVal
           rw [hfU] at hUg
-          have hfleg := FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff f g).mp hUg)
+          have hz_fg : Fp.StdOrder.NotBothFiniteZero (Fp.finite f) (Fp.finite g) := by
+            intro hzz
+            rcases hzz with ⟨f', g', hf', hg', hf0, _⟩
+            have hff' : f = f' := Fp.finite.inj hf'
+            have hgg' : g = g' := Fp.finite.inj hg'
+            subst f'
+            subst g'
+            have : (f.toVal : R) = 0 := FiniteFp.toVal_isZero hf0
+            linarith
+          have hUgStd : Fp.StdOrder.stdLe (Fp.finite f) (Fp.finite g) :=
+            (Fp.StdOrder.le_iff_stdLe_of_not_nan_of_not_both_zero
+              (x := Fp.finite f) (y := Fp.finite g)
+              (by simp) (by simp) hz_fg).1 hUg
+          have hUg' : Fp.finite f ≤ Fp.finite g :=
+            (Fp.StdOrder.le_iff_stdLe_of_not_nan_of_not_both_zero
+              (x := Fp.finite f) (y := Fp.finite g)
+              (by simp) (by simp) hz_fg).2 hUgStd
+          have hfleg := FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff f g).mp hUg')
           -- Yet f.toVal ≤ g.toVal ≤ y < f.toVal → contradiction
           exact absurd hval_gt (not_lt.mpr (le_trans hfleg hgv))
         · -- g.toVal < x
@@ -656,7 +673,7 @@ private theorem rnTE_roundUp_le_roundDown_pos {x y : R} (hx : 0 < x) (hxy : x < 
   rcases hfU : roundUp x with f | b | _
   · -- roundUp(x) = Fp.finite f
     have hfpos : (0 : R) < f.toVal := lt_of_lt_of_le hx (roundUp_ge x f hfU)
-    have hfs : f.s = false ∨ 0 < f.m := Or.inl (FiniteFp.toVal_pos_iff.mpr hfpos).1
+    have hfs : f.notNegZero := Or.inl (FiniteFp.toVal_pos_iff.mpr hfpos).1
     rcases le_or_gt (f.toVal : R) y with hfle | hfgt
     · rw [← hfU]; exact roundUp_le_roundDown_of_toVal_le f hfU hfle hfs
     · -- f.toVal > y: same interval
@@ -720,7 +737,7 @@ private theorem rnTA_roundUp_le_roundDown_pos {x y : R} (hx : 0 < x) (hxy : x < 
   have hy : 0 < y := lt_trans hx hxy
   rcases hfU : roundUp x with f | b | _
   · have hfpos : (0 : R) < f.toVal := lt_of_lt_of_le hx (roundUp_ge x f hfU)
-    have hfs : f.s = false ∨ 0 < f.m := Or.inl (FiniteFp.toVal_pos_iff.mpr hfpos).1
+    have hfs : f.notNegZero := Or.inl (FiniteFp.toVal_pos_iff.mpr hfpos).1
     rcases le_or_gt (f.toVal : R) y with hfle | hfgt
     · rw [← hfU]; exact roundUp_le_roundDown_of_toVal_le f hfU hfle hfs
     · have hsame := same_interval_pos hx hxy f hfU hfgt

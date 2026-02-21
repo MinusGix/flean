@@ -1026,15 +1026,49 @@ private theorem roundNearest_no_crossing {R : Type*} [Field R] [LinearOrder R]
         · have hmono : roundDown (g.toVal : R) ≤ roundDown v :=
             roundDown_mono (le_trans (le_of_lt (lt_of_le_of_lt hg_le_lo hv_lo)) (le_refl v))
           rw [hrd_v, roundDown_idempotent (R := R) g (Or.inl hgs)] at hmono
+          have hz_gp : Fp.StdOrder.NotBothFiniteZero (Fp.finite g) (Fp.finite pred_fp) := by
+            intro hzz
+            rcases hzz with ⟨g', p', hg', hp', hg0, _⟩
+            have hgg' : g = g' := Fp.finite.inj hg'
+            have hpp' : pred_fp = p' := Fp.finite.inj hp'
+            subst g'
+            subst p'
+            unfold FiniteFp.isZero at hg0
+            omega
+          have hmono_std : Fp.StdOrder.stdLe (Fp.finite g) (Fp.finite pred_fp) :=
+            (Fp.StdOrder.le_iff_stdLe_of_not_nan_of_not_both_zero
+              (x := Fp.finite g) (y := Fp.finite pred_fp)
+              (by simp) (by simp) hz_gp).1 hmono
+          have hmono' : Fp.finite g ≤ Fp.finite pred_fp :=
+            (Fp.StdOrder.le_iff_stdLe_of_not_nan_of_not_both_zero
+              (x := Fp.finite g) (y := Fp.finite pred_fp)
+              (by simp) (by simp) hz_gp).2 hmono_std
           exact absurd hg_gt_pred (not_lt.mpr (FiniteFp.le_toVal_le R
-            ((Fp.finite_le_finite_iff g pred_fp).mp hmono)))
+            ((Fp.finite_le_finite_iff g pred_fp).mp hmono')))
         · rcases lt_or_ge (g.toVal : R) (((n : ℤ) + 1 : R) * (2 : R) ^ e_base) with hg_lt_hi | hg_ge_hi
           · exact hno_rep g hgs hgm ⟨hg_gt_lo, hg_lt_hi⟩
           · have hmono : roundUp v ≤ roundUp (g.toVal : R) :=
               roundUp_mono (le_trans (le_of_lt hv_hi) hg_ge_hi)
             rw [hru_v, hru_case, roundUp_idempotent (R := R) g (Or.inl hgs)] at hmono
+            have hz_sg : Fp.StdOrder.NotBothFiniteZero (Fp.finite succ_fp) (Fp.finite g) := by
+              intro hzz
+              rcases hzz with ⟨s', g', hs', hg', hs0, _⟩
+              have hss' : succ_fp = s' := Fp.finite.inj hs'
+              have hgg' : g = g' := Fp.finite.inj hg'
+              subst s'
+              subst g'
+              unfold FiniteFp.isZero at hs0
+              omega
+            have hmono_std : Fp.StdOrder.stdLe (Fp.finite succ_fp) (Fp.finite g) :=
+              (Fp.StdOrder.le_iff_stdLe_of_not_nan_of_not_both_zero
+                (x := Fp.finite succ_fp) (y := Fp.finite g)
+                (by simp) (by simp) hz_sg).1 hmono
+            have hmono' : Fp.finite succ_fp ≤ Fp.finite g :=
+              (Fp.StdOrder.le_iff_stdLe_of_not_nan_of_not_both_zero
+                (x := Fp.finite succ_fp) (y := Fp.finite g)
+                (by simp) (by simp) hz_sg).2 hmono_std
             exact absurd hg_lt_succ (not_lt.mpr (FiniteFp.le_toVal_le R
-              ((Fp.finite_le_finite_iff succ_fp g).mp hmono)))
+              ((Fp.finite_le_finite_iff succ_fp g).mp hmono')))
       exact midpoint_outside_odd_interval hn_odd hn_large pred_fp succ_fp
         hpred_s hpred_m hsucc_s hsucc_m hpred_bound hsucc_bound hadj
     · -- Degenerate case: pred_fp.m = 0 → pred_fp.toVal = 0

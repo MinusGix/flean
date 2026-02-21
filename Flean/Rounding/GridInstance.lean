@@ -70,7 +70,7 @@ private theorem grid_exact_representable
     (hx_lt_binade : (n : R) * (2 : R) ^ g < (2 : R) ^ (e + 1))
     (he_lo : e ≥ FloatFormat.min_exp)
     (he_hi : e ≤ FloatFormat.max_exp) :
-    ∃ fp_x : FiniteFp, (fp_x.s = false ∨ 0 < fp_x.m) ∧
+    ∃ fp_x : FiniteFp, (fp_x.notNegZero) ∧
       fp_x.toVal (R := R) = (n : R) * (2 : R) ^ g := by
   set e_ulp := e - prec + 1
   -- n < 2^(e + 1 - g): divide binade bound by 2^g

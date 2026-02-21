@@ -140,7 +140,7 @@ theorem add_error_representable (a b : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R]
     (hs : a + b = s_fp) :
     ∃ t_fp : FiniteFp,
-      (t_fp.s = false ∨ 0 < t_fp.m) ∧
+      (t_fp.notNegZero) ∧
         (t_fp.toVal : R) = (a.toVal : R) + b.toVal - s_fp.toVal := by
   -- Step A: Handle error = 0
   by_cases herr : (a.toVal : R) + b.toVal - s_fp.toVal = 0
@@ -301,7 +301,7 @@ private theorem add_error_representable_mixed (a b : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R]
     (hs : a + b = s_fp) :
     ∃ t_fp : FiniteFp,
-      (t_fp.s = false ∨ 0 < t_fp.m) ∧
+      (t_fp.notNegZero) ∧
         (t_fp.toVal : R) = (a.toVal : R) + b.toVal - s_fp.toVal ∧
         ((a.toVal : R) + 2 * b.toVal ≤ s_fp.toVal) := by
   -- Step A: Handle error = 0
@@ -751,7 +751,7 @@ theorem add_error_representable_general (a b : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
     (hs : a + b = s_fp) :
     ∃ t_fp : FiniteFp,
-      (t_fp.s = false ∨ 0 < t_fp.m) ∧
+      (t_fp.notNegZero) ∧
         (t_fp.toVal : R) = (a.toVal : R) + b.toVal - s_fp.toVal := by
   -- Handle error = 0 up front (needed for negation cases where -0 breaks sign condition)
   by_cases herr : (a.toVal : R) + b.toVal - s_fp.toVal = 0
@@ -773,10 +773,10 @@ theorem add_error_representable_general (a b : FiniteFp)
         RModeConj.round_neg _ hsum_ne, ← hs_corr, Fp.neg_finite]
   -- Negation result lifter: transforms negated-problem result to original-problem result
   have neg_lift : ∀ (t' : FiniteFp),
-      (t'.s = false ∨ 0 < t'.m) →
+      (t'.notNegZero) →
       (t'.toVal : R) = (-a).toVal + (-b).toVal - (-s_fp).toVal →
       ∃ t_fp : FiniteFp,
-        (t_fp.s = false ∨ 0 < t_fp.m) ∧
+        (t_fp.notNegZero) ∧
           (t_fp.toVal : R) = a.toVal + b.toVal - s_fp.toVal := by
     intro t' _ ht'_val
     have ht'_nz : 0 < t'.m := by
@@ -849,7 +849,7 @@ theorem add_error_representable_general_left_nz (a b : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
     (hs : a + b = s_fp) :
     ∃ t_fp : FiniteFp,
-      (t_fp.s = false ∨ 0 < t_fp.m) ∧
+      (t_fp.notNegZero) ∧
         (t_fp.toVal : R) = (a.toVal : R) + b.toVal - s_fp.toVal := by
   by_cases hb_nz : 0 < b.m
   · rcases le_or_gt |b.toVal (R := R)| |a.toVal| with hab | hab

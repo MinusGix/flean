@@ -69,7 +69,7 @@ class RModeMono (R : Type*) [FloatFormat] [Preorder R] [RMode R] : Prop where
 class RModeIdem (R : Type*) [FloatFormat] [Field R] [RMode R] : Prop where
   round_idempotent :
     ∀ (f : FiniteFp),
-      (f.s = false ∨ 0 < f.m) →
+      (f.notNegZero) →
       RMode.round (R := R) (f.toVal (R := R)) = Fp.finite f
 
 /-- Common law bundle used in many arithmetic proofs. -/

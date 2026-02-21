@@ -228,6 +228,13 @@ def sign'  {R : Type*} [Neg R] [One R] (x : FiniteFp) : R :=
 
 abbrev isZero (x : FiniteFp) : Prop := x.m = 0
 
+/-- `notNegZero` excludes the `-0` encoding (`s = true ∧ m = 0`). -/
+abbrev notNegZero (x : FiniteFp) : Prop := x.s = false ∨ 0 < x.m
+
+@[simp] theorem notNegZero_iff (x : FiniteFp) :
+    x.notNegZero ↔ x.s = false ∨ 0 < x.m := by
+  rfl
+
 /-- There are only two representations of zero -/
 def isZero_iff (x : FiniteFp) : x.isZero ↔ (x = 0 ∨ x = -0) := by
   rw [isZero, neg_def, zero_def]
@@ -249,6 +256,10 @@ def isZero_iff (x : FiniteFp) : x.isZero ↔ (x = 0 ∨ x = -0) := by
 
 instance {x : FiniteFp} : Decidable (x.isZero) := by
   unfold isZero
+  infer_instance
+
+instance {x : FiniteFp} : Decidable (x.notNegZero) := by
+  unfold notNegZero
   infer_instance
 
 end FiniteFp

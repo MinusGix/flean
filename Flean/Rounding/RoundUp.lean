@@ -13,7 +13,7 @@ import Flean.Basic
 import Flean.Ulp
 import Flean.Ufp
 import Flean.Linearize.Linearize
-import Flean.Rounding.Neighbor
+import Flean.Rounding.Neighbor.Basic
 import Flean.Rounding.RoundDown
 
 section Rounding
@@ -441,7 +441,7 @@ theorem eq_zero_of_sign_false_m_zero (f : FiniteFp) (hs : f.s = false) (hm : f.m
   · exact hm
 
 /-- roundDown is idempotent on non-negative-zero floats. -/
-theorem roundDown_idempotent (f : FiniteFp) (h : f.s = false ∨ 0 < f.m) :
+theorem roundDown_idempotent (f : FiniteFp) (h : f.notNegZero) :
     roundDown (f.toVal (R := R)) = Fp.finite f := by
   rcases h with hs | hm
   · by_cases hm : 0 < f.m
@@ -455,7 +455,7 @@ theorem roundDown_idempotent (f : FiniteFp) (h : f.s = false ∨ 0 < f.m) :
       exact roundDown_idempotent_neg f hs_true hm
 
 /-- roundUp is idempotent on non-negative-zero floats. -/
-theorem roundUp_idempotent (f : FiniteFp) (h : f.s = false ∨ 0 < f.m) :
+theorem roundUp_idempotent (f : FiniteFp) (h : f.notNegZero) :
     roundUp (f.toVal (R := R)) = Fp.finite f := by
   rcases h with hs | hm
   · by_cases hm : 0 < f.m
@@ -883,7 +883,7 @@ theorem roundUp_mono [FloatFormat] {x y : R} (h : x ≤ y) : roundUp x ≤ round
 
 /-- If `g` is a valid finite float with `x ≤ g.toVal`, then `roundUp x ≤ g`. -/
 theorem roundUp_le_of_fp_ge [FloatFormat]
-    (x : R) (g : FiniteFp) (hg : g.s = false ∨ 0 < g.m)
+    (x : R) (g : FiniteFp) (hg : g.notNegZero)
     (hge : x ≤ g.toVal) : roundUp x ≤ Fp.finite g := by
   have hidem : roundUp (g.toVal (R := R)) = Fp.finite g := roundUp_idempotent g hg
   rw [← hidem]
@@ -891,7 +891,7 @@ theorem roundUp_le_of_fp_ge [FloatFormat]
 
 /-- If `f` is a valid finite float with `f.toVal ≤ y`, then `f ≤ roundDown y`. -/
 theorem roundDown_ge_of_fp_le [FloatFormat]
-    (y : R) (f : FiniteFp) (hf : f.s = false ∨ 0 < f.m)
+    (y : R) (f : FiniteFp) (hf : f.notNegZero)
     (hle : f.toVal ≤ y) : Fp.finite f ≤ roundDown y := by
   have hidem : roundDown (f.toVal (R := R)) = Fp.finite f := roundDown_idempotent f hf
   rw [← hidem]
