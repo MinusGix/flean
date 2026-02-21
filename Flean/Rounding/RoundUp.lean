@@ -867,7 +867,7 @@ theorem roundUp_mono [FloatFormat] {x y : R} (h : x ≤ y) : roundUp x ≤ round
       | Fp.infinite b =>
         have := findSuccessorPos_ne_neg_inf y hy_pos
         rw [hfsp] at this; simp at this; subst this
-        rw [Fp.le_def]; left; simp
+        exact Fp.le_pos_inf _
       | Fp.NaN => exact absurd hfsp (findSuccessorPos_ne_nan y hy_pos)
   · -- x = 0
     rw [hx_zero, roundUp_zero]

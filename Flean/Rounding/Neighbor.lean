@@ -619,7 +619,7 @@ theorem findPredecessor_le_largestFiniteFloat (x : R) :
         rw [Fp.neg_finite, Fp.finite_le_finite_iff]
         exact le_top
       | Fp.infinite false =>
-        simp [Fp.le_def]
+        exact Fp.neg_inf_le_of_not_nan _ (by simp)
       | Fp.infinite true =>
         exfalso
         exact findSuccessorPos_ne_neg_inf (-x) hnx hfs
@@ -632,17 +632,17 @@ theorem neg_inf_le_findPredecessor (x : R) :
     Fp.infinite true ≤ findPredecessor x := by
   by_cases h0 : x = 0
   · rw [h0, findPredecessor_zero]
-    simp [Fp.le_def]
+    exact Fp.neg_inf_le_of_not_nan _ (by simp)
   · by_cases hpos : 0 < x
     · rw [findPredecessor_pos_eq x hpos]
-      simp [Fp.le_def]
+      exact Fp.neg_inf_le_of_not_nan _ (by simp)
     · have hneg : x < 0 := lt_of_le_of_ne (le_of_not_gt hpos) h0
       rw [findPredecessor_neg_eq x hneg]
       have hnx : 0 < -x := neg_pos.mpr hneg
       match hfs : findSuccessorPos (-x) hnx with
       | Fp.finite f =>
         rw [Fp.neg_finite]
-        simp [Fp.le_def]
+        exact Fp.neg_inf_le_of_not_nan _ (by simp)
       | Fp.infinite false =>
         simp
       | Fp.infinite true =>
@@ -858,12 +858,12 @@ theorem findSuccessor_le_pos_inf (x : R) :
     findSuccessor x ≤ Fp.infinite false := by
   by_cases h0 : x = 0
   · rw [h0, findSuccessor_zero]
-    simp [Fp.le_def]
+    exact Fp.le_pos_inf _
   · by_cases hpos : 0 < x
     · rw [findSuccessor_pos_eq x hpos]
       match hfs : findSuccessorPos x hpos with
       | Fp.finite f =>
-        simp [Fp.le_def]
+        exact Fp.le_pos_inf _
       | Fp.infinite false =>
         simp
       | Fp.infinite true =>
@@ -874,7 +874,7 @@ theorem findSuccessor_le_pos_inf (x : R) :
         exact findSuccessorPos_ne_nan x hpos hfs
     · have hneg : x < 0 := lt_of_le_of_ne (le_of_not_gt hpos) h0
       rw [findSuccessor_neg_eq x hneg]
-      simp [Fp.le_def]
+      exact Fp.le_pos_inf _
 
 end findSuccessor
 
@@ -1566,8 +1566,7 @@ theorem nextUp_mono_nonNaN {x y : Fp}
     | infinite b =>
       cases b with
       | false =>
-        simpa [nextUp_finite] using
-          (findSuccessor_le_pos_inf (R := ℚ) (stepUpVal f))
+        exact findSuccessor_le_pos_inf (R := ℚ) (stepUpVal f)
       | true =>
         simp [Fp.le_def] at hxy
     | finite g =>
@@ -1619,23 +1618,11 @@ theorem nextUp_mono {x y : Fp} (hxy : x ≤ y) :
   by_cases hx : x = Fp.NaN
   · subst hx
     rw [nextUp_nan]
-    cases hnu : nextUp y with
-    | NaN =>
-      exact Fp.le_refl _
-    | finite f =>
-      rw [Fp.le_def]
-      left
-      simp [Fp.is_total_lt]
-    | infinite b =>
-      rw [Fp.le_def]
-      left
-      cases b <;> simp [Fp.is_total_lt]
+    exact Fp.nan_le _
   · by_cases hy : y = Fp.NaN
     · subst hy
-      cases x with
-      | NaN => contradiction
-      | infinite b => cases b <;> simp [Fp.le_def] at hxy
-      | finite f => simp [Fp.le_def] at hxy
+      have : x = Fp.NaN := (Fp.le_nan_iff x).1 hxy
+      exact (hx this).elim
     · exact nextUp_mono_nonNaN hx hy hxy
 
 /-- Monotonicity of `nextDown` on all `Fp` values (including NaN). -/
@@ -1644,24 +1631,32 @@ theorem nextDown_mono {x y : Fp} (hxy : x ≤ y) :
   by_cases hx : x = Fp.NaN
   · subst hx
     rw [nextDown_nan]
-    cases hnd : nextDown y with
-    | NaN =>
-      exact Fp.le_refl _
-    | finite f =>
-      rw [Fp.le_def]
-      left
-      simp [Fp.is_total_lt]
-    | infinite b =>
-      rw [Fp.le_def]
-      left
-      cases b <;> simp [Fp.is_total_lt]
+    exact Fp.nan_le _
   · by_cases hy : y = Fp.NaN
     · subst hy
-      cases x with
-      | NaN => contradiction
-      | infinite b => cases b <;> simp [Fp.le_def] at hxy
-      | finite f => simp [Fp.le_def] at hxy
+      have : x = Fp.NaN := (Fp.le_nan_iff x).1 hxy
+      exact (hx this).elim
     · exact nextDown_mono_nonNaN hx hy hxy
+
+/-- Regression check: NaN-left boundary is monotone for `nextUp`. -/
+theorem nextUp_nan_le_nextUp (x : Fp) :
+    nextUp Fp.NaN ≤ nextUp x := by
+  exact nextUp_mono (Fp.nan_le x)
+
+/-- Regression check: NaN-left boundary is monotone for `nextDown`. -/
+theorem nextDown_nan_le_nextDown (x : Fp) :
+    nextDown Fp.NaN ≤ nextDown x := by
+  exact nextDown_mono (Fp.nan_le x)
+
+/-- Regression check: if `x ≤ NaN`, monotonicity pushes through `nextUp`. -/
+theorem nextUp_mono_to_nan {x : Fp} (h : x ≤ Fp.NaN) :
+    nextUp x ≤ nextUp Fp.NaN := by
+  simpa using nextUp_mono h
+
+/-- Regression check: if `x ≤ NaN`, monotonicity pushes through `nextDown`. -/
+theorem nextDown_mono_to_nan {x : Fp} (h : x ≤ Fp.NaN) :
+    nextDown x ≤ nextDown Fp.NaN := by
+  simpa using nextDown_mono h
 
 /-- Strict ordering law for finite `nextUp`: under the exact-gap hypotheses, output is
 strictly greater than input. -/

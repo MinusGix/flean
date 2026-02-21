@@ -959,6 +959,37 @@ theorem le_def (x y : Fp) : x ≤ y ↔ (is_total_lt x y ∨ x = y) := by rfl
 @[simp] theorem le_nan_iff (x : Fp) : x ≤ Fp.NaN ↔ x = Fp.NaN := by
   cases x <;> simp [le_def, is_total_lt]
 
+@[simp] theorem neg_inf_le_iff (x : Fp) : Fp.infinite true ≤ x ↔ x ≠ Fp.NaN := by
+  cases x <;> simp [le_def, is_total_lt]
+
+theorem neg_inf_le_of_not_nan (x : Fp) (hx : x ≠ Fp.NaN) : Fp.infinite true ≤ x :=
+  (neg_inf_le_iff x).2 hx
+
+@[simp] theorem le_pos_inf (x : Fp) : x ≤ Fp.infinite false := by
+  cases x <;> simp [le_def, is_total_lt]
+
+@[simp] theorem pos_inf_le_iff (x : Fp) :
+    Fp.infinite false ≤ x ↔ x = Fp.infinite false := by
+  cases x <;> simp [le_def, is_total_lt]
+
+@[simp] theorem le_neg_inf_iff (x : Fp) :
+    x ≤ Fp.infinite true ↔ x = Fp.NaN ∨ x = Fp.infinite true := by
+  cases x <;> simp [le_def, is_total_lt]
+
+@[simp] theorem not_pos_inf_lt (x : Fp) : ¬Fp.infinite false < x := by
+  cases x <;> simp [lt_def, is_total_lt]
+
+@[simp] theorem lt_neg_inf_iff (x : Fp) :
+    x < Fp.infinite true ↔ x = Fp.NaN := by
+  cases x <;> simp [lt_def, is_total_lt]
+
+theorem not_lt_neg_inf_of_not_nan (x : Fp) (hx : x ≠ Fp.NaN) : ¬x < Fp.infinite true := by
+  rw [lt_neg_inf_iff]
+  exact hx
+
+theorem nan_lt_nan_false : ¬(Fp.NaN < Fp.NaN) := by
+  simp [lt_def, is_total_lt]
+
 protected theorem lt_imp_le {x y : Fp} : x < y → x ≤ y := by
   intro h
   rw [le_def]
@@ -1089,6 +1120,9 @@ instance : LinearOrder Fp := {
 
 namespace StdOrder
 
+def NotBothFiniteZero (x y : Fp) : Prop :=
+  ¬∃ fx fy, x = Fp.finite fx ∧ y = Fp.finite fy ∧ fx.isZero ∧ fy.isZero
+
 @[reducible]
 def stdEquiv (x y : Fp) : Prop :=
   match (x, y) with
@@ -1127,6 +1161,94 @@ def stdLe (x y : Fp) : Prop :=
 
 @[simp] theorem not_stdLe_nan_right (x : Fp) : ¬stdLe x .NaN := by
   simp [stdLe]
+
+theorem stdLt_imp_lt {x y : Fp} (hxy : stdLt x y) : x < y := by
+  cases x <;> cases y <;> simp [stdLt, Fp.lt_def, Fp.is_total_lt] at hxy ⊢
+  exact FiniteFp.stdLt_imp_lt hxy
+  all_goals exact hxy
+
+theorem lt_imp_stdLt_of_not_nan_of_not_both_zero
+    {x y : Fp}
+    (hx : x ≠ Fp.NaN) (hy : y ≠ Fp.NaN)
+    (hz : NotBothFiniteZero x y)
+    (hxy : x < y) : stdLt x y := by
+  cases x with
+  | NaN => contradiction
+  | infinite sx =>
+    cases y with
+    | NaN => contradiction
+    | infinite sy =>
+      cases sx <;> cases sy <;> simp [stdLt, Fp.lt_def, Fp.is_total_lt] at hxy ⊢
+    | finite fy =>
+      cases sx <;> simp [stdLt, Fp.lt_def, Fp.is_total_lt] at hxy ⊢
+  | finite fx =>
+    cases y with
+    | NaN => contradiction
+    | infinite sy =>
+      cases sy <;> simp [stdLt, Fp.lt_def, Fp.is_total_lt] at hxy ⊢
+    | finite fy =>
+      have hnot_both_zero : ¬(fx.isZero ∧ fy.isZero) := by
+        intro hzz
+        exact hz ⟨fx, fy, rfl, rfl, hzz.1, hzz.2⟩
+      have hfin_nz : ¬fx.isZero ∨ ¬fy.isZero := not_and_or.mp hnot_both_zero
+      exact FiniteFp.lt_imp_stdLt hxy hfin_nz
+
+theorem lt_iff_stdLt_of_not_nan_of_not_both_zero
+    {x y : Fp}
+    (hx : x ≠ Fp.NaN) (hy : y ≠ Fp.NaN)
+    (hz : NotBothFiniteZero x y) :
+    x < y ↔ stdLt x y := by
+  constructor
+  · exact lt_imp_stdLt_of_not_nan_of_not_both_zero hx hy hz
+  · exact stdLt_imp_lt
+
+theorem stdEquiv_eq_of_not_nan_of_not_both_zero
+    {x y : Fp}
+    (hx : x ≠ Fp.NaN) (hy : y ≠ Fp.NaN)
+    (hz : NotBothFiniteZero x y)
+    (hxy : stdEquiv x y) : x = y := by
+  cases x with
+  | NaN => contradiction
+  | infinite sx =>
+    cases y with
+    | NaN => contradiction
+    | infinite sy =>
+      simpa [stdEquiv] using hxy
+    | finite fy =>
+      simp [stdEquiv] at hxy
+  | finite fx =>
+    cases y with
+    | NaN => contradiction
+    | infinite sy =>
+      simp [stdEquiv] at hxy
+    | finite fy =>
+      rcases hxy with hzz | hEq
+      · exfalso
+        exact hz ⟨fx, fy, rfl, rfl, hzz.1, hzz.2⟩
+      · simpa using congrArg Fp.finite hEq
+
+theorem le_iff_stdLe_of_not_nan_of_not_both_zero
+    {x y : Fp}
+    (hx : x ≠ Fp.NaN) (hy : y ≠ Fp.NaN)
+    (hz : NotBothFiniteZero x y) :
+    x ≤ y ↔ stdLe x y := by
+  constructor
+  · intro hxy
+    rw [Fp.le_def] at hxy
+    rcases hxy with hlt | heq
+    · exact Or.inl (lt_imp_stdLt_of_not_nan_of_not_both_zero hx hy hz hlt)
+    · rw [heq]
+      exact Or.inr (by
+        cases y with
+        | NaN => contradiction
+        | infinite b => simp [stdEquiv]
+        | finite f => simp [stdEquiv])
+  · intro hxy
+    rcases hxy with hlt | heqv
+    · exact Fp.lt_imp_le (stdLt_imp_lt hlt)
+    · rw [Fp.le_def]
+      right
+      exact stdEquiv_eq_of_not_nan_of_not_both_zero hx hy hz heqv
 
 @[simp] theorem stdEquiv_finite_iff (x y : FiniteFp) :
     stdEquiv (.finite x) (.finite y) ↔ x.stdEquiv y := by

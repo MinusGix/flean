@@ -118,8 +118,7 @@ theorem roundTowardZero_zero_le_pos [FloatFormat] (y : R) (hpos : 0 < y) :
   have hf := findPredecessorPos_sign_false y hpos
   by_cases hz : findPredecessorPos y hpos = 0
   · -- f = 0, so 0 ≤ 0
-    rw [Fp.le_def]
-    right; simp only [hz]
+    simp [hz]
   · -- f ≠ 0, so 0 < f
     apply Fp.lt_imp_le
     change (0 : FiniteFp) < findPredecessorPos y hpos

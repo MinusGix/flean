@@ -499,7 +499,7 @@ theorem roundDown_mono [FloatFormat] {x y : R} (h : x ≤ y) : roundDown x ≤ r
         exact Fp.finite_le_trans h1 h2
       | Fp.infinite false =>
         -- -(+∞) = -∞ ≤ anything
-        show Fp.infinite true ≤ _; rw [Fp.le_def]; left; simp
+        exact Fp.neg_inf_le_of_not_nan _ (by simp)
       | Fp.infinite true =>
         exfalso; exact findSuccessorPos_ne_neg_inf (-x) hnx hfsx
       | Fp.NaN => exact absurd hfsx (findSuccessorPos_ne_nan (-x) hnx)
