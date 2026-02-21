@@ -18,11 +18,12 @@ import Flean.Rounding.RoundNormal
 
 /-!
 ## TODO (`nextUp` / `nextDown` roadmap)
-1. Prove interior constructors so callers don’t supply `NextUpInterior*` / `NextDownInterior*` manually.
-2. Expose clean public theorems with minimal assumptions.
-3. Add boundary behavior lemmas for finite extremes/subnormal edge.
-4. Strengthen `≤ ulp` to `= ulp` where valid adjacency conditions hold.
-5. Add algebraic/ordering laws (monotonicity and inverse-style laws on suitable domains).
+Completed:
+1. Interior constructors for `NextUpInterior*` / `NextDownInterior*`.
+2. Clean public theorems with minimal assumptions.
+3. Boundary behavior lemmas for finite extremes/subnormal edge.
+4. Exact-gap (`= ulp`) theorems under adjacency hypotheses.
+5. Algebraic/ordering laws (monotonicity and inverse-style laws on suitable domains).
 -/
 
 section Rounding
@@ -601,6 +602,57 @@ theorem findPredecessor_mono {x y : R} (h : x ≤ y) :
     rw [findPredecessor_pos_eq x hx_pos, findPredecessor_pos_eq y hy_pos]
     exact (Fp.finite_le_finite_iff _ _).mpr (findPredecessorPos_mono hx_pos hy_pos h)
 
+/-- `findPredecessor` is always bounded above by the largest finite value. -/
+theorem findPredecessor_le_largestFiniteFloat (x : R) :
+    findPredecessor x ≤ Fp.finite FiniteFp.largestFiniteFloat := by
+  by_cases h0 : x = 0
+  · rw [h0, findPredecessor_zero]
+    rw [Fp.finite_le_finite_iff]
+    exact le_top
+  · by_cases hpos : 0 < x
+    · rw [findPredecessor_pos_eq x hpos, Fp.finite_le_finite_iff]
+      exact le_top
+    · have hneg : x < 0 := lt_of_le_of_ne (le_of_not_gt hpos) h0
+      rw [findPredecessor_neg_eq x hneg]
+      have hnx : 0 < -x := neg_pos.mpr hneg
+      match hfs : findSuccessorPos (-x) hnx with
+      | Fp.finite f =>
+        rw [Fp.neg_finite, Fp.finite_le_finite_iff]
+        exact le_top
+      | Fp.infinite false =>
+        simp [Fp.le_def]
+      | Fp.infinite true =>
+        exfalso
+        exact findSuccessorPos_ne_neg_inf (-x) hnx hfs
+      | Fp.NaN =>
+        exfalso
+        exact findSuccessorPos_ne_nan (-x) hnx hfs
+
+/-- Negative infinity is always below `findPredecessor`. -/
+theorem neg_inf_le_findPredecessor (x : R) :
+    Fp.infinite true ≤ findPredecessor x := by
+  by_cases h0 : x = 0
+  · rw [h0, findPredecessor_zero]
+    simp [Fp.le_def]
+  · by_cases hpos : 0 < x
+    · rw [findPredecessor_pos_eq x hpos]
+      simp [Fp.le_def]
+    · have hneg : x < 0 := lt_of_le_of_ne (le_of_not_gt hpos) h0
+      rw [findPredecessor_neg_eq x hneg]
+      have hnx : 0 < -x := neg_pos.mpr hneg
+      match hfs : findSuccessorPos (-x) hnx with
+      | Fp.finite f =>
+        rw [Fp.neg_finite]
+        simp [Fp.le_def]
+      | Fp.infinite false =>
+        simp [Fp.le_def]
+      | Fp.infinite true =>
+        exfalso
+        exact findSuccessorPos_ne_neg_inf (-x) hnx hfs
+      | Fp.NaN =>
+        exfalso
+        exact findSuccessorPos_ne_nan (-x) hnx hfs
+
 end findPredecessor
 
 
@@ -778,6 +830,53 @@ theorem findSuccessor_mono {x y : R} (h : x ≤ y) :
   · have hy_pos : 0 < y := lt_of_lt_of_le hx_pos h
     rw [findSuccessor_pos_eq x hx_pos, findSuccessor_pos_eq y hy_pos]
     exact findSuccessorPos_mono hx_pos hy_pos h
+
+/-- The most-negative finite value is always below `findSuccessor`. -/
+theorem neg_largestFiniteFloat_le_findSuccessor (x : R) :
+    Fp.finite (-FiniteFp.largestFiniteFloat) ≤ findSuccessor x := by
+  by_cases h0 : x = 0
+  · rw [h0, findSuccessor_zero, Fp.finite_le_finite_iff]
+    exact bot_le
+  · by_cases hpos : 0 < x
+    · rw [findSuccessor_pos_eq x hpos]
+      match hfs : findSuccessorPos x hpos with
+      | Fp.finite f =>
+        rw [Fp.finite_le_finite_iff]
+        exact bot_le
+      | Fp.infinite false =>
+        simp [Fp.le_def]
+      | Fp.infinite true =>
+        exfalso
+        exact findSuccessorPos_ne_neg_inf x hpos hfs
+      | Fp.NaN =>
+        exfalso
+        exact findSuccessorPos_ne_nan x hpos hfs
+    · have hneg : x < 0 := lt_of_le_of_ne (le_of_not_gt hpos) h0
+      rw [findSuccessor_neg_eq x hneg, Fp.finite_le_finite_iff]
+      exact bot_le
+
+/-- `findSuccessor` is always bounded above by positive infinity. -/
+theorem findSuccessor_le_pos_inf (x : R) :
+    findSuccessor x ≤ Fp.infinite false := by
+  by_cases h0 : x = 0
+  · rw [h0, findSuccessor_zero]
+    simp [Fp.le_def]
+  · by_cases hpos : 0 < x
+    · rw [findSuccessor_pos_eq x hpos]
+      match hfs : findSuccessorPos x hpos with
+      | Fp.finite f =>
+        simp [Fp.le_def]
+      | Fp.infinite false =>
+        simp [Fp.le_def]
+      | Fp.infinite true =>
+        exfalso
+        exact findSuccessorPos_ne_neg_inf x hpos hfs
+      | Fp.NaN =>
+        exfalso
+        exact findSuccessorPos_ne_nan x hpos hfs
+    · have hneg : x < 0 := lt_of_le_of_ne (le_of_not_gt hpos) h0
+      rw [findSuccessor_neg_eq x hneg]
+      simp [Fp.le_def]
 
 end findSuccessor
 
@@ -1234,6 +1333,110 @@ theorem nextDown_mono_finite {f g : FiniteFp}
     linarith
   simpa [nextDown_finite] using (findPredecessor_mono (R := ℚ) hstep)
 
+/-- Monotonicity of `nextUp` on non-NaN inputs. -/
+theorem nextUp_mono_nonNaN {x y : Fp}
+    (hx : x ≠ Fp.NaN) (hy : y ≠ Fp.NaN) (hxy : x ≤ y) :
+    nextUp x ≤ nextUp y := by
+  cases x with
+  | NaN => contradiction
+  | infinite bx =>
+    cases bx
+    · -- x = +∞
+      cases y with
+      | NaN => contradiction
+      | infinite b =>
+        cases b <;> simp [nextUp, Fp.le_def] at hxy ⊢
+      | finite g =>
+        simp [Fp.le_def] at hxy
+    · -- x = -∞
+      cases y with
+      | NaN => contradiction
+      | infinite b =>
+        cases b <;> simp [nextUp, Fp.le_def]
+      | finite g =>
+        simpa [nextUp_finite] using
+          (neg_largestFiniteFloat_le_findSuccessor (R := ℚ) (stepUpVal g))
+  | finite f =>
+    cases y with
+    | NaN => contradiction
+    | infinite b =>
+      cases b with
+      | false =>
+        simpa [nextUp_finite] using
+          (findSuccessor_le_pos_inf (R := ℚ) (stepUpVal f))
+      | true =>
+        simp [Fp.le_def] at hxy
+    | finite g =>
+      have hfg : (⌞f⌟[ℚ] : ℚ) ≤ ⌞g⌟[ℚ] := by
+        exact FiniteFp.le_toVal_le ℚ ((Fp.finite_le_finite_iff _ _).mp hxy)
+      exact nextUp_mono_finite hfg
+
+/-- Monotonicity of `nextDown` on non-NaN inputs. -/
+theorem nextDown_mono_nonNaN {x y : Fp}
+    (hx : x ≠ Fp.NaN) (hy : y ≠ Fp.NaN) (hxy : x ≤ y) :
+    nextDown x ≤ nextDown y := by
+  cases x with
+  | NaN => contradiction
+  | infinite bx =>
+    cases bx
+    · -- x = +∞
+      cases y with
+      | NaN => contradiction
+      | infinite b =>
+        cases b <;> simp [nextDown, Fp.le_def] at hxy ⊢
+      | finite g =>
+        simp [Fp.le_def] at hxy
+    · -- x = -∞
+      cases y with
+      | NaN => contradiction
+      | infinite b =>
+        cases b <;> simp [nextDown, Fp.le_def]
+      | finite g =>
+        simpa [nextDown_finite] using
+          (neg_inf_le_findPredecessor (R := ℚ) (stepDownVal g))
+  | finite f =>
+    cases y with
+    | NaN => contradiction
+    | infinite b =>
+      cases b with
+      | false =>
+        simpa [nextDown_finite] using
+          (findPredecessor_le_largestFiniteFloat (R := ℚ) (stepDownVal f))
+      | true =>
+        simp [Fp.le_def] at hxy
+    | finite g =>
+      have hfg : (⌞f⌟[ℚ] : ℚ) ≤ ⌞g⌟[ℚ] := by
+        exact FiniteFp.le_toVal_le ℚ ((Fp.finite_le_finite_iff _ _).mp hxy)
+      exact nextDown_mono_finite hfg
+
+/-- Monotonicity of `nextUp` on all `Fp` values (including NaN). -/
+theorem nextUp_mono {x y : Fp} (hxy : x ≤ y) :
+    nextUp x ≤ nextUp y := by
+  by_cases hx : x = Fp.NaN
+  · subst hx
+    simp [nextUp, Fp.le_def]
+  · by_cases hy : y = Fp.NaN
+    · subst hy
+      cases x with
+      | NaN => contradiction
+      | infinite b => cases b <;> simp [Fp.le_def] at hxy
+      | finite f => simp [Fp.le_def] at hxy
+    · exact nextUp_mono_nonNaN hx hy hxy
+
+/-- Monotonicity of `nextDown` on all `Fp` values (including NaN). -/
+theorem nextDown_mono {x y : Fp} (hxy : x ≤ y) :
+    nextDown x ≤ nextDown y := by
+  by_cases hx : x = Fp.NaN
+  · subst hx
+    simp [nextDown, Fp.le_def]
+  · by_cases hy : y = Fp.NaN
+    · subst hy
+      cases x with
+      | NaN => contradiction
+      | infinite b => cases b <;> simp [Fp.le_def] at hxy
+      | finite f => simp [Fp.le_def] at hxy
+    · exact nextDown_mono_nonNaN hx hy hxy
+
 /-- Strict ordering law for finite `nextUp`: under the exact-gap hypotheses, output is
 strictly greater than input. -/
 theorem nextUp_strict_of
@@ -1293,6 +1496,24 @@ theorem nextUp_nextDown_eq_self_of_witness
             simpa [IsNextDown] using congrArg nextUp hdown
     _ = Fp.finite f := by
           simpa [IsNextUp] using hup
+
+/-- Witness-free inverse wrapper for `nextDown ∘ nextUp` on finite values:
+if some finite witness round-trips, the composition returns the original input. -/
+theorem nextDown_nextUp_eq_self_of_exists
+    (f : FiniteFp)
+    (h : ∃ u : FiniteFp, IsNextUp f u ∧ IsNextDown u f) :
+    nextDown (nextUp (Fp.finite f)) = Fp.finite f := by
+  rcases h with ⟨u, hup, hdown⟩
+  exact nextDown_nextUp_eq_self_of_witness f u hup hdown
+
+/-- Witness-free inverse wrapper for `nextUp ∘ nextDown` on finite values:
+if some finite witness round-trips, the composition returns the original input. -/
+theorem nextUp_nextDown_eq_self_of_exists
+    (f : FiniteFp)
+    (h : ∃ d : FiniteFp, IsNextDown f d ∧ IsNextUp d f) :
+    nextUp (nextDown (Fp.finite f)) = Fp.finite f := by
+  rcases h with ⟨d, hdown, hup⟩
+  exact nextUp_nextDown_eq_self_of_witness f d hdown hup
 
 end NextNeighbor
 
