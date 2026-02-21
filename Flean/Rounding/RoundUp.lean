@@ -14,6 +14,7 @@ import Flean.Ulp
 import Flean.Ufp
 import Flean.Linearize.Linearize
 import Flean.Rounding.Neighbor
+import Flean.Rounding.RoundDown
 
 section Rounding
 section RoundUp
@@ -78,6 +79,67 @@ theorem roundUp_lt_smallestPosSubnormal [FloatFormat] (x : R) (hn : 0 < x) (hs :
   have h_not_ge : ¬((2 : ℤ) ^ (FloatFormat.prec.toNat - 1) ≤ 1) := not_le.mpr h_k_lt
   simp only [h_not_ge, ↓reduceDIte]
   rfl
+
+/-- `nextUp` of zero is the smallest positive subnormal finite float. -/
+@[simp] theorem nextUp_zero [FloatFormat] :
+    nextUp (0 : Fp) = Fp.finite FiniteFp.smallestPosSubnormal := by
+  have hpos : (0 : ℚ) < (FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2 := by
+    have hssps_pos : (0 : ℚ) < (FiniteFp.smallestPosSubnormal.toVal : ℚ) :=
+      FiniteFp.smallestPosSubnormal_toVal_pos
+    positivity
+  have hlt : ((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2) < FiniteFp.smallestPosSubnormal.toVal := by
+    linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := ℚ)]
+  simpa [nextUp, stepUpVal, neighborStep, FiniteFp.toVal_zero] using
+    (roundUp_lt_smallestPosSubnormal
+      ((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2) hpos hlt)
+
+/-- `nextDown` of zero is the negative smallest positive subnormal finite float. -/
+@[simp] theorem nextDown_zero [FloatFormat] :
+    nextDown (0 : Fp) = Fp.finite (-FiniteFp.smallestPosSubnormal) := by
+  have hpos : (0 : ℚ) < (FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2 := by
+    have hssps_pos : (0 : ℚ) < (FiniteFp.smallestPosSubnormal.toVal : ℚ) :=
+      FiniteFp.smallestPosSubnormal_toVal_pos
+    positivity
+  have hneg : -((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2) < 0 := by linarith
+  have hsucc : findSuccessorPos ((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2) hpos =
+      Fp.finite FiniteFp.smallestPosSubnormal := by
+    have hlt : ((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2) < FiniteFp.smallestPosSubnormal.toVal := by
+      linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := ℚ)]
+    have hsucc' : findSuccessor ((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2) =
+        Fp.finite FiniteFp.smallestPosSubnormal := by
+      simpa [roundUp] using
+        (roundUp_lt_smallestPosSubnormal
+          ((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2) hpos hlt)
+    simpa [findSuccessor_pos_eq ((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2) hpos] using hsucc'
+  calc
+    nextDown (0 : Fp)
+        = findPredecessor (-((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2)) := by
+          simp [nextDown, stepDownVal, neighborStep, FiniteFp.toVal_zero]
+    _ = -(findSuccessorPos ((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2) hpos) := by
+          simpa using (findPredecessor_neg_eq (-((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2)) hneg)
+    _ = -(Fp.finite FiniteFp.smallestPosSubnormal) := by rw [hsucc]
+    _ = Fp.finite (-FiniteFp.smallestPosSubnormal) := by simp
+
+/-- Signed-zero behavior: `nextUp(-0) = smallestPosSubnormal`. -/
+@[simp] theorem nextUp_neg_zero [FloatFormat] :
+    nextUp (Fp.finite (-0 : FiniteFp)) = Fp.finite FiniteFp.smallestPosSubnormal := by
+  have hpos : (0 : ℚ) < (FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2 := by
+    linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := ℚ)]
+  have hlt : ((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2) < FiniteFp.smallestPosSubnormal.toVal := by
+    linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := ℚ)]
+  simpa [nextUp_finite, stepUpVal, neighborStep] using
+    (roundUp_lt_smallestPosSubnormal
+      ((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2) hpos hlt)
+
+/-- Signed-zero behavior: `nextDown(-0) = -smallestPosSubnormal`. -/
+@[simp] theorem nextDown_neg_zero [FloatFormat] :
+    nextDown (Fp.finite (-0 : FiniteFp)) = Fp.finite (-FiniteFp.smallestPosSubnormal) := by
+  calc
+    nextDown (Fp.finite (-0 : FiniteFp))
+        = nextDown (Fp.finite (0 : FiniteFp)) := by
+          simp [nextDown_finite, stepDownVal, neighborStep]
+    _ = Fp.finite (-FiniteFp.smallestPosSubnormal) := by
+          exact (nextDown_zero)
 
 -- Main theorem: roundUp returns a value ≥ input (fundamental property of rounding up)
 theorem roundUp_ge [FloatFormat] (x : R) (f : FiniteFp)
@@ -150,6 +212,418 @@ theorem roundUp_gt_largestFiniteFloat [FloatFormat] (x : R) (hn : 0 < x) (hs : x
     -- roundUp of valid positive input should not return NaN
     have : roundUp x ≠ Fp.NaN := roundUp_pos_not_nan x hn
     exact absurd h this
+
+/-- `nextUp` of the largest finite float overflows to `+∞`. -/
+@[simp] theorem nextUp_largestFiniteFloat [FloatFormat] :
+    nextUp (Fp.finite FiniteFp.largestFiniteFloat) = Fp.infinite false := by
+  have hpos : (0 : ℚ) < stepUpVal FiniteFp.largestFiniteFloat := by
+    unfold stepUpVal neighborStep
+    linarith [FiniteFp.largestFiniteFloat_toVal_pos (R := ℚ),
+      FiniteFp.smallestPosSubnormal_toVal_pos (R := ℚ)]
+  have hgt : (FiniteFp.largestFiniteFloat.toVal : ℚ) < stepUpVal FiniteFp.largestFiniteFloat := by
+    unfold stepUpVal neighborStep
+    linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := ℚ)]
+  have hru : roundUp (stepUpVal FiniteFp.largestFiniteFloat) = Fp.infinite false :=
+    roundUp_gt_largestFiniteFloat (R := ℚ) (stepUpVal FiniteFp.largestFiniteFloat) hpos hgt
+  simpa [roundUp, nextUp_finite] using hru
+
+/-- `nextDown` of the most-negative finite float underflows to `-∞`. -/
+@[simp] theorem nextDown_neg_largestFiniteFloat [FloatFormat] :
+    nextDown (Fp.finite (-FiniteFp.largestFiniteFloat)) = Fp.infinite true := by
+  have hxneg : stepDownVal (-FiniteFp.largestFiniteFloat) < 0 := by
+    unfold stepDownVal neighborStep
+    rw [FiniteFp.toVal_neg_eq_neg]
+    linarith [FiniteFp.largestFiniteFloat_toVal_pos (R := ℚ),
+      FiniteFp.smallestPosSubnormal_toVal_pos (R := ℚ)]
+  have hxpos : (0 : ℚ) < -stepDownVal (-FiniteFp.largestFiniteFloat) := by linarith
+  have hgt : (FiniteFp.largestFiniteFloat.toVal : ℚ) <
+      -stepDownVal (-FiniteFp.largestFiniteFloat) := by
+    unfold stepDownVal neighborStep
+    rw [FiniteFp.toVal_neg_eq_neg]
+    linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := ℚ)]
+  have hsucc : findSuccessor (-stepDownVal (-FiniteFp.largestFiniteFloat)) = Fp.infinite false := by
+    simpa [roundUp] using
+      (roundUp_gt_largestFiniteFloat (R := ℚ) (-stepDownVal (-FiniteFp.largestFiniteFloat)) hxpos hgt)
+  have hsuccPos : findSuccessorPos (-stepDownVal (-FiniteFp.largestFiniteFloat)) hxpos = Fp.infinite false := by
+    have hsucc' := hsucc
+    rw [findSuccessor_pos_eq (-stepDownVal (-FiniteFp.largestFiniteFloat)) hxpos] at hsucc'
+    exact hsucc'
+  calc
+    nextDown (Fp.finite (-FiniteFp.largestFiniteFloat))
+        = findPredecessor (stepDownVal (-FiniteFp.largestFiniteFloat)) := by
+          simpa using (nextDown_finite (-FiniteFp.largestFiniteFloat))
+    _ = -(findSuccessorPos (-stepDownVal (-FiniteFp.largestFiniteFloat)) hxpos) := by
+          simpa using (findPredecessor_neg_eq (stepDownVal (-FiniteFp.largestFiniteFloat)) hxneg)
+    _ = -(Fp.infinite false) := by rw [hsuccPos]
+    _ = Fp.infinite true := by simp
+
+/-- `nextDown` of the smallest positive subnormal is `+0`. -/
+@[simp] theorem nextDown_smallestPosSubnormal [FloatFormat] :
+    nextDown (Fp.finite FiniteFp.smallestPosSubnormal) = Fp.finite 0 := by
+  have hpos : (0 : ℚ) < stepDownVal FiniteFp.smallestPosSubnormal := by
+    unfold stepDownVal neighborStep
+    linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := ℚ)]
+  have hlt : stepDownVal FiniteFp.smallestPosSubnormal < FiniteFp.smallestPosSubnormal.toVal := by
+    unfold stepDownVal neighborStep
+    linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := ℚ)]
+  have hrd : roundDown (stepDownVal FiniteFp.smallestPosSubnormal) = Fp.finite 0 := by
+    exact roundDown_lt_smallestPosSubnormal (R := ℚ) (stepDownVal FiniteFp.smallestPosSubnormal) hpos hlt
+  simpa [roundDown, nextDown_finite] using hrd
+
+/-- `nextUp` of the negative smallest positive subnormal is `-0`. -/
+@[simp] theorem nextUp_neg_smallestPosSubnormal [FloatFormat] :
+    nextUp (Fp.finite (-FiniteFp.smallestPosSubnormal)) = Fp.finite (-0) := by
+  have hhalf_pos : (0 : ℚ) < (FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2 := by
+    linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := ℚ)]
+  have hhalf_lt : ((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2) <
+      FiniteFp.smallestPosSubnormal.toVal := by
+    linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := ℚ)]
+  have hpred_half : findPredecessor ((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2) = Fp.finite 0 := by
+    simpa [roundDown] using
+      (roundDown_lt_smallestPosSubnormal (R := ℚ)
+        ((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2) hhalf_pos hhalf_lt)
+  have hpredPos : findPredecessorPos ((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2) hhalf_pos = 0 := by
+    have hpred_half' : Fp.finite (findPredecessorPos ((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2) hhalf_pos) =
+        Fp.finite 0 := by
+      simpa [findPredecessor_pos_eq ((FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2) hhalf_pos] using hpred_half
+    exact Fp.finite.inj hpred_half'
+  have hxneg : stepUpVal (-FiniteFp.smallestPosSubnormal) < 0 := by
+    unfold stepUpVal neighborStep
+    rw [FiniteFp.toVal_neg_eq_neg]
+    linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := ℚ)]
+  have hneg_step : -stepUpVal (-FiniteFp.smallestPosSubnormal) =
+      (FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2 := by
+    unfold stepUpVal neighborStep
+    rw [FiniteFp.toVal_neg_eq_neg]
+    ring
+  have hpredPos' : findPredecessorPos (-stepUpVal (-FiniteFp.smallestPosSubnormal))
+      (neg_pos.mpr hxneg) = 0 := by
+    simpa [hneg_step] using hpredPos
+  calc
+    nextUp (Fp.finite (-FiniteFp.smallestPosSubnormal))
+        = findSuccessor (stepUpVal (-FiniteFp.smallestPosSubnormal)) := by
+          simpa using (nextUp_finite (-FiniteFp.smallestPosSubnormal))
+    _ = Fp.finite (-findPredecessorPos (-stepUpVal (-FiniteFp.smallestPosSubnormal)) (neg_pos.mpr hxneg)) := by
+          simpa using (findSuccessor_neg_eq (stepUpVal (-FiniteFp.smallestPosSubnormal)) hxneg)
+    _ = Fp.finite (-0) := by rw [hpredPos']
+
+/-! ## Directed Idempotence Helpers (moved from `Idempotence`) -/
+
+section DirectedIdempotence
+
+variable [FloatFormat]
+
+omit [FloorRing R] in
+/-- For a positive normal float, its toVal lies in [2^e, 2^(e+1)). -/
+theorem toVal_normal_bounds (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m) :
+    (2 : R) ^ f.e ≤ f.toVal ∧ f.toVal < (2 : R) ^ (f.e + 1) := by
+  have hm_lb := hn.1
+  have hm_ub := hn.2
+  have hstep_pos : (0 : R) < (2 : R) ^ (f.e - FloatFormat.prec + 1) := two_zpow_pos' _
+  have htoVal : f.toVal (R := R) = (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
+    unfold FiniteFp.toVal FiniteFp.sign'
+    rw [FloatFormat.radix_val_eq_two]
+    simp [hs]
+  rw [htoVal]
+  constructor
+  · calc (2 : R) ^ f.e
+        = (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
+          rw [two_zpow_mul]; congr 1; ring
+      _ ≤ (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
+          apply mul_le_mul_of_nonneg_right _ (le_of_lt hstep_pos)
+          calc (2 : R) ^ (FloatFormat.prec - 1)
+              = (2 : R) ^ (FloatFormat.prec - 1).toNat := FloatFormat.pow_prec_sub_one_nat_int.symm
+            _ ≤ (f.m : R) := by exact_mod_cast hm_lb
+  · calc (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1)
+        < (2 : R) ^ FloatFormat.prec * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
+          apply mul_lt_mul_of_pos_right _ hstep_pos
+          calc (f.m : R) < (2 : R) ^ FloatFormat.prec.toNat := by exact_mod_cast hm_ub
+            _ = (2 : R) ^ FloatFormat.prec := by
+                rw [← zpow_natCast]; congr 1; exact FloatFormat.prec_toNat_eq
+      _ = (2 : R) ^ (f.e + 1) := by
+          rw [two_zpow_mul]; congr 1; ring
+
+/-- For a positive normal float, Int.log 2 of its toVal equals its exponent. -/
+theorem Int_log_of_normal_toVal (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m) :
+    Int.log 2 (f.toVal (R := R)) = f.e := by
+  have hbounds := toVal_normal_bounds (R := R) f hs hn
+  have hpos : (0 : R) < f.toVal := lt_of_lt_of_le (two_zpow_pos' f.e) hbounds.1
+  have hlog_lb : f.e ≤ Int.log 2 (f.toVal (R := R)) :=
+    (Int.zpow_le_iff_le_log (by norm_num : 1 < 2) hpos).mp hbounds.1
+  have hlog_ub : Int.log 2 (f.toVal (R := R)) < f.e + 1 :=
+    (Int.lt_zpow_iff_log_lt (by norm_num : 1 < 2) hpos).mp hbounds.2
+  omega
+
+/-- For a positive normal float, findExponentDown of its toVal equals its exponent. -/
+theorem findExponentDown_of_normal_toVal (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m) :
+    findExponentDown (f.toVal (R := R)) = f.e := by
+  have hbounds := toVal_normal_bounds (R := R) f hs hn
+  have hnr : isNormalRange (f.toVal (R := R)) := by
+    constructor
+    · calc (2 : R) ^ FloatFormat.min_exp
+          ≤ (2 : R) ^ f.e := two_zpow_mono f.valid_min_exp
+        _ ≤ f.toVal := hbounds.1
+    · calc f.toVal
+          < (2 : R) ^ (f.e + 1) := hbounds.2
+        _ ≤ (2 : R) ^ (FloatFormat.max_exp + 1) :=
+            two_zpow_mono (by linarith [f.valid_max_exp])
+  rw [findExponentDown_normal _ hnr, Int_log_of_normal_toVal f hs hn]
+
+omit [FloorRing R] in
+/-- The scaled significand of a normal positive float equals its significand. -/
+theorem scaled_significand_eq_m (f : FiniteFp) (hs : f.s = false) :
+    f.toVal (R := R) / (2 : R) ^ f.e * (2 : R) ^ (FloatFormat.prec - 1) = (f.m : R) := by
+  have htoVal : f.toVal (R := R) = (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
+    unfold FiniteFp.toVal FiniteFp.sign'
+    rw [FloatFormat.radix_val_eq_two]
+    simp [hs]
+  rw [htoVal, mul_two_zpow_div_two_zpow, mul_two_zpow_right]
+  have : f.e - FloatFormat.prec + 1 - f.e + (FloatFormat.prec - 1) = 0 := by ring
+  rw [this, zpow_zero, mul_one]
+
+omit [FloorRing R] in
+private theorem toVal_normal_isNormalRange (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m) :
+    isNormalRange (f.toVal (R := R)) := by
+  have hbounds := toVal_normal_bounds (R := R) f hs hn
+  constructor
+  · calc (2 : R) ^ FloatFormat.min_exp
+        ≤ (2 : R) ^ f.e := two_zpow_mono f.valid_min_exp
+      _ ≤ f.toVal := hbounds.1
+  · calc f.toVal
+        < (2 : R) ^ (f.e + 1) := hbounds.2
+      _ ≤ (2 : R) ^ (FloatFormat.max_exp + 1) :=
+          two_zpow_mono (by linarith [f.valid_max_exp])
+
+/-- Rounding a normal positive float down gives back the same float. -/
+theorem roundNormalDown_of_normal_toVal (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m)
+    (hr : isNormalRange (f.toVal (R := R))) :
+    roundNormalDown (f.toVal (R := R)) hr = f := by
+  unfold roundNormalDown
+  simp only
+  have heq : findExponentDown (f.toVal (R := R)) = f.e :=
+    findExponentDown_of_normal_toVal f hs hn
+  have hscaled : (f.toVal (R := R)) / (2 : R) ^ findExponentDown (f.toVal (R := R)) *
+      (2 : R) ^ (FloatFormat.prec - 1) = (f.m : R) := by
+    rw [heq]
+    exact scaled_significand_eq_m f hs
+  have hfloor : ⌊(f.m : R)⌋ = (f.m : ℤ) := Int.floor_natCast f.m
+  have hnatabs : (f.m : ℤ).natAbs = f.m := Int.natAbs_natCast f.m
+  conv_lhs => simp only [hscaled, hfloor]
+  rw [FiniteFp.eq_def]
+  exact ⟨hs.symm, heq, hnatabs⟩
+
+omit [FloorRing R] in
+/-- For a positive subnormal float with m > 0, its toVal is in the subnormal range. -/
+theorem toVal_subnormal_isSubnormalRange (f : FiniteFp) (hs : f.s = false)
+    (hsub : isSubnormal f.e f.m) (hm : 0 < f.m) :
+    isSubnormalRange (f.toVal (R := R)) := by
+  have he : f.e = FloatFormat.min_exp := hsub.1
+  have htoVal : f.toVal (R := R) = (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
+    unfold FiniteFp.toVal FiniteFp.sign'
+    rw [FloatFormat.radix_val_eq_two]
+    simp [hs]
+  rw [htoVal]
+  constructor
+  · apply mul_pos
+    · exact_mod_cast hm
+    · exact two_zpow_pos' _
+  · rw [he]
+    have hm_lt : (f.m : R) < (2 : R) ^ (FloatFormat.prec - 1) := by
+      have hm_lt_nat : f.m < 2 ^ (FloatFormat.prec - 1).toNat := by omega
+      calc (f.m : R) < (2 : R) ^ (FloatFormat.prec - 1).toNat := by exact_mod_cast hm_lt_nat
+        _ = (2 : R) ^ (FloatFormat.prec - 1) := FloatFormat.pow_prec_sub_one_nat_int
+    calc (f.m : R) * (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1)
+        < (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) :=
+          mul_lt_mul_of_pos_right hm_lt (two_zpow_pos' _)
+      _ = (2 : R) ^ FloatFormat.min_exp := by
+          rw [two_zpow_mul]; congr 1; ring
+
+omit [FloorRing R] in
+/-- f.toVal / 2^(min_exp - prec + 1) = f.m for a subnormal float. -/
+theorem subnormal_toVal_div_ulp_eq_m (f : FiniteFp) (hs : f.s = false)
+    (hsub : isSubnormal f.e f.m) :
+    f.toVal (R := R) / (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) = (f.m : R) := by
+  have he : f.e = FloatFormat.min_exp := hsub.1
+  have htoVal : f.toVal (R := R) = (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
+    unfold FiniteFp.toVal FiniteFp.sign'
+    rw [FloatFormat.radix_val_eq_two]
+    simp [hs]
+  rw [htoVal, he, mul_div_cancel_right₀ _ (two_zpow_ne_zero _)]
+
+/-- Rounding a subnormal positive float down gives back the same float. -/
+theorem roundSubnormalDown_of_subnormal_toVal (f : FiniteFp) (hs : f.s = false)
+    (hsub : isSubnormal f.e f.m) (hm : 0 < f.m)
+    (hr : isSubnormalRange (f.toVal (R := R))) :
+    roundSubnormalDown (f.toVal (R := R)) hr = f := by
+  unfold roundSubnormalDown
+  simp only
+  have he : f.e = FloatFormat.min_exp := hsub.1
+  have hdiv : f.toVal (R := R) / (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) = (f.m : R) :=
+    subnormal_toVal_div_ulp_eq_m f hs hsub
+  have hfloor : ⌊(f.m : R)⌋ = (f.m : ℤ) := Int.floor_natCast f.m
+  have hk_eq : ⌊f.toVal (R := R) / (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1)⌋ = (f.m : ℤ) := by
+    rw [hdiv, hfloor]
+  have hk_ne_zero : (f.m : ℤ) ≠ 0 := by omega
+  conv_lhs => simp only [hk_eq]
+  simp only [hk_ne_zero, ↓reduceDIte]
+  have hnatabs : (f.m : ℤ).natAbs = f.m := Int.natAbs_natCast f.m
+  rw [FiniteFp.eq_def]
+  exact ⟨hs.symm, he.symm, hnatabs⟩
+
+/-- For a non-negative-zero float, roundDown gives back the same float. -/
+theorem roundDown_idempotent_nonneg (f : FiniteFp) (hs : f.s = false) (hm : 0 < f.m) :
+    roundDown (f.toVal (R := R)) = Fp.finite f := by
+  have hfpos : (0 : R) < f.toVal := FiniteFp.toVal_pos f hs hm
+  unfold roundDown findPredecessor
+  simp only [ne_of_gt hfpos, ↓reduceDIte, hfpos, Fp.finite.injEq]
+  unfold findPredecessorPos
+  rcases f.isNormal_or_isSubnormal with hnormal | hsubnormal
+  · have hnr := toVal_normal_isNormalRange (R := R) f hs hnormal
+    have h_not_sub : ¬(f.toVal (R := R) < (2 : R) ^ FloatFormat.min_exp) := not_lt.mpr hnr.1
+    have h_not_over : f.toVal (R := R) < (2 : R) ^ (FloatFormat.max_exp + 1) := hnr.2
+    simp only [h_not_sub, ↓reduceDIte, h_not_over]
+    exact roundNormalDown_of_normal_toVal f hs hnormal hnr
+  · have hsr := toVal_subnormal_isSubnormalRange (R := R) f hs hsubnormal hm
+    have h_sub : f.toVal (R := R) < (2 : R) ^ FloatFormat.min_exp := hsr.2
+    simp only [h_sub, ↓reduceDIte]
+    exact roundSubnormalDown_of_subnormal_toVal f hs hsubnormal hm hsr
+
+/-- Rounding a normal positive float up gives back the same float (as Fp.finite). -/
+theorem roundNormalUp_of_normal_toVal (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m)
+    (hr : isNormalRange (f.toVal (R := R))) :
+    roundNormalUp (f.toVal (R := R)) hr = Fp.finite f := by
+  unfold roundNormalUp
+  simp only
+  have heq : findExponentDown (f.toVal (R := R)) = f.e :=
+    findExponentDown_of_normal_toVal f hs hn
+  have hscaled : (f.toVal (R := R)) / (2 : R) ^ findExponentDown (f.toVal (R := R)) *
+      (2 : R) ^ (FloatFormat.prec - 1) = (f.m : R) := by
+    rw [heq]; exact scaled_significand_eq_m f hs
+  have hceil : ⌈(f.m : R)⌉ = (f.m : ℤ) := Int.ceil_natCast f.m
+  have h_no_overflow : ¬((2 : ℤ) ^ FloatFormat.prec.toNat ≤ (f.m : ℤ)) := by
+    push_neg; exact_mod_cast hn.2
+  conv_lhs => simp only [hscaled, hceil]
+  simp only [h_no_overflow, ↓reduceDIte, Fp.finite.injEq]
+  have hnatabs : (f.m : ℤ).natAbs = f.m := Int.natAbs_natCast f.m
+  rw [FiniteFp.eq_def]
+  exact ⟨hs.symm, heq, hnatabs⟩
+
+/-- Rounding a subnormal positive float up gives back the same float. -/
+theorem roundSubnormalUp_of_subnormal_toVal (f : FiniteFp) (hs : f.s = false)
+    (hsub : isSubnormal f.e f.m) (hm : 0 < f.m)
+    (hr : isSubnormalRange (f.toVal (R := R))) :
+    roundSubnormalUp (f.toVal (R := R)) hr = f := by
+  unfold roundSubnormalUp
+  simp only
+  have he : f.e = FloatFormat.min_exp := hsub.1
+  have hdiv : f.toVal (R := R) / (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) = (f.m : R) :=
+    subnormal_toVal_div_ulp_eq_m f hs hsub
+  have hceil : ⌈(f.m : R)⌉ = (f.m : ℤ) := Int.ceil_natCast f.m
+  have hk_eq : ⌈f.toVal (R := R) / (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1)⌉ = (f.m : ℤ) := by
+    rw [hdiv, hceil]
+  conv_lhs => simp only [hk_eq]
+  have h_no_transition : ¬((2 : ℤ) ^ (FloatFormat.prec - 1).toNat ≤ (f.m : ℤ)) := by
+    push_neg
+    have : f.m < 2 ^ (FloatFormat.prec - 1).toNat := by omega
+    exact_mod_cast this
+  simp only [h_no_transition, ↓reduceDIte]
+  have hnatabs : (f.m : ℤ).natAbs = f.m := Int.natAbs_natCast f.m
+  rw [FiniteFp.eq_def]
+  exact ⟨hs.symm, he.symm, hnatabs⟩
+
+/-- For a positive float, roundUp gives back the same float. -/
+theorem roundUp_idempotent_nonneg (f : FiniteFp) (hs : f.s = false) (hm : 0 < f.m) :
+    roundUp (f.toVal (R := R)) = Fp.finite f := by
+  have hfpos : (0 : R) < f.toVal := FiniteFp.toVal_pos f hs hm
+  unfold roundUp findSuccessor
+  simp only [ne_of_gt hfpos, ↓reduceDIte, hfpos]
+  unfold findSuccessorPos
+  rcases f.isNormal_or_isSubnormal with hnormal | hsubnormal
+  · have hnr := toVal_normal_isNormalRange (R := R) f hs hnormal
+    have h_not_sub : ¬(f.toVal (R := R) < (2 : R) ^ FloatFormat.min_exp) := not_lt.mpr hnr.1
+    have h_not_over : f.toVal (R := R) < (2 : R) ^ (FloatFormat.max_exp + 1) := hnr.2
+    simp only [h_not_sub, ↓reduceDIte, h_not_over]
+    exact roundNormalUp_of_normal_toVal f hs hnormal hnr
+  · have hsr := toVal_subnormal_isSubnormalRange (R := R) f hs hsubnormal hm
+    have h_sub : f.toVal (R := R) < (2 : R) ^ FloatFormat.min_exp := hsr.2
+    simp only [h_sub, ↓reduceDIte, Fp.finite.injEq]
+    exact roundSubnormalUp_of_subnormal_toVal f hs hsubnormal hm hsr
+
+/-- For a negative float with m > 0, roundDown gives back the same float. -/
+theorem roundDown_idempotent_neg (f : FiniteFp) (hs : f.s = true) (hm : 0 < f.m) :
+    roundDown (f.toVal (R := R)) = Fp.finite f := by
+  have hnf_s : (-f).s = false := by rw [FiniteFp.neg_def]; simp [hs]
+  have hnf_m : 0 < (-f).m := by rw [FiniteFp.neg_def]; exact hm
+  have hnf_pos : (0 : R) < (-f).toVal := FiniteFp.toVal_pos (-f) hnf_s hnf_m
+  have hfneg : f.toVal (R := R) < 0 := by
+    rw [FiniteFp.toVal_neg_eq_neg] at hnf_pos; linarith
+  rw [roundDown, findPredecessor_neg_eq _ hfneg]
+  have hup := roundUp_idempotent_nonneg (R := R) (-f) hnf_s hnf_m
+  rw [roundUp, findSuccessor_pos_eq _ hnf_pos] at hup
+  have key : findSuccessorPos (-f.toVal (R := R)) (neg_pos.mpr hfneg) =
+             findSuccessorPos ((-f).toVal (R := R)) hnf_pos := by
+    congr 1; rw [FiniteFp.toVal_neg_eq_neg]
+  rw [key, hup, Fp.neg_finite, neg_neg]
+
+/-- For a negative float with m > 0, roundUp gives back the same float. -/
+theorem roundUp_idempotent_neg (f : FiniteFp) (hs : f.s = true) (hm : 0 < f.m) :
+    roundUp (f.toVal (R := R)) = Fp.finite f := by
+  have hnf_s : (-f).s = false := by rw [FiniteFp.neg_def]; simp [hs]
+  have hnf_m : 0 < (-f).m := by rw [FiniteFp.neg_def]; exact hm
+  have hnf_pos : (0 : R) < (-f).toVal := FiniteFp.toVal_pos (-f) hnf_s hnf_m
+  have hfneg : f.toVal (R := R) < 0 := by
+    rw [FiniteFp.toVal_neg_eq_neg] at hnf_pos; linarith
+  rw [roundUp, findSuccessor_neg_eq _ hfneg]
+  have hdown := roundDown_idempotent_nonneg (R := R) (-f) hnf_s hnf_m
+  rw [roundDown, findPredecessor_pos_eq _ hnf_pos, Fp.finite.injEq] at hdown
+  have key : findPredecessorPos (-f.toVal (R := R)) (neg_pos.mpr hfneg) =
+             findPredecessorPos ((-f).toVal (R := R)) hnf_pos := by
+    congr 1; rw [FiniteFp.toVal_neg_eq_neg]
+  rw [Fp.finite.injEq, key, hdown, neg_neg]
+
+/-- Helper: if f.m = 0 and f.s = false, then f = 0. -/
+theorem eq_zero_of_sign_false_m_zero (f : FiniteFp) (hs : f.s = false) (hm : f.m = 0) :
+    f = (0 : FiniteFp) := by
+  ext
+  · exact hs
+  · have := f.isNormal_or_isSubnormal
+    rcases this with hn | hsub
+    · exfalso
+      have := hn.1
+      have : 0 < 2 ^ (FloatFormat.prec - 1).toNat := Nat.pos_of_ne_zero (by positivity)
+      omega
+    · exact hsub.1
+  · exact hm
+
+/-- roundDown is idempotent on non-negative-zero floats. -/
+theorem roundDown_idempotent (f : FiniteFp) (h : f.s = false ∨ 0 < f.m) :
+    roundDown (f.toVal (R := R)) = Fp.finite f := by
+  rcases h with hs | hm
+  · by_cases hm : 0 < f.m
+    · exact roundDown_idempotent_nonneg f hs hm
+    · push_neg at hm
+      have hm0 : f.m = 0 := by omega
+      rw [eq_zero_of_sign_false_m_zero f hs hm0, FiniteFp.toVal_zero, roundDown_zero]
+  · by_cases hs : f.s = false
+    · exact roundDown_idempotent_nonneg f hs hm
+    · have hs_true : f.s = true := by revert hs; cases f.s <;> simp
+      exact roundDown_idempotent_neg f hs_true hm
+
+/-- roundUp is idempotent on non-negative-zero floats. -/
+theorem roundUp_idempotent (f : FiniteFp) (h : f.s = false ∨ 0 < f.m) :
+    roundUp (f.toVal (R := R)) = Fp.finite f := by
+  rcases h with hs | hm
+  · by_cases hm : 0 < f.m
+    · exact roundUp_idempotent_nonneg f hs hm
+    · push_neg at hm
+      have hm0 : f.m = 0 := by omega
+      rw [eq_zero_of_sign_false_m_zero f hs hm0, FiniteFp.toVal_zero, roundUp_zero]
+  · by_cases hs : f.s = false
+    · exact roundUp_idempotent_nonneg f hs hm
+    · have hs_true : f.s = true := by revert hs; cases f.s <;> simp
+      exact roundUp_idempotent_neg f hs_true hm
+
+end DirectedIdempotence
 
 /-- `roundUp` of a positive value `mag * 2^e_base` produces a float with significand
 `⌈val / 2^e_ulp⌉` in the no-carry case (q+1 < 2^prec).
@@ -561,6 +1035,38 @@ theorem roundUp_mono [FloatFormat] {x y : R} (h : x ≤ y) : roundUp x ≤ round
     unfold roundUp
     rw [findSuccessor_pos_eq x hx_pos, findSuccessor_pos_eq y hy_pos]
     exact findSuccessorPos_mono hx_pos hy_pos h
+
+/-- If `g` is a valid finite float with `x ≤ g.toVal`, then `roundUp x ≤ g`. -/
+theorem roundUp_le_of_fp_ge [FloatFormat]
+    (x : R) (g : FiniteFp) (hg : g.s = false ∨ 0 < g.m)
+    (hge : x ≤ g.toVal) : roundUp x ≤ Fp.finite g := by
+  have hidem : roundUp (g.toVal (R := R)) = Fp.finite g := roundUp_idempotent g hg
+  rw [← hidem]
+  exact roundUp_mono hge
+
+/-- If `f` is a valid finite float with `f.toVal ≤ y`, then `f ≤ roundDown y`. -/
+theorem roundDown_ge_of_fp_le [FloatFormat]
+    (y : R) (f : FiniteFp) (hf : f.s = false ∨ 0 < f.m)
+    (hle : f.toVal ≤ y) : Fp.finite f ≤ roundDown y := by
+  have hidem : roundDown (f.toVal (R := R)) = Fp.finite f := roundDown_idempotent f hf
+  rw [← hidem]
+  exact roundDown_mono hle
+
+/-- Zero-domain inverse behavior: `nextDown (nextUp (+0)) = +0`. -/
+@[simp] theorem nextDown_nextUp_pos_zero [FloatFormat] :
+    nextDown (nextUp (Fp.finite (0 : FiniteFp))) = Fp.finite 0 := by
+  have h0 : nextUp (Fp.finite (0 : FiniteFp)) = Fp.finite FiniteFp.smallestPosSubnormal := by
+    exact (nextUp_zero)
+  rw [h0]
+  exact nextDown_smallestPosSubnormal
+
+/-- Zero-domain inverse behavior: `nextUp (nextDown (+0)) = -0`. -/
+@[simp] theorem nextUp_nextDown_pos_zero [FloatFormat] :
+    nextUp (nextDown (Fp.finite (0 : FiniteFp))) = Fp.finite (-0) := by
+  have h0 : nextDown (Fp.finite (0 : FiniteFp)) = Fp.finite (-FiniteFp.smallestPosSubnormal) := by
+    exact (nextDown_zero)
+  rw [h0]
+  exact nextUp_neg_smallestPosSubnormal
 
 end RoundUp
 

@@ -910,4 +910,292 @@ theorem roundNormalUp_sub_roundNormalDown_le_ulp (x : R) (h : isNormalRange x) (
         (2 : R) ^ (findExponentDown x - ↑FloatFormat.prec + 1) := by ring
     linarith [mul_le_mul_of_nonneg_right hgap_R (le_of_lt hstep_pos)]
 
+/-- Exact normal-range gap: if `x` is strictly above `roundNormalDown x`, then the
+round-up / round-down gap is exactly one `ulp(x)`. -/
+theorem roundNormalUp_sub_roundNormalDown_eq_ulp_of_down_lt
+    (x : R) (h : isNormalRange x) (f : FiniteFp)
+    (hf : roundNormalUp x h = Fp.finite f)
+    (hdown_lt : (roundNormalDown x h).toVal < x) :
+    (f.toVal : R) - (roundNormalDown x h).toVal = Fp.ulp x := by
+  have hxpos := isNormalRange_pos x h
+  have he := findExponentDown_normal x h
+  have hulp : Fp.ulp x = (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by
+    unfold Fp.ulp
+    rw [abs_of_pos hxpos, he]
+    have hge : FloatFormat.min_exp ≤ Int.log 2 x := by
+      rw [← he]; exact findExponentDown_min x
+    simp [max_eq_left hge]
+  rw [hulp]
+  unfold roundNormalDown FiniteFp.toVal FiniteFp.sign'
+  rw [FloatFormat.radix_val_eq_two]
+  simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
+  have hfloor_pos := floor_scaled_normal_pos x h
+  rw [Int.cast_natAbs_of_pos hfloor_pos]
+  unfold roundNormalUp at hf
+  extract_lets e binade_base scaled m_scaled m mpos at hf
+  norm_num at hf
+  split_ifs at hf with hm heover
+  · -- Binade-overflow case
+    rw [Fp.finite.injEq] at hf
+    rw [← hf]
+    simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
+    push_cast
+    rw [← zpow_natCast (2 : R) (FloatFormat.prec.toNat - 1),
+        show ((FloatFormat.prec.toNat - 1 : ℕ) : ℤ) = FloatFormat.prec - 1
+          from by rw [show (FloatFormat.prec.toNat - 1 : ℕ) = (FloatFormat.prec - 1).toNat
+            from by have := FloatFormat.valid_prec; omega]; exact FloatFormat.prec_sub_one_toNat_eq,
+        two_zpow_mul,
+        show (FloatFormat.prec : ℤ) - 1 + (e + 1 - FloatFormat.prec + 1) = e + 1 from by ring]
+    have hfloor_from_ceil : (2 : ℤ) ^ FloatFormat.prec.toNat - 1 ≤ ⌊m_scaled⌋ := by
+      have hceil_lb : (2 : ℤ) ^ FloatFormat.prec.toNat ≤ ⌈m_scaled⌉ := hm
+      calc (2 : ℤ) ^ FloatFormat.prec.toNat - 1
+          ≤ ⌈m_scaled⌉ - 1 := by linarith
+        _ ≤ ⌊m_scaled⌋ := by linarith [Int.ceil_le_floor_add_one m_scaled]
+    have hfloor_norm : isNormal (floorScaledNormal (R := R) x).natAbs :=
+      floor_isNormal_of_bounds x h
+    have hfloor_ub : ⌊m_scaled⌋ ≤ (2 : ℤ) ^ FloatFormat.prec.toNat - 1 := by
+      have hlt_nat : (floorScaledNormal (R := R) x).natAbs < 2 ^ FloatFormat.prec.toNat := hfloor_norm.2
+      have hlt_int : ((floorScaledNormal (R := R) x).natAbs : ℤ) < (2 : ℤ) ^ FloatFormat.prec.toNat := by
+        exact_mod_cast hlt_nat
+      have hnatabs_eq : ((floorScaledNormal (R := R) x).natAbs : ℤ) = floorScaledNormal (R := R) x := by
+        exact Int.natAbs_of_nonneg (le_of_lt hfloor_pos)
+      rw [hnatabs_eq] at hlt_int
+      -- `m_scaled` is the scaled expression used by `floorScaledNormal`.
+      have hm_floor : ⌊m_scaled⌋ = floorScaledNormal (R := R) x := by
+        simp [m_scaled, scaled, binade_base, e, floorScaledNormal]
+      rw [hm_floor]
+      omega
+    have hfloor_eq : ⌊m_scaled⌋ = (2 : ℤ) ^ FloatFormat.prec.toNat - 1 := by omega
+    have hm_floor : ⌊m_scaled⌋ = floorScaledNormal (R := R) x := by
+      simp [m_scaled, scaled, binade_base, e, floorScaledNormal]
+    have hfloor_cast :
+        (⌊x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌋ : R) =
+        (2 : R) ^ (FloatFormat.prec : ℤ) - 1 := by
+      have hfloor_eq' : floorScaledNormal (R := R) x = (2 : ℤ) ^ FloatFormat.prec.toNat - 1 := by
+        rw [← hm_floor, hfloor_eq]
+      have hpow_nat_eq : ((2 : ℤ) ^ FloatFormat.prec.toNat : R) = (2 : R) ^ (FloatFormat.prec : ℤ) := by
+        calc
+          ((2 : ℤ) ^ FloatFormat.prec.toNat : R) = (2 : R) ^ FloatFormat.prec.toNat := by
+            norm_num
+          _ = (2 : R) ^ (FloatFormat.prec : ℤ) := by
+                rw [← zpow_natCast]
+                congr 1
+                exact FloatFormat.prec_toNat_eq
+      calc
+        (⌊x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌋ : R)
+            = (floorScaledNormal (R := R) x : R) := by simp [floorScaledNormal]
+        _ = ((2 : ℤ) ^ FloatFormat.prec.toNat - 1 : ℤ) := by exact_mod_cast hfloor_eq'
+        _ = ((2 : ℤ) ^ FloatFormat.prec.toNat : R) - 1 := by norm_cast
+        _ = (2 : R) ^ (FloatFormat.prec : ℤ) - 1 := by rw [hpow_nat_eq]
+    rw [hfloor_cast]
+    have hprod : ((2 : R) ^ (FloatFormat.prec : ℤ) - 1) *
+        (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) =
+        (2 : R) ^ (findExponentDown x + 1) - (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by
+      rw [sub_mul, one_mul, two_zpow_mul]
+      congr 1; ring
+    linarith [hprod]
+  · -- No-overflow case
+    rw [Fp.finite.injEq] at hf
+    rw [← hf]
+    simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
+    rw [Int.cast_natAbs_of_pos mpos]
+    push_cast
+    have hstep_pos : (0 : R) < (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := two_zpow_pos' _
+    have hdown_lt' :
+        (⌊x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌋ : R) *
+            (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) < x := by
+      simpa [roundNormalDown, FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two,
+        Int.cast_natAbs_of_pos hfloor_pos] using hdown_lt
+    have hx_scaled :
+        (x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)) *
+            (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) = x := by
+      calc
+        (x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)) *
+            (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1)
+            = x / 2 ^ findExponentDown x *
+              ((2 : R) ^ (FloatFormat.prec - 1) *
+                (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1)) := by ring
+        _ = x / 2 ^ findExponentDown x * (2 : R) ^ findExponentDown x := by
+              congr 1
+              rw [two_zpow_mul]
+              congr 1
+              ring
+        _ = x := by
+              rw [div_mul_cancel₀ _ (two_zpow_ne_zero _)]
+    have hfloor_lt_scaled :
+        (⌊x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌋ : R) <
+          x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1) := by
+      have hmul :
+          (⌊x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌋ : R) *
+              (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1)
+            < (x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)) *
+              (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by
+        simpa [hx_scaled] using hdown_lt'
+      exact lt_of_mul_lt_mul_right hmul (le_of_lt hstep_pos)
+    have hfloor_lt_ceil_R : (⌊m_scaled⌋ : R) < (⌈m_scaled⌉ : R) := by
+      have h1 : (⌊m_scaled⌋ : R) < m_scaled := by simpa [m_scaled] using hfloor_lt_scaled
+      exact lt_of_lt_of_le h1 (Int.le_ceil _)
+    have hfloor_lt_ceil : ⌊m_scaled⌋ < ⌈m_scaled⌉ := by
+      exact_mod_cast hfloor_lt_ceil_R
+    have hgap_ge : 1 ≤ ⌈m_scaled⌉ - ⌊m_scaled⌋ := by omega
+    have hgap_le : ⌈m_scaled⌉ - ⌊m_scaled⌋ ≤ 1 := by
+      linarith [Int.ceil_le_floor_add_one m_scaled]
+    have hgap_eq : ⌈m_scaled⌉ - ⌊m_scaled⌋ = 1 := by omega
+    have hgap_R_eq : (↑⌈m_scaled⌉ : R) - (↑⌊m_scaled⌋ : R) = 1 := by
+      exact_mod_cast hgap_eq
+    calc
+      (↑⌈m_scaled⌉ : R) * (2 : R) ^ (e - ↑FloatFormat.prec + 1) -
+          (↑⌊m_scaled⌋ : R) * (2 : R) ^ (findExponentDown x - ↑FloatFormat.prec + 1)
+          = ((↑⌈m_scaled⌉ : R) - (↑⌊m_scaled⌋ : R)) *
+            (2 : R) ^ (findExponentDown x - ↑FloatFormat.prec + 1) := by ring
+      _ = (1 : R) * (2 : R) ^ (findExponentDown x - ↑FloatFormat.prec + 1) := by
+            rw [hgap_R_eq]
+      _ = (2 : R) ^ (findExponentDown x - ↑FloatFormat.prec + 1) := by ring
+
+/-- Exact normal-range gap: if `x` is strictly below `roundNormalUp x`, then the
+round-up / round-down gap is exactly one `ulp(x)`. -/
+theorem roundNormalUp_sub_roundNormalDown_eq_ulp_of_lt_up
+    (x : R) (h : isNormalRange x) (f : FiniteFp)
+    (hf : roundNormalUp x h = Fp.finite f)
+    (hup_gt : x < (f.toVal : R)) :
+    (f.toVal : R) - (roundNormalDown x h).toVal = Fp.ulp x := by
+  have hxpos := isNormalRange_pos x h
+  have he := findExponentDown_normal x h
+  have hulp : Fp.ulp x = (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by
+    unfold Fp.ulp
+    rw [abs_of_pos hxpos, he]
+    have hge : FloatFormat.min_exp ≤ Int.log 2 x := by
+      rw [← he]; exact findExponentDown_min x
+    simp [max_eq_left hge]
+  rw [hulp]
+  unfold roundNormalDown FiniteFp.toVal FiniteFp.sign'
+  rw [FloatFormat.radix_val_eq_two]
+  simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
+  have hfloor_pos := floor_scaled_normal_pos x h
+  rw [Int.cast_natAbs_of_pos hfloor_pos]
+  unfold roundNormalUp at hf
+  extract_lets e binade_base scaled m_scaled m mpos at hf
+  norm_num at hf
+  split_ifs at hf with hm heover
+  · -- Binade-overflow case
+    rw [Fp.finite.injEq] at hf
+    rw [← hf]
+    simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
+    push_cast
+    rw [← zpow_natCast (2 : R) (FloatFormat.prec.toNat - 1),
+        show ((FloatFormat.prec.toNat - 1 : ℕ) : ℤ) = FloatFormat.prec - 1
+          from by rw [show (FloatFormat.prec.toNat - 1 : ℕ) = (FloatFormat.prec - 1).toNat
+            from by have := FloatFormat.valid_prec; omega]; exact FloatFormat.prec_sub_one_toNat_eq,
+        two_zpow_mul,
+        show (FloatFormat.prec : ℤ) - 1 + (e + 1 - FloatFormat.prec + 1) = e + 1 from by ring]
+    have hfloor_from_ceil : (2 : ℤ) ^ FloatFormat.prec.toNat - 1 ≤ ⌊m_scaled⌋ := by
+      have hceil_lb : (2 : ℤ) ^ FloatFormat.prec.toNat ≤ ⌈m_scaled⌉ := hm
+      calc (2 : ℤ) ^ FloatFormat.prec.toNat - 1
+          ≤ ⌈m_scaled⌉ - 1 := by linarith
+        _ ≤ ⌊m_scaled⌋ := by linarith [Int.ceil_le_floor_add_one m_scaled]
+    have hfloor_norm : isNormal (floorScaledNormal (R := R) x).natAbs :=
+      floor_isNormal_of_bounds x h
+    have hfloor_ub : ⌊m_scaled⌋ ≤ (2 : ℤ) ^ FloatFormat.prec.toNat - 1 := by
+      have hlt_nat : (floorScaledNormal (R := R) x).natAbs < 2 ^ FloatFormat.prec.toNat := hfloor_norm.2
+      have hlt_int : ((floorScaledNormal (R := R) x).natAbs : ℤ) < (2 : ℤ) ^ FloatFormat.prec.toNat := by
+        exact_mod_cast hlt_nat
+      have hnatabs_eq : ((floorScaledNormal (R := R) x).natAbs : ℤ) = floorScaledNormal (R := R) x := by
+        exact Int.natAbs_of_nonneg (le_of_lt hfloor_pos)
+      rw [hnatabs_eq] at hlt_int
+      have hm_floor : ⌊m_scaled⌋ = floorScaledNormal (R := R) x := by
+        simp [m_scaled, scaled, binade_base, e, floorScaledNormal]
+      rw [hm_floor]
+      omega
+    have hfloor_eq : ⌊m_scaled⌋ = (2 : ℤ) ^ FloatFormat.prec.toNat - 1 := by omega
+    have hm_floor : ⌊m_scaled⌋ = floorScaledNormal (R := R) x := by
+      simp [m_scaled, scaled, binade_base, e, floorScaledNormal]
+    have hfloor_cast :
+        (⌊x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌋ : R) =
+        (2 : R) ^ (FloatFormat.prec : ℤ) - 1 := by
+      have hfloor_eq' : floorScaledNormal (R := R) x = (2 : ℤ) ^ FloatFormat.prec.toNat - 1 := by
+        rw [← hm_floor, hfloor_eq]
+      have hpow_nat_eq : ((2 : ℤ) ^ FloatFormat.prec.toNat : R) = (2 : R) ^ (FloatFormat.prec : ℤ) := by
+        calc
+          ((2 : ℤ) ^ FloatFormat.prec.toNat : R) = (2 : R) ^ FloatFormat.prec.toNat := by
+            norm_num
+          _ = (2 : R) ^ (FloatFormat.prec : ℤ) := by
+                rw [← zpow_natCast]
+                congr 1
+                exact FloatFormat.prec_toNat_eq
+      calc
+        (⌊x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌋ : R)
+            = (floorScaledNormal (R := R) x : R) := by simp [floorScaledNormal]
+        _ = ((2 : ℤ) ^ FloatFormat.prec.toNat - 1 : ℤ) := by exact_mod_cast hfloor_eq'
+        _ = ((2 : ℤ) ^ FloatFormat.prec.toNat : R) - 1 := by norm_cast
+        _ = (2 : R) ^ (FloatFormat.prec : ℤ) - 1 := by rw [hpow_nat_eq]
+    rw [hfloor_cast]
+    have hprod : ((2 : R) ^ (FloatFormat.prec : ℤ) - 1) *
+        (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) =
+        (2 : R) ^ (findExponentDown x + 1) - (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by
+      rw [sub_mul, one_mul, two_zpow_mul]
+      congr 1; ring
+    linarith [hprod]
+  · -- No-overflow case
+    rw [Fp.finite.injEq] at hf
+    rw [← hf]
+    simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
+    rw [Int.cast_natAbs_of_pos mpos]
+    push_cast
+    have hstep_pos : (0 : R) < (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := two_zpow_pos' _
+    have hup_gt' :
+        x < (↑⌈m_scaled⌉ : R) * (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by
+      have hup_gt0 := hup_gt
+      rw [← hf] at hup_gt0
+      unfold FiniteFp.toVal FiniteFp.sign' at hup_gt0
+      rw [FloatFormat.radix_val_eq_two] at hup_gt0
+      simp only [Bool.false_eq_true, ↓reduceIte, one_mul] at hup_gt0
+      rw [Int.cast_natAbs_of_pos mpos] at hup_gt0
+      push_cast at hup_gt0
+      simpa [e] using hup_gt0
+    have hx_scaled :
+        (x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)) *
+            (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) = x := by
+      calc
+        (x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)) *
+            (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1)
+            = x / 2 ^ findExponentDown x *
+              ((2 : R) ^ (FloatFormat.prec - 1) *
+                (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1)) := by ring
+        _ = x / 2 ^ findExponentDown x * (2 : R) ^ findExponentDown x := by
+              congr 1
+              rw [two_zpow_mul]
+              congr 1
+              ring
+        _ = x := by
+              rw [div_mul_cancel₀ _ (two_zpow_ne_zero _)]
+    have hscaled_lt_ceil :
+        m_scaled < (⌈m_scaled⌉ : R) := by
+      have hmul :
+          (x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)) *
+              (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1)
+            < (↑⌈m_scaled⌉ : R) * (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by
+        simpa [hx_scaled] using hup_gt'
+      have hlt_scaled :
+          x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1) < (↑⌈m_scaled⌉ : R) := by
+        exact lt_of_mul_lt_mul_right hmul (le_of_lt hstep_pos)
+      simpa [m_scaled, scaled, binade_base, e] using hlt_scaled
+    have hfloor_lt_ceil_R : (⌊m_scaled⌋ : R) < (⌈m_scaled⌉ : R) := by
+      exact lt_of_le_of_lt (Int.floor_le m_scaled) hscaled_lt_ceil
+    have hfloor_lt_ceil : ⌊m_scaled⌋ < ⌈m_scaled⌉ := by
+      exact_mod_cast hfloor_lt_ceil_R
+    have hgap_ge : 1 ≤ ⌈m_scaled⌉ - ⌊m_scaled⌋ := by omega
+    have hgap_le : ⌈m_scaled⌉ - ⌊m_scaled⌋ ≤ 1 := by
+      linarith [Int.ceil_le_floor_add_one m_scaled]
+    have hgap_eq : ⌈m_scaled⌉ - ⌊m_scaled⌋ = 1 := by omega
+    have hgap_R_eq : (↑⌈m_scaled⌉ : R) - (↑⌊m_scaled⌋ : R) = 1 := by
+      exact_mod_cast hgap_eq
+    calc
+      (↑⌈m_scaled⌉ : R) * (2 : R) ^ (e - ↑FloatFormat.prec + 1) -
+          (↑⌊m_scaled⌋ : R) * (2 : R) ^ (findExponentDown x - ↑FloatFormat.prec + 1)
+          = ((↑⌈m_scaled⌉ : R) - (↑⌊m_scaled⌋ : R)) *
+            (2 : R) ^ (findExponentDown x - ↑FloatFormat.prec + 1) := by ring
+      _ = (1 : R) * (2 : R) ^ (findExponentDown x - ↑FloatFormat.prec + 1) := by
+            rw [hgap_R_eq]
+      _ = (2 : R) ^ (findExponentDown x - ↑FloatFormat.prec + 1) := by ring
+
 end Rounding

@@ -16,6 +16,15 @@ import Flean.Rounding.Defs
 import Flean.Rounding.RoundSubnormal
 import Flean.Rounding.RoundNormal
 
+/-!
+## TODO (`nextUp` / `nextDown` roadmap)
+1. Prove interior constructors so callers don’t supply `NextUpInterior*` / `NextDownInterior*` manually.
+2. Expose clean public theorems with minimal assumptions.
+3. Add boundary behavior lemmas for finite extremes/subnormal edge.
+4. Strengthen `≤ ulp` to `= ulp` where valid adjacency conditions hold.
+5. Add algebraic/ordering laws (monotonicity and inverse-style laws on suitable domains).
+-/
+
 section Rounding
 
 variable {n : ℕ} {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] [OfNat R n]
@@ -522,6 +531,76 @@ theorem findPredecessor_mono_neg {x y : R} (hx : x < 0) (hy : y < 0) (h : x ≤ 
   | Fp.NaN, _ => exact absurd hfx (findSuccessorPos_ne_nan (-x) hnx)
   | _, Fp.NaN => exact absurd hfy (findSuccessorPos_ne_nan (-y) hny)
 
+/-- `findPredecessor` of a positive value is at least `+0`. -/
+theorem findPredecessor_zero_le_pos (x : R) (hx : 0 < x) :
+    Fp.finite 0 ≤ findPredecessor x := by
+  rw [findPredecessor_pos_eq x hx, Fp.finite_le_finite_iff]
+  apply FiniteFp.toVal_le_handle R
+  · rw [FiniteFp.toVal_zero]
+    exact findPredecessorPos_nonneg
+  · intro ⟨_, hy⟩
+    unfold FiniteFp.isZero at hy
+    unfold findPredecessorPos at hy ⊢
+    split_ifs at hy ⊢ with h1 h2
+    · simp only [roundSubnormalDown] at hy ⊢
+      split_ifs at hy ⊢ with h3 <;> simp_all
+    · exfalso
+      have hnr : isNormalRange x := ⟨le_of_not_gt h1, h2⟩
+      have hrnpos := roundNormalDown_pos x hnr
+      have hzval := FiniteFp.toVal_isZero (R := R) hy
+      linarith
+    · exfalso
+      simp [FiniteFp.largestFiniteFloat] at hy
+      have := FloatFormat.nat_four_le_two_pow_prec
+      omega
+
+/-- `findPredecessor` of a negative value is at most `+0`. -/
+theorem findPredecessor_neg_le_zero (x : R) (hx : x < 0) :
+    findPredecessor x ≤ Fp.finite 0 := by
+  rw [findPredecessor_neg_eq x hx]
+  have hneg_pos : 0 < -x := neg_pos.mpr hx
+  match hfsp : findSuccessorPos (-x) hneg_pos with
+  | Fp.finite f =>
+    rw [Fp.neg_finite, Fp.finite_le_finite_iff]
+    apply FiniteFp.toVal_le_handle R
+    · rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_zero]
+      linarith [findSuccessorPos_pos hfsp]
+    · intro ⟨hx_zero, _⟩
+      exfalso
+      unfold FiniteFp.isZero at hx_zero
+      simp [FiniteFp.neg_def] at hx_zero
+      have hpos := findSuccessorPos_pos hfsp
+      have hzero : f.toVal (R := R) = 0 := FiniteFp.toVal_isZero hx_zero
+      linarith
+  | Fp.infinite b =>
+    have hne := findSuccessorPos_ne_neg_inf (-x) hneg_pos
+    rw [hfsp] at hne
+    simp at hne
+    cases b <;> simp_all [Fp.neg_def, Fp.le_def]
+  | Fp.NaN =>
+    exfalso
+    exact findSuccessorPos_ne_nan (-x) hneg_pos (by rw [hfsp])
+
+/-- Monotonicity of `findPredecessor`: if `x ≤ y`, then
+`findPredecessor x ≤ findPredecessor y`. -/
+theorem findPredecessor_mono {x y : R} (h : x ≤ y) :
+    findPredecessor x ≤ findPredecessor y := by
+  rcases lt_trichotomy x 0 with hx_neg | hx_zero | hx_pos
+  · rcases lt_trichotomy y 0 with hy_neg | hy_zero | hy_pos
+    · exact findPredecessor_mono_neg hx_neg hy_neg h
+    · rw [hy_zero, findPredecessor_zero]
+      exact findPredecessor_neg_le_zero x hx_neg
+    · exact Fp.le_trans (findPredecessor_neg_le_zero x hx_neg) (findPredecessor_zero_le_pos y hy_pos)
+  · rw [hx_zero, findPredecessor_zero]
+    rcases lt_trichotomy y 0 with hy_neg | hy_zero | hy_pos
+    · linarith
+    · rw [hy_zero, findPredecessor_zero]
+      exact Fp.le_refl _
+    · exact findPredecessor_zero_le_pos y hy_pos
+  · have hy_pos : 0 < y := lt_of_lt_of_le hx_pos h
+    rw [findPredecessor_pos_eq x hx_pos, findPredecessor_pos_eq y hy_pos]
+    exact (Fp.finite_le_finite_iff _ _).mpr (findPredecessorPos_mono hx_pos hy_pos h)
+
 end findPredecessor
 
 
@@ -638,7 +717,584 @@ theorem findSuccessor_mono_neg {x y : R} (hx : x < 0) (hy : y < 0) (h : x ≤ y)
   | inl hlt => left; exact hlt
   | inr heq => right; rw [heq]
 
+/-- `findSuccessor` of a positive value is at least `+0`. -/
+theorem findSuccessor_zero_le_pos (x : R) (hx : 0 < x) :
+    Fp.finite 0 ≤ findSuccessor x := by
+  rw [findSuccessor_pos_eq x hx]
+  match hfsp : findSuccessorPos x hx with
+  | Fp.finite f =>
+    rw [Fp.finite_le_finite_iff]
+    have hf_pos := findSuccessorPos_pos hfsp
+    have hnz : ¬f.isZero := by
+      intro hz
+      have := FiniteFp.toVal_isZero (R := R) hz
+      linarith
+    exact FiniteFp.toVal_le R (by rw [FiniteFp.toVal_zero]; linarith) (Or.inr hnz)
+  | Fp.infinite b =>
+    rw [Fp.le_def]
+    left
+    have := findSuccessorPos_ne_neg_inf x hx
+    rw [hfsp] at this
+    simp at this
+    subst this
+    simp
+  | Fp.NaN =>
+    exact absurd hfsp (findSuccessorPos_ne_nan x hx)
+
+/-- `findSuccessor` of a negative value is at most `+0`. -/
+theorem findSuccessor_neg_le_zero (x : R) (hx : x < 0) :
+    findSuccessor x ≤ Fp.finite 0 := by
+  rw [findSuccessor_neg_eq x hx, Fp.finite_le_finite_iff]
+  apply FiniteFp.toVal_le_handle R
+  · rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_zero]
+    have hneg_pos : 0 < -x := neg_pos.mpr hx
+    linarith [findPredecessorPos_nonneg (x := -x) (hpos := hneg_pos)]
+  · intro ⟨hx_zero, _⟩
+    rw [FiniteFp.le_def]
+    left
+    rw [FiniteFp.lt_def]
+    left
+    have hneg_pos : 0 < -x := neg_pos.mpr hx
+    unfold FiniteFp.isZero at hx_zero
+    simp [FiniteFp.neg_def] at hx_zero ⊢
+    exact ⟨findPredecessorPos_sign_false (-x) hneg_pos, rfl⟩
+
+/-- Monotonicity of `findSuccessor`: if `x ≤ y`, then
+`findSuccessor x ≤ findSuccessor y`. -/
+theorem findSuccessor_mono {x y : R} (h : x ≤ y) :
+    findSuccessor x ≤ findSuccessor y := by
+  rcases lt_trichotomy x 0 with hx_neg | hx_zero | hx_pos
+  · rcases lt_trichotomy y 0 with hy_neg | hy_zero | hy_pos
+    · exact findSuccessor_mono_neg hx_neg hy_neg h
+    · rw [hy_zero, findSuccessor_zero]
+      exact findSuccessor_neg_le_zero x hx_neg
+    · exact Fp.le_trans (findSuccessor_neg_le_zero x hx_neg) (findSuccessor_zero_le_pos y hy_pos)
+  · rw [hx_zero, findSuccessor_zero]
+    rcases lt_trichotomy y 0 with hy_neg | hy_zero | hy_pos
+    · linarith
+    · rw [hy_zero, findSuccessor_zero]
+      exact Fp.le_refl _
+    · exact findSuccessor_zero_le_pos y hy_pos
+  · have hy_pos : 0 < y := lt_of_lt_of_le hx_pos h
+    rw [findSuccessor_pos_eq x hx_pos, findSuccessor_pos_eq y hy_pos]
+    exact findSuccessorPos_mono hx_pos hy_pos h
+
 end findSuccessor
+
+section NormalRangeGap
+
+/-- In normal range, `findSuccessor` is exactly `roundNormalUp`. -/
+@[simp] theorem findSuccessor_normal_eq_roundNormalUp (x : R) (h : isNormalRange x) :
+    findSuccessor x = roundNormalUp x h := by
+  have hxpos := isNormalRange_pos x h
+  rw [findSuccessor_pos_eq (R := R) x hxpos]
+  unfold findSuccessorPos
+  have hnot_sub : ¬x < (2 : R) ^ FloatFormat.min_exp := not_lt.mpr h.left
+  simp [hnot_sub, h.right]
+
+/-- In normal range, `findPredecessor` is exactly `roundNormalDown`. -/
+@[simp] theorem findPredecessor_normal_eq_roundNormalDown (x : R) (h : isNormalRange x) :
+    findPredecessor x = Fp.finite (roundNormalDown x h) := by
+  have hxpos := isNormalRange_pos x h
+  rw [findPredecessor_pos_eq (R := R) x hxpos]
+  unfold findPredecessorPos
+  have hnot_sub : ¬x < (2 : R) ^ FloatFormat.min_exp := not_lt.mpr h.left
+  simp [hnot_sub, h.right]
+
+/-- If `x` is in normal range and `findSuccessor`/`findPredecessor` are finite, then their
+value gap is bounded by one ULP of `x`. -/
+theorem findSuccessor_sub_findPredecessor_le_ulp_of_normal
+    (x : R) (h : isNormalRange x) (f p : FiniteFp)
+    (hs : findSuccessor x = Fp.finite f)
+    (hp : findPredecessor x = Fp.finite p) :
+    (f.toVal : R) - p.toVal ≤ Fp.ulp x := by
+  have hs' : roundNormalUp x h = Fp.finite f := by
+    simpa [findSuccessor_normal_eq_roundNormalUp (R := R) x h] using hs
+  have hp_eq : p = roundNormalDown x h := by
+    have hpred : Fp.finite p = Fp.finite (roundNormalDown x h) := by
+      rw [← hp, findPredecessor_normal_eq_roundNormalDown (R := R) x h]
+    exact Fp.finite.inj hpred
+  subst hp_eq
+  exact roundNormalUp_sub_roundNormalDown_le_ulp x h f hs'
+
+/-- Exact normal-range gap when the predecessor is strictly below the input:
+the successor/predecessor gap is exactly one ULP. -/
+theorem findSuccessor_sub_findPredecessor_eq_ulp_of_normal_of_pred_lt
+    (x : R) (h : isNormalRange x) (f p : FiniteFp)
+    (hs : findSuccessor x = Fp.finite f)
+    (hp : findPredecessor x = Fp.finite p)
+    (hpred_lt : (p.toVal : R) < x) :
+    (f.toVal : R) - p.toVal = Fp.ulp x := by
+  have hs' : roundNormalUp x h = Fp.finite f := by
+    simpa [findSuccessor_normal_eq_roundNormalUp (R := R) x h] using hs
+  have hp_eq : p = roundNormalDown x h := by
+    have hpred : Fp.finite p = Fp.finite (roundNormalDown x h) := by
+      rw [← hp, findPredecessor_normal_eq_roundNormalDown (R := R) x h]
+    exact Fp.finite.inj hpred
+  subst hp_eq
+  have hdown_lt : (roundNormalDown x h).toVal (R := R) < x := by
+    simpa using hpred_lt
+  exact roundNormalUp_sub_roundNormalDown_eq_ulp_of_down_lt x h f hs' hdown_lt
+
+/-- Exact normal-range gap when the input is strictly below the successor:
+the successor/predecessor gap is exactly one ULP. -/
+theorem findSuccessor_sub_findPredecessor_eq_ulp_of_normal_of_succ_gt
+    (x : R) (h : isNormalRange x) (f p : FiniteFp)
+    (hs : findSuccessor x = Fp.finite f)
+    (hp : findPredecessor x = Fp.finite p)
+    (hsucc_gt : x < (f.toVal : R)) :
+    (f.toVal : R) - p.toVal = Fp.ulp x := by
+  have hs' : roundNormalUp x h = Fp.finite f := by
+    simpa [findSuccessor_normal_eq_roundNormalUp (R := R) x h] using hs
+  have hp_eq : p = roundNormalDown x h := by
+    have hpred : Fp.finite p = Fp.finite (roundNormalDown x h) := by
+      rw [← hp, findPredecessor_normal_eq_roundNormalDown (R := R) x h]
+    exact Fp.finite.inj hpred
+  subst hp_eq
+  exact roundNormalUp_sub_roundNormalDown_eq_ulp_of_lt_up x h f hs' hsucc_gt
+
+end NormalRangeGap
+
+section NextNeighbor
+
+/-- A fixed positive step used to move off an exactly representable finite value when
+    computing strict neighbors (`nextUp` / `nextDown`).
+
+Using half of the smallest positive subnormal guarantees the perturbation is positive and
+smaller than any positive gap between distinct finite nonzero values. -/
+abbrev neighborStep : ℚ :=
+  (FiniteFp.smallestPosSubnormal.toVal : ℚ) / 2
+
+/-- The perturbed rational used by `nextUp` for finite inputs. -/
+abbrev stepUpVal (f : FiniteFp) : ℚ := ⌞f⌟[ℚ] + neighborStep
+
+/-- The perturbed rational used by `nextDown` for finite inputs. -/
+abbrev stepDownVal (f : FiniteFp) : ℚ := ⌞f⌟[ℚ] - neighborStep
+
+/-- IEEE-style `nextUp` on floating-point values.
+
+- `NaN` maps to `NaN`
+- `+∞` maps to `+∞`
+- `-∞` maps to the largest negative finite value
+- finite values map to the least representable value strictly greater than the input value -/
+def nextUp (x : Fp) : Fp :=
+  match x with
+  | Fp.NaN => Fp.NaN
+  | Fp.infinite false => Fp.infinite false
+  | Fp.infinite true => Fp.finite (-FiniteFp.largestFiniteFloat)
+  | Fp.finite f => findSuccessor (stepUpVal f)
+
+/-- IEEE-style `nextDown` on floating-point values.
+
+- `NaN` maps to `NaN`
+- `-∞` maps to `-∞`
+- `+∞` maps to the largest positive finite value
+- finite values map to the greatest representable value strictly less than the input value -/
+def nextDown (x : Fp) : Fp :=
+  match x with
+  | Fp.NaN => Fp.NaN
+  | Fp.infinite true => Fp.infinite true
+  | Fp.infinite false => Fp.finite FiniteFp.largestFiniteFloat
+  | Fp.finite f => findPredecessor (stepDownVal f)
+
+@[simp] theorem nextUp_nan : nextUp (Fp.NaN) = Fp.NaN := rfl
+@[simp] theorem nextUp_pos_inf : nextUp (Fp.infinite false) = Fp.infinite false := rfl
+@[simp] theorem nextUp_neg_inf : nextUp (Fp.infinite true) = Fp.finite (-FiniteFp.largestFiniteFloat) := rfl
+@[simp] theorem nextUp_finite (f : FiniteFp) :
+    nextUp (Fp.finite f) = findSuccessor (stepUpVal f) := rfl
+
+@[simp] theorem nextDown_nan : nextDown (Fp.NaN) = Fp.NaN := rfl
+@[simp] theorem nextDown_neg_inf : nextDown (Fp.infinite true) = Fp.infinite true := rfl
+@[simp] theorem nextDown_pos_inf : nextDown (Fp.infinite false) = Fp.finite FiniteFp.largestFiniteFloat := rfl
+@[simp] theorem nextDown_finite (f : FiniteFp) :
+    nextDown (Fp.finite f) = findPredecessor (stepDownVal f) := rfl
+
+/-- Finite-output witness for `nextUp`. -/
+abbrev IsNextUp (f u : FiniteFp) : Prop := nextUp (Fp.finite f) = Fp.finite u
+
+/-- Finite-output witness for `nextDown`. -/
+abbrev IsNextDown (f d : FiniteFp) : Prop := nextDown (Fp.finite f) = Fp.finite d
+
+/-- One-sided ULP bound for `nextUp` from a finite value, routed through the normal-range
+successor/predecessor gap theorem at the perturbed input point. -/
+theorem nextUp_sub_self_le_ulp_of_normal_step
+    (f u : FiniteFp)
+    (hN : isNormalRange (stepUpVal f))
+    (hpred : findPredecessor (stepUpVal f) = Fp.finite f)
+    (hup : IsNextUp f u) :
+    ⌞u⌟[ℚ] - ⌞f⌟[ℚ] ≤ Fp.ulp (stepUpVal f) := by
+  have hs : findSuccessor (stepUpVal f) = Fp.finite u := by
+    simpa [IsNextUp, nextUp_finite] using hup
+  exact findSuccessor_sub_findPredecessor_le_ulp_of_normal
+    (stepUpVal f) hN u f hs hpred
+
+/-- Exact one-ULP gap for `nextUp` from a finite value under normal-step hypotheses. -/
+theorem nextUp_sub_self_eq_ulp_of_normal_step
+    (f u : FiniteFp)
+    (hN : isNormalRange (stepUpVal f))
+    (hpred : findPredecessor (stepUpVal f) = Fp.finite f)
+    (hup : IsNextUp f u) :
+    ⌞u⌟[ℚ] - ⌞f⌟[ℚ] = Fp.ulp (stepUpVal f) := by
+  have hs : findSuccessor (stepUpVal f) = Fp.finite u := by
+    simpa [IsNextUp, nextUp_finite] using hup
+  have hpred_lt : (⌞f⌟[ℚ] : ℚ) < stepUpVal f := by
+    unfold stepUpVal neighborStep
+    linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := ℚ)]
+  exact findSuccessor_sub_findPredecessor_eq_ulp_of_normal_of_pred_lt
+    (stepUpVal f) hN u f hs hpred hpred_lt
+
+/-- One-sided ULP bound for `nextDown` from a finite value, routed through the normal-range
+successor/predecessor gap theorem at the perturbed input point. -/
+theorem self_sub_nextDown_le_ulp_of_normal_step
+    (f d : FiniteFp)
+    (hN : isNormalRange (stepDownVal f))
+    (hsucc : findSuccessor (stepDownVal f) = Fp.finite f)
+    (hdown : IsNextDown f d) :
+    ⌞f⌟[ℚ] - ⌞d⌟[ℚ] ≤ Fp.ulp (stepDownVal f) := by
+  have hp : findPredecessor (stepDownVal f) = Fp.finite d := by
+    simpa [IsNextDown, nextDown_finite] using hdown
+  exact findSuccessor_sub_findPredecessor_le_ulp_of_normal
+    (stepDownVal f) hN f d hsucc hp
+
+/-- Exact one-ULP gap for `nextDown` from a finite value under normal-step hypotheses.
+
+The additional strictness hypothesis excludes the representable-input degenerate case
+(`pred = x`), ensuring true adjacency around the perturbed point. -/
+theorem self_sub_nextDown_eq_ulp_of_normal_step
+    (f d : FiniteFp)
+    (hN : isNormalRange (stepDownVal f))
+    (hsucc : findSuccessor (stepDownVal f) = Fp.finite f)
+    (hdown : IsNextDown f d) :
+    ⌞f⌟[ℚ] - ⌞d⌟[ℚ] = Fp.ulp (stepDownVal f) := by
+  have hp : findPredecessor (stepDownVal f) = Fp.finite d := by
+    simpa [IsNextDown, nextDown_finite] using hdown
+  have hsucc_gt : (stepDownVal f : ℚ) < ⌞f⌟[ℚ] := by
+    unfold stepDownVal neighborStep
+    linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := ℚ)]
+  exact findSuccessor_sub_findPredecessor_eq_ulp_of_normal_of_succ_gt
+    (stepDownVal f) hN f d hsucc hp hsucc_gt
+
+/-- `nextUp` one-sided ULP bound specialized back to `ulp(f.toVal)` when the perturbation
+stays in the same log binade. -/
+theorem nextUp_sub_self_le_ulp_of_log_step_eq
+    (f u : FiniteFp)
+    (hN : isNormalRange (stepUpVal f))
+    (hpred : findPredecessor (stepUpVal f) = Fp.finite f)
+    (hup : IsNextUp f u)
+    (hlog : Int.log 2 (|stepUpVal f|) = Int.log 2 (|⌞f⌟[ℚ]|)) :
+    ⌞u⌟[ℚ] - ⌞f⌟[ℚ] ≤ Fp.ulp (⌞f⌟[ℚ]) := by
+  have hstep : Fp.ulp (stepUpVal f) = Fp.ulp (⌞f⌟[ℚ]) :=
+    Fp.ulp_step_log (stepUpVal f) (⌞f⌟[ℚ]) hlog
+  have hbase := nextUp_sub_self_le_ulp_of_normal_step f u hN hpred hup
+  simpa [hstep] using hbase
+
+/-- Exact `nextUp` gap specialized back to `ulp(f.toVal)` when the perturbation stays in the
+same log binade. -/
+theorem nextUp_sub_self_eq_ulp_of_log_step_eq
+    (f u : FiniteFp)
+    (hN : isNormalRange (stepUpVal f))
+    (hpred : findPredecessor (stepUpVal f) = Fp.finite f)
+    (hup : IsNextUp f u)
+    (hlog : Int.log 2 (|stepUpVal f|) = Int.log 2 (|⌞f⌟[ℚ]|)) :
+    ⌞u⌟[ℚ] - ⌞f⌟[ℚ] = Fp.ulp (⌞f⌟[ℚ]) := by
+  have hstep : Fp.ulp (stepUpVal f) = Fp.ulp (⌞f⌟[ℚ]) :=
+    Fp.ulp_step_log (stepUpVal f) (⌞f⌟[ℚ]) hlog
+  have hbase := nextUp_sub_self_eq_ulp_of_normal_step f u hN hpred hup
+  simpa [hstep] using hbase
+
+/-- `nextDown` one-sided ULP bound specialized back to `ulp(f.toVal)` when the perturbation
+stays in the same log binade. -/
+theorem self_sub_nextDown_le_ulp_of_log_step_eq
+    (f d : FiniteFp)
+    (hN : isNormalRange (stepDownVal f))
+    (hsucc : findSuccessor (stepDownVal f) = Fp.finite f)
+    (hdown : IsNextDown f d)
+    (hlog : Int.log 2 (|stepDownVal f|) = Int.log 2 (|⌞f⌟[ℚ]|)) :
+    ⌞f⌟[ℚ] - ⌞d⌟[ℚ] ≤ Fp.ulp (⌞f⌟[ℚ]) := by
+  have hstep : Fp.ulp (stepDownVal f) = Fp.ulp (⌞f⌟[ℚ]) :=
+    Fp.ulp_step_log (stepDownVal f) (⌞f⌟[ℚ]) hlog
+  have hbase := self_sub_nextDown_le_ulp_of_normal_step f d hN hsucc hdown
+  simpa [hstep] using hbase
+
+/-- Exact `nextDown` gap specialized back to `ulp(f.toVal)` when the perturbation stays in the
+same log binade. -/
+theorem self_sub_nextDown_eq_ulp_of_log_step_eq
+    (f d : FiniteFp)
+    (hN : isNormalRange (stepDownVal f))
+    (hsucc : findSuccessor (stepDownVal f) = Fp.finite f)
+    (hdown : IsNextDown f d)
+    (hlog : Int.log 2 (|stepDownVal f|) = Int.log 2 (|⌞f⌟[ℚ]|)) :
+    ⌞f⌟[ℚ] - ⌞d⌟[ℚ] = Fp.ulp (⌞f⌟[ℚ]) := by
+  have hstep : Fp.ulp (stepDownVal f) = Fp.ulp (⌞f⌟[ℚ]) :=
+    Fp.ulp_step_log (stepDownVal f) (⌞f⌟[ℚ]) hlog
+  have hbase := self_sub_nextDown_eq_ulp_of_normal_step f d hN hsucc hdown
+  simpa [hstep] using hbase
+
+/-- Bundled interior hypothesis for proving one-sided `nextUp` ULP bounds from a finite value. -/
+abbrev NextUpInterior (f : FiniteFp) : Prop :=
+  isNormalRange (stepUpVal f) ∧
+    findPredecessor (stepUpVal f) = Fp.finite f
+
+/-- Bundled interior hypothesis for proving one-sided `nextDown` ULP bounds from a finite value. -/
+abbrev NextDownInterior (f : FiniteFp) : Prop :=
+  isNormalRange (stepDownVal f) ∧
+    findSuccessor (stepDownVal f) = Fp.finite f
+
+/-- `nextUp` one-sided ULP bound from the bundled interior hypothesis. -/
+theorem nextUp_sub_self_le_ulp_of_interior
+    (f u : FiniteFp) (hI : NextUpInterior f)
+    (hup : IsNextUp f u) :
+    ⌞u⌟[ℚ] - ⌞f⌟[ℚ] ≤ Fp.ulp (stepUpVal f) := by
+  exact nextUp_sub_self_le_ulp_of_normal_step f u hI.1 hI.2 hup
+
+/-- `nextDown` one-sided ULP bound from the bundled interior hypothesis. -/
+theorem self_sub_nextDown_le_ulp_of_interior
+    (f d : FiniteFp) (hI : NextDownInterior f)
+    (hdown : IsNextDown f d) :
+    ⌞f⌟[ℚ] - ⌞d⌟[ℚ] ≤ Fp.ulp (stepDownVal f) := by
+  exact self_sub_nextDown_le_ulp_of_normal_step f d hI.1 hI.2 hdown
+
+/-- Bundled interior hypothesis with same-log condition for specializing to `ulp(f.toVal)`. -/
+abbrev NextUpInteriorSameLog (f : FiniteFp) : Prop :=
+  NextUpInterior f ∧
+    Int.log 2 (|stepUpVal f|) = Int.log 2 (|⌞f⌟[ℚ]|)
+
+/-- Bundled interior hypothesis with same-log condition for specializing to `ulp(f.toVal)`. -/
+abbrev NextDownInteriorSameLog (f : FiniteFp) : Prop :=
+  NextDownInterior f ∧
+    Int.log 2 (|stepDownVal f|) = Int.log 2 (|⌞f⌟[ℚ]|)
+
+/-- Constructor for `NextUpInterior`. -/
+theorem nextUpInterior_intro (f : FiniteFp)
+    (hN : isNormalRange (stepUpVal f))
+    (hpred : findPredecessor (stepUpVal f) = Fp.finite f) :
+    NextUpInterior f := ⟨hN, hpred⟩
+
+/-- Constructor for `NextDownInterior`. -/
+theorem nextDownInterior_intro (f : FiniteFp)
+    (hN : isNormalRange (stepDownVal f))
+    (hsucc : findSuccessor (stepDownVal f) = Fp.finite f) :
+    NextDownInterior f := ⟨hN, hsucc⟩
+
+/-- Constructor for `NextUpInteriorSameLog`. -/
+theorem nextUpInteriorSameLog_intro (f : FiniteFp)
+    (hN : isNormalRange (stepUpVal f))
+    (hpred : findPredecessor (stepUpVal f) = Fp.finite f)
+    (hlog : Int.log 2 (|stepUpVal f|) = Int.log 2 (|⌞f⌟[ℚ]|)) :
+    NextUpInteriorSameLog f := ⟨⟨hN, hpred⟩, hlog⟩
+
+/-- Constructor for `NextDownInteriorSameLog`. -/
+theorem nextDownInteriorSameLog_intro (f : FiniteFp)
+    (hN : isNormalRange (stepDownVal f))
+    (hsucc : findSuccessor (stepDownVal f) = Fp.finite f)
+    (hlog : Int.log 2 (|stepDownVal f|) = Int.log 2 (|⌞f⌟[ℚ]|)) :
+    NextDownInteriorSameLog f := ⟨⟨hN, hsucc⟩, hlog⟩
+
+/-- Clean public `nextUp` bound to `ulp(f.toVal)` under bundled interior/same-log hypotheses. -/
+theorem nextUp_sub_self_le_ulp_of_interior_sameLog
+    (f u : FiniteFp) (hI : NextUpInteriorSameLog f)
+    (hup : IsNextUp f u) :
+    ⌞u⌟[ℚ] - ⌞f⌟[ℚ] ≤ Fp.ulp (⌞f⌟[ℚ]) := by
+  exact nextUp_sub_self_le_ulp_of_log_step_eq f u
+    hI.1.1 hI.1.2 hup hI.2
+
+/-- Clean public `nextDown` bound to `ulp(f.toVal)` under bundled interior/same-log hypotheses. -/
+theorem self_sub_nextDown_le_ulp_of_interior_sameLog
+    (f d : FiniteFp) (hI : NextDownInteriorSameLog f)
+    (hdown : IsNextDown f d) :
+    ⌞f⌟[ℚ] - ⌞d⌟[ℚ] ≤ Fp.ulp (⌞f⌟[ℚ]) := by
+  exact self_sub_nextDown_le_ulp_of_log_step_eq f d
+    hI.1.1 hI.1.2 hdown hI.2
+
+/-- Public `nextUp` gap theorem with explicit assumptions and no manual bundle construction. -/
+theorem nextUp_gap_le_ulp_of
+    (f u : FiniteFp)
+    (hN : isNormalRange (stepUpVal f))
+    (hpred : findPredecessor (stepUpVal f) = Fp.finite f)
+    (hlog : Int.log 2 (|stepUpVal f|) = Int.log 2 (|⌞f⌟[ℚ]|))
+    (hup : IsNextUp f u) :
+    ⌞u⌟[ℚ] - ⌞f⌟[ℚ] ≤ Fp.ulp (⌞f⌟[ℚ]) := by
+  exact nextUp_sub_self_le_ulp_of_interior_sameLog f u
+    (nextUpInteriorSameLog_intro f hN hpred hlog) hup
+
+/-- Public `nextDown` gap theorem with explicit assumptions and no manual bundle construction. -/
+theorem nextDown_gap_le_ulp_of
+    (f d : FiniteFp)
+    (hN : isNormalRange (stepDownVal f))
+    (hsucc : findSuccessor (stepDownVal f) = Fp.finite f)
+    (hlog : Int.log 2 (|stepDownVal f|) = Int.log 2 (|⌞f⌟[ℚ]|))
+    (hdown : IsNextDown f d) :
+    ⌞f⌟[ℚ] - ⌞d⌟[ℚ] ≤ Fp.ulp (⌞f⌟[ℚ]) := by
+  exact self_sub_nextDown_le_ulp_of_interior_sameLog f d
+    (nextDownInteriorSameLog_intro f hN hsucc hlog) hdown
+
+/-- Short alias for `nextUp_sub_self_le_ulp_of_normal_step`. -/
+theorem nextUp_gap_le_ulp_step
+    (f u : FiniteFp)
+    (hN : isNormalRange (stepUpVal f))
+    (hpred : findPredecessor (stepUpVal f) = Fp.finite f)
+    (hup : IsNextUp f u) :
+    ⌞u⌟[ℚ] - ⌞f⌟[ℚ] ≤ Fp.ulp (stepUpVal f) :=
+  nextUp_sub_self_le_ulp_of_normal_step f u hN hpred hup
+
+/-- Short alias for `self_sub_nextDown_le_ulp_of_normal_step`. -/
+theorem nextDown_gap_le_ulp_step
+    (f d : FiniteFp)
+    (hN : isNormalRange (stepDownVal f))
+    (hsucc : findSuccessor (stepDownVal f) = Fp.finite f)
+    (hdown : IsNextDown f d) :
+    ⌞f⌟[ℚ] - ⌞d⌟[ℚ] ≤ Fp.ulp (stepDownVal f) :=
+  self_sub_nextDown_le_ulp_of_normal_step f d hN hsucc hdown
+
+/-- Short alias for `nextUp_sub_self_le_ulp_of_interior_sameLog`. -/
+theorem nextUp_gap_le_ulp
+    (f u : FiniteFp) (hI : NextUpInteriorSameLog f) (hup : IsNextUp f u) :
+    ⌞u⌟[ℚ] - ⌞f⌟[ℚ] ≤ Fp.ulp (⌞f⌟[ℚ]) :=
+  nextUp_sub_self_le_ulp_of_interior_sameLog f u hI hup
+
+/-- Short alias for `self_sub_nextDown_le_ulp_of_interior_sameLog`. -/
+theorem nextDown_gap_le_ulp
+    (f d : FiniteFp) (hI : NextDownInteriorSameLog f) (hdown : IsNextDown f d) :
+    ⌞f⌟[ℚ] - ⌞d⌟[ℚ] ≤ Fp.ulp (⌞f⌟[ℚ]) :=
+  self_sub_nextDown_le_ulp_of_interior_sameLog f d hI hdown
+
+/-- Public `nextUp` exact-gap theorem with explicit assumptions and no manual bundle construction. -/
+theorem nextUp_gap_eq_ulp_of
+    (f u : FiniteFp)
+    (hN : isNormalRange (stepUpVal f))
+    (hpred : findPredecessor (stepUpVal f) = Fp.finite f)
+    (hlog : Int.log 2 (|stepUpVal f|) = Int.log 2 (|⌞f⌟[ℚ]|))
+    (hup : IsNextUp f u) :
+    ⌞u⌟[ℚ] - ⌞f⌟[ℚ] = Fp.ulp (⌞f⌟[ℚ]) := by
+  exact nextUp_sub_self_eq_ulp_of_log_step_eq f u hN hpred hup hlog
+
+/-- Public `nextDown` exact-gap theorem with explicit assumptions and no manual bundle construction. -/
+theorem nextDown_gap_eq_ulp_of
+    (f d : FiniteFp)
+    (hN : isNormalRange (stepDownVal f))
+    (hsucc : findSuccessor (stepDownVal f) = Fp.finite f)
+    (hlog : Int.log 2 (|stepDownVal f|) = Int.log 2 (|⌞f⌟[ℚ]|))
+    (hdown : IsNextDown f d) :
+    ⌞f⌟[ℚ] - ⌞d⌟[ℚ] = Fp.ulp (⌞f⌟[ℚ]) := by
+  exact self_sub_nextDown_eq_ulp_of_log_step_eq f d hN hsucc hdown hlog
+
+/-- Short alias for `nextUp_sub_self_eq_ulp_of_normal_step`. -/
+theorem nextUp_gap_eq_ulp_step
+    (f u : FiniteFp)
+    (hN : isNormalRange (stepUpVal f))
+    (hpred : findPredecessor (stepUpVal f) = Fp.finite f)
+    (hup : IsNextUp f u) :
+    ⌞u⌟[ℚ] - ⌞f⌟[ℚ] = Fp.ulp (stepUpVal f) :=
+  nextUp_sub_self_eq_ulp_of_normal_step f u hN hpred hup
+
+/-- Short alias for `self_sub_nextDown_eq_ulp_of_normal_step`. -/
+theorem nextDown_gap_eq_ulp_step
+    (f d : FiniteFp)
+    (hN : isNormalRange (stepDownVal f))
+    (hsucc : findSuccessor (stepDownVal f) = Fp.finite f)
+    (hdown : IsNextDown f d) :
+    ⌞f⌟[ℚ] - ⌞d⌟[ℚ] = Fp.ulp (stepDownVal f) :=
+  self_sub_nextDown_eq_ulp_of_normal_step f d hN hsucc hdown
+
+/-- Short alias for `nextUp_sub_self_eq_ulp_of_log_step_eq`. -/
+theorem nextUp_gap_eq_ulp
+    (f u : FiniteFp)
+    (hN : isNormalRange (stepUpVal f))
+    (hpred : findPredecessor (stepUpVal f) = Fp.finite f)
+    (hlog : Int.log 2 (|stepUpVal f|) = Int.log 2 (|⌞f⌟[ℚ]|))
+    (hup : IsNextUp f u) :
+    ⌞u⌟[ℚ] - ⌞f⌟[ℚ] = Fp.ulp (⌞f⌟[ℚ]) :=
+  nextUp_sub_self_eq_ulp_of_log_step_eq f u hN hpred hup hlog
+
+/-- Short alias for `self_sub_nextDown_eq_ulp_of_log_step_eq`. -/
+theorem nextDown_gap_eq_ulp
+    (f d : FiniteFp)
+    (hN : isNormalRange (stepDownVal f))
+    (hsucc : findSuccessor (stepDownVal f) = Fp.finite f)
+    (hdown : IsNextDown f d)
+    (hlog : Int.log 2 (|stepDownVal f|) = Int.log 2 (|⌞f⌟[ℚ]|)) :
+    ⌞f⌟[ℚ] - ⌞d⌟[ℚ] = Fp.ulp (⌞f⌟[ℚ]) :=
+  self_sub_nextDown_eq_ulp_of_log_step_eq f d hN hsucc hdown hlog
+
+/-- Monotonicity of `nextUp` on finite inputs via monotonicity of `findSuccessor`. -/
+theorem nextUp_mono_finite {f g : FiniteFp}
+    (hfg : (⌞f⌟[ℚ] : ℚ) ≤ ⌞g⌟[ℚ]) :
+    nextUp (Fp.finite f) ≤ nextUp (Fp.finite g) := by
+  have hstep : stepUpVal f ≤ stepUpVal g := by
+    unfold stepUpVal
+    linarith
+  simpa [nextUp_finite] using (findSuccessor_mono (R := ℚ) hstep)
+
+/-- Monotonicity of `nextDown` on finite inputs via monotonicity of `findPredecessor`. -/
+theorem nextDown_mono_finite {f g : FiniteFp}
+    (hfg : (⌞f⌟[ℚ] : ℚ) ≤ ⌞g⌟[ℚ]) :
+    nextDown (Fp.finite f) ≤ nextDown (Fp.finite g) := by
+  have hstep : stepDownVal f ≤ stepDownVal g := by
+    unfold stepDownVal
+    linarith
+  simpa [nextDown_finite] using (findPredecessor_mono (R := ℚ) hstep)
+
+/-- Strict ordering law for finite `nextUp`: under the exact-gap hypotheses, output is
+strictly greater than input. -/
+theorem nextUp_strict_of
+    (f u : FiniteFp)
+    (hN : isNormalRange (stepUpVal f))
+    (hpred : findPredecessor (stepUpVal f) = Fp.finite f)
+    (hlog : Int.log 2 (|stepUpVal f|) = Int.log 2 (|⌞f⌟[ℚ]|))
+    (hup : IsNextUp f u) :
+    f < u := by
+  have hgap : ⌞u⌟[ℚ] - ⌞f⌟[ℚ] = Fp.ulp (⌞f⌟[ℚ]) :=
+    nextUp_gap_eq_ulp_of f u hN hpred hlog hup
+  have hulp : (0 : ℚ) < Fp.ulp (⌞f⌟[ℚ]) := Fp.ulp_pos (⌞f⌟[ℚ])
+  have hval : (⌞f⌟[ℚ] : ℚ) < ⌞u⌟[ℚ] := by
+    linarith
+  exact FiniteFp.toVal_lt ℚ hval
+
+/-- Strict ordering law for finite `nextDown`: under the exact-gap hypotheses, output is
+strictly less than input. -/
+theorem nextDown_strict_of
+    (f d : FiniteFp)
+    (hN : isNormalRange (stepDownVal f))
+    (hsucc : findSuccessor (stepDownVal f) = Fp.finite f)
+    (hlog : Int.log 2 (|stepDownVal f|) = Int.log 2 (|⌞f⌟[ℚ]|))
+    (hdown : IsNextDown f d) :
+    d < f := by
+  have hgap : ⌞f⌟[ℚ] - ⌞d⌟[ℚ] = Fp.ulp (⌞f⌟[ℚ]) :=
+    nextDown_gap_eq_ulp_of f d hN hsucc hlog hdown
+  have hulp : (0 : ℚ) < Fp.ulp (⌞f⌟[ℚ]) := Fp.ulp_pos (⌞f⌟[ℚ])
+  have hval : (⌞d⌟[ℚ] : ℚ) < ⌞f⌟[ℚ] := by
+    linarith
+  exact FiniteFp.toVal_lt ℚ hval
+
+/-- Inverse-style round-trip law: if `u` is witnessed as `nextUp(f)` and `f` is witnessed as
+`nextDown(u)`, then composing the operations returns `f`. -/
+theorem nextDown_nextUp_eq_self_of_witness
+    (f u : FiniteFp)
+    (hup : IsNextUp f u)
+    (hdown : IsNextDown u f) :
+    nextDown (nextUp (Fp.finite f)) = Fp.finite f := by
+  calc
+    nextDown (nextUp (Fp.finite f))
+        = nextDown (Fp.finite u) := by
+            simpa [IsNextUp] using congrArg nextDown hup
+    _ = Fp.finite f := by
+          simpa [IsNextDown] using hdown
+
+/-- Inverse-style round-trip law: if `d` is witnessed as `nextDown(f)` and `f` is witnessed as
+`nextUp(d)`, then composing the operations returns `f`. -/
+theorem nextUp_nextDown_eq_self_of_witness
+    (f d : FiniteFp)
+    (hdown : IsNextDown f d)
+    (hup : IsNextUp d f) :
+    nextUp (nextDown (Fp.finite f)) = Fp.finite f := by
+  calc
+    nextUp (nextDown (Fp.finite f))
+        = nextUp (Fp.finite d) := by
+            simpa [IsNextDown] using congrArg nextUp hdown
+    _ = Fp.finite f := by
+          simpa [IsNextUp] using hup
+
+end NextNeighbor
 
 
 section Misc
