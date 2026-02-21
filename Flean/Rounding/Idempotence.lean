@@ -307,7 +307,6 @@ theorem roundDown_le_roundUp (x : R) : roundDown x ≤ roundUp x := by
   · -- Case x = 0
     subst hzero
     rw [roundDown_zero, roundUp_zero]
-    exact Fp.le_refl _
   · -- Case x > 0
     -- roundDown(x) = Fp.finite(findPredecessorPos(x) _)
     rw [roundDown, findPredecessor_pos_eq x hpos]
@@ -489,37 +488,37 @@ theorem rnTA_eq_roundDown_or_roundUp' (x : R) :
 theorem roundDown_le_roundNearestTE (x : R) :
     roundDown x ≤ roundNearestTiesToEven x := by
   by_cases hx : x = 0
-  · rw [hx, roundDown_zero, roundNearestTiesToEven_zero]; exact Fp.le_refl _
+  · rw [hx, roundDown_zero, roundNearestTiesToEven_zero]
   · rcases rnTE_eq_roundDown_or_roundUp x hx with hrD | hrU
-    · rw [hrD]; exact Fp.le_refl _
+    · rw [hrD]
     · rw [hrU]; exact roundDown_le_roundUp x
 
 /-- roundNearestTiesToEven x ≤ roundUp x for all x -/
 theorem roundNearestTE_le_roundUp (x : R) :
     roundNearestTiesToEven x ≤ roundUp x := by
   by_cases hx : x = 0
-  · rw [hx, roundUp_zero, roundNearestTiesToEven_zero]; exact Fp.le_refl _
+  · rw [hx, roundUp_zero, roundNearestTiesToEven_zero]
   · rcases rnTE_eq_roundDown_or_roundUp x hx with hrD | hrU
     · rw [hrD]; exact roundDown_le_roundUp x
-    · rw [hrU]; exact Fp.le_refl _
+    · rw [hrU]
 
 /-- roundDown x ≤ roundNearestTiesAwayFromZero x for all x -/
 theorem roundDown_le_roundNearestTA (x : R) :
     roundDown x ≤ roundNearestTiesAwayFromZero x := by
   by_cases hx : x = 0
-  · rw [hx, roundDown_zero, roundNearestTiesAwayFromZero_zero]; exact Fp.le_refl _
+  · rw [hx, roundDown_zero, roundNearestTiesAwayFromZero_zero]
   · rcases rnTA_eq_roundDown_or_roundUp x hx with hrD | hrU
-    · rw [hrD]; exact Fp.le_refl _
+    · rw [hrD]
     · rw [hrU]; exact roundDown_le_roundUp x
 
 /-- roundNearestTiesAwayFromZero x ≤ roundUp x for all x -/
 theorem roundNearestTA_le_roundUp (x : R) :
     roundNearestTiesAwayFromZero x ≤ roundUp x := by
   by_cases hx : x = 0
-  · rw [hx, roundUp_zero, roundNearestTiesAwayFromZero_zero]; exact Fp.le_refl _
+  · rw [hx, roundUp_zero, roundNearestTiesAwayFromZero_zero]
   · rcases rnTA_eq_roundDown_or_roundUp x hx with hrD | hrU
     · rw [hrD]; exact roundDown_le_roundUp x
-    · rw [hrU]; exact Fp.le_refl _
+    · rw [hrU]
 
 /-- If x ≤ y and roundUp(x) = Fp.finite f with f.toVal ≤ y, then roundUp(x) ≤ roundDown(y). -/
 private theorem roundUp_le_roundDown_of_toVal_le {x y : R} (f : FiniteFp)
@@ -660,7 +659,7 @@ private theorem rnTE_roundUp_le_roundDown_pos {x y : R} (hx : 0 < x) (hxy : x < 
       have hsame := same_interval_pos hx hxy f hfU hfgt
       rcases hsame with ⟨hrD_eq, hrU_eq⟩
       by_cases hrDU : roundDown x = roundUp x
-      · rw [← hfU, ← hrDU, hrD_eq]; exact Fp.le_refl _
+      · rw [← hfU, ← hrDU, hrD_eq]
       · -- Midpoint contradiction
         exfalso
         have hrDx : roundDown x = Fp.finite (findPredecessorPos x hx) := by
@@ -723,7 +722,7 @@ private theorem rnTA_roundUp_le_roundDown_pos {x y : R} (hx : 0 < x) (hxy : x < 
     · have hsame := same_interval_pos hx hxy f hfU hfgt
       rcases hsame with ⟨hrD_eq, hrU_eq⟩
       by_cases hrDU : roundDown x = roundUp x
-      · rw [← hfU, ← hrDU, hrD_eq]; exact Fp.le_refl _
+      · rw [← hfU, ← hrDU, hrD_eq]
       · exfalso
         have hrDx : roundDown x = Fp.finite (findPredecessorPos x hx) := by
           unfold roundDown; rw [findPredecessor_pos_eq]
@@ -780,7 +779,7 @@ theorem roundNearestTE_mono {x y : R} (h : x ≤ y) :
     · -- Hard case: rnTE(x) = roundUp(x), rnTE(y) = roundDown(y)
       rw [hrUx, hrDy]
       rcases eq_or_lt_of_le h with heq | hlt
-      · subst heq; rw [← hrDy, hrUx]; exact Fp.le_refl _
+      · subst heq; rw [← hrDy, hrUx]
       · -- x < y
         rcases le_or_gt 0 x with hx_nonneg | hx_neg
         · -- 0 ≤ x < y
@@ -816,7 +815,7 @@ theorem roundNearestTA_mono {x y : R} (h : x ≤ y) :
   · rcases rnTA_eq_roundDown_or_roundUp' y with hrDy | hrUy
     · rw [hrUx, hrDy]
       rcases eq_or_lt_of_le h with heq | hlt
-      · subst heq; rw [← hrDy, hrUx]; exact Fp.le_refl _
+      · subst heq; rw [← hrDy, hrUx]
       · rcases le_or_gt 0 x with hx_nonneg | hx_neg
         · rcases eq_or_lt_of_le hx_nonneg with heq0 | hx_pos
           · subst heq0; rw [roundUp_zero (R := R), ← roundDown_zero (R := R)]

@@ -6,16 +6,17 @@ import Flean.CommonConstants
 
 An ordering for floating point numbers.
 
-Note that the *default* ordering we provide for floating point numbers is distinct from what the specification and programming languages has.
-However, only in minor ways.
+The default ordering is a total order, including NaN and signed zeros.
+This is intentionally different from programming-language comparison behavior.
+`StdOrder` sections provide programming-style alternatives.
 
 # FiniteFp
-`FiniteFp` is given a signed magnitude total order.
-The main exception to normal floating point ordering is that `-0 < +0`, as this allows us to define a stricter ordering, and make easier translations between Rational results and Floating Point numbers.
-
-TODO: Define a `stdLt` for `FiniteFp` that is the same as the default ordering, with an easy way to translate conditions based on it into `<` with some side condition.
+`FiniteFp` is given a signed-magnitude total order.
+In particular, `-0 < +0`, which makes value-order lemmas cleaner.
 
 # Fp
+`Fp` extends the same total-order style with `NaN` as the least element.
+`Fp.StdOrder` gives a programming-style comparator family (NaN unordered, signed zeros equivalent).
 
 -/
 
@@ -926,12 +927,13 @@ variable [FloatFormat]
 @[reducible]
 def is_total_lt (x y : Fp) : Prop :=
   match (x, y) with
+  | (.NaN, .NaN) => false
+  | (.NaN, _) => true
+  | (_, .NaN) => false
   | (.finite x, .finite y) => x < y
   | (.infinite b, .infinite c) => b && !c
   | (.infinite b, .finite _) => b
   | (.finite _, .infinite b) => !b
-  | (.NaN, _) => true -- total order has NaN less than everything
-  | (_, .NaN) => false
 
 instance : LT Fp := ⟨is_total_lt⟩
 
@@ -945,7 +947,17 @@ theorem lt_def (x y : Fp) : x < y ↔ is_total_lt x y := by rfl
 
 theorem le_def (x y : Fp) : x ≤ y ↔ (is_total_lt x y ∨ x = y) := by rfl
 
--- theorem lt_cases {x y : Fp} :
+@[simp] theorem not_lt_nan (x : Fp) : ¬x < Fp.NaN := by
+  cases x <;> simp [lt_def, is_total_lt]
+
+@[simp] theorem nan_lt_iff (x : Fp) : Fp.NaN < x ↔ x ≠ Fp.NaN := by
+  cases x <;> simp [lt_def, is_total_lt]
+
+@[simp] theorem nan_le (x : Fp) : Fp.NaN ≤ x := by
+  cases x <;> simp [le_def, is_total_lt]
+
+@[simp] theorem le_nan_iff (x : Fp) : x ≤ Fp.NaN ↔ x = Fp.NaN := by
+  cases x <;> simp [le_def, is_total_lt]
 
 protected theorem lt_imp_le {x y : Fp} : x < y → x ≤ y := by
   intro h
@@ -953,10 +965,15 @@ protected theorem lt_imp_le {x y : Fp} : x < y → x ≤ y := by
   left
   exact h
 
--- theorem lt_imp_ne {x y : Fp} : x < y → x ≠ y := by
---   intro h
---   rw [lt_def] at h
---   simp_all
+theorem not_lt_refl {x : Fp} : ¬x < x := by
+  cases x <;> simp [lt_def, is_total_lt]
+
+theorem lt_trans {x y z : Fp} : x < y → y < z → x < z := by
+  intro hxy hyz
+  cases x <;> cases y <;> cases z <;>
+    simp [lt_def, is_total_lt] at hxy hyz ⊢
+  exact FiniteFp.is_lt_trans hxy hyz
+  all_goals grind
 
 /-- Ordering on Fp.finite values corresponds to FiniteFp ordering -/
 theorem finite_le_finite_iff (x y : FiniteFp) : Fp.finite x ≤ Fp.finite y ↔ x ≤ y := by
@@ -978,8 +995,7 @@ theorem le_trans {x y z : Fp} (hxy : x ≤ y) (hyz : y ≤ z) : x ≤ z := by
   rcases hxy with hlt_xy | heq_xy
   · rcases hyz with hlt_yz | heq_yz
     · left
-      cases x <;> cases y <;> cases z <;>
-        first | exact FiniteFp.is_lt_trans hlt_xy hlt_yz | grind
+      exact lt_trans hlt_xy hlt_yz
     · left; subst heq_yz; exact hlt_xy
   · subst heq_xy; exact hyz
 
@@ -989,9 +1005,141 @@ theorem le_antisymm {x y : Fp} (hxy : x ≤ y) (hyx : y ≤ x) : x = y := by
   rcases hxy with hlt_xy | heq_xy
   · rcases hyx with hlt_yx | heq_yx
     · -- x < y and y < x: impossible
-      cases x <;> cases y <;>
-        first | exact absurd (FiniteFp.is_lt_trans hlt_xy hlt_yx) (lt_irrefl _) | grind
+      exact absurd (lt_trans hlt_xy hlt_yx) not_lt_refl
     · exact heq_yx.symm
   · exact heq_xy
+
+theorem lt_iff_le_not_ge {x y : Fp} : x < y ↔ x ≤ y ∧ ¬ y ≤ x := by
+  constructor
+  · intro hxy
+    constructor
+    · exact Fp.lt_imp_le hxy
+    · intro hyx
+      rw [le_def] at hyx
+      rcases hyx with hyx | hyx
+      · exact not_lt_refl (lt_trans hxy hyx)
+      · rw [hyx] at hxy
+        exact not_lt_refl hxy
+  · intro h
+    rw [le_def] at h
+    rcases h.left with hlt | heq
+    · exact hlt
+    · exfalso
+      apply h.right
+      rw [heq]
+      exact le_refl _
+
+instance : Preorder Fp := {
+  le_refl := Fp.le_refl
+  le_trans := by intro _ _ _; exact Fp.le_trans
+  lt := fun a b => a < b
+  lt_iff_le_not_ge := by
+    intro a b
+    exact Fp.lt_iff_le_not_ge
+}
+
+instance : PartialOrder Fp := {
+  le_antisymm := by
+    intro a b hab hba
+    exact Fp.le_antisymm hab hba
+}
+
+theorem le_total (x y : Fp) : x ≤ y ∨ y ≤ x := by
+  cases x with
+  | finite a =>
+    cases y with
+    | finite b =>
+      simpa [le_def, is_total_lt, FiniteFp.le_def] using (_root_.le_total a b)
+    | infinite s =>
+      cases s <;> simp [le_def, is_total_lt]
+    | NaN =>
+      simp [le_def, is_total_lt]
+  | infinite s =>
+    cases y with
+    | finite _ =>
+      cases s <;> simp [le_def, is_total_lt]
+    | infinite t =>
+      cases s <;> cases t <;> simp [le_def, is_total_lt]
+    | NaN =>
+      simp [le_def, is_total_lt]
+  | NaN =>
+    cases y <;> simp [le_def, is_total_lt]
+
+section Decidable
+
+instance (x y : Fp) : Decidable (x < y) := by
+  rw [lt_def]
+  unfold is_total_lt
+  cases x <;> cases y <;> infer_instance
+
+instance (x y : Fp) : Decidable (x ≤ y) := by
+  rw [le_def]
+  simpa [lt_def] using (inferInstance : Decidable (x < y ∨ x = y))
+
+end Decidable
+
+instance : LinearOrder Fp := {
+  le_total := by
+    intro a b
+    exact Fp.le_total a b
+  toDecidableLE := inferInstance
+  toDecidableLT := inferInstance
+  toDecidableEq := inferInstance
+}
+
+namespace StdOrder
+
+@[reducible]
+def stdEquiv (x y : Fp) : Prop :=
+  match (x, y) with
+  | (.finite a, .finite b) => a.stdEquiv b
+  | (.infinite sx, .infinite sy) => sx = sy
+  | _ => false
+
+@[reducible]
+def stdLt (x y : Fp) : Prop :=
+  match (x, y) with
+  | (.NaN, _) => false
+  | (_, .NaN) => false
+  | (.finite a, .finite b) => a.stdLt b
+  | (.infinite sx, .infinite sy) => sx && !sy
+  | (.infinite sx, .finite _) => sx
+  | (.finite _, .infinite sy) => !sy
+
+@[reducible]
+def stdLe (x y : Fp) : Prop :=
+  stdLt x y ∨ stdEquiv x y
+
+@[simp] theorem not_stdLt_nan_left (x : Fp) : ¬stdLt .NaN x := by
+  cases x <;> simp [stdLt]
+
+@[simp] theorem not_stdLt_nan_right (x : Fp) : ¬stdLt x .NaN := by
+  cases x <;> simp [stdLt]
+
+@[simp] theorem not_stdEquiv_nan_left (x : Fp) : ¬stdEquiv .NaN x := by
+  cases x <;> simp [stdEquiv]
+
+@[simp] theorem not_stdEquiv_nan_right (x : Fp) : ¬stdEquiv x .NaN := by
+  cases x <;> simp [stdEquiv]
+
+@[simp] theorem not_stdLe_nan_left (x : Fp) : ¬stdLe .NaN x := by
+  simp [stdLe]
+
+@[simp] theorem not_stdLe_nan_right (x : Fp) : ¬stdLe x .NaN := by
+  simp [stdLe]
+
+@[simp] theorem stdEquiv_finite_iff (x y : FiniteFp) :
+    stdEquiv (.finite x) (.finite y) ↔ x.stdEquiv y := by
+  rfl
+
+@[simp] theorem stdLt_finite_iff (x y : FiniteFp) :
+    stdLt (.finite x) (.finite y) ↔ x.stdLt y := by
+  rfl
+
+@[simp] theorem stdLe_finite_iff (x y : FiniteFp) :
+    stdLe (.finite x) (.finite y) ↔ x.stdLe y := by
+  rfl
+
+end StdOrder
 
 end Fp

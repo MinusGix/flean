@@ -507,7 +507,7 @@ theorem roundDown_mono [FloatFormat] {x y : R} (h : x ≤ y) : roundDown x ≤ r
     rw [hx_zero, roundDown_zero]
     rcases lt_trichotomy y 0 with hy_neg | hy_zero | hy_pos
     · linarith
-    · rw [hy_zero, roundDown_zero]; exact Fp.le_refl _
+    · rw [hy_zero, roundDown_zero]
     · exact roundDown_zero_le_pos y hy_pos
   · -- Both positive
     have hy_pos : 0 < y := lt_of_lt_of_le hx_pos h

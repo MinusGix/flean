@@ -596,7 +596,6 @@ theorem findPredecessor_mono {x y : R} (h : x ≤ y) :
     rcases lt_trichotomy y 0 with hy_neg | hy_zero | hy_pos
     · linarith
     · rw [hy_zero, findPredecessor_zero]
-      exact Fp.le_refl _
     · exact findPredecessor_zero_le_pos y hy_pos
   · have hy_pos : 0 < y := lt_of_lt_of_le hx_pos h
     rw [findPredecessor_pos_eq x hx_pos, findPredecessor_pos_eq y hy_pos]
@@ -645,7 +644,7 @@ theorem neg_inf_le_findPredecessor (x : R) :
         rw [Fp.neg_finite]
         simp [Fp.le_def]
       | Fp.infinite false =>
-        simp [Fp.le_def]
+        simp
       | Fp.infinite true =>
         exfalso
         exact findSuccessorPos_ne_neg_inf (-x) hnx hfs
@@ -825,7 +824,6 @@ theorem findSuccessor_mono {x y : R} (h : x ≤ y) :
     rcases lt_trichotomy y 0 with hy_neg | hy_zero | hy_pos
     · linarith
     · rw [hy_zero, findSuccessor_zero]
-      exact Fp.le_refl _
     · exact findSuccessor_zero_le_pos y hy_pos
   · have hy_pos : 0 < y := lt_of_lt_of_le hx_pos h
     rw [findSuccessor_pos_eq x hx_pos, findSuccessor_pos_eq y hy_pos]
@@ -867,7 +865,7 @@ theorem findSuccessor_le_pos_inf (x : R) :
       | Fp.finite f =>
         simp [Fp.le_def]
       | Fp.infinite false =>
-        simp [Fp.le_def]
+        simp
       | Fp.infinite true =>
         exfalso
         exact findSuccessorPos_ne_neg_inf x hpos hfs
@@ -1620,7 +1618,18 @@ theorem nextUp_mono {x y : Fp} (hxy : x ≤ y) :
     nextUp x ≤ nextUp y := by
   by_cases hx : x = Fp.NaN
   · subst hx
-    simp [nextUp, Fp.le_def]
+    rw [nextUp_nan]
+    cases hnu : nextUp y with
+    | NaN =>
+      exact Fp.le_refl _
+    | finite f =>
+      rw [Fp.le_def]
+      left
+      simp [Fp.is_total_lt]
+    | infinite b =>
+      rw [Fp.le_def]
+      left
+      cases b <;> simp [Fp.is_total_lt]
   · by_cases hy : y = Fp.NaN
     · subst hy
       cases x with
@@ -1634,7 +1643,18 @@ theorem nextDown_mono {x y : Fp} (hxy : x ≤ y) :
     nextDown x ≤ nextDown y := by
   by_cases hx : x = Fp.NaN
   · subst hx
-    simp [nextDown, Fp.le_def]
+    rw [nextDown_nan]
+    cases hnd : nextDown y with
+    | NaN =>
+      exact Fp.le_refl _
+    | finite f =>
+      rw [Fp.le_def]
+      left
+      simp [Fp.is_total_lt]
+    | infinite b =>
+      rw [Fp.le_def]
+      left
+      cases b <;> simp [Fp.is_total_lt]
   · by_cases hy : y = Fp.NaN
     · subst hy
       cases x with

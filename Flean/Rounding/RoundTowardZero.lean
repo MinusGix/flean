@@ -193,7 +193,6 @@ theorem roundTowardZero_mono [FloatFormat] {x y : R} (h : x ≤ y) : roundToward
       linarith
     · -- y = 0
       rw [hy_zero, roundTowardZero_zero]
-      rw [Fp.le_def]; right; rfl
     · -- y > 0
       exact roundTowardZero_zero_le_pos y hy_pos
   · -- x > 0
