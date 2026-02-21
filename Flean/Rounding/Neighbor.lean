@@ -251,7 +251,7 @@ theorem findSuccessorPos_pos {x : R} {hpos : 0 < x} {f : FiniteFp} (hf : findSuc
 
 /-- Helper: any Fp.finite value ≤ Fp.infinite false (positive infinity) -/
 private theorem Fp.finite_le_pos_inf (f : FiniteFp) : Fp.finite f ≤ Fp.infinite false := by
-  rw [Fp.le_def]; left; simp
+  exact Fp.le_pos_inf _
 
 /-- Helper: roundSubnormalUp result toVal ≤ 2^min_exp -/
 private theorem roundSubnormalUp_toVal_le_min_exp (x : R) (hx : isSubnormalRange x) :
@@ -506,18 +506,19 @@ theorem findPredecessor_mono_neg {x y : R} (hx : x < 0) (hy : y < 0) (h : x ≤ 
       exfalso
       have := findSuccessorPos_pos hfx
       linarith [FiniteFp.toVal_isZero (R := R) hxz, FiniteFp.toVal_neg_eq_neg (R := R) (x := fx)]
-  | Fp.finite _, Fp.infinite b =>
+  | Fp.finite fx, Fp.infinite b =>
     rw [hfx, hfy] at hmono
-    -- Fp.infinite b ≤ Fp.finite _, forces b = true (-∞)
-    -- but findSuccessorPos ≠ -∞
+    -- Fp.infinite b ≤ Fp.finite fx.
+    -- b = false (+∞) is impossible; b = true (-∞) contradicts hfy.
     exfalso
-    rw [Fp.le_def] at hmono
-    cases hmono with
-    | inl hlt =>
-      change (b = true) at hlt
-      rw [hlt] at hfy
-      exact findSuccessorPos_ne_neg_inf (-y) hny hfy
-    | inr heq => simp at heq
+    cases b with
+    | false =>
+      have : Fp.finite fx = Fp.infinite false := (Fp.pos_inf_le_iff _).1 hmono
+      simp at this
+    | true =>
+      have hfy' : findSuccessorPos (-y) hny = Fp.infinite true := by
+        simp at hfy
+      exact findSuccessorPos_ne_neg_inf (-y) hny hfy'
   | Fp.infinite false, Fp.finite fy =>
     -- findSuccessorPos(-x) = +∞, so -(+∞) = -∞ ≤ anything
     simp only [Fp.neg_finite, Fp.le_def]
@@ -762,11 +763,7 @@ theorem findSuccessor_mono_neg {x y : R} (hx : x < 0) (hy : y < 0) (h : x ≤ y)
     · -- Both are -0: -f_x = -0 and -f_y = -0, so they're equal
       rw [h2, h4]
   -- Convert FiniteFp.le to Fp.le
-  rw [Fp.le_def]
-  rw [FiniteFp.le_def] at hle
-  cases hle with
-  | inl hlt => left; exact hlt
-  | inr heq => right; rw [heq]
+  exact (Fp.finite_le_finite_iff _ _).2 hle
 
 /-- `findSuccessor` of a positive value is at least `+0`. -/
 theorem findSuccessor_zero_le_pos (x : R) (hx : 0 < x) :
@@ -782,13 +779,11 @@ theorem findSuccessor_zero_le_pos (x : R) (hx : 0 < x) :
       linarith
     exact FiniteFp.toVal_le R (by rw [FiniteFp.toVal_zero]; linarith) (Or.inr hnz)
   | Fp.infinite b =>
-    rw [Fp.le_def]
-    left
     have := findSuccessorPos_ne_neg_inf x hx
     rw [hfsp] at this
     simp at this
     subst this
-    simp
+    exact Fp.le_pos_inf _
   | Fp.NaN =>
     exact absurd hfsp (findSuccessorPos_ne_nan x hx)
 
@@ -842,7 +837,7 @@ theorem neg_largestFiniteFloat_le_findSuccessor (x : R) :
         rw [Fp.finite_le_finite_iff]
         exact bot_le
       | Fp.infinite false =>
-        simp [Fp.le_def]
+        exact Fp.le_pos_inf _
       | Fp.infinite true =>
         exfalso
         exact findSuccessorPos_ne_neg_inf x hpos hfs
@@ -1551,7 +1546,8 @@ theorem nextUp_mono_nonNaN {x y : Fp}
       | infinite b =>
         cases b <;> simp [nextUp, Fp.le_def] at hxy ⊢
       | finite g =>
-        simp [Fp.le_def] at hxy
+        have : Fp.finite g = Fp.infinite false := (Fp.pos_inf_le_iff _).1 hxy
+        simp at this
     · -- x = -∞
       cases y with
       | NaN => contradiction
@@ -1568,7 +1564,8 @@ theorem nextUp_mono_nonNaN {x y : Fp}
       | false =>
         exact findSuccessor_le_pos_inf (R := ℚ) (stepUpVal f)
       | true =>
-        simp [Fp.le_def] at hxy
+        have : Fp.finite f = Fp.NaN ∨ Fp.finite f = Fp.infinite true := (Fp.le_neg_inf_iff _).1 hxy
+        simp at this
     | finite g =>
       have hfg : (⌞f⌟[ℚ] : ℚ) ≤ ⌞g⌟[ℚ] := by
         exact FiniteFp.le_toVal_le ℚ ((Fp.finite_le_finite_iff _ _).mp hxy)
@@ -1588,7 +1585,8 @@ theorem nextDown_mono_nonNaN {x y : Fp}
       | infinite b =>
         cases b <;> simp [nextDown, Fp.le_def] at hxy ⊢
       | finite g =>
-        simp [Fp.le_def] at hxy
+        have : Fp.finite g = Fp.infinite false := (Fp.pos_inf_le_iff _).1 hxy
+        simp at this
     · -- x = -∞
       cases y with
       | NaN => contradiction
@@ -1606,7 +1604,8 @@ theorem nextDown_mono_nonNaN {x y : Fp}
         simpa [nextDown_finite] using
           (findPredecessor_le_largestFiniteFloat (R := ℚ) (stepDownVal f))
       | true =>
-        simp [Fp.le_def] at hxy
+        have : Fp.finite f = Fp.NaN ∨ Fp.finite f = Fp.infinite true := (Fp.le_neg_inf_iff _).1 hxy
+        simp at this
     | finite g =>
       have hfg : (⌞f⌟[ℚ] : ℚ) ≤ ⌞g⌟[ℚ] := by
         exact FiniteFp.le_toVal_le ℚ ((Fp.finite_le_finite_iff _ _).mp hxy)

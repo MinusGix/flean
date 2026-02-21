@@ -299,9 +299,7 @@ theorem roundDown_le_roundUp (x : R) : roundDown x ≤ roundUp x := by
       rw [hsucc_eq] at hne
       simp at hne
       subst hne
-      rw [Fp.le_def]
-      left
-      rfl
+      exact Fp.neg_inf_le_of_not_nan _ (by simp)
     | Fp.NaN =>
       exact absurd hsucc_eq (findSuccessorPos_ne_nan (-x) hnxpos)
   · -- Case x = 0
@@ -343,13 +341,12 @@ theorem roundDown_le_roundUp (x : R) : roundDown x ≤ roundUp x := by
         rw [hps] at hpz2
         simp at hpz2
     | Fp.infinite b =>
-      have hne := findSuccessorPos_ne_neg_inf x hpos
-      rw [hsucc_eq] at hne
-      simp at hne
-      subst hne
-      rw [Fp.le_def]
-      left
-      rfl
+      cases b with
+      | false =>
+        exact Fp.le_pos_inf _
+      | true =>
+        exfalso
+        exact findSuccessorPos_ne_neg_inf x hpos hsucc_eq
     | Fp.NaN =>
       exact absurd hsucc_eq (findSuccessorPos_ne_nan x hpos)
 
@@ -576,9 +573,13 @@ private theorem same_interval_pos {x y : R} (hx : 0 < x) (hlt : x < y)
       · -- roundDown(y) = Fp.infinite b: impossible
         cases b
         · exact absurd hgD (roundDown_ne_pos_inf y)
-        · rw [hgD] at hrDy; simp [Fp.le_def] at hrDy
+        · rw [hgD] at hrDy
+          have : Fp.finite 0 = Fp.NaN ∨ Fp.finite 0 = Fp.infinite true := (Fp.le_neg_inf_iff _).1 hrDy
+          simp at this
       · -- roundDown(y) = Fp.NaN: impossible
-        rw [hgD] at hrDy; simp [Fp.le_def] at hrDy
+        rw [hgD] at hrDy
+        have : Fp.finite 0 = Fp.NaN := (Fp.le_nan_iff _).1 hrDy
+        simp at this
   · -- roundUp equality
     apply Fp.le_antisymm
     · exact roundUp_mono (le_of_lt hlt)
@@ -633,8 +634,11 @@ private theorem neg_round_le_imp_round_le {x y : R} (hx_neg : x < 0) (hy_neg : y
     exfalso; cases ub with
     | true => exact absurd hux (roundUp_ne_neg_inf x)
     | false =>
-      have := roundUp_neg_le_zero x hx_neg
-      rw [hux] at this; simp [Fp.le_def] at this
+      have h0 := roundUp_neg_le_zero x hx_neg
+      rw [hux] at h0
+      have hle : Fp.infinite false ≤ Fp.finite 0 := h0
+      have : Fp.finite 0 = Fp.infinite false := (Fp.pos_inf_le_iff _).1 hle
+      simp at this
   · -- roundUp x = NaN: impossible for x < 0
     exfalso
     have : roundUp x = Fp.finite (-findPredecessorPos (-x) (neg_pos.mpr hx_neg)) := by

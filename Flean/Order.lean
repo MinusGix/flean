@@ -1162,6 +1162,60 @@ def stdLe (x y : Fp) : Prop :=
 @[simp] theorem not_stdLe_nan_right (x : Fp) : ¬stdLe x .NaN := by
   simp [stdLe]
 
+@[simp] theorem stdEquiv_refl_iff (x : Fp) : stdEquiv x x ↔ x ≠ Fp.NaN := by
+  cases x <;> simp [stdEquiv]
+
+theorem stdEquiv_refl_of_not_nan {x : Fp} (hx : x ≠ Fp.NaN) : stdEquiv x x :=
+  (stdEquiv_refl_iff x).2 hx
+
+theorem stdEquiv_symm {x y : Fp} : stdEquiv x y → stdEquiv y x := by
+  cases x <;> cases y <;> simp [stdEquiv]
+  exact FiniteFp.stdEquiv_symm
+  intro h
+  exact h.symm
+
+theorem stdEquiv_trans {x y z : Fp} :
+    stdEquiv x y → stdEquiv y z → stdEquiv x z := by
+  cases x <;> cases y <;> cases z <;> simp [stdEquiv]
+  exact FiniteFp.stdEquiv_trans
+  intro hxy hyz
+  exact hxy.trans hyz
+
+@[simp] theorem not_stdLt_refl (x : Fp) : ¬stdLt x x := by
+  cases x <;> simp [stdLt, FiniteFp.not_stdLt_refl]
+
+theorem stdLt_trans {x y z : Fp} (hxy : stdLt x y) (hyz : stdLt y z) : stdLt x z := by
+  cases x <;> cases y <;> cases z <;> simp [stdLt] at hxy hyz ⊢
+  exact FiniteFp.stdLt_trans hxy hyz
+  all_goals grind
+
+@[simp] theorem stdLe_refl_iff (x : Fp) : stdLe x x ↔ x ≠ Fp.NaN := by
+  cases x <;> simp [stdLe, stdLt, stdEquiv]
+
+theorem stdLe_refl_of_not_nan {x : Fp} (hx : x ≠ Fp.NaN) : stdLe x x :=
+  (stdLe_refl_iff x).2 hx
+
+theorem stdLe_trans {x y z : Fp} (hxy : stdLe x y) (hyz : stdLe y z) : stdLe x z := by
+  cases x <;> cases y <;> cases z <;> simp [stdLe, stdLt, stdEquiv] at hxy hyz ⊢
+  exact FiniteFp.stdLe_trans hxy hyz
+  all_goals grind
+
+theorem stdLt_imp_not_nan_left {x y : Fp} (hxy : stdLt x y) : x ≠ Fp.NaN := by
+  intro hx; subst hx
+  exact (not_stdLt_nan_left y) hxy
+
+theorem stdLt_imp_not_nan_right {x y : Fp} (hxy : stdLt x y) : y ≠ Fp.NaN := by
+  intro hy; subst hy
+  exact (not_stdLt_nan_right x) hxy
+
+theorem stdLe_imp_not_nan_left {x y : Fp} (hxy : stdLe x y) : x ≠ Fp.NaN := by
+  intro hx; subst hx
+  exact (not_stdLe_nan_left y) hxy
+
+theorem stdLe_imp_not_nan_right {x y : Fp} (hxy : stdLe x y) : y ≠ Fp.NaN := by
+  intro hy; subst hy
+  exact (not_stdLe_nan_right x) hxy
+
 theorem stdLt_imp_lt {x y : Fp} (hxy : stdLt x y) : x < y := by
   cases x <;> cases y <;> simp [stdLt, Fp.lt_def, Fp.is_total_lt] at hxy ⊢
   exact FiniteFp.stdLt_imp_lt hxy

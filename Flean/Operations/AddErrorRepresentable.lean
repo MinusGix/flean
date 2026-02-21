@@ -449,10 +449,8 @@ private theorem add_error_representable_mixed (a b : FiniteFp)
       have hru : roundUp ((a.toVal : R) + b.toVal) = Fp.infinite false := by
         rw [← hfsp_eq, h]
       rw [hru] at hUp_le_a
-      simp only [Fp.le_def] at hUp_le_a
-      rcases hUp_le_a with h1 | h2
-      · simp [Fp.is_total_lt] at h1
-      · exact absurd h2 (by simp)
+      have : Fp.finite a = Fp.infinite false := (Fp.pos_inf_le_iff _).1 hUp_le_a
+      simp at this
     | .infinite true => exact absurd h (findSuccessorPos_ne_neg_inf _ _)
   have hsucc_le_a : (succ.toVal : R) ≤ a.toVal := by
     have : roundUp ((a.toVal : R) + b.toVal) ≤ Fp.finite a := hUp_le_a

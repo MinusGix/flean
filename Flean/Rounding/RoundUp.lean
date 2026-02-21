@@ -811,9 +811,9 @@ theorem roundUp_zero_le_pos [FloatFormat] (x : R) (hx : 0 < x) :
       intro hz; have := FiniteFp.toVal_isZero (R := R) hz; linarith
     exact FiniteFp.toVal_le R (by rw [FiniteFp.toVal_zero]; linarith) (Or.inr hnz)
   | Fp.infinite b =>
-    rw [Fp.le_def]; left
     have := findSuccessorPos_ne_neg_inf x hx
-    rw [hfsp] at this; simp at this; subst this; simp
+    rw [hfsp] at this; simp at this; subst this
+    exact Fp.le_pos_inf _
   | Fp.NaN => exact absurd hfsp (findSuccessorPos_ne_nan x hx)
 
 /-- roundUp of a negative value is ≤ Fp.finite 0 -/

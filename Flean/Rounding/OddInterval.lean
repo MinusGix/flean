@@ -887,7 +887,7 @@ theorem roundUp_eq_of_no_representable {R : Type*} [Field R] [LinearOrder R]
         rw [show roundUp v₂ = findSuccessorPos v₂ hv₂_pos from by
           unfold roundUp; exact findSuccessor_pos_eq v₂ hv₂_pos]
         rcases hfsp₂ : findSuccessorPos v₂ hv₂_pos with f | c | _
-        · rw [Fp.le_def]; left; simp [Fp.is_total_lt]
+        · exact Fp.le_pos_inf _
         · cases c with
           | false => exact Fp.le_refl _
           | true => exact absurd hfsp₂ (findSuccessorPos_ne_neg_inf v₂ hv₂_pos)
