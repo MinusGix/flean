@@ -61,17 +61,25 @@ private def repeatedSquare (base : ℚ) : ℕ → ℚ
 
 Finds shift `s` such that `q := ⌊result · 2^s⌋` has at least `prec + 2` bits
 (guaranteed by `initial_q_ge_minQ`),
-then sets `e_base := -(s + 1)` so that `result ≈ 2q · 2^e_base`. -/
-private def expExtract (result : ℚ) : ExpRefOut :=
+then sets `e_base := -(s + 1)` so that `result ≈ 2q · 2^e_base`.
+
+When `isUpper = true` (negative input: result > exp(x)), and `result · 2^s` is
+an exact integer, we subtract 1 from `q` so that `exp(x)` falls strictly inside
+the interval `(q/2^s, (q+1)/2^s)` rather than at the upper boundary.
+The extra `targetBits` margin ensures `q - 1 ≥ 2^(prec+2)`. -/
+private def expExtract (result : ℚ) (isUpper : Bool) : ExpRefOut :=
   let p := result.num.natAbs
   let d := result.den
-  let targetBits := FloatFormat.prec.toNat + 3
+  let targetBits := FloatFormat.prec.toNat + 4  -- extra bit for negative adjustment
   -- Approximate shift: s ≈ targetBits + log2(d) - log2(p)
   -- Use Int to avoid Nat subtraction underflow
   let s_int : ℤ := (targetBits : ℤ) + (Nat.log2 d : ℤ) - (Nat.log2 p : ℤ)
   let s := s_int.toNat  -- clamp negative to 0
-  -- Compute q = ⌊p · 2^s / d⌋ (≥ 2^(prec+2) by initial_q_ge_minQ)
+  -- Compute q = ⌊p · 2^s / d⌋ (≥ 2^(prec+3) by initial_q_ge_minQ)
   let q := p * 2 ^ s / d
+  -- For upper bounds (negative case), if ⌊result·2^s⌋ = result·2^s exactly,
+  -- shift q down by 1 to keep exp(x) strictly inside the cell.
+  let q := if isUpper && (p * 2 ^ s % d == 0) then q - 1 else q
   let e_base : ℤ := -((s : ℤ)) - 1
   { q := q, e_base := e_base, isExact := false }
 
@@ -98,7 +106,7 @@ def expComputableRun (a : FiniteFp) : ExpRefOut :=
     -- Handle sign: exp(-|x|) = 1/exp(|x|)
     let result : ℚ := if x < 0 then 1 / pos_result else pos_result
     -- Extract sticky cell
-    expExtract result
+    expExtract result (x < 0)
 
 instance (priority := 500) : ExpRefExec where
   run := expComputableRun
@@ -221,17 +229,17 @@ private theorem repeatedSquare_eq_pow (base : ℚ) (n : ℕ) :
     rw [Nat.pow_succ]; omega
 
 /-- `expExtract` always returns `isExact = false`. -/
-private theorem expExtract_isExact_false (result : ℚ) :
-    (expExtract result).isExact = false := by
+private theorem expExtract_isExact_false (result : ℚ) (isUpper : Bool) :
+    (expExtract result isUpper).isExact = false := by
   simp [expExtract]
 
-/-- Core arithmetic: with the log2-based shift, `p * 2^s / d ≥ 2^(prec+2)`. -/
+/-- Core arithmetic: with the log2-based shift, `p * 2^s / d ≥ 2^(prec+3)`. -/
 private theorem initial_q_ge_minQ (p d : ℕ) (hp : 0 < p) (hd : 0 < d) :
-    let s_int : ℤ := ((FloatFormat.prec.toNat + 3 : ℕ) : ℤ) +
+    let s_int : ℤ := ((FloatFormat.prec.toNat + 4 : ℕ) : ℤ) +
       ((Nat.log2 d : ℕ) : ℤ) - ((Nat.log2 p : ℕ) : ℤ)
-    2 ^ (FloatFormat.prec.toNat + 2) ≤ p * 2 ^ s_int.toNat / d := by
+    2 ^ (FloatFormat.prec.toNat + 3) ≤ p * 2 ^ s_int.toNat / d := by
   simp only
-  set prec2 := FloatFormat.prec.toNat + 2
+  set prec2 := FloatFormat.prec.toNat + 3
   set lp := Nat.log2 p
   set ld := Nat.log2 d
   set s_int : ℤ := ((prec2 + 1 : ℕ) : ℤ) + (ld : ℤ) - (lp : ℤ)
@@ -274,25 +282,176 @@ private theorem initial_q_ge_minQ (p d : ℕ) (hp : 0 < p) (hd : 0 < d) :
     exact le_of_lt (lt_of_lt_of_le step1
       (le_trans (Nat.pow_le_pow_right (by omega) step2) hlp))
 
-/-- `expExtract` produces `q ≥ 2^(prec+2)` for positive rational input. -/
-private theorem expExtract_q_ge (result : ℚ) (hpos : 0 < result) :
-    2 ^ (FloatFormat.prec.toNat + 2) ≤ (expExtract result).q := by
+/-- The raw q (before isUpper adjustment) in expExtract. -/
+private theorem expExtract_raw_q_ge (result : ℚ) (hpos : 0 < result) :
+    let p := result.num.natAbs
+    let d := result.den
+    let s_int : ℤ := ((FloatFormat.prec.toNat + 4 : ℕ) : ℤ) +
+      ((Nat.log2 d : ℕ) : ℤ) - ((Nat.log2 p : ℕ) : ℤ)
+    2 ^ (FloatFormat.prec.toNat + 3) ≤ p * 2 ^ s_int.toNat / d := by
   have hp : 0 < result.num.natAbs :=
     Int.natAbs_pos.mpr (ne_of_gt (Rat.num_pos.mpr hpos))
   exact initial_q_ge_minQ result.num.natAbs result.den hp result.den_pos
+
+omit [FloatFormat] in
+/-- Helper: if `q ≥ 2^(n+1)` then `q - 1 ≥ 2^n` and `q ≥ 2^n`. -/
+private theorem q_adjust_ge (q n : ℕ) (hq : 2 ^ (n + 1) ≤ q) (b : Bool) :
+    2 ^ n ≤ (if b then q - 1 else q) := by
+  have h1 : 2 ^ n + 1 ≤ 2 ^ (n + 1) := by
+    have := Nat.one_le_pow n 2 (by omega)
+    rw [pow_succ]; omega
+  split_ifs <;> omega
+
+/-- `expExtract` produces `q ≥ 2^(prec+2)` for positive rational input. -/
+private theorem expExtract_q_ge (result : ℚ) (hpos : 0 < result) (isUpper : Bool) :
+    2 ^ (FloatFormat.prec.toNat + 2) ≤ (expExtract result isUpper).q := by
+  have hraw := expExtract_raw_q_ge result hpos
+  simp only at hraw  -- beta-reduce let bindings
+  -- expExtract.q is: if isUpper && exact then raw_q - 1 else raw_q
+  -- where raw_q = p * 2^s / d ≥ 2^(prec+3)
+  show 2 ^ (FloatFormat.prec.toNat + 2) ≤ (expExtract result isUpper).q
+  simp only [expExtract]
+  exact q_adjust_ge _ _ hraw _
 
 /-- When `isExact = true`, we must be in the zero branch. -/
 private theorem expComputableRun_exact_is_zero (a : FiniteFp)
     (hExact : (expComputableRun a).isExact = true) : a.m = 0 := by
   by_contra h
   have : (expComputableRun a).isExact = false := by
-    simp only [expComputableRun, h, ↓reduceIte, expExtract_isExact_false]
+    simp only [expComputableRun, h, ↓reduceIte, expExtract_isExact_false _ _]
   rw [this] at hExact; exact absurd hExact (by decide)
 
 /-- In the zero branch, the output is `{q := 1, e_base := -1, isExact := true}`. -/
 private theorem expComputableRun_zero (a : FiniteFp) (hm : a.m = 0) :
     expComputableRun a = { q := 1, e_base := -1, isExact := true } := by
   simp [expComputableRun, hm]
+
+/-! ## Strict Taylor inequality -/
+
+omit [FloatFormat] in
+/-- The Taylor partial sum is STRICTLY less than exp for y > 0 and at least 2 terms.
+This follows because all omitted terms y^k/k! for k > N are strictly positive. -/
+private theorem taylorExpQ_lt_exp (y : ℚ) (hy : 0 < y) (n : ℕ) :
+    (taylorExpQ y n : ℝ) < Real.exp (y : ℝ) := by
+  have hy_real : (0 : ℝ) < (y : ℝ) := by exact_mod_cast hy
+  -- The (n+1)-th term y^(n+1)/(n+1)! is positive
+  have hterm : (0 : ℝ) < (y : ℝ) ^ (n + 1) / ((n + 1).factorial : ℝ) :=
+    div_pos (pow_pos hy_real _) (Nat.cast_pos.mpr (Nat.factorial_pos _))
+  -- Partial sum of (n+2) terms ≤ exp
+  have hle2 := Real.sum_le_exp_of_nonneg (le_of_lt hy_real) (n + 2)
+  -- sum(n+2 terms) = sum(n+1 terms) + term(n+1)
+  rw [show n + 2 = n + 1 + 1 from by omega, Finset.sum_range_succ] at hle2
+  -- taylorExpQ y n = partial sum of (n+1) terms
+  rw [taylorExpQ_cast_eq_sum]
+  linarith
+
+/-! ## Strict monotonicity lemmas for composing bounds -/
+
+omit [FloatFormat] in
+/-- `result = taylorExpQ(y, N)^(2^n)` is strictly less than `exp(|x|)` when `|x| > 0`. -/
+private theorem pos_result_lt_exp (y : ℚ) (hy_pos : 0 < y) (N n : ℕ) :
+    (taylorExpQ y N : ℝ) ^ (2 ^ n) < Real.exp ((y : ℝ) * (2 ^ n : ℕ)) := by
+  have hty_pos : (0 : ℝ) < (taylorExpQ y N : ℝ) := by
+    exact_mod_cast lt_of_lt_of_le (by norm_num : (0 : ℚ) < 1) (taylorExpQ_ge_one y (le_of_lt hy_pos) N)
+  have hty_lt := taylorExpQ_lt_exp y hy_pos N
+  rw [show (y : ℝ) * (2 ^ n : ℕ) = (2 ^ n : ℕ) * (y : ℝ) from by ring,
+    Real.exp_nat_mul]
+  exact pow_lt_pow_left₀ hty_lt (le_of_lt hty_pos) (by positivity)
+
+/-! ## Floor / cell extraction properties -/
+
+/-! ## Floor ↔ real arithmetic bridge -/
+
+omit [FloatFormat] in
+/-- Nat floor division gives a lower bound in ℝ:
+`(q : ℝ) * d ≤ (p : ℝ) * 2^s` where `q = p * 2^s / d`. -/
+private theorem nat_floor_div_mul_le (p d s : ℕ) :
+    ((p * 2 ^ s / d : ℕ) : ℝ) * (d : ℝ) ≤ (p : ℝ) * 2 ^ s := by
+  have := Nat.div_mul_le_self (p * 2 ^ s) d
+  exact_mod_cast this
+
+omit [FloatFormat] in
+/-- Nat floor division gives a strict upper bound in ℝ:
+`(p : ℝ) * 2^s < ((q + 1) : ℝ) * d` where `q = p * 2^s / d`. -/
+private theorem real_lt_nat_floor_div_succ_mul (p d s : ℕ) (hd : 0 < d) :
+    (p : ℝ) * 2 ^ s < ((p * 2 ^ s / d + 1 : ℕ) : ℝ) * (d : ℝ) := by
+  set a := p * 2 ^ s
+  have h2 : a % d < d := Nat.mod_lt _ hd
+  have h3 : d * (a / d) + a % d = a := Nat.div_add_mod a d
+  have h4 : a < (a / d + 1) * d := by nlinarith
+  exact_mod_cast h4
+
+/-! ## Sticky interval proof -/
+
+/-- The Taylor error after repeated squaring is less than one cell width.
+This is the core analytical bound: for our Taylor approximation `result` of `exp(x)`,
+`|exp(x) - (result : ℝ)| < (result : ℝ) / 2^(prec+3)`.
+
+The proof uses:
+- `Real.exp_bound'`: Taylor error for `0 ≤ y ≤ 1` is at most `y^N·(N+1)/(N!·N)`
+- With `y ≤ 1/2` and `N = prec+11`, this is `≤ (1/2)^(prec+11)·(prec+12)/((prec+11)!·(prec+11))`
+- After `2^n` squarings, error amplification is bounded by `2^n·exp(|x|)^(2^n-1)·ε`
+- The `prec+10` guard terms ensure this stays below `1/2^(prec+3)` relative error -/
+private theorem taylor_approx_error (a : FiniteFp) (hm : a.m ≠ 0)
+    (hx_nonneg : 0 ≤ a.toVal (R := ℚ)) :
+    let x : ℚ := a.toVal
+    let abs_x : ℚ := |x|
+    let n := expArgRedN abs_x
+    let y : ℚ := abs_x / (2 : ℚ) ^ (n : ℕ)
+    let ty := taylorExpQ y expNumTerms
+    let pos_result := repeatedSquare ty n
+    let result : ℚ := pos_result
+    let p := result.num.natAbs
+    let d := result.den
+    let s_int : ℤ := ((FloatFormat.prec.toNat + 4 : ℕ) : ℤ) +
+      ((Nat.log2 d : ℕ) : ℤ) - ((Nat.log2 p : ℕ) : ℤ)
+    let s := s_int.toNat
+    Real.exp (a.toVal : ℝ) - (result : ℝ) < 1 / (2 : ℝ) ^ s := by
+  sorry
+
+/-- Analogous error bound for the negative case. -/
+private theorem taylor_approx_error_neg (a : FiniteFp) (hm : a.m ≠ 0)
+    (hx_neg : a.toVal (R := ℚ) < 0) :
+    let x : ℚ := a.toVal
+    let abs_x : ℚ := |x|
+    let n := expArgRedN abs_x
+    let y : ℚ := abs_x / (2 : ℚ) ^ (n : ℕ)
+    let ty := taylorExpQ y expNumTerms
+    let pos_result := repeatedSquare ty n
+    let result : ℚ := 1 / pos_result
+    let p := result.num.natAbs
+    let d := result.den
+    let s_int : ℤ := ((FloatFormat.prec.toNat + 4 : ℕ) : ℤ) +
+      ((Nat.log2 d : ℕ) : ℤ) - ((Nat.log2 p : ℕ) : ℤ)
+    let s := s_int.toNat
+    (result : ℝ) - Real.exp (a.toVal : ℝ) < 1 / (2 : ℝ) ^ s := by
+  sorry
+
+private theorem expComputableRun_sticky_interval (a : FiniteFp) (hm : a.m ≠ 0) :
+    let o := expComputableRun a
+    inStickyInterval (R := ℝ) o.q o.e_base (Real.exp (a.toVal : ℝ)) := by
+  -- Unfold to get at the components
+  simp only [expComputableRun, hm, ↓reduceIte]
+  set x : ℚ := a.toVal
+  set abs_x : ℚ := |x|
+  set n := expArgRedN abs_x
+  set y : ℚ := abs_x / (2 : ℚ) ^ (n : ℕ)
+  set ty := taylorExpQ y expNumTerms
+  set pos_result := repeatedSquare ty n
+  -- The goal is inStickyInterval q e_base (exp(a.toVal)) after unfolding expExtract.
+  -- This means: 2q · 2^e_base < exp(x) ∧ exp(x) < 2(q+1) · 2^e_base
+  -- Split on sign
+  by_cases hx : 0 ≤ x
+  · -- Positive case: result = pos_result, isUpper = false (no q-adjustment)
+    have hx_not_neg : ¬(x < 0) := not_lt.mpr hx
+    simp only [hx_not_neg, ↓reduceIte]
+    -- Now goal involves expExtract pos_result false
+    -- Use the error bound and floor properties
+    sorry
+  · -- Negative case: result = 1/pos_result, isUpper = true
+    push_neg at hx
+    simp only [hx, ↓reduceIte]
+    sorry
 
 /-! ## Soundness -/
 
@@ -334,22 +493,20 @@ instance (priority := 500) : ExpRefExecSound where
            (expArgRedN |a.toVal (R := ℚ)|)
          else repeatedSquare (taylorExpQ (|a.toVal (R := ℚ)| /
            (2 : ℚ) ^ (expArgRedN |a.toVal (R := ℚ)| : ℕ)) expNumTerms)
-           (expArgRedN |a.toVal (R := ℚ)|)) := by
+           (expArgRedN |a.toVal (R := ℚ)|))
+        (decide (a.toVal (R := ℚ) < 0)) := by
       simp only [expComputableRun, hm, ↓reduceIte]
     rw [hnonzero] at hr; rw [← hr]
-    exact expExtract_q_ge _ (expComputableRun_result_pos a hm)
+    exact expExtract_q_ge _ (expComputableRun_result_pos a hm) _
   sticky_interval := by
     intro a o hr hFalse
-    -- This requires showing the rational Taylor approximation brackets
-    -- Real.exp tightly enough that q = ⌊result · 2^s⌋ puts exp in
-    -- the sticky interval (2q·2^e_base, 2(q+1)·2^e_base).
-    -- Key sub-results needed:
-    -- 1. taylorExpQ cast to ℝ = same Taylor sum in ℝ
-    -- 2. Taylor partial sum ≤ Real.exp y (lower bound, all terms positive)
-    -- 3. Real.exp y - Taylor sum ≤ remainder bound
-    -- 4. Argument reduction: Real.exp x = (Real.exp(x/2^n))^(2^n)
-    -- 5. Floor extraction puts real value in interval
-    sorry
+    have hrun : ExpRefExec.run a = expComputableRun a := rfl
+    rw [hrun] at hr
+    have hm : a.m ≠ 0 := by
+      intro h; rw [expComputableRun_zero a h] at hr
+      rw [← hr] at hFalse; exact absurd hFalse (by decide)
+    rw [← hr]
+    exact expComputableRun_sticky_interval a hm
 
 end ExpComputable
 
