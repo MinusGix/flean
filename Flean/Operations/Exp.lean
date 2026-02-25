@@ -1,4 +1,5 @@
 import Flean.Operations.RoundIntSig
+import Flean.Rounding.PolicyInstances
 import Mathlib.Analysis.SpecialFunctions.Exp
 
 /-! # Floating-Point Exponential (Skeleton + Constructive Roadmap)
@@ -331,14 +332,9 @@ noncomputable instance (priority := 100) : ExpApproxSound where
     intro a q e_base h
     change expApproxConcrete a = .sticky q e_base at h
     by_cases hz : a.m = 0
-    · have hcontra : ExpApproxData.exact 2 (-1) = ExpApproxData.sticky q e_base := by
-        simpa [expApproxConcrete, hz] using h
-      cases hcontra
+    · simp [expApproxConcrete, hz] at h
     · by_cases hExact : expScaled a = (expQ a : ℝ)
-      · have hcontra :
-          ExpApproxData.exact (2 * expQ a) (expEBase a) = ExpApproxData.sticky q e_base := by
-            simpa [expApproxConcrete, hz, hExact] using h
-        cases hcontra
+      · simp [expApproxConcrete, hz, hExact] at h
       · have hsticky :
           ExpApproxData.sticky (expQ a) (expEBase a) = ExpApproxData.sticky q e_base := by
             simpa [expApproxConcrete, hz, hExact] using h
@@ -349,14 +345,9 @@ noncomputable instance (priority := 100) : ExpApproxSound where
     intro a q e_base h
     change expApproxConcrete a = .sticky q e_base at h
     by_cases hz : a.m = 0
-    · have hcontra : ExpApproxData.exact 2 (-1) = ExpApproxData.sticky q e_base := by
-        simpa [expApproxConcrete, hz] using h
-      cases hcontra
+    · simp [expApproxConcrete, hz] at h
     · by_cases hExact : expScaled a = (expQ a : ℝ)
-      · have hcontra :
-          ExpApproxData.exact (2 * expQ a) (expEBase a) = ExpApproxData.sticky q e_base := by
-            simpa [expApproxConcrete, hz, hExact] using h
-        cases hcontra
+      · simp [expApproxConcrete, hz, hExact] at h
       · have hsticky :
           ExpApproxData.sticky (expQ a) (expEBase a) = ExpApproxData.sticky q e_base := by
             simpa [expApproxConcrete, hz, hExact] using h
@@ -512,74 +503,112 @@ noncomputable instance (priority := 120) : ExpRefExecSound where
 instance (priority := 1000) [ExpRefExec] : ExpApprox where
   approx a := (ExpRefOut.toApproxData (ExpRefExec.run a))
 
+omit [FloatFormat] in
+/-- When `toApproxData o = .exact mag e_base`, we get `o.isExact = true` and parameter equalities. -/
+private theorem ExpRefOut.toApproxData_exact {o : ExpRefOut} {mag : ℕ} {e_base : ℤ}
+    (h : o.toApproxData = .exact mag e_base) :
+    o.isExact = true ∧ mag = 2 * o.q ∧ e_base = o.e_base := by
+  simp only [toApproxData] at h
+  split at h <;> simp_all
+
+omit [FloatFormat] in
+/-- When `toApproxData o = .sticky q e_base`, we get `o.isExact = false` and parameter equalities. -/
+private theorem ExpRefOut.toApproxData_sticky {o : ExpRefOut} {q : ℕ} {e_base : ℤ}
+    (h : o.toApproxData = .sticky q e_base) :
+    o.isExact = false ∧ q = o.q ∧ e_base = o.e_base := by
+  simp only [toApproxData] at h
+  split at h <;> simp_all
+
 instance (priority := 1000) [ExpRefExec] [ExpRefExecSound] : ExpApproxSound where
   exact_mag_ne_zero := by
     intro a mag e_base h
-    let o := ExpRefExec.run a
-    have hr : ExpRefExec.run a = o := rfl
-    change ExpRefOut.toApproxData o = .exact mag e_base at h
-    by_cases hExact : o.isExact = true
-    · have hEq : ExpApproxData.exact (2 * o.q) o.e_base = ExpApproxData.exact mag e_base := by
-        simpa [ExpRefOut.toApproxData, hExact] using h
-      injection hEq with hmag _
-      subst hmag
-      exact ExpRefExecSound.exact_mag_ne_zero a o hr hExact
-    · have hContra : ExpApproxData.sticky o.q o.e_base = ExpApproxData.exact mag e_base := by
-        simpa [ExpRefOut.toApproxData, hExact] using h
-      cases hContra
+    obtain ⟨hExact, hmag, he⟩ := ExpRefOut.toApproxData_exact h
+    subst hmag; subst he
+    exact ExpRefExecSound.exact_mag_ne_zero a _ rfl hExact
   exact_value := by
     intro a mag e_base h
-    let o := ExpRefExec.run a
-    have hr : ExpRefExec.run a = o := rfl
-    change ExpRefOut.toApproxData o = .exact mag e_base at h
-    by_cases hExact : o.isExact = true
-    · have hEq : ExpApproxData.exact (2 * o.q) o.e_base = ExpApproxData.exact mag e_base := by
-        simpa [ExpRefOut.toApproxData, hExact] using h
-      injection hEq with hmag he
-      subst hmag
-      subst he
-      exact ExpRefExecSound.exact_value a o hr hExact
-    · have hContra : ExpApproxData.sticky o.q o.e_base = ExpApproxData.exact mag e_base := by
-        simpa [ExpRefOut.toApproxData, hExact] using h
-      cases hContra
+    obtain ⟨hExact, hmag, he⟩ := ExpRefOut.toApproxData_exact h
+    subst hmag; subst he
+    exact ExpRefExecSound.exact_value a _ rfl hExact
   sticky_q_lower := by
     intro a q e_base h
-    let o := ExpRefExec.run a
-    have hr : ExpRefExec.run a = o := rfl
-    change ExpRefOut.toApproxData o = .sticky q e_base at h
-    by_cases hExact : o.isExact = true
-    · have hContra : ExpApproxData.exact (2 * o.q) o.e_base = ExpApproxData.sticky q e_base := by
-        simpa [ExpRefOut.toApproxData, hExact] using h
-      cases hContra
-    · have hFalse : o.isExact = false := by
-        cases hB : o.isExact
-        · simpa [hB]
-        · exfalso
-          exact hExact (by simpa [hB])
-      have hEq : ExpApproxData.sticky o.q o.e_base = ExpApproxData.sticky q e_base := by
-        simpa [ExpRefOut.toApproxData, hFalse] using h
-      injection hEq with hq _
-      subst hq
-      exact ExpRefExecSound.sticky_q_lower a o hr hFalse
+    obtain ⟨hFalse, hq, he⟩ := ExpRefOut.toApproxData_sticky h
+    subst hq; subst he
+    exact ExpRefExecSound.sticky_q_lower a _ rfl hFalse
   sticky_interval := by
     intro a q e_base h
-    let o := ExpRefExec.run a
-    have hr : ExpRefExec.run a = o := rfl
-    change ExpRefOut.toApproxData o = .sticky q e_base at h
-    by_cases hExact : o.isExact = true
-    · have hContra : ExpApproxData.exact (2 * o.q) o.e_base = ExpApproxData.sticky q e_base := by
-        simpa [ExpRefOut.toApproxData, hExact] using h
-      cases hContra
-    · have hFalse : o.isExact = false := by
-        cases hB : o.isExact
-        · simpa [hB]
-        · exfalso
-          exact hExact (by simpa [hB])
-      have hEq : ExpApproxData.sticky o.q o.e_base = ExpApproxData.sticky q e_base := by
-        simpa [ExpRefOut.toApproxData, hFalse] using h
-      injection hEq with hq he
-      subst hq
-      subst he
-      exact ExpRefExecSound.sticky_interval a o hr hFalse
+    obtain ⟨hFalse, hq, he⟩ := ExpRefOut.toApproxData_sticky h
+    subst hq; subst he
+    exact ExpRefExecSound.sticky_interval a _ rfl hFalse
+
+/-! ## Overflow behavior -/
+
+/-- When `exp(a)` overflows (i.e., `exp(a.toVal) ≥ overflowThreshold`), `fpExp` returns `+∞`. -/
+theorem fpExpFinite_overflow
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+    [RModeNearest ℝ] [ExpApprox] [ExpApproxSound]
+    (a : FiniteFp)
+    (h_overflow : FloatFormat.overflowThreshold ℝ ≤ Real.exp (a.toVal : ℝ)) :
+    fpExpFinite a = Fp.infinite false := by
+  rw [fpExpFinite_correct a]
+  exact RModeNearest.overflow_pos_inf _ h_overflow
+
+/-- `fpExp` on a finite input whose `exp` overflows returns `+∞`. -/
+theorem fpExp_finite_overflow
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+    [RModeNearest ℝ] [ExpApprox] [ExpApproxSound]
+    (a : FiniteFp)
+    (h_overflow : FloatFormat.overflowThreshold ℝ ≤ Real.exp (a.toVal : ℝ)) :
+    fpExp (Fp.finite a) = Fp.infinite false := by
+  simp [fpExpFinite_overflow a h_overflow]
+
+/-! ## Monotonicity -/
+
+/-- `fpExpFinite` is monotone: if `a.toVal ≤ b.toVal` then `fpExpFinite a ≤ fpExpFinite b`. -/
+theorem fpExpFinite_mono
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+    [RModeMono ℝ] [ExpApprox] [ExpApproxSound]
+    (a b : FiniteFp) (h : (a.toVal : ℝ) ≤ (b.toVal : ℝ)) :
+    fpExpFinite a ≤ fpExpFinite b := by
+  rw [fpExpFinite_correct a, fpExpFinite_correct b]
+  exact RModeMono.round_mono (Real.exp_monotone h)
+
+/-- `fpExp` is monotone on finite inputs. -/
+theorem fpExp_finite_mono
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+    [RModeMono ℝ] [ExpApprox] [ExpApproxSound]
+    (a b : FiniteFp) (h : (a.toVal : ℝ) ≤ (b.toVal : ℝ)) :
+    fpExp (Fp.finite a) ≤ fpExp (Fp.finite b) := by
+  simp only [fpExp_finite]
+  exact fpExpFinite_mono a b h
+
+/-! ## Relative error -/
+
+/-- Relative error bound for `fpExpFinite` under nearest rounding modes.
+When `exp(a.toVal)` is in normal range and the result is finite, the relative
+error is at most half machine epsilon `2^(-prec)`. -/
+theorem fpExpFinite_relativeError_le
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+    [RModeNearest ℝ] [ExpApprox] [ExpApproxSound]
+    (a : FiniteFp)
+    (h_normal : isNormalRange (Real.exp (a.toVal : ℝ)))
+    (f : FiniteFp) (hf : fpExpFinite a = Fp.finite f) :
+    Fp.relativeError (Real.exp (a.toVal : ℝ)) f ≤
+      (2 : ℝ) ^ (-(FloatFormat.prec : ℤ)) := by
+  rw [fpExpFinite_correct a] at hf
+  exact RModeNearest_relativeError_le_half _ h_normal f hf
+
+/-! ## Non-negativity and underflow -/
+
+/-- `fpExpFinite` always returns a non-negative result (`≥ +0`).
+This follows from `exp(x) > 0`, monotonicity of rounding, and `round(0) = +0`. -/
+theorem fpExpFinite_nonneg
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+    [RModeC ℝ] [ExpApprox] [ExpApproxSound]
+    (a : FiniteFp) :
+    Fp.finite 0 ≤ fpExpFinite a := by
+  rw [fpExpFinite_correct a]
+  rw [← RModeZero.round_zero (R := ℝ)]
+  exact RModeMono.round_mono (le_of_lt (Real.exp_pos _))
 
 end Exp

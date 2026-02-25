@@ -635,4 +635,151 @@ instance [UseRoundingPolicy RoundNearestAwayPolicy] : RModePolicySpec R where
 
 end NearestAway
 
+/-! ## Generic nearest-mode relative error bound -/
+
+/-! ## Generic nearest-mode half-epsilon relative error bound -/
+
+/-- **Half-ULP Absolute Error for any Nearest Rounding Mode**: For positive x in the normal range,
+the absolute error of any nearest rounding mode is at most `ulp(x) / 2`.
+
+This follows from the `RModeNearest` axioms `round_le_two_x_sub_pred` and
+`round_ge_two_x_sub_succ` (finite successor case) plus overflow-edge arithmetic
+(infinite successor case). -/
+theorem RModeNearest_abs_error_le_ulp_half {R : Type*}
+    [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    [RMode R] [RModeNearest R]
+    (x : R) (hx : isNormalRange x) (f : FiniteFp)
+    (hf : ○x = Fp.finite f) :
+    |x - (f.toVal : R)| ≤ Fp.ulp x / 2 := by
+  have hxpos := isNormalRange_pos x hx
+  -- Establish roundDown / roundUp connections
+  have hrd : roundDown x = Fp.finite (findPredecessorPos x hxpos) := by
+    unfold roundDown; rw [findPredecessor_pos_eq]
+  have hru : roundUp x = findSuccessorPos x hxpos := by
+    unfold roundUp; rw [findSuccessor_pos_eq]
+  -- Bracket: pred.toVal ≤ x
+  have hpred_le : ((findPredecessorPos x hxpos).toVal : R) ≤ x :=
+    findPredecessorPos_le x hxpos
+  -- From round_le_two_x_sub_pred: f.toVal ≤ 2*x - pred.toVal, i.e. f.toVal - x ≤ x - pred.toVal
+  have hA := RModeNearest.round_le_two_x_sub_pred x hxpos hx f hf
+  -- Case split on findSuccessorPos
+  match hsucc_eq : findSuccessorPos x hxpos with
+  | .finite s =>
+    -- Finite successor case
+    -- Bracket: x ≤ s.toVal
+    have hsucc_ge : x ≤ (s.toVal : R) := findSuccessorPos_ge x hxpos s hsucc_eq
+    -- From round_ge_two_x_sub_succ: x - f.toVal ≤ s.toVal - x
+    have hB := RModeNearest.round_ge_two_x_sub_succ x hxpos hx f s hf hsucc_eq
+    -- Gap bound: s.toVal - pred.toVal ≤ ulp(x)
+    have hgap : (s.toVal : R) - (findPredecessorPos x hxpos).toVal ≤ Fp.ulp x := by
+      apply findSuccessor_sub_findPredecessor_le_ulp_of_normal x hx s (findPredecessorPos x hxpos)
+      · rw [findSuccessor_pos_eq]; exact hsucc_eq
+      · exact findPredecessor_pos_eq x hxpos
+    -- Bracket ordering: pred.toVal ≤ f.toVal (from roundDown_le_round)
+    have hpred_le_f : ((findPredecessorPos x hxpos).toVal : R) ≤ (f.toVal : R) := by
+      have hle : roundDown x ≤ ○x := RModeNearest.roundDown_le_round x
+      rw [hrd, hf] at hle
+      exact FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff _ _).mp hle)
+    -- Bracket ordering: f.toVal ≤ s.toVal (from round_le_roundUp)
+    have hf_le_s : (f.toVal : R) ≤ (s.toVal : R) := by
+      have hle : ○x ≤ roundUp x := RModeNearest.round_le_roundUp x
+      rw [hf, hru, hsucc_eq] at hle
+      exact FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff _ _).mp hle)
+    -- Conclude: |x - f.toVal| ≤ ulp(x) / 2
+    rw [abs_le]
+    constructor <;> linarith
+  | .infinite false =>
+    -- Overflow edge case: findSuccessorPos returned +∞
+    -- Step 1: x > lff.toVal (contrapositive of roundUp_le_of_fp_ge)
+    have hgt_lff : (FiniteFp.largestFiniteFloat.toVal : R) < x := by
+      by_contra h
+      push_neg at h
+      have hle : roundUp x ≤ Fp.finite FiniteFp.largestFiniteFloat :=
+        roundUp_le_of_fp_ge x FiniteFp.largestFiniteFloat (Or.inl rfl) h
+      rw [hru, hsucc_eq] at hle
+      exact absurd ((Fp.pos_inf_le_iff _).mp hle) (by simp)
+    -- Step 2: ○x = roundDown x (since roundUp is infinite)
+    have hround_down : ○x = roundDown x := by
+      rcases RModeNearest.round_eq_roundDown_or_roundUp x with h | h
+      · exact h
+      · rw [h, hru, hsucc_eq] at hf; cases hf
+    -- Step 3: f = lff (from roundDown_gt_lff)
+    have hf_eq_lff : Fp.finite f = Fp.finite FiniteFp.largestFiniteFloat := by
+      rw [← hf, hround_down]
+      exact roundDown_gt_lff x hxpos hgt_lff
+    have hf_lff : f = FiniteFp.largestFiniteFloat := Fp.finite.inj hf_eq_lff
+    -- Step 4: x < overflowThreshold (otherwise round would give +∞)
+    have hlt_ot : x < FloatFormat.overflowThreshold R := by
+      by_contra h
+      push_neg at h
+      have := RModeNearest.overflow_pos_inf x h
+      rw [this] at hf; cases hf
+    -- Step 5: Compute ulp(x) at the top binade
+    have hlog : Int.log 2 x = FloatFormat.max_exp := by
+      apply le_antisymm
+      · -- upper: x < 2^(max_exp+1) → Int.log 2 x < max_exp + 1
+        have hlt_zpow : x < (2 : R) ^ (FloatFormat.max_exp + 1) :=
+          lt_trans hlt_ot FloatFormat.overflowThreshold_lt_zpow_max_exp_succ
+        have := (Int.lt_zpow_iff_log_lt (by norm_num : (1 : ℕ) < 2) hxpos).mp hlt_zpow
+        omega
+      · -- lower: 2^max_exp ≤ x → max_exp ≤ Int.log 2 x
+        exact (Int.zpow_le_iff_le_log (by norm_num : (1 : ℕ) < 2) hxpos).mp
+          (le_trans FiniteFp.zpow_max_exp_le_largestFiniteFloat_toVal (le_of_lt hgt_lff))
+    have hulp : Fp.ulp x = (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
+      simp only [Fp.ulp, abs_of_pos hxpos, hlog, max_eq_left FloatFormat.exp_order_le]
+    -- Step 6: overflowThreshold - lff.toVal = ulp(x) / 2
+    have hhalf :
+        FloatFormat.overflowThreshold R - (FiniteFp.largestFiniteFloat.toVal : R)
+          = Fp.ulp x / 2 := by
+      rw [FiniteFp.largestFiniteFloat_toVal, hulp]
+      have hexp_eq : (-(FloatFormat.prec : ℤ) + 1) = 1 - (FloatFormat.prec : ℤ) := by ring
+      rw [hexp_eq]
+      unfold FloatFormat.overflowThreshold
+      set p := (2 : R) ^ (1 - (FloatFormat.prec : ℤ))
+      set M := (2 : R) ^ FloatFormat.max_exp
+      have hMp : M * p = (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
+        simp only [M, p, ← zpow_add₀ (by norm_num : (2 : R) ≠ 0)]
+        congr 1; ring
+      rw [← hMp]
+      have hp_pos : (0 : R) < p := zpow_pos (by norm_num) _
+      have hM_pos : (0 : R) < M := zpow_pos (by norm_num) _
+      nlinarith
+    -- Step 7: Conclude
+    rw [hf_lff]
+    have : x - (FiniteFp.largestFiniteFloat.toVal : R) ≥ 0 := by linarith
+    rw [abs_of_nonneg this]
+    linarith
+
+  | .infinite true =>
+    -- findSuccessorPos for positive x can't return -∞
+    exfalso
+    have := findSuccessorPos_ne_neg_inf x hxpos
+    rw [hsucc_eq] at this
+    exact this rfl
+  | .NaN =>
+    exfalso
+    have := findSuccessorPos_ne_nan x hxpos
+    rw [hsucc_eq] at this
+    exact this rfl
+
+/-- **Half Machine Epsilon for any Nearest Rounding Mode**: For positive x in the normal range,
+the relative error of any nearest rounding mode is at most `2^(-prec)` (half machine epsilon). -/
+theorem RModeNearest_relativeError_le_half {R : Type*}
+    [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    [RMode R] [RModeNearest R]
+    (x : R) (hx : isNormalRange x) (f : FiniteFp)
+    (hf : ○x = Fp.finite f) :
+    Fp.relativeError x f ≤ 2 ^ (-(FloatFormat.prec : ℤ)) := by
+  have hxpos := isNormalRange_pos x hx
+  have h_abs_err := RModeNearest_abs_error_le_ulp_half x hx f hf
+  have h_abs_ge : (2 : R) ^ FloatFormat.min_exp ≤ |x| := by
+    rw [abs_of_pos hxpos]; exact hx.left
+  have h_le : |x - f.toVal| ≤ (1/2) * Fp.ulp x := by linarith
+  have h := Fp.relativeError_ulp_upper_bound_le x f (1/2) (by norm_num) h_abs_ge h_le
+  calc Fp.relativeError x f
+      ≤ 1 / 2 * 2 ^ (1 - (FloatFormat.prec : ℤ)) := h
+    _ = 2 ^ (-(FloatFormat.prec : ℤ)) := by
+        rw [show (1 : R) / 2 = (2 : R) ^ (-1 : ℤ) from by norm_num, two_zpow_mul]
+        congr 1; ring
+
 end PolicyInstances

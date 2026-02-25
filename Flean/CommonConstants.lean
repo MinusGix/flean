@@ -145,6 +145,16 @@ theorem largestFiniteFloat_lt_maxExp_succ {R : Type*} [Field R] [LinearOrder R] 
       ring_nf }
 
 
+theorem zpow_max_exp_le_largestFiniteFloat_toVal {R : Type*}
+    [Field R] [LinearOrder R] [IsStrictOrderedRing R] :
+    (2 : R) ^ FloatFormat.max_exp ≤ (largestFiniteFloat.toVal : R) := by
+  rw [largestFiniteFloat_toVal]
+  have : (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) ≤ 1 := by
+    rw [show (1 : R) = (2 : R) ^ (0 : ℤ) from by norm_num]
+    apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
+    have := FloatFormat.valid_prec; omega
+  nlinarith [zpow_pos (by norm_num : (0 : R) < 2) FloatFormat.max_exp]
+
 -- TODO: prove that the smallest positive normal, smallest positive subnormal, and largest finite float are all truely their namesakes
 
 -- Helper lemmas for the main theorem
