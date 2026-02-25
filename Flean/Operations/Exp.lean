@@ -598,6 +598,39 @@ theorem fpExpFinite_relativeError_le
   rw [fpExpFinite_correct a] at hf
   exact RModeNearest_relativeError_le_half _ h_normal f hf
 
+/-! ## Faithfulness -/
+
+/-- `fpExpFinite` is faithfully rounded: the result is either `roundDown` or `roundUp`
+of the exact exponential. -/
+theorem fpExpFinite_faithful
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+    [RModeNearest ℝ] [ExpApprox] [ExpApproxSound]
+    (a : FiniteFp) :
+    fpExpFinite a = roundDown (Real.exp (a.toVal : ℝ)) ∨
+      fpExpFinite a = roundUp (Real.exp (a.toVal : ℝ)) := by
+  rw [fpExpFinite_correct a]
+  exact RModeNearest.round_eq_roundDown_or_roundUp _
+
+/-! ## Exact case -/
+
+/-- `exp(+0) = 1.0` exactly: the exponential of positive zero is the float `1`. -/
+theorem fpExpFinite_zero
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+    [RModeC ℝ] [ExpApprox] [ExpApproxSound]
+    : fpExpFinite (0 : FiniteFp) = Fp.finite 1 := by
+  rw [fpExpFinite_correct (0 : FiniteFp)]
+  rw [FiniteFp.toVal_zero, Real.exp_zero]
+  rw [show (1 : ℝ) = (FiniteFp.toVal (1 : FiniteFp) : ℝ) from
+    (FiniteFp.toVal_one).symm]
+  exact RModeIdem.round_idempotent (1 : FiniteFp) (Or.inl rfl)
+
+/-- `fpExp(+0) = 1.0` at the `Fp` level. -/
+theorem fpExp_zero
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+    [RModeC ℝ] [ExpApprox] [ExpApproxSound]
+    : fpExp (Fp.finite 0) = Fp.finite 1 := by
+  simp [fpExpFinite_zero]
+
 /-! ## Non-negativity and underflow -/
 
 /-- `fpExpFinite` always returns a non-negative result (`≥ +0`).
@@ -610,5 +643,22 @@ theorem fpExpFinite_nonneg
   rw [fpExpFinite_correct a]
   rw [← RModeZero.round_zero (R := ℝ)]
   exact RModeMono.round_mono (le_of_lt (Real.exp_pos _))
+
+/-- When `exp(a.toVal)` is below the smallest positive subnormal, `fpExpFinite` returns
+either `+0` or the smallest subnormal (i.e., a flush-to-zero or minimum representable). -/
+theorem fpExpFinite_underflow
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+    [RModeNearest ℝ] [ExpApprox] [ExpApproxSound]
+    (a : FiniteFp)
+    (h : Real.exp (a.toVal : ℝ) < FiniteFp.smallestPosSubnormal.toVal) :
+    fpExpFinite a = Fp.finite 0 ∨
+      fpExpFinite a = Fp.finite FiniteFp.smallestPosSubnormal := by
+  rw [fpExpFinite_correct a]
+  have hpos := Real.exp_pos (a.toVal : ℝ)
+  rcases RModeNearest.round_eq_roundDown_or_roundUp (Real.exp (a.toVal : ℝ)) with hrd | hru
+  · left; rw [hrd]
+    exact roundDown_lt_smallestPosSubnormal _ hpos h
+  · right; rw [hru]
+    exact roundUp_lt_smallestPosSubnormal _ hpos h
 
 end Exp
