@@ -153,6 +153,73 @@ private theorem expComputableRun_result_pos (a : FiniteFp) (_hm : a.m ≠ 0) :
   have hpos := repeatedSquare_pos _ hty_pos (expArgRedN |a.toVal (R := ℚ)|)
   split_ifs <;> positivity
 
+/-! ## Taylor series ↔ Finset.sum bridge -/
+
+omit [FloatFormat] in
+open Finset in
+/-- Loop invariant: when `term = y^k/k!` and `acc = ∑_{i<k+1} y^i/i!`,
+the loop computes `∑_{i<k+fuel+1} y^i/i!`. -/
+private theorem taylorExpQ_go_eq (y : ℚ) :
+    ∀ (fuel k : ℕ) (acc term : ℚ),
+    term = y ^ k / (k.factorial : ℚ) →
+    acc = ∑ i ∈ range (k + 1), y ^ i / (i.factorial : ℚ) →
+    taylorExpQ.go y fuel k acc term =
+      ∑ i ∈ range (k + fuel + 1), y ^ i / (i.factorial : ℚ) := by
+  intro fuel
+  induction fuel with
+  | zero => intro k acc term _ hacc; simp [taylorExpQ.go, hacc]
+  | succ n ih =>
+    intro k acc term hterm hacc
+    simp only [taylorExpQ.go]
+    -- Next term: term * y / (k+1) = y^(k+1) / (k+1)!
+    have hterm_next : term * y / (↑k + 1) = y ^ (k + 1) / ((k + 1).factorial : ℚ) := by
+      rw [hterm, pow_succ, Nat.factorial_succ, Nat.cast_mul]
+      have : (k.factorial : ℚ) ≠ 0 := Nat.cast_ne_zero.mpr (Nat.factorial_ne_zero k)
+      have : (↑k + 1 : ℚ) ≠ 0 := by positivity
+      field_simp; push_cast; ring
+    -- Updated acc: acc + nextTerm = ∑_{i<k+2}
+    have hacc_next : acc + term * y / (↑k + 1) =
+        ∑ i ∈ range (k + 1 + 1), y ^ i / (i.factorial : ℚ) := by
+      rw [sum_range_succ, hacc, hterm_next]
+    rw [ih (k + 1) _ _ hterm_next hacc_next,
+      show k + 1 + n + 1 = k + (n + 1) + 1 from by omega]
+
+omit [FloatFormat] in
+open Finset in
+/-- `taylorExpQ y n` equals the standard Taylor partial sum `∑_{k<n+1} y^k/k!` in ℚ. -/
+private theorem taylorExpQ_eq_sum (y : ℚ) (n : ℕ) :
+    taylorExpQ y n = ∑ k ∈ range (n + 1), y ^ k / (k.factorial : ℚ) := by
+  simp only [taylorExpQ]
+  have hterm : (1 : ℚ) = y ^ 0 / (Nat.factorial 0 : ℚ) := by simp
+  have hacc : (1 : ℚ) = ∑ i ∈ range (0 + 1), y ^ i / (i.factorial : ℚ) := by
+    rw [sum_range_one]; simp
+  rw [taylorExpQ_go_eq y n 0 1 1 hterm hacc, show 0 + n + 1 = n + 1 from by omega]
+
+omit [FloatFormat] in
+open Finset in
+/-- Cast of `taylorExpQ` to ℝ equals the real Taylor partial sum. -/
+private theorem taylorExpQ_cast_eq_sum (y : ℚ) (n : ℕ) :
+    (taylorExpQ y n : ℝ) = ∑ k ∈ range (n + 1), (y : ℝ) ^ k / (k.factorial : ℝ) := by
+  rw [taylorExpQ_eq_sum]; push_cast; rfl
+
+omit [FloatFormat] in
+/-- The real Taylor partial sum lower-bounds `exp` for nonneg arguments. -/
+private theorem taylorExpQ_le_exp (y : ℚ) (hy : 0 ≤ y) (n : ℕ) :
+    (taylorExpQ y n : ℝ) ≤ Real.exp (y : ℝ) := by
+  rw [taylorExpQ_cast_eq_sum]
+  exact Real.sum_le_exp_of_nonneg (by exact_mod_cast hy) _
+
+omit [FloatFormat] in
+/-- `repeatedSquare base n` equals `base ^ (2^n)`. -/
+private theorem repeatedSquare_eq_pow (base : ℚ) (n : ℕ) :
+    repeatedSquare base n = base ^ 2 ^ n := by
+  induction n with
+  | zero => simp [repeatedSquare]
+  | succ n ih =>
+    simp only [repeatedSquare, ih]
+    rw [← pow_add]; congr 1
+    rw [Nat.pow_succ]; omega
+
 /-- `expExtract` always returns `isExact = false`. -/
 private theorem expExtract_isExact_false (result : ℚ) :
     (expExtract result).isExact = false := by
@@ -273,6 +340,15 @@ instance (priority := 500) : ExpRefExecSound where
     exact expExtract_q_ge _ (expComputableRun_result_pos a hm)
   sticky_interval := by
     intro a o hr hFalse
+    -- This requires showing the rational Taylor approximation brackets
+    -- Real.exp tightly enough that q = ⌊result · 2^s⌋ puts exp in
+    -- the sticky interval (2q·2^e_base, 2(q+1)·2^e_base).
+    -- Key sub-results needed:
+    -- 1. taylorExpQ cast to ℝ = same Taylor sum in ℝ
+    -- 2. Taylor partial sum ≤ Real.exp y (lower bound, all terms positive)
+    -- 3. Real.exp y - Taylor sum ≤ remainder bound
+    -- 4. Argument reduction: Real.exp x = (Real.exp(x/2^n))^(2^n)
+    -- 5. Floor extraction puts real value in interval
     sorry
 
 end ExpComputable
