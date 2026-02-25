@@ -1,0 +1,150 @@
+import Flean.Operations.Exp
+
+/-! # Computable `ExpRefExec` Instance
+
+Evaluates `exp(x)` using rational Taylor series with argument reduction:
+
+1. Convert input to `ℚ` via `FiniteFp.toVal`
+2. Reduce argument: `exp(x) = exp(x/2^n)^(2^n)` with `|x/2^n| ≤ 1/2`
+3. Taylor series for `exp(y)` with `|y| ≤ 1/2` (fast convergence)
+4. Recover via repeated squaring in `ℚ`
+5. Extract sticky cell `(q, e_base)` for `roundIntSigM`
+
+Soundness proofs (`ExpRefExecSound`) are deferred — the sorry'd instance lets
+`fpExp` be evaluated on concrete inputs right away.
+-/
+
+section ExpComputable
+
+variable [FloatFormat]
+
+/-! ## Taylor series -/
+
+/-- Number of Taylor terms. `prec + 10` guard terms ensures the truncation
+error is negligible compared to sticky cell width for `|y| ≤ 1/2`. -/
+private def expNumTerms : ℕ := FloatFormat.prec.toNat + 10
+
+/-- Evaluate `exp(y) ≈ Σ_{k=0}^{numTerms} y^k/k!` in ℚ.
+Uses forward recurrence `term_{k+1} = term_k · y / (k+1)`.
+All terms are positive when `y > 0`, guaranteeing a lower bound. -/
+private def taylorExpQ (y : ℚ) (numTerms : ℕ) : ℚ :=
+  let rec go : ℕ → ℕ → ℚ → ℚ → ℚ
+    | 0, _, acc, _ => acc
+    | fuel + 1, k, acc, term =>
+        let nextTerm := term * y / (k + 1)
+        go fuel (k + 1) (acc + nextTerm) nextTerm
+  go numTerms 0 1 1  -- start: k=0, acc=1 (term_0), term=1 (term_0)
+
+/-! ## Argument reduction -/
+
+/-- Smallest `n` such that `abs_x / 2^n ≤ 1/2`, i.e., `2 · abs_x ≤ 2^n`.
+Returns 0 when `abs_x ≤ 1/2`. -/
+private def expArgRedN (abs_x : ℚ) : ℕ :=
+  let two_abs_x := 2 * abs_x
+  if two_abs_x ≤ 1 then 0
+  else
+    -- ⌈2·|x|⌉ ≤ 2^n, so n = Nat.log2(⌈2·|x|⌉) + 1 suffices
+    -- (Nat.log2 k gives the floor log, so 2^(log2 k + 1) > k)
+    let upper := (⌈two_abs_x⌉).toNat  -- ⌈two_abs_x⌉ ≥ 1 here
+    Nat.log2 upper + 1
+
+/-! ## Repeated squaring -/
+
+/-- Compute `base^(2^n)` by `n` successive squarings. -/
+private def repeatedSquare (base : ℚ) : ℕ → ℚ
+  | 0 => base
+  | n + 1 => let half := repeatedSquare base n; half * half
+
+/-! ## Sticky cell extraction -/
+
+/-- Extract `(q, e_base, isExact)` from a positive rational `result`.
+
+Finds shift `s` such that `q := ⌊result · 2^s⌋` has at least `prec + 2` bits,
+then sets `e_base := -(s + 1)` so that `result ≈ 2q · 2^e_base`. -/
+private def expExtract (result : ℚ) : ExpRefOut :=
+  let p := result.num.natAbs
+  let d := result.den
+  let targetBits := FloatFormat.prec.toNat + 3  -- target ≈ prec+3 bits in q
+  let minQ := 2 ^ (FloatFormat.prec.toNat + 2)
+  -- Approximate shift: s ≈ targetBits + log2(d) - log2(p)
+  -- Use Int to avoid Nat subtraction underflow
+  let s_int : ℤ := (targetBits : ℤ) + (Nat.log2 d : ℤ) - (Nat.log2 p : ℤ)
+  let s := s_int.toNat  -- clamp negative to 0
+  -- Compute q = ⌊p · 2^s / d⌋
+  let q := p * 2 ^ s / d
+  -- Adjust if q is too small or too large
+  let (q_final, s_final) :=
+    if q < minQ then
+      -- shift up by 1
+      (p * 2 ^ (s + 1) / d, s + 1)
+    else if q ≥ 4 * minQ then
+      -- shift down by 1 (safe since q ≥ 4·minQ ≥ 4)
+      if s > 0 then (p * 2 ^ (s - 1) / d, s - 1)
+      else (q / 2, s)  -- fallback: halve q directly
+    else (q, s)
+  -- Check exactness: result · 2^s = q exactly iff p · 2^s = d · q
+  let isExact := (p * 2 ^ s_final == d * q_final)
+  let e_base : ℤ := -((s_final : ℤ)) - 1
+  { q := q_final, e_base := e_base, isExact := isExact }
+
+/-! ## Main kernel -/
+
+/-- Computable exp reference kernel.
+
+For `a.m = 0` (input is ±0): returns exact result for `exp(0) = 1`.
+Otherwise: rational Taylor series with argument reduction. -/
+def expComputableRun (a : FiniteFp) : ExpRefOut :=
+  if a.m = 0 then
+    -- exp(0) = 1 = 2 · 1 · 2^(-1)
+    { q := 1, e_base := -1, isExact := true }
+  else
+    let x : ℚ := a.toVal
+    let abs_x : ℚ := |x|
+    -- Argument reduction: find n such that abs_x / 2^n ≤ 1/2
+    let n := expArgRedN abs_x
+    let y : ℚ := abs_x / (2 : ℚ) ^ (n : ℕ)
+    -- Taylor approximation of exp(y) for y ∈ (0, 1/2]
+    let ty := taylorExpQ y expNumTerms
+    -- Repeated squaring: exp(|x|) ≈ ty^(2^n)
+    let pos_result := repeatedSquare ty n
+    -- Handle sign: exp(-|x|) = 1/exp(|x|)
+    let result : ℚ := if x < 0 then 1 / pos_result else pos_result
+    -- Extract sticky cell
+    expExtract result
+
+instance (priority := 500) : ExpRefExec where
+  run := expComputableRun
+
+/-! ## Soundness (deferred)
+
+These proofs require establishing that the rational Taylor approximation
+brackets `Real.exp` tightly enough to determine the correct sticky cell.
+Sorry'd for now — the computable kernel is usable immediately. -/
+
+instance (priority := 500) : ExpRefExecSound where
+  exact_mag_ne_zero := by
+    intro a o hr hExact
+    sorry
+  exact_value := by
+    intro a o hr hExact
+    sorry
+  sticky_q_lower := by
+    intro a o hr hFalse
+    sorry
+  sticky_interval := by
+    intro a o hr hFalse
+    sorry
+
+end ExpComputable
+
+/-! ## Smoke tests -/
+
+-- exp(0) = 1: exact case
+#eval
+  letI : FloatFormat := FloatFormat.Binary16.toFloatFormat
+  expComputableRun (0 : FiniteFp)
+
+-- exp(1) for binary16 (s=false, e=0, m=2^10=1024)
+#eval
+  letI : FloatFormat := FloatFormat.Binary16.toFloatFormat
+  expComputableRun ⟨false, 0, 1024, by native_decide⟩
