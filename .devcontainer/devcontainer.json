@@ -1,0 +1,22 @@
+{
+  "name": "Flean - Lean 4 + Claude Code",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "remoteUser": "vscode",
+  "onCreateCommand": "lake exe cache get!",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "leanprover.lean4"
+      ],
+      "settings": {
+        "editor.wordWrap": "on"
+      }
+    }
+  },
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "16gb"
+  }
+}
