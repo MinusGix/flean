@@ -66,8 +66,11 @@ private theorem ln2SeriesSum_ge_half (N : ℕ) (hN : 1 ≤ N) :
           ln2SeriesSum_go_ge_acc n _ _
 
 /-- Generous fuel for the iterative extraction loop.
-Input-dependent to ensure termination is provable via the Taylor gap principle. -/
-private def expFuel (x : ℚ) : ℕ := x.num.natAbs + x.den + FloatFormat.prec.toNat * 3 + 200
+Quadratic in `|x.num|` to accommodate the effective irrationality measure from Padé
+approximation (the Padé parameter `d = 4a²/b` requires `O(a²/b)` terms to converge).
+Linear terms cover the shift `s`, ln2 precision, and base Taylor order. -/
+private def expFuel (x : ℚ) : ℕ :=
+  x.num.natAbs ^ 2 / x.den + x.num.natAbs + x.den + FloatFormat.prec.toNat * 3 + 200
 
 /-! ## Taylor series -/
 
@@ -1294,23 +1297,95 @@ private theorem expExtractLoop_sound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter fu
       exact ih (iter + 1) hq
 
 
+/-! ## Bracket width bound
+
+The bracket `[lower, upper]` from `expBounds` shrinks as `iter` increases.
+The width has two components:
+1. **Taylor remainder**: `~1/N!` where `N = expNumTerms + iter * 10`
+2. **ln2 error**: `~|k| / 2^{N_ln2}` where `N_ln2 = log2(k.natAbs) + 52 + iter * 50`
+
+After scaling by `2^{k+s}`, the bracket width for `exp(x) · 2^s` is bounded by
+a function that decreases super-exponentially in `iter`. -/
+
+/-- Upper bound on the bracket width `(upper - lower)` at iteration `iter`.
+The key bound is that the Taylor remainder contributes `≤ (N+2)/((N+1)!·(N+1))`
+and the ln2 error contributes `≤ exp(1)·|k|/2^{N_ln2}` to the r-interval width. -/
+private theorem expBounds_width_bound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
+    (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1) :
+    let (lower, upper) := expBounds x k iter
+    let N := expNumTerms + iter * 10
+    let N_ln2 := Nat.log2 k.natAbs + 52 + iter * 50
+    ((upper : ℝ) - (lower : ℝ)) * 2 ^ (expShift lower) ≤
+      (2 : ℝ) ^ (k.natAbs + expShift lower) *
+        ((N + 2 : ℝ) / ((N + 1).factorial * (N + 1)) +
+         Real.exp 1 * (k.natAbs + 1 : ℝ) / 2 ^ N_ln2) := by
+  sorry
+
+/-- The bracket width scaled by `2^s` eventually drops below any positive bound.
+This follows from `expBounds_width_bound` and the fact that `1/(N+1)! → 0`
+and `1/2^{N_ln2} → 0` as `iter → ∞`. -/
+private theorem expBounds_width_tendsto_zero (x : ℚ) (hx : x ≠ 0) (k : ℤ)
+    (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1) (eps : ℝ) (heps : 0 < eps) :
+    ∃ iter₀ : ℕ, ∀ iter, iter₀ ≤ iter →
+      let (lower, upper) := expBounds x k iter
+      ((upper : ℝ) - (lower : ℝ)) * 2 ^ (expShift lower) < eps := by
+  sorry
+
+/-- **Key lemma**: When the bracket width · 2^s is less than the distance from
+`exp(x) · 2^s` to the nearest integer, `expTryOne` succeeds.
+
+More precisely: if `lower < exp(x) ≤ upper` and the bracket is tight enough
+that `(upper - lower) · 2^s < δ`, where `δ` is the min-distance from `exp(x) · 2^s`
+to any integer, then `⌊lower · 2^s⌋ = ⌊upper · 2^s⌋` and `expTryOne` returns `some`. -/
+private theorem expTryOne_of_tight_bracket (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
+    (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1)
+    (δ : ℝ) (hδ : 0 < δ)
+    (hδ_gap : ∀ m : ℤ, |Real.exp (x : ℝ) * 2 ^ (expShift (expBounds x k iter).1) -
+      (m : ℝ)| ≥ δ)
+    (hwidth : let (lower, upper) := expBounds x k iter
+      ((upper : ℝ) - (lower : ℝ)) * 2 ^ (expShift lower) < δ) :
+    (expTryOne x k iter).isSome = true := by
+  sorry
+
+/-- **Fuel sufficiency**: within `expFuel x` iterations, `expTryOne` succeeds.
+This is the quantitative core combining all three ingredients:
+1. Effective δ from `pade_effective_delta` for the shift `s` at each iteration
+2. Bracket width bound from `expBounds_width_bound`
+3. Floor agreement from `expTryOne_of_tight_bracket`
+
+The proof shows the factorial decay of the bracket width dominates the
+Padé effective δ bound within the quadratic fuel budget. -/
+private theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
+    (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1) :
+    ∃ iter, iter < expFuel x ∧ (expTryOne x k iter).isSome = true := by
+  sorry
+
 /-- **Fuel sufficiency**: the first successful iteration is within `expFuel x`.
-The proof that `expTryOne` eventually succeeds requires two ingredients:
-1. **Irrationality**: `exp(x)` is irrational for nonzero rational `x` (from `irrational_exp_rat`),
-   so `exp(x) · 2^s` is never an integer, giving `Int.fract(exp(x) · 2^s) > 0`.
-2. **Convergence**: The bracket `[lower, upper]` from `expBounds` converges to `exp(x)` as
-   `iter → ∞` (Taylor remainder → 0 and ln2 error → 0).
-Combined with `floor_eq_of_close`, this shows `⌊lower·2^s⌋ = ⌊upper·2^s⌋` for large enough `iter`.
-Bounding this `iter` by `expFuel x` requires an **effective irrationality measure** for `exp`
-at rational points — a consequence of Hermite–Padé approximation theory. The Padé approximation
-scaffolding is in `PadeExp.lean`. The bracket width decreases super-exponentially (dominated by
-`1/N!` for the Taylor remainder), while effective irrationality measures give
-`|exp(q)·2^s − m| ≥ exp(−poly(input_size))`, so `expFuel x = O(|x.num| + x.den + prec)`
-is more than sufficient in practice and in theory. -/
+
+The proof combines three ingredients:
+
+1. **Effective irrationality measure** (from Padé, in `PadeExp.lean`):
+   For nonzero rational `a/b` and shift `s`, there exists an explicit `δ > 0` such that
+   `|exp(a/b) · 2^s - m| ≥ δ` for all integers `m`. The bound is
+   `δ = 1/(2 · K)` where `K = N₀! · b^N₀ · P_{N₀}(a/b)` and `N₀` is the Padé convergence
+   threshold (see `pade_effective_delta`).
+
+2. **Bracket width bound**: At iteration `iter`, the bracket `[lower, upper]` from `expBounds`
+   satisfies `(upper - lower) · 2^s ≤ W(iter)` where `W` decreases super-exponentially
+   (dominated by `2^{k+s} / N_taylor!` for the Taylor remainder, plus `2^{k+s} · |k| / 2^{N_ln2}`
+   for the ln2 error). See `expBounds_width_bound`.
+
+3. **Floor agreement**: When `W(iter) < δ` and `lower < exp(x) ≤ upper`, the floors
+   `⌊lower · 2^s⌋ = ⌊upper · 2^s⌋` agree (from `floor_eq_of_close`).
+
+The Padé parameter `d = 4a²/b` requires `O(a²/b)` terms to converge, hence the quadratic
+term in `expFuel`. The factorial growth `1/N!` of the bracket width easily dominates the
+effective δ bound within `expFuel x` iterations. -/
 private theorem expTryOne_terminates (x : ℚ) (hx : x ≠ 0) (k : ℤ)
     (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1) :
     ∃ n, 0 ≤ n ∧ n < 0 + expFuel x ∧ (expTryOne x k n).isSome = true := by
-  sorry
+  obtain ⟨iter, hiter_fuel, hsuccess⟩ := expFuel_sufficient x hx k hk_bound
+  exact ⟨iter, by omega, by omega, hsuccess⟩
 
 /-- Core soundness: for nonzero x, the loop output brackets exp(x) in a valid sticky cell
 with q ≥ 2^(prec+2). Combines bracket correctness (`expTryOne_sound`) with
