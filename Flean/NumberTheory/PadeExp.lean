@@ -1,6 +1,7 @@
 import Flean.NumberTheory.ExpEffectiveBound
 import Flean.NumberTheory.AlternatingChooseSum
 import Mathlib.Analysis.SpecialFunctions.Exponential
+import Mathlib.Analysis.Normed.Ring.InfiniteSum
 
 /-! # Padé approximation to `exp(x)` and effective irrationality measure
 
@@ -299,8 +300,10 @@ private theorem padeProdCoeff_eq_low (N j : ℕ) (hN : 0 < N) (hj : j ≤ N) :
       field_simp; rw [this]; ring
     rw [Finset.sum_congr rfl hsame]; exact hgoal
   -- Cast from ℤ and use Nat.choose_symm
-  have hchoose : (2 * N - j).choose (N - j) = (2 * N - j).choose N :=
-    (Nat.choose_symm (show N ≤ 2 * N - j by omega)).symm
+  have hchoose : (2 * N - j).choose (N - j) = (2 * N - j).choose N := by
+    have h1 : N ≤ 2 * N - j := by omega
+    have h2 : (2 * N - j) - N = N - j := by omega
+    rw [← h2]; exact Nat.choose_symm h1
   rw [← hchoose]
   exact_mod_cast key
 
@@ -345,132 +348,264 @@ private theorem padeProdCoeff_eq_zero (N j : ℕ) (hN : 0 < N) (hjN : N < j) (hj
       ((2 * N - k).choose N : ℝ) = (0 : ℝ) := by exact_mod_cast key
   rw [this]
 
-/-- The Padé remainder is bounded:
+/-! ### Helper lemmas for `padeR_bound` -/
 
+/-- Coefficient bound: `|padeProdCoeff N j| ≤ C(2N,N) · 2^j / j!`.
+Each term in the sum has `|(-1)^k C(j,k) C(2N-k,N)| ≤ C(j,k)·C(2N,N)`,
+and `Σ_{k=0}^N C(j,k) ≤ 2^j`. -/
+private theorem padeProdCoeff_abs_le (N j : ℕ) :
+    |padeProdCoeff N j| ≤ (Nat.centralBinom N : ℝ) * 2 ^ j / j.factorial := by
+  unfold padeProdCoeff
+  -- Step 1: Triangle inequality, simplify |(-1)^k| = 1
+  have habs : ∀ k ∈ Finset.range (min j N + 1),
+      |padeCoeff N k * (-1 : ℝ) ^ k / ((j - k).factorial : ℝ)| =
+      padeCoeff N k / ((j - k).factorial : ℝ) := by
+    intro k hk; simp only [Finset.mem_range] at hk
+    have hkN : k ≤ N := by omega
+    rw [abs_div, abs_mul, abs_of_nonneg (le_of_lt (padeCoeff_pos N k hkN)),
+        abs_pow, abs_neg, abs_one, one_pow, mul_one,
+        abs_of_nonneg (Nat.cast_nonneg' _)]
+  -- Step 2: |sum| ≤ Σ |term| = Σ C(2N-k,N)/(k! · (j-k)!)
+  have h1 : |∑ k ∈ Finset.range (min j N + 1),
+      padeCoeff N k * (-1 : ℝ) ^ k / ((j - k).factorial : ℝ)| ≤
+      ∑ k ∈ Finset.range (min j N + 1), padeCoeff N k / ((j - k).factorial : ℝ) := by
+    calc _ ≤ ∑ k ∈ Finset.range (min j N + 1),
+          |padeCoeff N k * (-1 : ℝ) ^ k / ((j - k).factorial : ℝ)| :=
+          Finset.abs_sum_le_sum_abs _ _
+      _ = _ := Finset.sum_congr rfl habs
+  -- Step 3: Bound C(2N-k,N) ≤ C(2N,N) and rewrite using C(j,k) = j!/(k!·(j-k)!)
+  have h2 : ∑ k ∈ Finset.range (min j N + 1), padeCoeff N k / ((j - k).factorial : ℝ) ≤
+      (Nat.centralBinom N : ℝ) / (j.factorial : ℝ) *
+      ∑ k ∈ Finset.range (min j N + 1), (j.choose k : ℝ) := by
+    rw [Finset.mul_sum]
+    apply Finset.sum_le_sum; intro k hk; simp only [Finset.mem_range] at hk
+    have hkN : k ≤ N := by omega
+    have hkj : k ≤ j := by omega
+    -- LHS = C(2N-k,N) / (k! · (j-k)!)
+    -- RHS = C(2N,N) / j! · C(j,k) = C(2N,N) · C(j,k) / j!
+    --     = C(2N,N) / (k! · (j-k)!)  (since C(j,k) · (j-k)! · k! = j!)
+    simp only [padeCoeff, Nat.centralBinom_eq_two_mul_choose, div_div]
+    -- Goal: C(2N-k,N) / (k! * (j-k)!) ≤ C(2N,N) / j! * C(j,k)
+    -- Rewrite RHS: C(2N,N) * C(j,k) / j! = C(2N,N) / (k! * (j-k)!)
+    have hchoose_fac := Nat.choose_mul_factorial_mul_factorial hkj
+    -- hchoose_fac : C(j,k) * k! * (j-k)! = j!
+    have hRHS : (↑((2 * N).choose N) : ℝ) / ↑j.factorial * ↑(j.choose k) =
+        (↑((2 * N).choose N) : ℝ) / (↑k.factorial * ↑(j - k).factorial) := by
+      have : (j.factorial : ℝ) = (j.choose k : ℝ) * k.factorial * (j - k).factorial := by
+        exact_mod_cast hchoose_fac.symm
+      rw [this]
+      have : (j.choose k : ℝ) ≠ 0 := Nat.cast_ne_zero.mpr (Nat.choose_pos hkj).ne'
+      field_simp
+    rw [hRHS]
+    apply div_le_div_of_nonneg_right _ (mul_nonneg (Nat.cast_nonneg' _) (Nat.cast_nonneg' _))
+    exact_mod_cast Nat.choose_le_choose N (by omega : 2 * N - k ≤ 2 * N)
+  -- Step 4: Extend sum from range(min j N + 1) to range(j + 1) and use Σ C(j,k) = 2^j
+  have h3 : (Nat.centralBinom N : ℝ) / (j.factorial : ℝ) *
+      ∑ k ∈ Finset.range (min j N + 1), (j.choose k : ℝ) ≤
+      (Nat.centralBinom N : ℝ) * 2 ^ j / (j.factorial : ℝ) := by
+    rw [div_mul_eq_mul_div]
+    apply div_le_div_of_nonneg_right _ (Nat.cast_nonneg' j.factorial)
+    apply mul_le_mul_of_nonneg_left _ (by positivity : (0 : ℝ) ≤ Nat.centralBinom N)
+    have hsub : Finset.range (min j N + 1) ⊆ Finset.range (j + 1) :=
+      Finset.range_mono (by omega)
+    calc (∑ k ∈ Finset.range (min j N + 1), (j.choose k : ℝ))
+        ≤ ∑ k ∈ Finset.range (j + 1), (j.choose k : ℝ) :=
+          Finset.sum_le_sum_of_subset_of_nonneg hsub (fun _ _ _ => Nat.cast_nonneg' _)
+      _ = 2 ^ j := by
+          have := Nat.sum_range_choose j
+          exact_mod_cast this
+  linarith [h1, h2, h3]
+
+/-- The Cauchy product `P_N(x) · exp(x)` equals `∑ padeProdCoeff(N,n) · x^n`. -/
+private theorem padeP_mul_exp_hasSum (N : ℕ) (x : ℝ) :
+    HasSum (fun n => padeProdCoeff N n * x ^ n) (padeP N x * exp x) := by
+  -- Extended P coefficients: padeCoeff N k * (-1)^k * x^k for k ≤ N, else 0
+  set fP : ℕ → ℝ := fun k => if k ≤ N then padeCoeff N k * (-1) ^ k * x ^ k else 0
+  -- Exp series coefficients
+  set fE : ℕ → ℝ := fun j => x ^ j / ↑j.factorial
+  -- fP is norm-summable (finitely supported)
+  have hfP_ns : Summable (fun k => ‖fP k‖) := by
+    apply summable_of_ne_finset_zero (s := range (N + 1))
+    intro b hb; simp only [Finset.mem_range, not_lt] at hb
+    simp only [fP, show ¬(b ≤ N) from by omega, ite_false, norm_zero]
+  -- fE is norm-summable (absolute convergence of exp)
+  have hfE_ns : Summable (fun j => ‖fE j‖) :=
+    NormedSpace.norm_expSeries_div_summable (𝕂 := ℝ) x
+  -- Cauchy product HasSum
+  have hCP := hasSum_sum_range_mul_of_summable_norm hfP_ns hfE_ns
+  -- Compute tsum of fP = padeP N x
+  have hfP_tsum : ∑' k, fP k = padeP N x := by
+    rw [tsum_eq_sum (s := range (N + 1)) (hf := fun b hb => by
+      simp only [fP, Finset.mem_range, not_lt] at hb ⊢
+      simp [show ¬(b ≤ N) from by omega])]
+    simp only [padeP]
+    apply Finset.sum_congr rfl; intro k hk
+    simp only [Finset.mem_range] at hk
+    simp only [fP, show k ≤ N from by omega, ite_true]
+    rw [show (-x) ^ k = (-1 : ℝ) ^ k * x ^ k from by
+      rw [show (-x : ℝ) = (-1) * x from by ring, mul_pow]]
+    ring
+  -- Compute tsum of fE = exp x
+  have hfE_tsum : ∑' j, fE j = exp x := by
+    rw [Real.exp_eq_exp_ℝ]
+    exact (NormedSpace.expSeries_div_hasSum_exp (𝕂 := ℝ) x).tsum_eq
+  rw [hfP_tsum, hfE_tsum] at hCP
+  -- Show each Cauchy coefficient = padeProdCoeff N n * x^n
+  have hcoeff : ∀ n : ℕ, padeProdCoeff N n * x ^ n =
+      ∑ k ∈ range (n + 1), fP k * fE (n - k) := by
+    intro n
+    -- Reduce sum: for k > min n N, fP k = 0 (since k > N or vacuously k > n)
+    rw [(Finset.sum_subset (Finset.range_mono (show min n N + 1 ≤ n + 1 by omega))
+      (fun k hk1 hk2 => by
+        simp only [Finset.mem_range, not_lt] at hk1 hk2
+        have hkN : ¬(k ≤ N) := by
+          intro h; exact absurd (show k < min n N + 1 from by omega) (not_lt.mpr hk2)
+        simp only [fP, hkN, ite_false, zero_mul])).symm]
+    -- Match with padeProdCoeff definition
+    simp only [padeProdCoeff, Finset.sum_mul]
+    apply Finset.sum_congr rfl; intro k hk
+    simp only [Finset.mem_range] at hk
+    have hkN : k ≤ N := by omega
+    have hkn : k ≤ n := by omega
+    simp only [fP, hkN, ite_true, fE, padeCoeff]
+    have hpow : x ^ k * x ^ (n - k) = x ^ n := by rw [← pow_add, Nat.add_sub_cancel' hkn]
+    have hkf_ne : (↑k.factorial : ℝ) ≠ 0 := Nat.cast_ne_zero.mpr (Nat.factorial_ne_zero _)
+    have hnkf_ne : (↑(n - k).factorial : ℝ) ≠ 0 := Nat.cast_ne_zero.mpr (Nat.factorial_ne_zero _)
+    field_simp
+    rw [mul_assoc, hpow]
+  rw [show (fun n => ∑ k ∈ range (n + 1), fP k * fE (n - k)) =
+      fun n => padeProdCoeff N n * x ^ n from funext (fun n => (hcoeff n).symm)] at hCP
+  exact hCP
+
+/-- `Q_N(x)` equals the first `2N+1` terms of the Cauchy product series. -/
+private theorem padeQ_eq_sum_padeProdCoeff (N : ℕ) (hN : 0 < N) (x : ℝ) :
+    ∑ n ∈ range (2 * N + 1), padeProdCoeff N n * x ^ n = padeQ N x := by
+  -- Split range(2N+1) into range(N+1) ∪ {N+1,...,2N}
+  rw [show 2 * N + 1 = (N + 1) + N from by omega, Finset.sum_range_add]
+  -- Second sum vanishes (padeProdCoeff = 0 for N < j ≤ 2N)
+  have h2 : ∑ i ∈ range N, padeProdCoeff N (N + 1 + i) * x ^ (N + 1 + i) = 0 := by
+    apply Finset.sum_eq_zero; intro i hi
+    simp only [Finset.mem_range] at hi
+    rw [padeProdCoeff_eq_zero N (N + 1 + i) hN (by omega) (by omega), zero_mul]
+  rw [h2, add_zero]
+  -- First sum: padeProdCoeff = padeCoeff for j ≤ N
+  simp only [padeQ]
+  apply Finset.sum_congr rfl; intro n hn
+  simp only [Finset.mem_range] at hn
+  rw [padeProdCoeff_eq_low N n hN (by omega)]
+
+/-- `R_N(x) = Σ_{j≥2N+1} padeProdCoeff(N, j) · x^j` as a convergent series.
+The first 2N+1 terms of the Cauchy product `P_N·exp` cancel with `Q_N`. -/
+private theorem padeR_hasSum (N : ℕ) (hN : 0 < N) (x : ℝ) :
+    HasSum (fun j => padeProdCoeff N (j + (2 * N + 1)) * x ^ (j + (2 * N + 1)))
+      (padeR N x) := by
+  have h1 : HasSum (fun n => padeProdCoeff N n * x ^ n) (padeP N x * exp x) :=
+    padeP_mul_exp_hasSum N x
+  have h2 : ∑ n ∈ range (2 * N + 1), padeProdCoeff N n * x ^ n = padeQ N x :=
+    padeQ_eq_sum_padeProdCoeff N hN x
+  -- padeR = padeP * exp x - padeQ = (total series value) - (first 2N+1 terms)
+  rw [show padeR N x = padeP N x * exp x -
+      ∑ n ∈ range (2 * N + 1), padeProdCoeff N n * x ^ n from by
+    unfold padeR; linarith [h2]]
+  exact (hasSum_nat_add_iff' (2 * N + 1)).mpr h1
+
+/-- Exp tail bound: `Σ_{j≥M} a^j/j! ≤ a^M/M! · exp(a)` for `a ≥ 0`. -/
+private theorem exp_tail_le (a : ℝ) (ha : 0 ≤ a) (M : ℕ) :
+    ∑' j, a ^ (j + M) / (j + M).factorial ≤ a ^ M / M.factorial * exp a := by
+  -- Each term: a^(j+M)/(j+M)! ≤ a^M/M! · a^j/j!  (since M!·j! ≤ (j+M)!)
+  -- Sum RHS: a^M/M! · Σ a^j/j! = a^M/M! · exp(a)
+  have hexp := NormedSpace.expSeries_div_hasSum_exp (𝕂 := ℝ) a
+  rw [Real.exp_eq_exp_ℝ, hexp.tsum_eq.symm, ← tsum_mul_left]
+  -- Summability of LHS: it's bounded termwise by a summable series
+  have hsumR : Summable (fun j => a ^ M / M.factorial * (a ^ j / j.factorial)) :=
+    hexp.summable.mul_left _
+  have hle : ∀ j, a ^ (j + M) / (j + M).factorial ≤
+      a ^ M / M.factorial * (a ^ j / j.factorial) := fun j => by
+    rw [div_mul_div_comm, pow_add, mul_comm (a ^ j) (a ^ M)]
+    apply div_le_div_of_nonneg_left (by positivity : 0 ≤ a ^ M * a ^ j)
+      (by positivity : (0 : ℝ) < (M.factorial : ℝ) * (j.factorial : ℝ))
+    rw [← Nat.cast_mul]
+    exact (Nat.cast_le (α := ℝ)).mpr (Nat.le_of_dvd (Nat.factorial_pos _)
+      (add_comm j M ▸ Nat.factorial_mul_factorial_dvd_factorial_add M j))
+  have hsumL : Summable (fun j => a ^ (j + M) / (j + M).factorial) :=
+    Summable.of_nonneg_of_le (fun j => by positivity) hle hsumR
+  exact hsumL.tsum_le_tsum hle hsumR
+
+/-- `C(2N,N) / (2N+1)! = 1 / ((2N+1) · (N!)²)` -/
+private theorem centralBinom_div_factorial (N : ℕ) (hN : 0 < N) :
+    (Nat.centralBinom N : ℝ) / ((2 * N + 1).factorial : ℝ) =
+    1 / ((2 * N + 1 : ℕ) * ((N.factorial : ℝ) ^ 2)) := by
+  rw [Nat.centralBinom_eq_two_mul_choose]
+  have key := Nat.choose_mul_factorial_mul_factorial (show N ≤ 2 * N by omega)
+  rw [show 2 * N - N = N from by omega] at key
+  -- key : C(2N,N) * N! * N! = (2N)!
+  -- Cross-multiply: C(2N,N) * ((2N+1) * (N!)²) = 1 * (2N+1)!
+  rw [div_eq_div_iff
+    (Nat.cast_ne_zero.mpr (Nat.factorial_ne_zero _))
+    (by apply mul_ne_zero
+        · exact Nat.cast_ne_zero.mpr (by omega)
+        · exact pow_ne_zero _ (Nat.cast_ne_zero.mpr (Nat.factorial_ne_zero _)))]
+  -- Goal: C(2N,N) * ((2N+1) * (N!)²) = 1 * (2N+1)!
+  have h2N1fac : (2 * N + 1).factorial = (2 * N + 1) * (2 * N).factorial :=
+    Nat.mul_factorial_pred (by omega)
+  have keyR : ((2 * N).choose N : ℝ) * (N.factorial : ℝ) * (N.factorial : ℝ) =
+      ((2 * N).factorial : ℝ) := by exact_mod_cast key
+  push_cast [h2N1fac, sq]
+  nlinarith [keyR]
+
+/-- The Padé remainder is bounded:
 `|R_N(x)| ≤ (2|x|)^{2N+1} · 2·exp(2|x|) / ((2N+1) · (N!)²)` -/
 theorem padeR_bound (N : ℕ) (hN : 0 < N) (x : ℝ) :
     |padeR N x| ≤ (2 * |x|) ^ (2 * N + 1) * (2 * exp (2 * |x|)) /
       ((2 * N + 1 : ℕ) * ((N.factorial : ℝ) ^ 2)) := by
-  -- INFORMAL PROOF SKETCH:
-  --
-  -- Step 1 (Padé condition): The first 2N+1 Taylor coefficients of R_N vanish.
-  --   For j ≤ N: use `alternating_choose_sum` to show coeff = C(2N-j,N)/j! - C(2N-j,N)/j! = 0.
-  --   For N < j ≤ 2N: use `alternating_choose_sum_zero` to show coeff = 0.
-  --   [Needs HELPER: `pade_taylor_coeff_vanish`]
-  --
-  -- Step 2 (Tail bound): R_N(x) = Σ_{j≥2N+1} c_j · x^j where each |c_j| ≤ C(2N,N) · 2^j / j!
-  --   But wait — the tail series is NOT just |x|^j but involves the REAL exp function.
-  --   We need the HasSum form: R_N = P_N·exp - Q_N, and exp is given by its Taylor series.
-  --   [Needs HELPER: `padeR_hasSum` — express R_N as a convergent tail sum]
-  --
-  -- Step 3 (Geometric tail): Σ_{j≥M} a^j/j! ≤ a^M/M! · exp(a) for a ≥ 0.
-  --   [Needs HELPER: `exp_tail_sum_bound`]
-  --
-  -- Step 4 (Central binomial): C(2N,N) ≤ 4^N.
-  --   [Needs HELPER: `central_binom_le_four_pow` — might be in Mathlib]
-  --
-  -- Step 5 (Factorial relation): (2N+1)! ≥ (2N+1)·(N!)²
-  --   From C(2N,N) = (2N)!/(N!)² ≥ 1, so (2N)! ≥ (N!)².
-  --   [Needs HELPER: `two_N_plus_one_factorial_ge`]
-  --
-  -- Assembly:
-  --   |R_N(x)| ≤ C(2N,N) · (2|x|)^{2N+1}/(2N+1)! · exp(2|x|)   [Steps 1-3]
-  --            ≤ 4^N · (2|x|)^{2N+1} · exp(2|x|) / (2N+1)!       [Step 4]
-  --            ≤ 4^N · (2|x|)^{2N+1} · exp(2|x|) / ((2N+1)·(N!)²) [Step 5]
-  --
-  -- The stated bound has an extra factor of 2·exp(2|x|) which is ≥ 4^N·exp(2|x|)/(N!)²... hmm
-  -- Actually `4^N/(N!)²` is NOT bounded by 2. This bound form is wrong.
-  --
-  -- Let me re-check: the RHS is (2|x|)^{2N+1} · 2 · exp(2|x|) / ((2N+1)·(N!)²).
-  -- My derivation gives 4^N · (2|x|)^{2N+1} · exp(2|x|) / ((2N+1)·(N!)²).
-  -- The stated bound is WEAKER by a factor of 2/4^N, which is NOT weaker for N ≥ 1!
-  -- 4^N > 2 for N ≥ 1. So the stated bound is TIGHTER than what I can prove.
-  --
-  -- FIX: Change the statement to include the 4^N factor, or use the tight integral bound.
-  -- The tight bound is |R_N(x)| ≤ |x|^{2N+1} · exp(|x|) / ((2N+1)·(N!)²).
-  -- That IS what we'd get from the integral representation directly.
-  --
-  -- For the tail-sum approach, the tightest we can get without the integral is:
-  -- |R_N(x)| ≤ C(2N,N) · Σ_{j≥2N+1} |x|^j / j!  (using each c_j ≤ C(2N,N)/j!)
-  --          ≤ C(2N,N) · |x|^{2N+1}/(2N+1)! · exp(|x|)
-  --          ≤ |x|^{2N+1} · exp(|x|) · C(2N,N) / (2N+1)!
-  --          = |x|^{2N+1} · exp(|x|) / ((2N+1) · (N!)²)
-  --
-  -- That last step uses C(2N,N)/(2N)! = 1/(N!)², i.e. C(2N,N)/(2N+1)! = 1/((2N+1)·(N!)²).
-  -- Wait: C(2N,N) = (2N)!/(N!)², so C(2N,N)/(2N+1)! = (2N)!/((N!)²·(2N+1)!) = 1/((2N+1)·(N!)²).
-  -- YES! So the tight bound IS provable from the tail-sum approach!
-  --
-  -- KEY: the coefficient bound is |c_j| ≤ C(2N,N)/j!, NOT C(2N,N)·2^j/j!.
-  -- This is because:
-  --   c_j = (1/j!) · Σ_{k=0}^N (-1)^k C(j,k) C(2N-k,N)
-  -- and |c_j| ≤ (1/j!) · Σ_{k=0}^N C(j,k) C(2N-k,N)
-  --          ≤ (1/j!) · C(2N,N) · Σ_{k=0}^N C(j,k)
-  --          ≤ (1/j!) · C(2N,N) · 2^j   ... NO this gives 2^j, not 1.
-  --
-  -- Hmm. With the alternating signs, we get CANCELLATION, which is why the bound is tighter.
-  -- Without exploiting cancellation, we only get the C(2N,N)·2^j/j! bound.
-  -- So the tail sum gives: Σ_{j≥2N+1} C(2N,N)·(2|x|)^j/j! = C(2N,N) · tail of exp(2|x|)
-  --                       ≤ C(2N,N) · (2|x|)^{2N+1}/(2N+1)! · exp(2|x|)
-  --                       = (2|x|)^{2N+1} · exp(2|x|) / ((2N+1)·(N!)²)
-  --
-  -- And that IS the stated bound (with factor 2·exp(2|x|) being ≥ exp(2|x|)).
-  -- The stated bound has the "2 · exp(2|x|)" factor. My derivation gives "exp(2|x|)".
-  -- So the stated bound IS provable! (It's weaker by a factor of 2, which is fine.)
-  --
-  -- REVISED ASSEMBLY:
-  --   |R_N(x)| ≤ C(2N,N) · (2|x|)^{2N+1}/(2N+1)! · exp(2|x|)
-  --            = (2|x|)^{2N+1} · exp(2|x|) / ((2N+1)·(N!)²)
-  --            ≤ (2|x|)^{2N+1} · (2·exp(2|x|)) / ((2N+1)·(N!)²)   [since 1 ≤ 2]
-  --            = RHS. ✓
-  --
-  -- HELPERS NEEDED (in order of dependency):
-  -- 1. `pade_product_coeff`: coefficient of x^j in P_N·exp is (1/j!)·Σ_{k} (-1)^k C(j,k) C(2N-k,N)
-  -- 2. `pade_coeff_abs_le`: |coeff of x^j in R_N| ≤ C(2N,N)/j! for j ≥ 2N+1
-  --    (NOT the tight bound, but the one using |(-1)^k C(j,k) C(2N-k,N)| ≤ C(j,k)·C(2N,N))
-  --    Wait, the sum goes to N, and Σ_{k=0}^N C(j,k) ≤ 2^j.
-  --    So |coeff| ≤ C(2N,N)·2^j/j!. OK so the bound involves 2^j.
-  --    Then Σ_{j≥2N+1} C(2N,N)·2^j·|x|^j/j! = C(2N,N)·Σ (2|x|)^j/j!.
-  -- 3. `exp_tail_sum_le`: Σ_{j≥M} a^j/j! ≤ a^M/M! · exp(a) for a ≥ 0
-  -- 4. `central_binom_div_factorial`: C(2N,N)/(2N+1)! = 1/((2N+1)·(N!)²)
-  --
-  -- The approach works. The key difficulty is expressing R_N as a formal power series
-  -- and showing it converges (HasSum). This requires connecting padeP, padeQ, exp
-  -- via their power series representations.
-  --
-  -- ALTERNATIVE (SIMPLER): Instead of the HasSum approach, use a DIRECT bound:
-  -- |P_N(x)·exp(x) - Q_N(x)| = |Σ_k c_k ((-x)^k·exp(x) - x^k)|
-  -- This doesn't simplify.
-  --
-  -- SIMPLEST PATH: Prove the integral representation and bound the integral.
-  -- R_N(x) = x^{2N+1}/(N!)² · ∫₀¹ t^N·(1-t)^N·exp(t·x) dt  (up to sign)
-  -- Then |R_N(x)| ≤ |x|^{2N+1}/(N!)² · ∫₀¹ t^N·(1-t)^N·exp(|x|) dt
-  --              = |x|^{2N+1}·exp(|x|)/(N!)² · B(N+1,N+1)
-  --              = |x|^{2N+1}·exp(|x|)/(N!)² · N!²/(2N+1)!
-  --              = |x|^{2N+1}·exp(|x|)/(2N+1)!
-  -- This is TIGHT and CLEAN. Easier to prove than the tail-sum approach
-  -- if we can establish the integral representation.
-  --
-  -- INTEGRAL REPRESENTATION PROOF (separate theorem `padeR_integral`):
-  -- Define I_N(x) = ∫₀¹ t^N·(1-t)^N·exp(t·x) dt.
-  -- By integration by parts twice:
-  --   I_N'(x) = ∫₀¹ t^{N+1}·(1-t)^N·exp(tx) dt
-  -- More precisely, define f(x) = x^{2N+1}·I_N(x).
-  -- Show f satisfies the same ODE as R_N: f' - f = something.
-  -- Actually the standard proof is via REPEATED integration by parts:
-  --   ∫₀¹ t^N(1-t)^N·exp(tx) dt, integrate by parts N times on t^N factor,
-  --   then N times on (1-t)^N factor, to get a polynomial in exp(x).
-  -- This gives: (N!)²·I_N(x) = Σ ... = P_N(-x)·exp(x) - P_N(x)... hmm.
-  --
-  -- Actually the standard identity is:
-  --   R_N(x) = (-x)^{2N+1}/(N!)² · ∫₀¹ t^N(1-t)^N exp(tx) dt
-  -- Proof by induction on N, integrating by parts.
-  --
-  -- This is perhaps 50-80 lines of Lean. Let me plan it.
-  --
-  -- DECISION: Prove via the tail-sum approach (more elementary, avoids integrals).
-  -- The integral approach needs Mathlib's MeasureTheory and intervalIntegral.
-  -- The tail-sum approach needs HasSum for exp (available: Real.hasSum_exp or similar).
-  sorry
+  set M := 2 * N + 1
+  set a := 2 * |x| with ha_def
+  have ha : 0 ≤ a := by positivity
+  have hhs := padeR_hasSum N hN x
+  -- Exp tail summability
+  have htail_sum : Summable (fun j => a ^ (j + M) / ↑(j + M).factorial) :=
+    (NormedSpace.expSeries_div_summable (𝕂 := ℝ) a).comp_injective
+      (add_left_injective M)
+  -- Pointwise bound: |padeProdCoeff(j+M) · x^(j+M)| ≤ C(2N,N) · a^(j+M)/(j+M)!
+  have hpw : ∀ j, |padeProdCoeff N (j + M) * x ^ (j + M)| ≤
+      (Nat.centralBinom N : ℝ) * (a ^ (j + M) / ↑(j + M).factorial) := by
+    intro j; rw [abs_mul, abs_pow]
+    calc |padeProdCoeff N (j + M)| * |x| ^ (j + M)
+        ≤ (↑(Nat.centralBinom N) * 2 ^ (j + M) / ↑(j + M).factorial) *
+          |x| ^ (j + M) :=
+          mul_le_mul_of_nonneg_right (padeProdCoeff_abs_le N _) (pow_nonneg (abs_nonneg _) _)
+      _ = ↑(Nat.centralBinom N) * (a ^ (j + M) / ↑(j + M).factorial) := by
+          simp only [ha_def, mul_pow]; ring
+  -- Summability of |f|
+  have hf_ns : Summable (fun j => ‖padeProdCoeff N (j + M) * x ^ (j + M)‖) := by
+    rw [show (fun j => ‖padeProdCoeff N (j + M) * x ^ (j + M)‖) =
+        (fun j => |padeProdCoeff N (j + M) * x ^ (j + M)|) from by ext; exact Real.norm_eq_abs _]
+    exact Summable.of_nonneg_of_le (fun j => abs_nonneg _) hpw (htail_sum.mul_left _)
+  -- Denominator is positive
+  have hD : (0 : ℝ) < ↑(M : ℕ) * ((N.factorial : ℝ) ^ 2) := by positivity
+  -- Chain of inequalities
+  calc |padeR N x|
+      = ‖padeR N x‖ := (Real.norm_eq_abs _).symm
+    _ ≤ ∑' j, ‖padeProdCoeff N (j + M) * x ^ (j + M)‖ := by
+        rw [← hhs.tsum_eq]; exact norm_tsum_le_tsum_norm hf_ns
+    _ ≤ ∑' j, ↑(Nat.centralBinom N) * (a ^ (j + M) / ↑(j + M).factorial) :=
+        hf_ns.tsum_le_tsum (fun j => by rw [Real.norm_eq_abs]; exact hpw j)
+          (htail_sum.mul_left _)
+    _ = ↑(Nat.centralBinom N) * ∑' j, a ^ (j + M) / ↑(j + M).factorial := tsum_mul_left ..
+    _ ≤ ↑(Nat.centralBinom N) * (a ^ M / ↑M.factorial * exp a) :=
+        mul_le_mul_of_nonneg_left (exp_tail_le a ha M) (Nat.cast_nonneg' _)
+    _ = a ^ M * exp a / (↑(M : ℕ) * ((N.factorial : ℝ) ^ 2)) := by
+        have hcbf := centralBinom_div_factorial N hN
+        have hF : (↑M.factorial : ℝ) ≠ 0 := Nat.cast_ne_zero.mpr (Nat.factorial_ne_zero _)
+        calc ↑(Nat.centralBinom N) * (a ^ M / ↑M.factorial * exp a)
+            = (↑(Nat.centralBinom N) / ↑M.factorial) * a ^ M * exp a := by
+                field_simp [hF]
+          _ = (1 / (↑(M : ℕ) * (N.factorial : ℝ) ^ 2)) * a ^ M * exp a := by rw [hcbf]
+          _ = a ^ M * exp a / (↑(M : ℕ) * ((N.factorial : ℝ) ^ 2)) := by
+                field_simp [ne_of_gt hD]
+    _ ≤ a ^ M * (2 * exp a) / (↑(M : ℕ) * ((N.factorial : ℝ) ^ 2)) :=
+        div_le_div_of_nonneg_right
+          (mul_le_mul_of_nonneg_left (by linarith [exp_pos a]) (pow_nonneg ha _)) hD.le
 
 /-! ## Positivity of Padé polynomials at rational points
 
@@ -566,50 +701,79 @@ Uses `padeR_bound` and `factorial_dominates`. -/
 theorem pade_scaled_remainder_small (a : ℤ) (b : ℕ) (hb : 0 < b) (s : ℕ) :
     ∃ N₀ : ℕ, 0 < N₀ ∧ ∀ N, N₀ ≤ N →
       (N.factorial : ℝ) * (b : ℝ) ^ N * 2 ^ s * |padeR N ((a : ℝ) / (b : ℝ))| < 1 / 2 := by
-  -- INFORMAL PROOF SKETCH:
-  --
-  -- From `padeR_bound` (using the (2|x|)^{2N+1}·2·exp(2|x|)/((2N+1)·(N!)²) form):
-  --
-  --   N!·b^N·2^s·|R_N(a/b)|
-  --     ≤ N!·b^N·2^s · (2|a/b|)^{2N+1} · 2·exp(2|a/b|) / ((2N+1)·(N!)²)
-  --     = b^N · 2^s · 2·exp(2|a/b|) · (2|a/b|)^{2N+1} / ((2N+1)·N!)
-  --     = b^N · 2^s · 2·exp(2|a/b|) · 2^{2N+1}·|a|^{2N+1} / (b^{2N+1}·(2N+1)·N!)
-  --     = 2^{s+1} · exp(2|a/b|) · 2^{2N+1} · |a|^{2N+1} / (b^{N+1}·(2N+1)·N!)
-  --
-  -- Let C = 2^{s+1} · exp(2|a/b|) / b^{N+1}  (constant w.r.t. N... no, depends on N through b^{N+1})
-  --
-  -- Better: group as
-  --   ≤ [2^{s+1} · exp(2|a/b|)] · [4|a|²/b]^N · 2|a|/b / ((2N+1)·N!)
-  --   since 2^{2N+1}·|a|^{2N+1}/b^{N+1} = 2·(4|a|²/b)^N · |a|/b^{???}
-  --   Hmm, let me just factor differently.
-  --
-  -- Set c = 4·|a|²·b (or similar). Then:
-  --   (2|a/b|)^{2N+1} · b^N = 2^{2N+1}·|a|^{2N+1}·b^N / b^{2N+1}
-  --                          = 2^{2N+1}·|a|^{2N+1} / b^{N+1}
-  --
-  -- The whole expression is:
-  --   ≤ 2^{s+2} · exp(2|a/b|) · (2|a|)^{2N+1} / (b^{N+1} · (2N+1) · N!)
-  --
-  -- For this to go to 0 as N→∞: we need N! to dominate (2|a|)^{2N+1}/b^{N+1}.
-  -- Write (2|a|)^{2N+1}/b^{N+1} = (2|a|)·((2|a|)²/b)^N = (2|a|)·(4|a|²/b)^N.
-  -- So the expression is ≤ C · (4|a|²/b)^N / N! where C = 2^{s+2}·exp(2|a/b|)·2|a|/(2N+1).
-  --
-  -- Since N! grows faster than any c^N (factorial_dominates), this → 0.
-  --
-  -- Concretely: use `factorial_dominates` from ExpEffectiveBound.lean:
-  --   `∃ N₀, ∀ p ≥ N₀, |c|^p / (p-1)! < 1`
-  -- with c = 4·|a|²/b + 1 (or similar constant).
-  --
-  -- Then for N ≥ N₀: the expression is < 1/2 (by choosing N₀ large enough to absorb
-  -- the constant factors 2^{s+2}·exp(2|a/b|)·2|a| as well).
-  --
-  -- HELPERS NEEDED:
-  -- - `padeR_bound` (the theorem above)
-  -- - `factorial_dominates` (already proved in ExpEffectiveBound.lean)
-  -- - Basic algebra to bound the product
-  --
-  -- This is straightforward (~30-40 lines) once padeR_bound is proved.
-  sorry
+  set x := (a : ℝ) / (b : ℝ) with hx_def
+  -- d = 4·b·x², the base for the factorial convergence
+  set d := 4 * (b : ℝ) * x ^ 2 with hd_def
+  -- K = constant factor (independent of N)
+  set K := 2 ^ (s + 1) * Real.exp (2 * |x|) * (2 * |x|) with hK_def
+  have hK_nn : 0 ≤ K := by positivity
+  have hd_nn : 0 ≤ d := by positivity
+  have hb_pos : (0 : ℝ) < (b : ℝ) := Nat.cast_pos.mpr hb
+  -- Find N₀ from d^n/n! → 0
+  have htend := FloorSemiring.tendsto_pow_div_factorial_atTop d
+  rw [Metric.tendsto_atTop] at htend
+  obtain ⟨N₁, hN₁⟩ := htend (1 / (2 * (K + 1))) (by positivity)
+  use max N₁ 1
+  refine ⟨by omega, fun N hN => ?_⟩
+  have hN_pos : 0 < N := by omega
+  have hNN₁ : N₁ ≤ N := by omega
+  have hNf_pos : (0 : ℝ) < ↑N.factorial := Nat.cast_pos.mpr (Nat.factorial_pos N)
+  have hprod_nn : 0 ≤ (↑N.factorial : ℝ) * ↑b ^ N * 2 ^ s := by positivity
+  -- Algebraic identity: b^N · (2|x|)^(2N+1) = (2|x|) · d^N
+  have hpower : (b : ℝ) ^ N * (2 * |x|) ^ (2 * N + 1) = (2 * |x|) * d ^ N := by
+    have hd_eq : d = (b : ℝ) * (2 * |x|) ^ 2 := by
+      simp only [hd_def, mul_pow, sq_abs]; ring
+    rw [show (2 * N + 1 : ℕ) = 1 + 2 * N from by omega, pow_add, pow_one, pow_mul]
+    rw [mul_comm ((b : ℝ) ^ N) _, mul_assoc, ← mul_pow]
+    congr 1; rw [mul_comm, hd_eq]
+  -- Apply padeR_bound
+  have hRB := padeR_bound N hN_pos x
+  have hNf_ne : (↑N.factorial : ℝ) ≠ 0 := ne_of_gt hNf_pos
+  -- Key bound: N!·b^N·2^s·|R_N(x)| ≤ K·d^N/N!
+  have hbound : ↑N.factorial * ↑b ^ N * 2 ^ s * |padeR N x| ≤ K * d ^ N / ↑N.factorial := by
+    have h2N1_pos : (0 : ℝ) < ↑(2 * N + 1 : ℕ) := Nat.cast_pos.mpr (by omega)
+    -- Apply the Padé bound
+    calc ↑N.factorial * ↑b ^ N * 2 ^ s * |padeR N x|
+        ≤ ↑N.factorial * ↑b ^ N * 2 ^ s *
+          ((2 * |x|) ^ (2 * N + 1) * (2 * exp (2 * |x|)) /
+            (↑(2 * N + 1 : ℕ) * (↑N.factorial ^ 2))) :=
+          mul_le_mul_of_nonneg_left hRB hprod_nn
+      _ ≤ ↑N.factorial * ↑b ^ N * 2 ^ s *
+          ((2 * |x|) ^ (2 * N + 1) * (2 * exp (2 * |x|)) / (↑N.factorial ^ 2)) := by
+          apply mul_le_mul_of_nonneg_left _ hprod_nn
+          exact div_le_div_of_nonneg_left
+            (mul_nonneg (pow_nonneg (mul_nonneg (by norm_num) (abs_nonneg _)) _)
+              (mul_nonneg (by norm_num) (exp_pos _).le))
+            (sq_pos_of_pos hNf_pos)
+            (le_mul_of_one_le_left (sq_nonneg _) (Nat.one_le_cast.mpr (by omega)))
+      _ = K * d ^ N / ↑N.factorial := by
+          have hkey : ↑b ^ N * 2 ^ s *
+              ((2 * |x|) ^ (2 * N + 1) * (2 * exp (2 * |x|))) = K * d ^ N := by
+            rw [show K = 2 ^ (s + 1) * exp (2 * |x|) * (2 * |x|) from rfl]
+            linear_combination 2 ^ s * 2 * exp (2 * |x|) * hpower
+          rw [mul_div_assoc']
+          exact (div_eq_div_iff (ne_of_gt (sq_pos_of_pos hNf_pos)) hNf_ne).mpr (by
+            rw [sq]; linear_combination ↑N.factorial * ↑N.factorial * hkey)
+  -- d^N / N! < ε from tendsto
+  have hsmall := hN₁ N hNN₁
+  rw [dist_zero_right, Real.norm_of_nonneg (div_nonneg (pow_nonneg hd_nn _)
+    (Nat.cast_nonneg _))] at hsmall
+  -- Now: K * d^N / N! < 1/2
+  by_cases hK_pos : K = 0
+  · calc ↑N.factorial * ↑b ^ N * 2 ^ s * |padeR N x|
+        ≤ K * d ^ N / ↑N.factorial := hbound
+      _ = 0 := by simp [hK_pos]
+      _ < 1 / 2 := by norm_num
+  · have hK_pos' : 0 < K := lt_of_le_of_ne hK_nn (Ne.symm hK_pos)
+    calc ↑N.factorial * ↑b ^ N * 2 ^ s * |padeR N x|
+        ≤ K * d ^ N / ↑N.factorial := hbound
+      _ = K * (d ^ N / ↑N.factorial) := by rw [mul_div_assoc]
+      _ < K * (1 / (2 * (K + 1))) := mul_lt_mul_of_pos_left hsmall hK_pos'
+      _ = K / (K + 1) / 2 := by
+            have : K + 1 ≠ 0 := by linarith
+            field_simp
+      _ ≤ 1 / 2 := div_le_div_of_nonneg_right
+          (div_le_one_of_le₀ (by linarith) (by linarith)) (by norm_num)
 
 /-! ## Cross product of consecutive Padé approximants
 

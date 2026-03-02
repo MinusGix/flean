@@ -38,7 +38,7 @@ instance : CharZero ERat := inferInstanceAs (CharZero (WithBot (WithTop ℚ)))
 -- ℚ has DenselyOrdered (from LinearOrderedSemiField) and NoMaxOrder/NoMinOrder (from IsStrictOrderedRing)
 -- WithTop ℚ has DenselyOrdered (needs DenselyOrdered ℚ and NoMaxOrder ℚ)
 -- WithBot (WithTop ℚ) has DenselyOrdered (needs DenselyOrdered (WithTop ℚ) and NoMinOrder (WithTop ℚ))
-instance : DenselyOrdered (WithTop ℚ) := WithTop.denselyOrdered
+instance : DenselyOrdered (WithTop ℚ) := inferInstance
 instance : NoMinOrder (WithTop ℚ) := inferInstance
 instance : DenselyOrdered ERat := WithBot.denselyOrdered
 
