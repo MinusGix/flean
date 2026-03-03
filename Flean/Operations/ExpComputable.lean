@@ -1307,6 +1307,60 @@ The width has two components:
 After scaling by `2^{k+s}`, the bracket width for `exp(x) · 2^s` is bounded by
 a function that decreases super-exponentially in `iter`. -/
 
+/-- For a positive rational, `Int.log 2 r ≤ Nat.log2 r.num.natAbs - Nat.log2 r.den`.
+This follows from `r < 2^(Nat.log2 p + 1) / 2^(Nat.log2 d) = 2^(lp - ld + 1)`. -/
+private lemma int_log_le_nat_log2_diff (r : ℚ) (hr : 0 < r) :
+    Int.log 2 r ≤ (Nat.log2 r.num.natAbs : ℤ) - (Nat.log2 r.den : ℤ) := by
+  set p := r.num.natAbs
+  set d := r.den
+  set lp := Nat.log2 p
+  set ld := Nat.log2 d
+  have hp_pos : 0 < p := Int.natAbs_pos.mpr (ne_of_gt (Rat.num_pos.mpr hr))
+  have hp_ne : p ≠ 0 := by omega
+  have hd_pos : (0 : ℚ) < (d : ℚ) := Nat.cast_pos.mpr r.den_pos
+  have hd_ne : d ≠ 0 := ne_of_gt r.den_pos
+  have hplt : p < 2 ^ (lp + 1) := (Nat.log2_lt hp_ne).mp (Nat.lt_succ_of_le (le_refl lp))
+  have hdle : (2 : ℚ) ^ (ld : ℤ) ≤ (d : ℚ) := by
+    rw [zpow_natCast]; exact_mod_cast Nat.log2_self_le hd_ne
+  -- Show r < 2^(lp - ld + 1), then Int.log 2 r < lp - ld + 1, so Int.log 2 r ≤ lp - ld
+  suffices r < (2 : ℚ) ^ ((lp : ℤ) - (ld : ℤ) + 1) by
+    have := (Int.lt_zpow_iff_log_lt (by norm_num : 1 < (2 : ℕ)) hr).mp this
+    omega
+  -- r = p / d ≤ p / 2^ld < 2^(lp+1) / 2^ld = 2^(lp-ld+1)
+  have hr_eq : r = (p : ℚ) / (d : ℚ) := by
+    have hnum_pos := Rat.num_pos.mpr hr
+    have hnum : (r.num : ℚ) = ((p : ℕ) : ℤ) := by
+      simp [p, Int.natAbs_of_nonneg (le_of_lt hnum_pos)]
+    rw [show (p : ℚ) / (d : ℚ) = ((p : ℕ) : ℤ) / ((d : ℕ) : ℤ) from by push_cast; ring]
+    rw [← hnum]; exact (Rat.num_div_den r).symm
+  have h2ld_pos : (0 : ℚ) < (2 : ℚ) ^ (ld : ℤ) := by positivity
+  calc r = (p : ℚ) / (d : ℚ) := hr_eq
+    _ ≤ (p : ℚ) / (2 : ℚ) ^ (ld : ℤ) := by
+        rw [div_le_div_iff₀ hd_pos h2ld_pos]
+        exact mul_le_mul_of_nonneg_left hdle (by exact_mod_cast hp_pos.le)
+    _ < (2 : ℚ) ^ ((lp + 1 : ℕ) : ℤ) / (2 : ℚ) ^ (ld : ℤ) := by
+        rw [div_lt_div_iff₀ h2ld_pos h2ld_pos, zpow_natCast]
+        exact_mod_cast Nat.mul_lt_mul_of_pos_right hplt (by positivity : 0 < 2 ^ ld)
+    _ = (2 : ℚ) ^ ((lp : ℤ) - (ld : ℤ) + 1) := by
+        rw [show ((lp + 1 : ℕ) : ℤ) = (lp : ℤ) + 1 from by omega,
+          show (lp : ℤ) + 1 = ((lp : ℤ) - (ld : ℤ) + 1) + (ld : ℤ) from by omega,
+          zpow_add₀ (by norm_num : (2 : ℚ) ≠ 0), zpow_natCast,
+          mul_div_cancel_right₀ _ (by positivity : (2 : ℚ) ^ ld ≠ 0)]
+
+/-- The shift `expShift r` for a positive rational is bounded by `prec + 4 - Int.log 2 r`. -/
+private lemma expShift_le_of_int_log (r : ℚ) (hr : 0 < r) :
+    (expShift r : ℤ) ≤ (FloatFormat.prec.toNat : ℤ) + 4 - Int.log 2 r := by
+  simp only [expShift]
+  have h := int_log_le_nat_log2_diff r hr
+  exact_mod_cast Int.toNat_le_toNat (by omega)
+
+/-- The shift `s = expShift(lower)` is uniformly bounded across all iterations.
+Since `lower ≥ 2^k / 4` (from `taylorExpQ_ge_one` and remainder bounds),
+we have `log2(num) - log2(den) ≥ k - 3`, giving `s ≤ prec + 7 + |k|`. -/
+private theorem expShift_bound (x : ℚ) (k : ℤ) :
+    ∃ S : ℕ, ∀ iter, expShift (expBounds x k iter).1 ≤ S :=
+  ⟨FloatFormat.prec.toNat + 7 + k.natAbs, fun iter => by sorry⟩
+
 /-- Upper bound on the bracket width `(upper - lower)` at iteration `iter`.
 The key bound is that the Taylor remainder contributes `≤ (N+2)/((N+1)!·(N+1))`
 and the ln2 error contributes `≤ exp(1)·|k|/2^{N_ln2}` to the r-interval width. -/
@@ -1329,7 +1383,105 @@ private theorem expBounds_width_tendsto_zero (x : ℚ) (hx : x ≠ 0) (k : ℤ)
     ∃ iter₀ : ℕ, ∀ iter, iter₀ ≤ iter →
       let (lower, upper) := expBounds x k iter
       ((upper : ℝ) - (lower : ℝ)) * 2 ^ (expShift lower) < eps := by
-  sorry
+  -- Step 1: The shift s = expShift(lower) is uniformly bounded across all iterations,
+  -- because lower = lower_r · 2^k with lower_r ≥ 1/4, so log2(lower) ≥ k - 2.
+  have ⟨S, hS⟩ := expShift_bound x k
+  -- Step 2: The width bound from expBounds_width_bound gives
+  -- width * 2^s ≤ 2^(|k|+s) * (err₁ + err₂)
+  -- where err₁ = (N+2)/((N+1)!·(N+1)) and err₂ = exp(1)·(|k|+1)/2^N_ln2.
+  -- Since s ≤ S, this is ≤ C * (err₁ + err₂) with C = 2^(|k|+S).
+  set C := (2 : ℝ) ^ (k.natAbs + S)
+  have hC_pos : 0 < C := by positivity
+  -- Step 3: err₁ and err₂ each eventually drop below eps/(2C).
+  -- err₁ ≤ 1/N! → 0 by tendsto_pow_div_factorial_atTop.
+  -- err₂ = const/2^N_ln2 → 0 by exponential growth.
+  have h_err_small : ∃ iter₀, ∀ iter, iter₀ ≤ iter →
+      let N := expNumTerms + iter * 10
+      let N_ln2 := Nat.log2 k.natAbs + 52 + iter * 50
+      C * ((N + 2 : ℝ) / ((N + 1).factorial * (N + 1)) +
+           Real.exp 1 * (k.natAbs + 1 : ℝ) / 2 ^ N_ln2) < eps := by
+    have heps2C : 0 < eps / (2 * C) := div_pos heps (by positivity)
+    have h_fac := FloorSemiring.tendsto_pow_div_factorial_atTop (1 : ℝ)
+    simp only [one_pow] at h_fac
+    have hA := h_fac.eventually (Iio_mem_nhds heps2C)
+    rw [Filter.eventually_atTop] at hA
+    obtain ⟨M₁, hM₁⟩ := hA
+    set A := Real.exp 1 * (↑k.natAbs + 1 : ℝ)
+    have hA_pos : 0 < A := by positivity
+    have h_geom := tendsto_pow_atTop_nhds_zero_of_lt_one
+      (show (0 : ℝ) ≤ 1 / 2 from by norm_num) (show (1 : ℝ) / 2 < 1 from by norm_num)
+    have hB := h_geom.eventually (Iio_mem_nhds (show (0:ℝ) < eps / (2 * C * A) from
+      div_pos heps (by positivity)))
+    rw [Filter.eventually_atTop] at hB
+    obtain ⟨M₂, hM₂⟩ := hB
+    refine ⟨M₁ + M₂ + 1, fun iter hiter => ?_⟩
+    dsimp only
+    have hN : M₁ ≤ expNumTerms + iter * 10 := by omega
+    have hN_ln2 : M₂ ≤ Nat.log2 k.natAbs + 52 + iter * 50 := by omega
+    set N := expNumTerms + iter * 10
+    set N_ln2 := Nat.log2 k.natAbs + 52 + iter * 50
+    have hN_pos : 0 < N := by simp only [N, expNumTerms]; omega
+    have h1 : (N + 2 : ℝ) / ((N + 1).factorial * (N + 1)) ≤ 1 / N.factorial := by
+      rw [div_le_div_iff₀ (by positivity : (0:ℝ) < (N+1).factorial * (N+1))
+                           (by positivity : (0:ℝ) < N.factorial)]
+      -- Goal: (N+2) * N! ≤ 1 * ((N+1)! * (N+1))
+      have hfact : (N + 1).factorial = (N + 1) * N.factorial := Nat.factorial_succ N
+      push_cast [hfact]
+      have hN_ge : (1 : ℝ) ≤ N := by exact_mod_cast hN_pos
+      have hfact_pos : (0 : ℝ) < N.factorial := Nat.cast_pos.mpr (Nat.factorial_pos N)
+      have hkey : (↑N + 2 : ℝ) ≤ (↑N + 1) * (↑N + 1) := by nlinarith
+      nlinarith [mul_le_mul_of_nonneg_right hkey hfact_pos.le]
+    have hfac_bound := hM₁ N hN
+    simp only [Set.mem_Iio] at hfac_bound
+    have hgeom_bound := hM₂ N_ln2 hN_ln2
+    simp only [Set.mem_Iio] at hgeom_bound
+    -- Bound term 2: A/2^N_ln2 < eps/(2C) via geometric bound
+    have h2 : A / 2 ^ N_ln2 < eps / (2 * C) := by
+      rw [show A / 2 ^ N_ln2 = A * (1 / 2) ^ N_ln2 from by
+        rw [one_div, inv_pow, div_eq_mul_inv]]
+      calc A * (1 / 2) ^ N_ln2
+          < A * (eps / (2 * C * A)) := mul_lt_mul_of_pos_left hgeom_bound hA_pos
+        _ = eps / (2 * C) := by field_simp
+    -- Combine: C * (term1 + term2) < eps
+    -- Clear fractions: term_i < eps/(2C) becomes term_i * (2C) < eps
+    have hlt1 : (↑N + 2 : ℝ) / (↑(N + 1).factorial * (↑N + 1)) < eps / (2 * C) :=
+      lt_of_le_of_lt h1 hfac_bound
+    rw [lt_div_iff₀ (by positivity : (0:ℝ) < 2 * C)] at hlt1 h2
+    have key : 2 * (C * ((↑N + 2 : ℝ) / (↑(N + 1).factorial * (↑N + 1)) + A / 2 ^ N_ln2)) =
+      (↑N + 2 : ℝ) / (↑(N + 1).factorial * (↑N + 1)) * (2 * C) +
+      A / 2 ^ N_ln2 * (2 * C) := by ring
+    linarith
+  obtain ⟨iter₀, hiter₀⟩ := h_err_small
+  -- Step 4: Combine
+  refine ⟨iter₀, fun iter hiter => ?_⟩
+  have hbound := expBounds_width_bound x hx k iter hk_bound
+  -- Unfold the match in hbound
+  set lower := (expBounds x k iter).1
+  set upper := (expBounds x k iter).2
+  have hbound' : ((upper : ℝ) - (lower : ℝ)) * 2 ^ expShift lower ≤
+      (2 : ℝ) ^ (k.natAbs + expShift lower) *
+        ((expNumTerms + iter * 10 + 2 : ℝ) /
+          ((expNumTerms + iter * 10 + 1).factorial * (expNumTerms + iter * 10 + 1)) +
+         Real.exp 1 * (k.natAbs + 1 : ℝ) /
+          2 ^ (Nat.log2 k.natAbs + 52 + iter * 50)) := by
+    have := hbound
+    rw [show expBounds x k iter = (lower, upper) from by ext <;> rfl] at this
+    dsimp only at this; push_cast at this ⊢
+    exact this
+  have hS_iter : expShift lower ≤ S := hS iter
+  have h2s_le : (2 : ℝ) ^ (k.natAbs + expShift lower) ≤ C :=
+    pow_le_pow_right₀ (by norm_num : (1:ℝ) ≤ 2) (by omega)
+  have herr := hiter₀ iter hiter
+  dsimp only at herr; push_cast at herr
+  -- width * 2^s ≤ 2^(|k|+s) * err ≤ C * err < eps
+  have herr_nn : (0 : ℝ) ≤ (expNumTerms + iter * 10 + 2 : ℝ) /
+      ((expNumTerms + iter * 10 + 1).factorial * (expNumTerms + iter * 10 + 1)) +
+      Real.exp 1 * (k.natAbs + 1 : ℝ) /
+      2 ^ (Nat.log2 k.natAbs + 52 + iter * 50) := by positivity
+  calc ((upper : ℝ) - lower) * 2 ^ expShift lower
+      ≤ (2 : ℝ) ^ (k.natAbs + expShift lower) * _ := hbound'
+    _ ≤ C * _ := mul_le_mul_of_nonneg_right h2s_le herr_nn
+    _ < eps := herr
 
 /-- **Key lemma**: When the bracket width · 2^s is less than the distance from
 `exp(x) · 2^s` to the nearest integer, `expTryOne` succeeds.
@@ -1345,7 +1497,85 @@ private theorem expTryOne_of_tight_bracket (x : ℚ) (hx : x ≠ 0) (k : ℤ) (i
     (hwidth : let (lower, upper) := expBounds x k iter
       ((upper : ℝ) - (lower : ℝ)) * 2 ^ (expShift lower) < δ) :
     (expTryOne x k iter).isSome = true := by
-  sorry
+  -- Step 1: Prove the nat-div floors agree
+  have hq : (expBounds x k iter).1.num.natAbs *
+      2 ^ expShift (expBounds x k iter).1 / (expBounds x k iter).1.den =
+      (expBounds x k iter).2.num.natAbs *
+      2 ^ expShift (expBounds x k iter).1 / (expBounds x k iter).2.den := by
+    set lower := (expBounds x k iter).1
+    set upper := (expBounds x k iter).2
+    set s := expShift lower
+    set q_lo := lower.num.natAbs * 2 ^ s / lower.den
+    set q_hi := upper.num.natAbs * 2 ^ s / upper.den
+    have hl_pos := expBounds_lower_pos x k iter
+    have hl_lt_exp := expBounds_lower_lt_exp x hx k iter hk_bound
+    have hexp_le_u := expBounds_exp_le_upper x hx k iter hk_bound
+    have hu_pos : 0 < upper :=
+      lt_trans hl_pos (by exact_mod_cast (lt_of_lt_of_le hl_lt_exp hexp_le_u : (lower : ℝ) < upper))
+    have h2s_pos : (0 : ℝ) < 2 ^ s := by positivity
+    have hwidth' : ((upper : ℝ) - (lower : ℝ)) * 2 ^ s < δ := by
+      have := hwidth
+      rw [show expBounds x k iter = (lower, upper) from by ext <;> rfl] at this
+      exact this
+    -- Cast helper: positive rational as natAbs / den
+    have cast_eq (r : ℚ) (hr : 0 < r) :
+        (r : ℝ) = (r.num.natAbs : ℝ) / (r.den : ℝ) := by
+      have hnum : r.num = (r.num.natAbs : ℤ) :=
+        (Int.natAbs_of_nonneg (le_of_lt (Rat.num_pos.mpr hr))).symm
+      have h1 : (r : ℝ) = (r.num : ℝ) / (r.den : ℝ) := by
+        push_cast [Rat.cast_def]; ring
+      rw [h1, show (r.num : ℝ) = (r.num.natAbs : ℝ) from by rw [hnum]; simp]
+    -- Gap argument: no integer in (lower·2^s, upper·2^s]
+    have h_no_int : ∀ m : ℤ,
+        ¬((lower : ℝ) * 2 ^ s < (m : ℝ) ∧ (m : ℝ) ≤ (upper : ℝ) * 2 ^ s) := by
+      intro m ⟨hm_lo, hm_hi⟩
+      have : |Real.exp ↑x * 2 ^ s - (m : ℝ)| < δ := by
+        rw [abs_lt]; constructor <;>
+        nlinarith [mul_lt_mul_of_pos_right hl_lt_exp h2s_pos,
+                   mul_le_mul_of_nonneg_right hexp_le_u h2s_pos.le, hwidth']
+      linarith [hδ_gap m]
+    -- By contradiction: if q_lo ≠ q_hi, find integer m = q_lo + 1 in the gap
+    by_contra hne
+    have hle : q_lo ≤ q_hi := by
+      -- q_lo ≤ lower·2^s ≤ upper·2^s < q_hi + 1, so q_lo < q_hi + 1
+      suffices h : (q_lo : ℝ) < (q_hi : ℝ) + 1 by
+        have : q_lo < q_hi + 1 := by exact_mod_cast h
+        omega
+      calc (q_lo : ℝ) ≤ (lower : ℝ) * 2 ^ s := by
+              rw [cast_eq lower hl_pos, div_mul_eq_mul_div,
+                le_div_iff₀ (Nat.cast_pos.mpr lower.den_pos)]
+              exact_mod_cast nat_floor_div_mul_le lower.num.natAbs lower.den s
+        _ ≤ (upper : ℝ) * 2 ^ s := by
+              exact mul_le_mul_of_nonneg_right
+                (by exact_mod_cast le_of_lt (lt_of_lt_of_le hl_lt_exp hexp_le_u))
+                h2s_pos.le
+        _ < (q_hi : ℝ) + 1 := by
+              rw [cast_eq upper hu_pos, div_mul_eq_mul_div,
+                div_lt_iff₀ (Nat.cast_pos.mpr upper.den_pos)]
+              rw [show (↑q_hi + (1 : ℝ)) * ↑upper.den = ((q_hi + 1 : ℕ) : ℝ) * ↑upper.den
+                from by push_cast; ring]
+              exact_mod_cast real_lt_nat_floor_div_succ_mul
+                upper.num.natAbs upper.den s upper.den_pos
+    have hlt : q_lo < q_hi := lt_of_le_of_ne hle hne
+    -- m := q_lo + 1 lies in (lower·2^s, upper·2^s]
+    have hm_lo : (lower : ℝ) * 2 ^ s < ((q_lo + 1 : ℕ) : ℝ) := by
+      rw [cast_eq lower hl_pos, div_mul_eq_mul_div,
+        div_lt_iff₀ (Nat.cast_pos.mpr lower.den_pos)]
+      exact real_lt_nat_floor_div_succ_mul lower.num.natAbs lower.den s lower.den_pos
+    have hm_hi : ((q_lo + 1 : ℕ) : ℝ) ≤ (upper : ℝ) * 2 ^ s := by
+      rw [cast_eq upper hu_pos, div_mul_eq_mul_div,
+        le_div_iff₀ (Nat.cast_pos.mpr upper.den_pos)]
+      calc ((q_lo + 1 : ℕ) : ℝ) * ↑upper.den
+          ≤ (q_hi : ℝ) * ↑upper.den := by
+            exact mul_le_mul_of_nonneg_right (by exact_mod_cast hlt) (Nat.cast_nonneg _)
+        _ ≤ (upper.num.natAbs : ℝ) * 2 ^ s :=
+            nat_floor_div_mul_le upper.num.natAbs upper.den s
+    exact h_no_int (q_lo + 1 : ℕ) ⟨by exact_mod_cast hm_lo, by exact_mod_cast hm_hi⟩
+  -- Step 2: Conclude expTryOne returns some
+  simp only [expTryOne]
+  split_ifs with h
+  · rfl
+  · exact absurd hq h
 
 /-- **Fuel sufficiency**: within `expFuel x` iterations, `expTryOne` succeeds.
 This is the quantitative core combining all three ingredients:
@@ -1358,7 +1588,53 @@ Padé effective δ bound within the quadratic fuel budget. -/
 private theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
     (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1) :
     ∃ iter, iter < expFuel x ∧ (expTryOne x k iter).isSome = true := by
-  sorry
+  have hnum_ne : x.num ≠ 0 := Rat.num_ne_zero.mpr hx
+  have hden_pos : 0 < x.den := x.den_pos
+  -- Step 1: Uniform positive gap across all iterations.
+  -- The shift s = expShift(lower) is bounded (since lower ≥ 2^k/4, giving
+  -- s ≤ prec + 6 + |k|), so pade_effective_delta at the max shift gives δ_min > 0.
+  have ⟨δ, hδ_pos, hδ_gap⟩ : ∃ δ > 0, ∀ iter, ∀ m : ℤ,
+      |Real.exp (x : ℝ) * 2 ^ expShift (expBounds x k iter).1 - ↑m| ≥ δ := by
+    -- Step 1: Shift bound
+    have ⟨S, hS⟩ := expShift_bound x k
+    -- Step 2: For each s ≤ S, pade_effective_delta gives δ_s > 0
+    -- By induction: ∃ δ > 0, ∀ s ≤ S, ∀ m, |exp(x)*2^s - m| ≥ δ
+    have hx_eq : (x : ℝ) = (x.num : ℝ) / (x.den : ℝ) := by
+      push_cast [Rat.cast_def]; ring
+    suffices h_unif : ∃ δ > 0, ∀ s, s ≤ S → ∀ m : ℤ,
+        |Real.exp (x : ℝ) * 2 ^ s - ↑m| ≥ δ by
+      obtain ⟨δ, hδ_pos, hδ⟩ := h_unif
+      exact ⟨δ, hδ_pos, fun iter m => hδ _ (hS iter) m⟩
+    -- Induction on S to get uniform δ over {0, ..., S}
+    clear hS
+    induction S with
+    | zero =>
+      obtain ⟨hD, hgap⟩ := pade_effective_delta x.num x.den hden_pos hnum_ne 0
+      refine ⟨_, div_pos one_pos (mul_pos (by norm_num : (0:ℝ) < 2) hD), fun s hs m => ?_⟩
+      interval_cases s
+      rw [hx_eq]
+      exact hgap m
+    | succ n ih =>
+      obtain ⟨δ₁, hδ₁_pos, hδ₁⟩ := ih
+      have ⟨hD, hgap⟩ := pade_effective_delta x.num x.den hden_pos hnum_ne (n + 1)
+      set δ₂ := 1 / (2 * max ((padeConvergenceN₀ x.num x.den (n+1)).factorial *
+        (x.den : ℝ) ^ padeConvergenceN₀ x.num x.den (n+1) *
+        |padeP (padeConvergenceN₀ x.num x.den (n+1)) ((x.num : ℝ) / x.den)|)
+        (((padeConvergenceN₀ x.num x.den (n+1) + 1).factorial *
+        (x.den : ℝ) ^ (padeConvergenceN₀ x.num x.den (n+1) + 1) *
+        |padeP (padeConvergenceN₀ x.num x.den (n+1) + 1) ((x.num : ℝ) / x.den)|)))
+      refine ⟨min δ₁ δ₂, lt_min hδ₁_pos (by positivity), fun s hs m => ?_⟩
+      rcases Nat.eq_or_lt_of_le hs with rfl | hlt
+      · rw [hx_eq]; exact le_trans (min_le_right _ _) (hgap m)
+      · exact le_trans (min_le_left _ _) (hδ₁ s (by omega) m)
+  -- Step 2: Width convergence gives an iteration where the bracket is tight enough.
+  obtain ⟨iter₀, hiter₀⟩ := expBounds_width_tendsto_zero x hx k hk_bound δ hδ_pos
+  -- Step 3: At iter₀, the bracket is tight and the gap holds, so extraction succeeds.
+  have hsuccess : (expTryOne x k iter₀).isSome = true :=
+    expTryOne_of_tight_bracket x hx k iter₀ hk_bound δ hδ_pos
+      (hδ_gap iter₀) (hiter₀ iter₀ le_rfl)
+  -- Step 4: The iteration is within the fuel budget.
+  exact ⟨iter₀, sorry /- iter₀ < expFuel x: follows from quantitative convergence rate -/, hsuccess⟩
 
 /-- **Fuel sufficiency**: the first successful iteration is within `expFuel x`.
 
