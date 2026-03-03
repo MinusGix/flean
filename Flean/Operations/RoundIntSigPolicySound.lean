@@ -413,7 +413,7 @@ private theorem mid_val_eq_overflow_threshold (q : ℕ) (e_ulp : ℤ)
     rw [← zpow_natCast (2 : R) FloatFormat.prec.toNat, two_zpow_mul]
     congr 1; rw [FloatFormat.prec_toNat_eq]; omega
   have h_zpow2 : (2 : R) ^ e_ulp = 2 * (2 : R) ^ (e_ulp - 1) := by
-    rw [show e_ulp = e_ulp - 1 + 1 from by omega, zpow_add₀ h2ne, zpow_one]; ring
+    rw [show e_ulp = e_ulp - 1 + 1 from by omega, zpow_add₀ h2ne, zpow_one]; ring_nf
   have h_zpow3 : (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) *
       (2 : R) ^ FloatFormat.max_exp = (2 : R) ^ e_ulp := by
     rw [two_zpow_mul]; congr 1; omega

@@ -126,7 +126,7 @@ theorem padeP_clears (a : ℤ) (b : ℕ) (hb : 0 < b) (N : ℕ) :
   intro k hk
   have hk_le : k ≤ N := by simp [Finset.mem_range] at hk; omega
   convert padeP_term_clears a b hb N k hk_le using 2
-  ring
+  ring_nf
 
 /-- Each term of `N! · b^N · Q_N(a/b)` is an integer.
 Same argument as `padeP_term_clears` but with `x^k` instead of `(-x)^k`. -/
@@ -308,7 +308,7 @@ private theorem padeProdCoeff_eq_low (N j : ℕ) (hN : 0 < N) (hj : j ≤ N) :
   exact_mod_cast key
 
 /-- For `N < j ≤ 2N`, the Cauchy product coefficient vanishes (Padé condition). -/
-private theorem padeProdCoeff_eq_zero (N j : ℕ) (hN : 0 < N) (hjN : N < j) (hj2N : j ≤ 2 * N) :
+private theorem padeProdCoeff_eq_zero (N j : ℕ) (hjN : N < j) (hj2N : j ≤ 2 * N) :
     padeProdCoeff N j = 0 := by
   simp only [padeProdCoeff, show min j N = N from by omega]
   -- The sum is Σ_{k=0}^N C(2N-k,N)/(k!) · (-1)^k / (j-k)!
@@ -486,7 +486,7 @@ private theorem padeQ_eq_sum_padeProdCoeff (N : ℕ) (hN : 0 < N) (x : ℝ) :
   have h2 : ∑ i ∈ range N, padeProdCoeff N (N + 1 + i) * x ^ (N + 1 + i) = 0 := by
     apply Finset.sum_eq_zero; intro i hi
     simp only [Finset.mem_range] at hi
-    rw [padeProdCoeff_eq_zero N (N + 1 + i) hN (by omega) (by omega), zero_mul]
+    rw [padeProdCoeff_eq_zero N (N + 1 + i) (by omega) (by omega), zero_mul]
   rw [h2, add_zero]
   -- First sum: padeProdCoeff = padeCoeff for j ≤ N
   simp only [padeQ]
@@ -657,7 +657,7 @@ theorem padeR_ne_zero (N : ℕ) (hN : 0 < N) (q : ℚ) (hq : q ≠ 0) :
     set b := q.den
     have hb : 0 < b := q.pos
     have hq_eq : (q : ℝ) = (a : ℝ) / (b : ℝ) := by
-      push_cast; exact_mod_cast q.num_div_den.symm
+      exact_mod_cast q.num_div_den.symm
     obtain ⟨K, hK⟩ := padeP_clears a b (by omega) N
     obtain ⟨J, hJ⟩ := padeQ_clears a b (by omega) N
     have hD_ne : (N.factorial : ℝ) * (b : ℝ) ^ N ≠ 0 := by positivity
@@ -840,7 +840,7 @@ private noncomputable def padeCross (N : ℕ) (x : ℝ) : ℝ :=
 /-- Base case: `F_0(x) = -2x`. -/
 private theorem padeCross_zero (x : ℝ) : padeCross 0 x = -2 * x := by
   simp only [padeCross, padeQ, padeP, padeCoeff]
-  simp [Finset.sum_range_succ, Finset.sum_range_zero]
+  simp [Finset.sum_range_succ]
   ring
 
 set_option maxHeartbeats 800000 in
@@ -978,7 +978,7 @@ private theorem padeCoeff_recurrence (N k : ℕ) (hN : 0 < N) (hk : k ≤ N + 1)
   · -- k ≥ 2
     push_neg at hlt; have hk2 : 2 ≤ k := hlt
     rw [show (2 * (N - 1) - (k - 2)).choose (N - 1) = (2 * N - k).choose (N - 1) from by
-      congr 1 <;> omega]
+      congr 1; omega]
     -- k! = k * (k-1) * (k-2)! for k ≥ 2
     have hk_fac_eq : (k.factorial : ℝ) = (k : ℝ) * ((k - 1 : ℕ) : ℝ) * ((k - 2).factorial : ℝ) := by
       have h1 := Nat.factorial_succ (k - 1)
@@ -1342,7 +1342,7 @@ noncomputable def padeConvergenceN₀ (a : ℤ) (b : ℕ) (s : ℕ) : ℕ :=
   2 * m + M
 
 /-- `padeConvergenceN₀` is positive. -/
-theorem padeConvergenceN₀_pos (a : ℤ) (b : ℕ) (hb : 0 < b) (s : ℕ) :
+theorem padeConvergenceN₀_pos (a : ℤ) (b : ℕ) (s : ℕ) :
     0 < padeConvergenceN₀ a b s := by
   simp only [padeConvergenceN₀]
   -- N₀ = 2 * m + (⌈...⌉₊ + 1) ≥ 1
@@ -1481,7 +1481,7 @@ theorem pade_effective_delta (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0) (s 
   simp only
   set N₀ := padeConvergenceN₀ a b s
   set x := (a : ℝ) / (b : ℝ) with hx_def
-  have hN₀_pos := padeConvergenceN₀_pos a b hb s
+  have hN₀_pos := padeConvergenceN₀_pos a b s
   -- Remainder bounds for N₀ and N₀+1
   have hR₀ := pade_scaled_remainder_effective a b hb s N₀ (le_refl _) hN₀_pos
   have hR₁ := pade_scaled_remainder_effective a b hb s (N₀ + 1) (by omega) (by omega)

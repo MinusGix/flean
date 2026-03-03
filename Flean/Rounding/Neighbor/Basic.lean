@@ -331,7 +331,7 @@ private theorem roundNormalUp_inf_imp_gt_lff (x : R) (hx : isNormalRange x) (b :
       push_cast [sub_mul]
       rw [← zpow_natCast (2 : R) FloatFormat.prec.toNat, FloatFormat.prec_toNat_eq, two_zpow_mul]
       simp only [one_mul]
-      congr 1; ring
+      congr 1; ring_nf
     -- h_le : x ≤ ↑(2^prec - 1) * 2^(max_exp - prec + 1)
     -- So x * 2^(prec-1) ≤ ↑(2^prec - 1) * 2^(max_exp - prec + 1) * 2^(prec-1) = ↑(2^prec - 1) * 2^max_exp
     have hprec_pos : (0 : R) < (2 : R) ^ (FloatFormat.prec - 1) := by linearize
@@ -342,7 +342,7 @@ private theorem roundNormalUp_inf_imp_gt_lff (x : R) (hx : isNormalRange x) (b :
     have hcollapse : (((2 : ℤ) ^ FloatFormat.prec.toNat - 1 : ℤ) : R) * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) *
         (2 : R) ^ (FloatFormat.prec - 1) =
         (((2 : ℤ) ^ FloatFormat.prec.toNat - 1 : ℤ) : R) * (2 : R) ^ FloatFormat.max_exp := by
-      rw [mul_assoc, two_zpow_mul]; congr 1; ring
+      rw [mul_assoc, two_zpow_mul]; congr 1; ring_nf
     linarith [hcollapse, hms_rearr]
   -- All other branches return Fp.finite, contradicting h : ... = Fp.infinite b
 

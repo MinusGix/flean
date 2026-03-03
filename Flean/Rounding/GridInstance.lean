@@ -103,7 +103,7 @@ private theorem grid_exact_representable
   rw [hfp_val]; show (↑(n * (2 : ℤ) ^ (g - e_ulp).toNat) : R) * _ = _; push_cast
   rw [← zpow_natCast (2 : R) (g - e_ulp).toNat, show ((g - e_ulp).toNat : ℤ) = g - e_ulp from
     Int.toNat_of_nonneg (by omega)]
-  rw [mul_assoc, two_zpow_mul]; congr 1; simp only [e_ulp]; ring
+  rw [mul_assoc, two_zpow_mul]; congr 1; simp only [e_ulp]; ring_nf
 
 /-- Grid preservation for roundDown of positive values. -/
 private theorem roundDown_preserves_grid_pos

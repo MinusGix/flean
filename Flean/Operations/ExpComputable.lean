@@ -408,7 +408,8 @@ private theorem expExtract_q_ge (lower upper : ℚ) (hpos : 0 < lower) :
 private theorem expTryOne_isExact (x : ℚ) (k : ℤ) (iter : ℕ) (r : ExpRefOut)
     (h : expTryOne x k iter = some r) : r.isExact = false := by
   simp only [expTryOne] at h
-  split_ifs at h <;> first | contradiction | (simp at h; subst h; rfl)
+  split_ifs at h
+  all_goals first | contradiction | (simp at h; subst h; rfl)
 
 /-- The extraction loop always returns `isExact = false`. -/
 private theorem expExtractLoop_isExact_false (x : ℚ) (k : ℤ) (iter fuel : ℕ) :
@@ -928,10 +929,10 @@ private theorem expExtractLoop_pos_of_success (x : ℚ) (k : ℤ) (start fuel : 
     simp only [expExtractLoop]
     match hm : expTryOne x k start with
     | some r =>
-      simp [hm]
+      simp
       exact expTryOne_q_pos x k start r hm
     | none =>
-      simp [hm]
+      simp
       apply ih (start + 1)
       obtain ⟨n, hge, hlt, hn⟩ := hsuccess
       refine ⟨n, ?_, by omega, hn⟩
@@ -1008,7 +1009,7 @@ private theorem expBounds_lower_lt_exp (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter 
     (by have := log2_le_ln2SeriesSum_add N_ln2
         show Real.log 2 ≤ ((ln2SeriesSum N_ln2 + 1 / 2 ^ N_ln2 : ℚ) : ℝ)
         push_cast; linarith)
-  simp only [rp] at hbracket
+  simp only [] at hbracket
   set r := (x : ℝ) - ↑k * Real.log 2
   -- Key facts
   have hr_lo_le : (r_lo : ℝ) ≤ r := hbracket.1
@@ -1057,7 +1058,7 @@ private theorem expBounds_lower_lt_exp (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter 
         -- exp(-r_lo) > 1 since -r_lo > 0
         have hexp_gt_one : 1 < Real.exp ((-r_lo : ℚ) : ℝ) := by
           rw [show (1 : ℝ) = Real.exp 0 from (Real.exp_zero).symm]
-          exact Real.exp_lt_exp_of_lt (by exact_mod_cast habs)
+          exact Real.exp_strictMono (by exact_mod_cast habs)
         -- taylorRemainder is nonneg
         have hR_nonneg : (0 : ℝ) ≤ (taylorRemainder (-r_lo) (N + 1) : ℝ) := by
           unfold taylorRemainder; simp only [show N + 1 ≠ 0 from by omega, ↓reduceIte]
@@ -1089,7 +1090,7 @@ private theorem expBounds_lower_lt_exp (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter 
               < 1 := by rw [inv_lt_one_iff₀]; exact Or.inr hsum_gt_one
             _ < Real.exp r := by
                 rw [show (1 : ℝ) = Real.exp 0 from (Real.exp_zero).symm]
-                exact Real.exp_lt_exp_of_lt hr_pos
+                exact Real.exp_strictMono hr_pos
         · -- r ≤ 0: use Taylor upper bound for -r, then monotonicity to -r_lo
           push_neg at hr_pos
           have hr_neg : r < 0 := lt_of_le_of_ne hr_pos hr_ne
@@ -1184,7 +1185,7 @@ private theorem expBounds_lower_lt_exp (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter 
             _ = Real.exp r := by rw [Real.exp_neg, inv_inv]
     ) h2k
 
-private theorem expBounds_exp_le_upper (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
+private theorem expBounds_exp_le_upper (x : ℚ) (k : ℤ) (iter : ℕ)
     (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1) :
     Real.exp (x : ℝ) ≤ ((expBounds x k iter).2 : ℝ) := by
   simp only [expBounds]
@@ -1274,7 +1275,7 @@ private theorem expTryOne_sound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ) 
   set upper := (expBounds x k iter).2
   have hl_pos := expBounds_lower_pos x k iter
   have hlower_lt := expBounds_lower_lt_exp x hx k iter hk_bound
-  have hupper_le := expBounds_exp_le_upper x hx k iter hk_bound
+  have hupper_le := expBounds_exp_le_upper x k iter hk_bound
   exact inStickyInterval_of_bracket lower upper hl_pos (Real.exp (x : ℝ))
     (expShift lower) hlower_lt hupper_le heq
 
@@ -1307,6 +1308,7 @@ The width has two components:
 After scaling by `2^{k+s}`, the bracket width for `exp(x) · 2^s` is bounded by
 a function that decreases super-exponentially in `iter`. -/
 
+omit [FloatFormat] in
 /-- For a positive rational, `Int.log 2 r ≤ Nat.log2 r.num.natAbs - Nat.log2 r.den`.
 This follows from `r < 2^(Nat.log2 p + 1) / 2^(Nat.log2 d) = 2^(lp - ld + 1)`. -/
 private lemma int_log_le_nat_log2_diff (r : ℚ) (hr : 0 < r) :
@@ -1432,9 +1434,7 @@ private theorem expBounds_width_tendsto_zero (x : ℚ) (hx : x ≠ 0) (k : ℤ)
       have hkey : (↑N + 2 : ℝ) ≤ (↑N + 1) * (↑N + 1) := by nlinarith
       nlinarith [mul_le_mul_of_nonneg_right hkey hfact_pos.le]
     have hfac_bound := hM₁ N hN
-    simp only [Set.mem_Iio] at hfac_bound
     have hgeom_bound := hM₂ N_ln2 hN_ln2
-    simp only [Set.mem_Iio] at hgeom_bound
     -- Bound term 2: A/2^N_ln2 < eps/(2C) via geometric bound
     have h2 : A / 2 ^ N_ln2 < eps / (2 * C) := by
       rw [show A / 2 ^ N_ln2 = A * (1 / 2) ^ N_ln2 from by
@@ -1491,7 +1491,7 @@ that `(upper - lower) · 2^s < δ`, where `δ` is the min-distance from `exp(x) 
 to any integer, then `⌊lower · 2^s⌋ = ⌊upper · 2^s⌋` and `expTryOne` returns `some`. -/
 private theorem expTryOne_of_tight_bracket (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
     (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1)
-    (δ : ℝ) (hδ : 0 < δ)
+    (δ : ℝ)
     (hδ_gap : ∀ m : ℤ, |Real.exp (x : ℝ) * 2 ^ (expShift (expBounds x k iter).1) -
       (m : ℝ)| ≥ δ)
     (hwidth : let (lower, upper) := expBounds x k iter
@@ -1509,7 +1509,7 @@ private theorem expTryOne_of_tight_bracket (x : ℚ) (hx : x ≠ 0) (k : ℤ) (i
     set q_hi := upper.num.natAbs * 2 ^ s / upper.den
     have hl_pos := expBounds_lower_pos x k iter
     have hl_lt_exp := expBounds_lower_lt_exp x hx k iter hk_bound
-    have hexp_le_u := expBounds_exp_le_upper x hx k iter hk_bound
+    have hexp_le_u := expBounds_exp_le_upper x k iter hk_bound
     have hu_pos : 0 < upper :=
       lt_trans hl_pos (by exact_mod_cast (lt_of_lt_of_le hl_lt_exp hexp_le_u : (lower : ℝ) < upper))
     have h2s_pos : (0 : ℝ) < 2 ^ s := by positivity
@@ -1631,7 +1631,7 @@ private theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
   obtain ⟨iter₀, hiter₀⟩ := expBounds_width_tendsto_zero x hx k hk_bound δ hδ_pos
   -- Step 3: At iter₀, the bracket is tight and the gap holds, so extraction succeeds.
   have hsuccess : (expTryOne x k iter₀).isSome = true :=
-    expTryOne_of_tight_bracket x hx k iter₀ hk_bound δ hδ_pos
+    expTryOne_of_tight_bracket x hx k iter₀ hk_bound δ
       (hδ_gap iter₀) (hiter₀ iter₀ le_rfl)
   -- Step 4: The iteration is within the fuel budget.
   exact ⟨iter₀, sorry /- iter₀ < expFuel x: follows from quantitative convergence rate -/, hsuccess⟩

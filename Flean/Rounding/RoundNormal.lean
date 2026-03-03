@@ -888,7 +888,7 @@ theorem roundNormalUp_sub_roundNormalDown_le_ulp (x : R) (h : isNormalRange x) (
         (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) =
         (2 : R) ^ (findExponentDown x + 1) - (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by
       rw [sub_mul, one_mul, two_zpow_mul]
-      congr 1; ring
+      congr 1; ring_nf
     linarith
   · -- Normal case: f = ⟨false, e, m.natAbs, vf⟩
     rw [Fp.finite.injEq] at hf
@@ -992,7 +992,7 @@ theorem roundNormalUp_sub_roundNormalDown_eq_ulp_of_down_lt
         (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) =
         (2 : R) ^ (findExponentDown x + 1) - (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by
       rw [sub_mul, one_mul, two_zpow_mul]
-      congr 1; ring
+      congr 1; ring_nf
     linarith [hprod]
   · -- No-overflow case
     rw [Fp.finite.injEq] at hf
@@ -1133,7 +1133,7 @@ theorem roundNormalUp_sub_roundNormalDown_eq_ulp_of_lt_up
         (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) =
         (2 : R) ^ (findExponentDown x + 1) - (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by
       rw [sub_mul, one_mul, two_zpow_mul]
-      congr 1; ring
+      congr 1; ring_nf
     linarith [hprod]
   · -- No-overflow case
     rw [Fp.finite.injEq] at hf
