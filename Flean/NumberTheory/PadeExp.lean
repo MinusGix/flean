@@ -1335,18 +1335,17 @@ noncomputable def padeConvergenceN₀ (a : ℤ) (b : ℕ) (s : ℕ) : ℕ :=
   let K := 2 ^ (s + 1) * Real.exp (2 * |x|) * (2 * |x|)
   -- C = d^{2m} / (2m)! from pow_div_factorial_effective
   let C := d ^ (2 * m) / ((2 * m).factorial : ℝ)
-  -- M chosen so (1/2)^M · C < 1/(2(K+1)), i.e., M large enough.
-  -- We use M = ⌈2(K+1)(C+1)⌉₊ + 1, which is generous (exponential bound
-  -- would suffice but this avoids needing Real.log).
-  let M := ⌈2 * (K + 1) * (C + 1)⌉₊ + 1
+  -- M chosen so (1/2)^M · C < 1/(2(K+1)), i.e., 2^M > 2(K+1)(C+1).
+  -- Using Nat.log2 gives M = O(log(KC)) instead of O(KC), keeping N₀ polynomial.
+  let M := Nat.log2 (⌈2 * (K + 1) * (C + 1)⌉₊) + 1
   2 * m + M
 
 /-- `padeConvergenceN₀` is positive. -/
 theorem padeConvergenceN₀_pos (a : ℤ) (b : ℕ) (s : ℕ) :
     0 < padeConvergenceN₀ a b s := by
   simp only [padeConvergenceN₀]
-  -- N₀ = 2 * m + (⌈...⌉₊ + 1) ≥ 1
-  exact Nat.lt_of_lt_of_le (by omega : 0 < 1) (Nat.le_add_left 1 _)
+  -- N₀ = 2 * m + (Nat.log2(...) + 1) ≥ 1
+  omega
 
 /-- The effective version of `pade_scaled_remainder_small`: for `N ≥ padeConvergenceN₀`,
 the scaled Padé remainder is `< 1/2`. -/
@@ -1358,7 +1357,7 @@ theorem pade_scaled_remainder_effective (a : ℤ) (b : ℕ) (hb : 0 < b) (s : �
   set m := ⌈d⌉₊ with hm_def
   set K := 2 ^ (s + 1) * Real.exp (2 * |x|) * (2 * |x|) with hK_def
   set C := d ^ (2 * m) / ((2 * m).factorial : ℝ) with hC_def
-  set M₀ := ⌈2 * (K + 1) * (C + 1)⌉₊ + 1 with hM₀_def
+  set M₀ := Nat.log2 (⌈2 * (K + 1) * (C + 1)⌉₊) + 1 with hM₀_def
   have hd_nn : 0 ≤ d := by positivity
   have hK_nn : 0 ≤ K := by positivity
   have hC_nn : 0 ≤ C := by positivity
@@ -1397,15 +1396,19 @@ theorem pade_scaled_remainder_effective (a : ℤ) (b : ℕ) (hb : 0 < b) (s : �
           rw [one_div, inv_pow, div_eq_mul_inv]
         rw [heq, div_lt_iff₀ h2M_pos]
         linarith
-      -- Chain: 2KC < M₀ ≤ 2^M₀ (as reals)
-      have hM₀_gt : 2 * (K * C) < (M₀ : ℝ) := by
-        have h_ceil : (⌈2 * (K + 1) * (C + 1)⌉₊ : ℝ) ≥ 2 * (K + 1) * (C + 1) := Nat.le_ceil _
-        have hM₀_cast : (M₀ : ℝ) = (⌈2 * (K + 1) * (C + 1)⌉₊ : ℝ) + 1 := by
-          exact_mod_cast hM₀_def
-        nlinarith
-      have hM₀_le_pow : (M₀ : ℝ) ≤ (2 : ℝ) ^ M₀ := by
-        exact_mod_cast M₀.lt_two_pow_self.le
-      linarith
+      -- 2^M₀ = 2^{log2(n)+1} > n ≥ 2(K+1)(C+1) > 2KC
+      set n := ⌈2 * (K + 1) * (C + 1)⌉₊ with hn_def
+      have hn_ge : 2 * (K + 1) * (C + 1) ≤ (n : ℝ) := Nat.le_ceil _
+      have hn_pos : 0 < n := by
+        rw [hn_def]; exact Nat.ceil_pos.mpr (by nlinarith)
+      have h_log2 : n < 2 ^ (Nat.log2 n + 1) := by
+        rw [Nat.log2_eq_log_two]
+        exact Nat.lt_pow_succ_log_self (by norm_num : 1 < 2) n
+      have hM₀_eq : M₀ = Nat.log2 n + 1 := rfl
+      calc 2 * (K * C) < 2 * ((K + 1) * (C + 1)) := by nlinarith
+        _ ≤ (n : ℝ) := by linarith
+        _ < (2 ^ (Nat.log2 n + 1) : ℝ) := by exact_mod_cast h_log2
+        _ = (2 : ℝ) ^ M₀ := by rw [hM₀_eq]
   -- Combine everything
   calc (N.factorial : ℝ) * (b : ℝ) ^ N * 2 ^ s * |padeR N x|
       ≤ K * d ^ N / (N.factorial : ℝ) := hstep1
