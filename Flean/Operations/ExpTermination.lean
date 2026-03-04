@@ -244,19 +244,18 @@ theorem expBounds_int_log_ge (x : ℚ) (k : ℤ) (iter : ℕ)
 /-- The shift `s = expShift(lower)` is uniformly bounded across all iterations.
 Uses `expBounds_int_log_ge` to bound `Int.log 2 lower ≥ k - 5`, then
 `expShift_le_of_int_log` gives `s ≤ prec + 4 - (k - 5) = prec + 9 - k ≤ prec + 9 + |k|`. -/
-theorem expShift_bound (x : ℚ) (k : ℤ)
+theorem expShift_bound (x : ℚ) (k : ℤ) (iter : ℕ)
     (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1) :
-    ∃ S : ℕ, ∀ iter, expShift (expBounds x k iter).1 ≤ S :=
-  ⟨FloatFormat.prec.toNat + 9 + k.natAbs, fun iter => by
-    have hlower_pos := expBounds_lower_pos x k iter
-    have hlog_ge := expBounds_int_log_ge x k iter hk_bound
-    have hshift := expShift_le_of_int_log _ hlower_pos
-    have : (FloatFormat.prec.toNat : ℤ) + 4 - Int.log 2 (expBounds x k iter).1 ≤
-           FloatFormat.prec.toNat + 9 + k.natAbs := by
-      have : Int.log 2 (expBounds x k iter).1 ≥ k - 5 := hlog_ge
-      have : k ≤ k.natAbs := Int.le_natAbs
-      omega
-    exact le_trans hshift (Int.toNat_le_toNat this)⟩
+    expShift (expBounds x k iter).1 ≤ FloatFormat.prec.toNat + 9 + k.natAbs := by
+  have hlower_pos := expBounds_lower_pos x k iter
+  have hlog_ge := expBounds_int_log_ge x k iter hk_bound
+  have hshift := expShift_le_of_int_log _ hlower_pos
+  have : (FloatFormat.prec.toNat : ℤ) + 4 - Int.log 2 (expBounds x k iter).1 ≤
+         FloatFormat.prec.toNat + 9 + k.natAbs := by
+    have : Int.log 2 (expBounds x k iter).1 ≥ k - 5 := hlog_ge
+    have : k ≤ k.natAbs := Int.le_natAbs
+    omega
+  exact le_trans hshift (Int.toNat_le_toNat this)
 
 omit [FloatFormat] in
 /-- MVT-type bound: `exp(b) - exp(a) ≤ exp(b) * (b - a)` for `a ≤ b`. -/
@@ -588,9 +587,11 @@ theorem expBounds_width_tendsto_zero (x : ℚ) (hx : x ≠ 0) (k : ℤ)
     ∃ iter₀ : ℕ, ∀ iter, iter₀ ≤ iter →
       let (lower, upper) := expBounds x k iter
       ((upper : ℝ) - (lower : ℝ)) * 2 ^ (expShift lower) < eps := by
-  -- Step 1: The shift s = expShift(lower) is uniformly bounded across all iterations,
+  -- Step 1: The shift s = expShift(lower) is uniformly bounded by prec + 9 + |k|,
   -- because lower = lower_r · 2^k with lower_r ≥ 1/4, so log2(lower) ≥ k - 2.
-  have ⟨S, hS⟩ := expShift_bound x k hk_bound
+  set S := FloatFormat.prec.toNat + 9 + k.natAbs
+  have hS : ∀ iter, expShift (expBounds x k iter).1 ≤ S :=
+    fun iter => expShift_bound x k iter hk_bound
   -- Step 2: The width bound from expBounds_width_bound gives
   -- width * 2^s ≤ 2^(|k|+s) * (err₁ + err₂)
   -- where err₁ = 2^(N+2)·(N+2)/((N+1)!·(N+1)) and err₂ = 8·(|k|+1)/2^N_ln2.
