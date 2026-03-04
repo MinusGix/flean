@@ -143,13 +143,7 @@ def expBounds (x : ℚ) (k : ℤ) (iter : ℕ) : ℚ × ℚ :=
   let hi2 := s_ln2 + 1 / 2 ^ N_ln2
   let (r_lo, r_hi) := expRIntervalWith x k lo2 hi2
   let N := expNumTerms + iter * 10
-  let lower_r :=
-    if 0 ≤ r_lo then taylorExpQ r_lo N
-    else 1 / (taylorExpQ (-r_lo) N + taylorRemainder (-r_lo) (N + 1))
-  let upper_r :=
-    if 0 ≤ r_hi then taylorExpQ r_hi N + taylorRemainder r_hi (N + 1)
-    else 1 / taylorExpQ (-r_hi) N
-  (lower_r * (2 : ℚ) ^ k, upper_r * (2 : ℚ) ^ k)
+  (expLowerBound r_lo N * (2 : ℚ) ^ k, expUpperBound r_hi N * (2 : ℚ) ^ k)
 
 /-- Try one extraction attempt at given precision level.
 Returns `some result` if `⌊lower·2^s⌋ = ⌊upper·2^s⌋`, `none` otherwise. -/
@@ -201,51 +195,16 @@ theorem expComputableRun_lower_pos (a : FiniteFp) (_hm : a.m ≠ 0) :
     let k := expArgRedK x
     let (r_lo, _r_hi) := expRInterval x k
     let N := expNumTerms
-    let lower_r := if 0 ≤ r_lo then taylorExpQ r_lo N
-      else 1 / (taylorExpQ (-r_lo) N + taylorRemainder (-r_lo) (N + 1))
-    let lower := lower_r * (2 : ℚ) ^ k
+    let lower := expLowerBound r_lo N * (2 : ℚ) ^ k
     0 < lower := by
   simp only
-  apply mul_pos _ (zpow_pos (by norm_num) _)
-  set r_lo := (expRInterval (a.toVal (R := ℚ)) (expArgRedK (a.toVal (R := ℚ)))).1
-  split
-  · -- r_lo ≥ 0: taylorExpQ r_lo N ≥ 1 > 0
-    case isTrue h =>
-      exact lt_of_lt_of_le (by norm_num) (taylorExpQ_ge_one _ h _)
-  · -- r_lo < 0: 1 / (ty + rem) > 0 since ty + rem > 0
-    case isFalse h =>
-      push_neg at h
-      have habs : 0 ≤ -r_lo := by linarith
-      have hty_ge := taylorExpQ_ge_one (-r_lo) habs expNumTerms
-      have hty_pos : 0 < taylorExpQ (-r_lo) expNumTerms := lt_of_lt_of_le (by norm_num) hty_ge
-      have hrem_nonneg : 0 ≤ taylorRemainder (-r_lo) (expNumTerms + 1) := by
-        unfold taylorRemainder
-        simp only [show expNumTerms + 1 ≠ 0 from by unfold expNumTerms; omega, ↓reduceIte]
-        apply div_nonneg
-        · exact mul_nonneg (pow_nonneg habs _) (by positivity)
-        · positivity
-      exact div_pos one_pos (lt_of_lt_of_le hty_pos (le_add_of_nonneg_right hrem_nonneg))
+  exact mul_pos (expLowerBound_pos _ _) (zpow_pos (by norm_num) _)
 
 /-- The lower bound from `expBounds` is always positive. -/
 theorem expBounds_lower_pos (x : ℚ) (k : ℤ) (iter : ℕ) :
     0 < (expBounds x k iter).1 := by
   simp only [expBounds]
-  apply mul_pos _ (zpow_pos (by norm_num) _)
-  set r_lo := (expRIntervalWith x k _ _).1
-  split
-  · case isTrue h =>
-      exact lt_of_lt_of_le (by norm_num) (taylorExpQ_ge_one _ h _)
-  · case isFalse h =>
-      push_neg at h
-      have habs : 0 ≤ -r_lo := by linarith
-      set N := expNumTerms + iter * 10
-      have hty_ge := taylorExpQ_ge_one (-r_lo) habs N
-      have hty_pos : 0 < taylorExpQ (-r_lo) N := lt_of_lt_of_le (by norm_num) hty_ge
-      have hrem_nonneg : 0 ≤ taylorRemainder (-r_lo) (N + 1) := by
-        unfold taylorRemainder
-        simp only [show N + 1 ≠ 0 from by omega, ↓reduceIte]
-        exact div_nonneg (mul_nonneg (pow_nonneg habs _) (by positivity)) (by positivity)
-      exact div_pos one_pos (lt_of_lt_of_le hty_pos (le_add_of_nonneg_right hrem_nonneg))
+  exact mul_pos (expLowerBound_pos _ _) (zpow_pos (by norm_num) _)
 
 /-- `expExtract` always returns `isExact = false`. -/
 theorem expExtract_isExact_false (lower upper : ℚ) :
@@ -843,16 +802,12 @@ theorem expBounds_lower_lt_exp (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
   -- exp(x) = 2^k * exp(r), so suffices lower_r < exp(r)
   rw [exp_arg_red (x : ℝ) k]
   -- Factor out 2^k from both sides
-  show (↑((if 0 ≤ r_lo then taylorExpQ r_lo N
-      else 1 / (taylorExpQ (-r_lo) N + taylorRemainder (-r_lo) (N + 1))) * (2 : ℚ) ^ k) : ℝ) <
-      (2 : ℝ) ^ k * Real.exp r
+  show (↑(expLowerBound r_lo N * (2 : ℚ) ^ k) : ℝ) < (2 : ℝ) ^ k * Real.exp r
   push_cast
-  rw [show (↑(if 0 ≤ r_lo then taylorExpQ r_lo N
-      else 1 / (taylorExpQ (-r_lo) N + taylorRemainder (-r_lo) (N + 1))) : ℝ) *
-      (2 : ℝ) ^ (k : ℤ) = ((2 : ℝ) ^ k) * (↑(if 0 ≤ r_lo then taylorExpQ r_lo N
-      else 1 / (taylorExpQ (-r_lo) N + taylorRemainder (-r_lo) (N + 1))) : ℝ) from by ring]
+  rw [show (expLowerBound r_lo N : ℝ) * (2 : ℝ) ^ (k : ℤ) =
+      ((2 : ℝ) ^ k) * (expLowerBound r_lo N : ℝ) from by ring]
   exact mul_lt_mul_of_pos_left (by
-    split
+    simp only [expLowerBound]; split
     · -- r_lo ≥ 0 → taylorExpQ(r_lo, N) < exp(r)
       case isTrue h =>
         have hr_pos : 0 < r := by
@@ -1024,15 +979,12 @@ theorem expBounds_exp_le_upper (x : ℚ) (k : ℤ) (iter : ℕ)
   have hr_hi_le : r ≤ (r_hi : ℝ) := hbracket.2
   have h2k : (0 : ℝ) < (2 : ℝ) ^ k := zpow_pos (by norm_num) k
   rw [exp_arg_red (x : ℝ) k]
-  show (2 : ℝ) ^ k * Real.exp r ≤ ↑((if 0 ≤ r_hi then taylorExpQ r_hi N + taylorRemainder r_hi (N + 1)
-      else 1 / taylorExpQ (-r_hi) N) * (2 : ℚ) ^ k)
+  show (2 : ℝ) ^ k * Real.exp r ≤ ↑(expUpperBound r_hi N * (2 : ℚ) ^ k)
   push_cast
-  rw [show (↑(if 0 ≤ r_hi then taylorExpQ r_hi N + taylorRemainder r_hi (N + 1)
-      else 1 / taylorExpQ (-r_hi) N) : ℝ) *
-      (2 : ℝ) ^ (k : ℤ) = ((2 : ℝ) ^ k) * (↑(if 0 ≤ r_hi then taylorExpQ r_hi N + taylorRemainder r_hi (N + 1)
-      else 1 / taylorExpQ (-r_hi) N) : ℝ) from by ring]
+  rw [show (expUpperBound r_hi N : ℝ) * (2 : ℝ) ^ (k : ℤ) =
+      ((2 : ℝ) ^ k) * (expUpperBound r_hi N : ℝ) from by ring]
   exact mul_le_mul_of_nonneg_left (by
-    split
+    simp only [expUpperBound]; split
     · -- r_hi ≥ 0: exp(r) ≤ S_N(r_hi) + R(r_hi)
       case isTrue h =>
         have hN_pos : 0 < N := by show 0 < expNumTerms + iter * 10; unfold expNumTerms; omega

@@ -306,12 +306,10 @@ lemma expBounds_r_width_le (r_lo r_hi : ℚ) (N : ℕ) (hN : 0 < N)
     (hr_lo_lt1 : (r_lo : ℝ) < 1) (hr_hi_gt_m1 : -(1 : ℝ) < (r_hi : ℝ))
     (hr_lo_gt_m2 : -(2 : ℝ) < (r_lo : ℝ)) (hr_hi_lt2 : (r_hi : ℝ) < 2)
     (hr_le : (r_lo : ℝ) ≤ (r_hi : ℝ)) :
-    ((if (0 : ℚ) ≤ r_hi then (taylorExpQ r_hi N + taylorRemainder r_hi (N + 1) : ℚ)
-      else (1 / taylorExpQ (-r_hi) N : ℚ)) : ℝ) -
-    ((if (0 : ℚ) ≤ r_lo then (taylorExpQ r_lo N : ℚ)
-      else (1 / (taylorExpQ (-r_lo) N + taylorRemainder (-r_lo) (N + 1)) : ℚ)) : ℝ) ≤
+    (expUpperBound r_hi N : ℝ) - (expLowerBound r_lo N : ℝ) ≤
     (2 : ℝ) ^ (N + 2) * (↑(N + 2) : ℝ) / (↑(N + 1).factorial * (↑(N + 1) : ℝ)) +
     8 * ((r_hi : ℝ) - (r_lo : ℝ)) := by
+  simp only [expUpperBound, expLowerBound]
   -- Key facts
   have hexp_sub := exp_sub_le_mul_exp (r_lo : ℝ) (r_hi : ℝ)
   have hexp_hi_lt8 : Real.exp (r_hi : ℝ) < 8 :=
@@ -499,12 +497,8 @@ theorem expBounds_width_bound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
   set r_lo := rp.1 with hr_lo_def
   set r_hi := rp.2 with hr_hi_def
   set N := expNumTerms + iter * 10 with hN_def
-  set upper_r :=
-    (if (0 : ℚ) ≤ r_hi then taylorExpQ r_hi N + taylorRemainder r_hi (N + 1)
-     else 1 / taylorExpQ (-r_hi) N) with hur_def
-  set lower_r :=
-    (if (0 : ℚ) ≤ r_lo then taylorExpQ r_lo N
-     else 1 / (taylorExpQ (-r_lo) N + taylorRemainder (-r_lo) (N + 1))) with hlr_def
+  set upper_r := expUpperBound r_hi N with hur_def
+  set lower_r := expLowerBound r_lo N with hlr_def
   -- Factor: upper = upper_r * 2^k, lower = lower_r * 2^k
   have h_upper_eq : upper = upper_r * (2:ℚ) ^ k := by
     simp only [upper, upper_r, expBounds, hrp_def, hN_def, hN_ln2_def, hlo2_def]; ring
@@ -544,9 +538,7 @@ theorem expBounds_width_bound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
   -- Fold the if-then-else back into upper_r/lower_r
   have hr_width : (upper_r : ℝ) - (lower_r : ℝ) ≤
       (2:ℝ) ^ (N + 2) * (↑(N + 2) : ℝ) / (↑(N + 1).factorial * (↑(N + 1) : ℝ)) +
-      8 * ((r_hi : ℝ) - (r_lo : ℝ)) := by
-    simp only [hur_def, hlr_def]
-    split_ifs at hr_width' ⊢ <;> push_cast at hr_width' ⊢ <;> linarith [hr_width']
+      8 * ((r_hi : ℝ) - (r_lo : ℝ)) := hr_width'
   -- Apply interval width bound: r_hi - r_lo ≤ |k| / 2^N_ln2
   have hinterval_width := expRIntervalWith_width_le x k lo2 N_ln2
   simp only [← hhi2_def, ← hrp_def, ← hr_hi_def, ← hr_lo_def] at hinterval_width

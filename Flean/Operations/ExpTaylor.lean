@@ -201,3 +201,44 @@ lemma taylorRemainder_le_of_le (a b : ℚ) (N : ℕ) (hN : 0 < N)
   apply div_le_div_of_nonneg_right _ (by positivity)
   apply mul_le_mul_of_nonneg_right _ (by positivity)
   exact pow_le_pow_left₀ (by exact_mod_cast ha) hab _
+
+/-- Taylor remainder is nonneg for nonneg arguments. -/
+lemma taylorRemainder_nonneg (y : ℚ) (N : ℕ) (hy : 0 ≤ y) :
+    0 ≤ taylorRemainder y (N + 1) := by
+  unfold taylorRemainder
+  simp only [show N + 1 ≠ 0 from by omega, ↓reduceIte]
+  exact div_nonneg (mul_nonneg (pow_nonneg hy _) (by positivity)) (by positivity)
+
+/-! ## Sign-unified exp bounds
+
+`expLowerBound` and `expUpperBound` encapsulate the sign-dependent Taylor bounds
+on `exp(r)`, handling both `r ≥ 0` (direct Taylor) and `r < 0` (reciprocal of Taylor
+applied to `-r`). These are used by `expBounds` in `ExpComputableDefs.lean`. -/
+
+/-- Lower bound on `exp(r)` that works for any sign of `r`.
+For `r ≥ 0`: the Taylor partial sum `S_N(r)` (underestimates `exp`).
+For `r < 0`: `1/(S_N(-r) + R(-r))` (reciprocal of an overestimate of `exp(-r)`). -/
+def expLowerBound (r : ℚ) (N : ℕ) : ℚ :=
+  if 0 ≤ r then taylorExpQ r N
+  else 1 / (taylorExpQ (-r) N + taylorRemainder (-r) (N + 1))
+
+/-- Upper bound on `exp(r)` that works for any sign of `r`.
+For `r ≥ 0`: `S_N(r) + R(r)` (Taylor sum + remainder overestimates `exp`).
+For `r < 0`: `1/S_N(-r)` (reciprocal of an underestimate of `exp(-r)`). -/
+def expUpperBound (r : ℚ) (N : ℕ) : ℚ :=
+  if 0 ≤ r then taylorExpQ r N + taylorRemainder r (N + 1)
+  else 1 / taylorExpQ (-r) N
+
+/-- `expLowerBound r N > 0` for any `r` and `N`. -/
+theorem expLowerBound_pos (r : ℚ) (N : ℕ) : 0 < expLowerBound r N := by
+  simp only [expLowerBound]
+  split
+  · case isTrue h =>
+      exact lt_of_lt_of_le one_pos (taylorExpQ_ge_one _ h _)
+  · case isFalse h =>
+      push_neg at h
+      have habs : 0 ≤ -r := by linarith
+      have hty_pos : 0 < taylorExpQ (-r) N :=
+        lt_of_lt_of_le one_pos (taylorExpQ_ge_one _ habs _)
+      have hrem_nonneg := taylorRemainder_nonneg (-r) N habs
+      exact div_pos one_pos (lt_of_lt_of_le hty_pos (le_add_of_nonneg_right hrem_nonneg))
