@@ -2,6 +2,7 @@ import Flean.Operations.Exp
 import Flean.NumberTheory.ExpEffectiveBound
 import Flean.NumberTheory.PadeExp
 import Mathlib.Analysis.SpecialFunctions.Log.Deriv
+import Mathlib.Analysis.Complex.ExponentialBounds
 
 /-! # Computable `ExpRefExec` and `ExpRefExecSound` Instances
 
@@ -1351,17 +1352,188 @@ private lemma int_log_le_nat_log2_diff (r : ℚ) (hr : 0 < r) :
 
 /-- The shift `expShift r` for a positive rational is bounded by `prec + 4 - Int.log 2 r`. -/
 private lemma expShift_le_of_int_log (r : ℚ) (hr : 0 < r) :
-    (expShift r : ℤ) ≤ (FloatFormat.prec.toNat : ℤ) + 4 - Int.log 2 r := by
+    expShift r ≤ ((FloatFormat.prec.toNat : ℤ) + 4 - Int.log 2 r).toNat := by
   simp only [expShift]
   have h := int_log_le_nat_log2_diff r hr
-  exact_mod_cast Int.toNat_le_toNat (by omega)
+  exact Int.toNat_le_toNat (by omega)
+
+omit [FloatFormat] in
+/-- `exp(2) < 8`, derived from `exp(1) < 2.7182818286`. -/
+private lemma exp_two_lt_eight : Real.exp 2 < 8 := by
+  have h1 := Real.exp_one_lt_d9
+  calc Real.exp 2 = Real.exp (1 + 1) := by norm_num
+    _ = Real.exp 1 * Real.exp 1 := Real.exp_add 1 1
+    _ < 2.7182818286 * 2.7182818286 :=
+        mul_lt_mul h1 h1.le (by positivity) (by positivity)
+    _ < 8 := by norm_num
+
+omit [FloatFormat] in
+/-- The r-interval width from `expRIntervalWith` is `k.natAbs / 2^N_ln2 < 1`
+when `N_ln2 ≥ Nat.log2(k.natAbs) + 1`. -/
+private lemma expRIntervalWith_width_lt_one (x : ℚ) (k : ℤ)
+    (lo2 : ℚ) (N_ln2 : ℕ) (hN_ln2 : Nat.log2 k.natAbs + 1 ≤ N_ln2) :
+    let hi2 := lo2 + 1 / 2 ^ N_ln2
+    let rp := expRIntervalWith x k lo2 hi2
+    ((rp.2 : ℚ) - rp.1 : ℚ) < 1 := by
+  simp only
+  -- k.natAbs < 2^N_ln2
+  have hk_lt : (k.natAbs : ℚ) < 2 ^ N_ln2 := by
+    have h1 := Nat.lt_pow_succ_log_self (by norm_num : 1 < 2) k.natAbs
+    rw [← Nat.log2_eq_log_two] at h1
+    exact_mod_cast lt_of_lt_of_le h1 (Nat.pow_le_pow_right (by norm_num) hN_ln2)
+  simp only [expRIntervalWith]
+  have h2N_pos : (0:ℚ) < 2 ^ N_ln2 := by positivity
+  have hk_lt_cast : (k.natAbs : ℚ) / 2 ^ N_ln2 < 1 :=
+    (div_lt_one h2N_pos).mpr hk_lt
+  split
+  · case isTrue hk =>
+      dsimp only [Prod.snd, Prod.fst]
+      have heq : x - ↑k * lo2 - (x - ↑k * (lo2 + 1 / 2 ^ N_ln2)) = ↑k / 2 ^ N_ln2 := by ring
+      rw [heq]
+      calc (↑k : ℚ) / 2 ^ N_ln2
+          ≤ ↑k.natAbs / 2 ^ N_ln2 :=
+            div_le_div_of_nonneg_right (Int.cast_le.mpr Int.le_natAbs) (le_of_lt h2N_pos)
+        _ < 1 := (div_lt_one h2N_pos).mpr hk_lt
+  · case isFalse hk =>
+      push_neg at hk
+      dsimp only [Prod.snd, Prod.fst]
+      have heq : x - ↑k * (lo2 + 1 / 2 ^ N_ln2) - (x - ↑k * lo2) = -↑k / 2 ^ N_ln2 := by ring
+      rw [heq]
+      calc (-↑k : ℚ) / 2 ^ N_ln2
+          ≤ ↑k.natAbs / 2 ^ N_ln2 :=
+            div_le_div_of_nonneg_right (Int.cast_le.mpr (show (-k : ℤ) ≤ ↑k.natAbs by omega))
+              (le_of_lt h2N_pos)
+        _ < 1 := (div_lt_one h2N_pos).mpr hk_lt
+
+/-- The lower bound from `expBounds` satisfies `Int.log 2 lower ≥ k - 5`.
+In the `r_lo ≥ 0` case, `taylorExpQ_ge_one` gives `lower_r ≥ 1`, so `lower ≥ 2^k`.
+In the `r_lo < 0` case, `lower_r = 1/denom` where
+`denom ≤ 3·exp(-r_lo) < 3·exp(2) < 24 ≤ 32 = 2^5`, so `lower ≥ 2^(k-5)`. -/
+private theorem expBounds_int_log_ge (x : ℚ) (k : ℤ) (iter : ℕ)
+    (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1) :
+    k - 5 ≤ Int.log 2 ((expBounds x k iter).1 : ℚ) := by
+  have hlower_pos := expBounds_lower_pos x k iter
+  rw [← Int.zpow_le_iff_le_log (by norm_num : 1 < 2) hlower_pos]
+  -- Goal: (2:ℚ)^(k-5) ≤ (expBounds x k iter).1
+  simp only [expBounds]
+  set N_ln2 := Nat.log2 k.natAbs + 52 + iter * 50
+  set lo2 := ln2SeriesSum N_ln2
+  set hi2 := lo2 + 1 / 2 ^ N_ln2 with hhi2_def
+  set rp := expRIntervalWith x k lo2 hi2
+  set r_lo := rp.1
+  set N := expNumTerms + iter * 10
+  -- Factor 2^(k-5) = 2^(-5) * 2^k
+  -- The goal is: (2:ℚ)^(k-5) ≤ lower_r * (2:ℚ)^k
+  -- Suffices: (2:ℚ)^(-5) ≤ lower_r (then multiply both sides by 2^k)
+  suffices h_lr : (2:ℚ)^(-5:ℤ) ≤
+      if 0 ≤ r_lo then taylorExpQ r_lo N
+      else 1 / (taylorExpQ (-r_lo) N + taylorRemainder (-r_lo) (N + 1)) by
+    calc (2:ℚ) ^ (k - 5) = (2:ℚ) ^ (-5 : ℤ) * (2:ℚ) ^ k := by
+            rw [show (k : ℤ) - 5 = -5 + k from by ring, zpow_add₀ (by norm_num : (2:ℚ) ≠ 0)]
+      _ ≤ _ * (2:ℚ) ^ k := by
+            exact mul_le_mul_of_nonneg_right h_lr (zpow_nonneg (by norm_num) _)
+  -- Goal: (2:ℚ)^(-5) ≤ lower_r
+  split
+  · -- Case r_lo ≥ 0: lower_r = taylorExpQ r_lo N ≥ 1 ≥ 1/32
+    case isTrue h =>
+      calc (2:ℚ) ^ (-5 : ℤ) ≤ 1 := by norm_num
+        _ ≤ taylorExpQ r_lo N := taylorExpQ_ge_one _ h _
+  · -- Case r_lo < 0: lower_r = 1/denom, need denom ≤ 32
+    case isFalse h =>
+      push_neg at h
+      have habs : 0 ≤ -r_lo := by linarith
+      set denom := taylorExpQ (-r_lo) N + taylorRemainder (-r_lo) (N + 1) with hdenom_def
+      have hrem_nonneg : 0 ≤ taylorRemainder (-r_lo) (N + 1) := by
+        unfold taylorRemainder
+        simp only [show N + 1 ≠ 0 from by omega, ↓reduceIte]
+        exact div_nonneg (mul_nonneg (pow_nonneg habs _) (by positivity)) (by positivity)
+      have hty_ge := taylorExpQ_ge_one (-r_lo) habs N
+      have hdenom_pos : 0 < denom := by linarith
+      -- Suffices: denom ≤ 32
+      rw [show (2:ℚ)^(-5:ℤ) = 1/32 from by norm_num]
+      exact div_le_div_of_nonneg_left (by norm_num) hdenom_pos (show denom ≤ 32 from by
+        suffices h_real : (denom : ℝ) < 32 from by exact_mod_cast le_of_lt h_real
+        -- Get bracket
+        have hlo2_le := ln2SeriesSum_le_log2 N_ln2
+        have hhi2_ge : Real.log 2 ≤ ((hi2 : ℚ) : ℝ) := by
+          have := log2_le_ln2SeriesSum_add N_ln2
+          show Real.log 2 ≤ ((ln2SeriesSum N_ln2 + 1 / 2 ^ N_ln2 : ℚ) : ℝ)
+          push_cast; linarith
+        have hbracket := expRIntervalWith_brackets x k lo2 hi2 hlo2_le hhi2_ge
+        simp only [] at hbracket
+        set r := (x : ℝ) - ↑k * Real.log 2
+        -- Width bound: rp.2 - rp.1 < 1
+        have hwidth : rp.2 - rp.1 < 1 :=
+          expRIntervalWith_width_lt_one x k lo2 N_ln2 (by omega)
+        -- -r_lo < 2
+        have h_neg_rlo : ((-r_lo : ℚ) : ℝ) < 2 := by
+          have hr_bound := (abs_lt.mp hk_bound).1  -- -1 < r
+          have hw_real : ((rp.2 - rp.1 : ℚ) : ℝ) < 1 := by exact_mod_cast hwidth
+          push_cast at hw_real
+          push_cast
+          linarith [hbracket.1, hbracket.2]
+        set y := ((-r_lo : ℚ) : ℝ) with hy_def
+        have hy_nonneg : 0 ≤ y := by simp only [hy_def]; exact_mod_cast habs
+        -- taylorExpQ ≤ exp
+        have h_taylor := taylorExpQ_le_exp (-r_lo) habs N
+        -- exp(-r_lo) < exp(2) < 8
+        have h_exp : Real.exp y < 8 :=
+          lt_trans (Real.exp_strictMono h_neg_rlo) exp_two_lt_eight
+        -- y^(N+1)/(N+1)! ≤ exp(y)  (one term of Taylor series)
+        have hN_pos : 0 < N := by simp only [N, expNumTerms]; omega
+        have h_term : y ^ (N + 1) / ((N + 1).factorial : ℝ) ≤ Real.exp y := by
+          have h1 : (taylorExpQ (-r_lo) (N+1) : ℝ) =
+              (taylorExpQ (-r_lo) N : ℝ) + y ^ (N+1) / ((N+1).factorial : ℝ) := by
+            rw [taylorExpQ_cast_eq_sum, taylorExpQ_cast_eq_sum,
+              show N + 1 + 1 = (N + 1) + 1 from by omega, Finset.sum_range_succ]
+          have h2 := taylorExpQ_le_exp (-r_lo) habs (N+1)
+          have h3 : (0:ℝ) ≤ (taylorExpQ (-r_lo) N : ℝ) := by
+            exact_mod_cast le_of_lt (lt_of_lt_of_le zero_lt_one hty_ge)
+          linarith
+        -- taylorRemainder ≤ 2 * exp(y)
+        have h_rem : (taylorRemainder (-r_lo) (N + 1) : ℝ) ≤ 2 * Real.exp y := by
+          rw [taylorRemainder_cast _ N hN_pos]
+          have h_fac_pos : (0:ℝ) < ((N+1).factorial : ℝ) :=
+            Nat.cast_pos.mpr (Nat.factorial_pos _)
+          have h_np1_pos : (0:ℝ) < ((N + 1 : ℕ) : ℝ) := by positivity
+          -- (N+2)/(N+1) ≤ 2
+          have h_ratio : (↑(N + 1 : ℕ) : ℝ) + 1 ≤ 2 * (↑(N + 1 : ℕ) : ℝ) := by
+            have : (1:ℝ) ≤ ↑(N + 1 : ℕ) := by exact_mod_cast (show 1 ≤ N + 1 by omega)
+            linarith
+          rw [div_le_iff₀ (mul_pos h_fac_pos h_np1_pos)]
+          calc y ^ (N + 1) * ((↑(N + 1 : ℕ) : ℝ) + 1)
+              ≤ y ^ (N + 1) * (2 * (↑(N + 1 : ℕ) : ℝ)) :=
+                mul_le_mul_of_nonneg_left h_ratio (pow_nonneg hy_nonneg _)
+            _ = (y ^ (N + 1) / ((N + 1).factorial : ℝ)) *
+                (2 * ((N + 1).factorial : ℝ) * (↑(N + 1 : ℕ) : ℝ)) := by
+                field_simp
+            _ ≤ Real.exp y * (2 * ((N + 1).factorial : ℝ) * (↑(N + 1 : ℕ) : ℝ)) :=
+                mul_le_mul_of_nonneg_right h_term (by positivity)
+            _ = 2 * Real.exp y * ((N + 1).factorial * (↑(N + 1 : ℕ) : ℝ)) := by ring
+        -- Combine: denom ≤ 3*exp(y) < 24 ≤ 32
+        calc (denom : ℝ) = (taylorExpQ (-r_lo) N : ℝ) +
+              (taylorRemainder (-r_lo) (N + 1) : ℝ) := by push_cast [hdenom_def]; rfl
+          _ ≤ Real.exp y + 2 * Real.exp y := by linarith [h_taylor]
+          _ = 3 * Real.exp y := by ring
+          _ < 3 * 8 := by linarith [h_exp]
+          _ ≤ 32 := by norm_num)
 
 /-- The shift `s = expShift(lower)` is uniformly bounded across all iterations.
-Since `lower ≥ 2^k / 4` (from `taylorExpQ_ge_one` and remainder bounds),
-we have `log2(num) - log2(den) ≥ k - 3`, giving `s ≤ prec + 7 + |k|`. -/
-private theorem expShift_bound (x : ℚ) (k : ℤ) :
+Uses `expBounds_int_log_ge` to bound `Int.log 2 lower ≥ k - 5`, then
+`expShift_le_of_int_log` gives `s ≤ prec + 4 - (k - 5) = prec + 9 - k ≤ prec + 9 + |k|`. -/
+private theorem expShift_bound (x : ℚ) (k : ℤ)
+    (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1) :
     ∃ S : ℕ, ∀ iter, expShift (expBounds x k iter).1 ≤ S :=
-  ⟨FloatFormat.prec.toNat + 7 + k.natAbs, fun iter => by sorry⟩
+  ⟨FloatFormat.prec.toNat + 9 + k.natAbs, fun iter => by
+    have hlower_pos := expBounds_lower_pos x k iter
+    have hlog_ge := expBounds_int_log_ge x k iter hk_bound
+    have hshift := expShift_le_of_int_log _ hlower_pos
+    have : (FloatFormat.prec.toNat : ℤ) + 4 - Int.log 2 (expBounds x k iter).1 ≤
+           FloatFormat.prec.toNat + 9 + k.natAbs := by
+      have : Int.log 2 (expBounds x k iter).1 ≥ k - 5 := hlog_ge
+      have : k ≤ k.natAbs := Int.le_natAbs
+      omega
+    exact le_trans hshift (Int.toNat_le_toNat this)⟩
 
 /-- Upper bound on the bracket width `(upper - lower)` at iteration `iter`.
 The key bound is that the Taylor remainder contributes `≤ (N+2)/((N+1)!·(N+1))`
@@ -1387,7 +1559,7 @@ private theorem expBounds_width_tendsto_zero (x : ℚ) (hx : x ≠ 0) (k : ℤ)
       ((upper : ℝ) - (lower : ℝ)) * 2 ^ (expShift lower) < eps := by
   -- Step 1: The shift s = expShift(lower) is uniformly bounded across all iterations,
   -- because lower = lower_r · 2^k with lower_r ≥ 1/4, so log2(lower) ≥ k - 2.
-  have ⟨S, hS⟩ := expShift_bound x k
+  have ⟨S, hS⟩ := expShift_bound x k hk_bound
   -- Step 2: The width bound from expBounds_width_bound gives
   -- width * 2^s ≤ 2^(|k|+s) * (err₁ + err₂)
   -- where err₁ = (N+2)/((N+1)!·(N+1)) and err₂ = exp(1)·(|k|+1)/2^N_ln2.
@@ -1596,7 +1768,7 @@ private theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
   have ⟨δ, hδ_pos, hδ_gap⟩ : ∃ δ > 0, ∀ iter, ∀ m : ℤ,
       |Real.exp (x : ℝ) * 2 ^ expShift (expBounds x k iter).1 - ↑m| ≥ δ := by
     -- Step 1: Shift bound
-    have ⟨S, hS⟩ := expShift_bound x k
+    have ⟨S, hS⟩ := expShift_bound x k hk_bound
     -- Step 2: For each s ≤ S, pade_effective_delta gives δ_s > 0
     -- By induction: ∃ δ > 0, ∀ s ≤ S, ∀ m, |exp(x)*2^s - m| ≥ δ
     have hx_eq : (x : ℝ) = (x.num : ℝ) / (x.den : ℝ) := by
