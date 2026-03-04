@@ -29,6 +29,17 @@ Tracked iteratively. Priorities ordered top-to-bottom within each tier.
 - [ ] **Encoding round-trip** — prove finite floats fit in bit repr, bit-level equality equivalence
 - [ ] **Common constants verification** — prove binary32/64 constants match claimed values
 
+## ExpComputable Cleanup
+- [ ] **File splitting** — ExpComputable.lean is ~2900 lines. Split into:
+  - `TaylorExp.lean`: Taylor series machinery (taylorExpQ, cast lemmas, monotonicity, lower/upper bounds, taylorRemainder). General-purpose, no dependency on sticky intervals.
+  - `StickyInterval.lean` (or inline into Exp.lean): `inStickyInterval_of_bracket`, floor arithmetic helpers. Pure number theory.
+  - `ExpTermination.lean`: padeP_abs_le, padeConvergenceN₀_le, pade_delta_log_bound, expFuel_sufficient, expTryOne_terminates. The heaviest section.
+  - `ExpComputable.lean`: remaining glue — expBounds, expTryOne, expExtractLoop, the instance.
+- [ ] **Unify expBounds sign cases** — expBounds has 3 near-identical case splits (r_lo ≥ 0 ∧ r_hi ≥ 0, mixed, both negative) sharing ~300 lines of Taylor reasoning. A unified `expRBracket` handling signs once would reduce duplication.
+- [ ] **Factor `cast_eq` helper** — "positive rational as natAbs/den" pattern appears in several theorems. Extract to a utility lemma (e.g., in Util.lean).
+- [ ] **Make `expShift_bound` concrete** — currently existential (`∃ S, ...`). Since the concrete bound is `prec + 9 + |k|`, state it directly to simplify `expFuel_sufficient`.
+- [ ] **Move `padeConvergenceN₀_le` to PadeExp.lean** — the bound lives in ExpComputable.lean but conceptually belongs next to the definition in PadeExp.lean.
+
 ## Long-Term
 - [ ] Error-minimizing tactic (reorder FP computations)
 - [ ] Linearize tactic improvements (multiplicative cases, edge cases)

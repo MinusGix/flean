@@ -1,8 +1,8 @@
 import Flean.Operations.Exp
+import Flean.Operations.ExpTaylor
 import Flean.NumberTheory.ExpEffectiveBound
 import Flean.NumberTheory.PadeExp
 import Mathlib.Analysis.SpecialFunctions.Log.Deriv
-import Mathlib.Analysis.Complex.ExponentialBounds
 
 /-! # Computable `ExpRefExec` and `ExpRefExecSound` Instances
 
@@ -108,31 +108,11 @@ private def expFuel (x : ℚ) : ℕ :=
   let ab := x.num.natAbs ^ 2 / x.den + x.num.natAbs + x.den + FloatFormat.prec.toNat + 100
   100 * ab * (Nat.log2 ab + 1) + 1000
 
-/-! ## Taylor series -/
+/-! ## Constants -/
 
 /-- Number of Taylor terms. With mod-ln(2) reduction, `|r| ≤ ln(2)/2 < 1/2`,
 so no input-dependent adjustment is needed. -/
 private def expNumTerms : ℕ := FloatFormat.prec.toNat + 10
-
-/-- Evaluate `exp(y) ≈ Σ_{k=0}^{numTerms} y^k/k!` in ℚ.
-Uses forward recurrence `term_{k+1} = term_k · y / (k+1)`.
-All terms are positive when `y > 0`, guaranteeing a lower bound. -/
-private def taylorExpQ (y : ℚ) (numTerms : ℕ) : ℚ :=
-  let rec go : ℕ → ℕ → ℚ → ℚ → ℚ
-    | 0, _, acc, _ => acc
-    | fuel + 1, k, acc, term =>
-        let nextTerm := term * y / (k + 1)
-        go fuel (k + 1) (acc + nextTerm) nextTerm
-  go numTerms 0 1 1  -- start: k=0, acc=1 (term_0), term=1 (term_0)
-
-/-! ## Taylor remainder -/
-
-/-- Compute the Taylor remainder bound: `y^N * (N+1) / (N! * N)`.
-This bounds `|exp(y) - ∑_{k<N} y^k/k!|` for `|y| ≤ 1`.
-For our use: exp(y) ≤ taylorExpQ y (N-1) + taylorRemainder y N. -/
-private def taylorRemainder (y : ℚ) (n : ℕ) : ℚ :=
-  if n = 0 then 1  -- degenerate case
-  else y ^ n * (n + 1) / (n.factorial * n)
 
 /-! ## Argument reduction mod ln(2) -/
 
@@ -247,25 +227,6 @@ instance (priority := 500) : ExpRefExec where
 
 /-! ## Soundness helpers -/
 
-omit [FloatFormat] in
-/-- Taylor series with nonneg input gives result ≥ 1 (since first term is 1 and rest are nonneg). -/
-private theorem taylorExpQ_ge_one (y : ℚ) (hy : 0 ≤ y) (n : ℕ) :
-    1 ≤ taylorExpQ y n := by
-  simp only [taylorExpQ]
-  -- The recursive function accumulates nonneg terms starting from acc=1
-  suffices ∀ fuel k (acc term : ℚ), 1 ≤ acc → 0 ≤ term →
-    1 ≤ taylorExpQ.go y fuel k acc term from
-    this n 0 1 1 (le_refl _) (by norm_num)
-  intro fuel
-  induction fuel with
-  | zero => simp [taylorExpQ.go]; intros; assumption
-  | succ n ih =>
-    intro k acc term hacc hterm
-    simp only [taylorExpQ.go]
-    have hnext : 0 ≤ term * y / (↑k + 1) :=
-      div_nonneg (mul_nonneg hterm hy) (by positivity)
-    exact ih _ _ _ (by linarith) hnext
-
 /-- The lower bound passed to `expExtract` in the non-zero branch is positive. -/
 private theorem expComputableRun_lower_pos (a : FiniteFp) (_hm : a.m ≠ 0) :
     let x : ℚ := a.toVal
@@ -317,62 +278,6 @@ private theorem expBounds_lower_pos (x : ℚ) (k : ℤ) (iter : ℕ) :
         simp only [show N + 1 ≠ 0 from by omega, ↓reduceIte]
         exact div_nonneg (mul_nonneg (pow_nonneg habs _) (by positivity)) (by positivity)
       exact div_pos one_pos (lt_of_lt_of_le hty_pos (le_add_of_nonneg_right hrem_nonneg))
-
-/-! ## Taylor series ↔ Finset.sum bridge -/
-
-omit [FloatFormat] in
-open Finset in
-/-- Loop invariant: when `term = y^k/k!` and `acc = ∑_{i<k+1} y^i/i!`,
-the loop computes `∑_{i<k+fuel+1} y^i/i!`. -/
-private theorem taylorExpQ_go_eq (y : ℚ) :
-    ∀ (fuel k : ℕ) (acc term : ℚ),
-    term = y ^ k / (k.factorial : ℚ) →
-    acc = ∑ i ∈ range (k + 1), y ^ i / (i.factorial : ℚ) →
-    taylorExpQ.go y fuel k acc term =
-      ∑ i ∈ range (k + fuel + 1), y ^ i / (i.factorial : ℚ) := by
-  intro fuel
-  induction fuel with
-  | zero => intro k acc term _ hacc; simp [taylorExpQ.go, hacc]
-  | succ n ih =>
-    intro k acc term hterm hacc
-    simp only [taylorExpQ.go]
-    -- Next term: term * y / (k+1) = y^(k+1) / (k+1)!
-    have hterm_next : term * y / (↑k + 1) = y ^ (k + 1) / ((k + 1).factorial : ℚ) := by
-      rw [hterm, pow_succ, Nat.factorial_succ, Nat.cast_mul]
-      have : (k.factorial : ℚ) ≠ 0 := Nat.cast_ne_zero.mpr (Nat.factorial_ne_zero k)
-      have : (↑k + 1 : ℚ) ≠ 0 := by positivity
-      field_simp; push_cast; ring
-    -- Updated acc: acc + nextTerm = ∑_{i<k+2}
-    have hacc_next : acc + term * y / (↑k + 1) =
-        ∑ i ∈ range (k + 1 + 1), y ^ i / (i.factorial : ℚ) := by
-      rw [sum_range_succ, hacc, hterm_next]
-    rw [ih (k + 1) _ _ hterm_next hacc_next,
-      show k + 1 + n + 1 = k + (n + 1) + 1 from by omega]
-
-omit [FloatFormat] in
-open Finset in
-/-- `taylorExpQ y n` equals the standard Taylor partial sum `∑_{k<n+1} y^k/k!` in ℚ. -/
-private theorem taylorExpQ_eq_sum (y : ℚ) (n : ℕ) :
-    taylorExpQ y n = ∑ k ∈ range (n + 1), y ^ k / (k.factorial : ℚ) := by
-  simp only [taylorExpQ]
-  have hterm : (1 : ℚ) = y ^ 0 / (Nat.factorial 0 : ℚ) := by simp
-  have hacc : (1 : ℚ) = ∑ i ∈ range (0 + 1), y ^ i / (i.factorial : ℚ) := by
-    rw [sum_range_one]; simp
-  rw [taylorExpQ_go_eq y n 0 1 1 hterm hacc, show 0 + n + 1 = n + 1 from by omega]
-
-omit [FloatFormat] in
-open Finset in
-/-- Cast of `taylorExpQ` to ℝ equals the real Taylor partial sum. -/
-private theorem taylorExpQ_cast_eq_sum (y : ℚ) (n : ℕ) :
-    (taylorExpQ y n : ℝ) = ∑ k ∈ range (n + 1), (y : ℝ) ^ k / (k.factorial : ℝ) := by
-  rw [taylorExpQ_eq_sum]; push_cast; rfl
-
-omit [FloatFormat] in
-/-- The real Taylor partial sum lower-bounds `exp` for nonneg arguments. -/
-private theorem taylorExpQ_le_exp (y : ℚ) (hy : 0 ≤ y) (n : ℕ) :
-    (taylorExpQ y n : ℝ) ≤ Real.exp (y : ℝ) := by
-  rw [taylorExpQ_cast_eq_sum]
-  exact Real.sum_le_exp_of_nonneg (by exact_mod_cast hy) _
 
 /-- `expExtract` always returns `isExact = false`. -/
 private theorem expExtract_isExact_false (lower upper : ℚ) :
@@ -472,21 +377,6 @@ private theorem expComputableRun_zero (a : FiniteFp) (hm : a.m = 0) :
     expComputableRun a = { q := 1, e_base := -1, isExact := true } := by
   simp [expComputableRun, hm]
 
-/-! ## Strict Taylor inequality -/
-
-omit [FloatFormat] in
-/-- The Taylor partial sum is STRICTLY less than exp for y > 0.
-This follows because all omitted terms y^k/k! for k > N are strictly positive. -/
-private theorem taylorExpQ_lt_exp (y : ℚ) (hy : 0 < y) (n : ℕ) :
-    (taylorExpQ y n : ℝ) < Real.exp (y : ℝ) := by
-  have hy_real : (0 : ℝ) < (y : ℝ) := by exact_mod_cast hy
-  have hterm : (0 : ℝ) < (y : ℝ) ^ (n + 1) / ((n + 1).factorial : ℝ) :=
-    div_pos (pow_pos hy_real _) (Nat.cast_pos.mpr (Nat.factorial_pos _))
-  have hle2 := Real.sum_le_exp_of_nonneg (le_of_lt hy_real) (n + 2)
-  rw [show n + 2 = n + 1 + 1 from by omega, Finset.sum_range_succ] at hle2
-  rw [taylorExpQ_cast_eq_sum]
-  linarith
-
 /-! ## Floor / cell extraction properties -/
 
 omit [FloatFormat] in
@@ -560,67 +450,6 @@ private theorem inStickyInterval_of_bracket
   · rw [two_mul_zpow_neg_succ, show ((q : ℝ) + 1) * (2 : ℝ) ^ (-(s : ℤ)) =
       ((q : ℝ) + 1) / (2 : ℝ) ^ s from by rw [zpow_neg, zpow_natCast]; ring]
     exact lt_of_le_of_lt hv_upper hupper_lt
-
-/-! ## Taylor upper bound (remainder covers gap) -/
-
-omit [FloatFormat] in
-/-- `taylorRemainder y (N+1)` as a real equals the standard bound form. -/
-private theorem taylorRemainder_cast (y : ℚ) (N : ℕ) (hN : 0 < N) :
-    (taylorRemainder y (N + 1) : ℝ) =
-      (y : ℝ) ^ (N + 1) * (↑(N + 1) + 1) / ((N + 1).factorial * (↑(N + 1) : ℝ)) := by
-  simp only [taylorRemainder, show N + 1 ≠ 0 from by omega, ↓reduceIte]
-  push_cast; ring
-
-omit [FloatFormat] in
-/-- Taylor partial sum + remainder upper-bounds `exp(y)` for `0 ≤ y ≤ 1`. -/
-private theorem exp_le_taylor_upper (y : ℚ) (hy0 : 0 ≤ y) (hy1 : (y : ℝ) ≤ 1) (N : ℕ)
-    (hN : 0 < N) :
-    Real.exp (y : ℝ) ≤ (taylorExpQ y N : ℝ) + (taylorRemainder y (N + 1) : ℝ) := by
-  rw [taylorExpQ_cast_eq_sum, taylorRemainder_cast y N hN]
-  exact Real.exp_bound' (by exact_mod_cast hy0) hy1 (n := N + 1) (by omega)
-
-omit [FloatFormat] in
-/-- Strict Taylor upper bound: `exp(y) < taylorExpQ y N + taylorRemainder y (N+1)` for `y > 0`. -/
-private theorem exp_lt_taylor_upper (y : ℚ) (hy_pos : 0 < y) (hy1 : (y : ℝ) ≤ 1) (N : ℕ)
-    (hN : 0 < N) :
-    Real.exp (y : ℝ) < (taylorExpQ y N : ℝ) + (taylorRemainder y (N + 1) : ℝ) := by
-  have hle := exp_le_taylor_upper y (le_of_lt hy_pos) hy1 (N + 1) (by omega)
-  have hsucc : (taylorExpQ y (N + 1) : ℝ) = (taylorExpQ y N : ℝ) +
-      (y : ℝ) ^ (N + 1) / ((N + 1).factorial : ℝ) := by
-    rw [taylorExpQ_cast_eq_sum, taylorExpQ_cast_eq_sum,
-      show N + 1 + 1 = (N + 1) + 1 from by omega, Finset.sum_range_succ]
-  rw [hsucc] at hle
-  suffices h : (y : ℝ) ^ (N + 1) / ((N + 1).factorial : ℝ) +
-      (taylorRemainder y (N + 2) : ℝ) < (taylorRemainder y (N + 1) : ℝ) by linarith
-  rw [taylorRemainder_cast y N hN, taylorRemainder_cast y (N + 1) (by omega)]
-  have hy_real : (0 : ℝ) < (y : ℝ) := by exact_mod_cast hy_pos
-  have hY : (0 : ℝ) < (y : ℝ) ^ (N + 1) := pow_pos hy_real _
-  have hF : (0 : ℝ) < ((N + 1).factorial : ℝ) := Nat.cast_pos.mpr (Nat.factorial_pos _)
-  have hN1 : (0 : ℝ) < ((N + 1 : ℕ) : ℝ) := by positivity
-  have hN2 : (0 : ℝ) < ((N + 2 : ℕ) : ℝ) := by positivity
-  have hpow_le : (y : ℝ) ^ (N + 2) ≤ (y : ℝ) ^ (N + 1) := by
-    rw [pow_succ]; exact mul_le_of_le_one_right (le_of_lt hY) hy1
-  have hfact : ((N + 2).factorial : ℝ) = ((N + 2 : ℕ) : ℝ) * ((N + 1).factorial : ℝ) := by
-    rw [show N + 2 = (N + 1) + 1 from by omega, Nat.factorial_succ]; push_cast; ring
-  rw [hfact, show (N + 1 + 1 : ℕ) = N + 2 from by omega]
-  have hc1 : ((N + 2 : ℕ) : ℝ) + 1 = ((N + 3 : ℕ) : ℝ) := by push_cast; ring
-  have hc2 : ((N + 1 : ℕ) : ℝ) + 1 = ((N + 2 : ℕ) : ℝ) := by push_cast; ring
-  rw [hc1, hc2]
-  have hkey : ((N + 1 : ℕ) : ℝ) * ((N + 3 : ℕ) : ℝ) < ((N + 2 : ℕ) : ℝ) * ((N + 2 : ℕ) : ℝ) := by
-    have : (N + 1) * (N + 3) < (N + 2) * (N + 2) := by nlinarith
-    exact_mod_cast this
-  have hpow_N3 : (y : ℝ) ^ (N + 2) * ((N + 3 : ℕ) : ℝ) ≤ (y : ℝ) ^ (N + 1) * ((N + 3 : ℕ) : ℝ) :=
-    mul_le_mul_of_nonneg_right hpow_le (by positivity)
-  suffices h : (y : ℝ) ^ (N + 1) / ↑(N + 1).factorial +
-      (y : ℝ) ^ (N + 1) * ↑(N + 3 : ℕ) / (↑(N + 2 : ℕ) * ↑(N + 1).factorial * ↑(N + 2 : ℕ)) <
-      (y : ℝ) ^ (N + 1) * ↑(N + 2 : ℕ) / (↑(N + 1).factorial * ↑(N + 1 : ℕ)) by
-    have h_step := div_le_div_of_nonneg_right hpow_N3
-      (le_of_lt (mul_pos (mul_pos hN2 hF) hN2))
-    linarith
-  have hN3 : (0 : ℝ) < ((N + 3 : ℕ) : ℝ) := by positivity
-  field_simp
-  nlinarith [hkey, hY, hF, hN1, hN2, hN3,
-    mul_pos hY (by linarith : (0 : ℝ) < ↑(N + 2 : ℕ) * ↑(N + 2 : ℕ) - ↑(N + 1 : ℕ) * ↑(N + 3 : ℕ))]
 
 /-! ## Argument reduction -/
 
@@ -1010,19 +839,6 @@ private theorem expRIntervalWith_brackets (x : ℚ) (k : ℤ) (lo2 hi2 : ℚ)
       push_cast
       have : (k : ℝ) < 0 := by exact_mod_cast hk
       constructor <;> nlinarith
-
-omit [FloatFormat] in
-/-- `taylorExpQ(0, N) = 1` for all N. -/
-private theorem taylorExpQ_zero (N : ℕ) : taylorExpQ (0 : ℚ) N = 1 := by
-  simp only [taylorExpQ]
-  cases N with
-  | zero => simp [taylorExpQ.go]
-  | succ n =>
-    simp [taylorExpQ.go]
-    suffices ∀ fuel k (acc : ℚ), taylorExpQ.go 0 fuel k acc 0 = acc from this n 1 1
-    intro fuel; induction fuel with
-    | zero => simp [taylorExpQ.go]
-    | succ n ih => intro k acc; simp [taylorExpQ.go, ih]
 
 omit [FloatFormat] in
 /-- `(2:ℝ)^k` is not irrational for any integer k. -/
@@ -1610,16 +1426,6 @@ private lemma expRIntervalWith_width_le (x : ℚ) (k : ℤ) (lo2 : ℚ) (N_ln2 :
           _ ≤ ((k.natAbs : ℤ) : ℝ) := Int.cast_le.mpr h
           _ = (k.natAbs : ℝ) := Int.cast_natCast k.natAbs
       exact div_le_div_of_nonneg_right hle (le_of_lt h2N_pos)
-
-omit [FloatFormat] in
-/-- Taylor remainder `R(a, N+1) ≤ R(b, N+1)` for `0 ≤ a ≤ b`. -/
-private lemma taylorRemainder_le_of_le (a b : ℚ) (N : ℕ) (hN : 0 < N)
-    (ha : 0 ≤ a) (hab : (a : ℝ) ≤ (b : ℝ)) :
-    (taylorRemainder a (N + 1) : ℝ) ≤ (taylorRemainder b (N + 1) : ℝ) := by
-  rw [taylorRemainder_cast a N hN, taylorRemainder_cast b N hN]
-  apply div_le_div_of_nonneg_right _ (by positivity)
-  apply mul_le_mul_of_nonneg_right _ (by positivity)
-  exact pow_le_pow_left₀ (by exact_mod_cast ha) hab _
 
 omit [FloatFormat] in
 /-- R-level width bound: for the Taylor bracket around exp,

@@ -6,6 +6,7 @@ import Flean.Operations.Sub
 import Flean.Operations.Div
 import Flean.Operations.Sqrt
 import Flean.Operations.Exp
+import Flean.Operations.ExpTaylor
 import Flean.Operations.ExpComputable
 import Flean.Operations.FMA
 import Flean.Operations.Sterbenz
