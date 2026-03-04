@@ -352,20 +352,13 @@ theorem inStickyInterval_of_bracket
   have hd_lo : 0 < d_lo := lower.den_pos
   have hd_hi : 0 < d_hi := upper.den_pos
   have h2s_pos : (0 : ℝ) < (2 : ℝ) ^ s := by positivity
-  have cast_eq (r : ℚ) (hr : 0 < r) :
-      (r : ℝ) = (r.num.natAbs : ℝ) / (r.den : ℝ) := by
-    have hnum : r.num = (r.num.natAbs : ℤ) :=
-      (Int.natAbs_of_nonneg (le_of_lt (Rat.num_pos.mpr hr))).symm
-    have h1 : (r : ℝ) = (r.num : ℝ) / (r.den : ℝ) := by
-      push_cast [Rat.cast_def]; ring
-    rw [h1, show (r.num : ℝ) = (r.num.natAbs : ℝ) from by rw [hnum]; simp]
   have hu_pos : 0 < upper := lt_of_lt_of_le hl_pos (by exact_mod_cast le_of_lt (lt_of_lt_of_le hv_lower hv_upper))
   have hq_le_lower : (q : ℝ) / (2 : ℝ) ^ s ≤ (lower : ℝ) := by
-    rw [div_le_iff₀ h2s_pos, cast_eq lower hl_pos, div_mul_eq_mul_div,
+    rw [div_le_iff₀ h2s_pos, Rat.cast_eq_natAbs_div_den lower hl_pos, div_mul_eq_mul_div,
       le_div_iff₀ (Nat.cast_pos.mpr hd_lo)]
     exact_mod_cast nat_floor_div_mul_le p_lo d_lo s
   have hupper_lt : (upper : ℝ) < ((q : ℝ) + 1) / (2 : ℝ) ^ s := by
-    rw [lt_div_iff₀ h2s_pos, cast_eq upper hu_pos, div_mul_eq_mul_div,
+    rw [lt_div_iff₀ h2s_pos, Rat.cast_eq_natAbs_div_den upper hu_pos, div_mul_eq_mul_div,
       div_lt_iff₀ (Nat.cast_pos.mpr hd_hi)]
     have hq_eq : q = p_hi * 2 ^ s / d_hi := hq_agree
     rw [hq_eq]

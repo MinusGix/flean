@@ -734,14 +734,6 @@ theorem expTryOne_of_tight_bracket (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : �
       have := hwidth
       rw [show expBounds x k iter = (lower, upper) from by ext <;> rfl] at this
       exact this
-    -- Cast helper: positive rational as natAbs / den
-    have cast_eq (r : ℚ) (hr : 0 < r) :
-        (r : ℝ) = (r.num.natAbs : ℝ) / (r.den : ℝ) := by
-      have hnum : r.num = (r.num.natAbs : ℤ) :=
-        (Int.natAbs_of_nonneg (le_of_lt (Rat.num_pos.mpr hr))).symm
-      have h1 : (r : ℝ) = (r.num : ℝ) / (r.den : ℝ) := by
-        push_cast [Rat.cast_def]; ring
-      rw [h1, show (r.num : ℝ) = (r.num.natAbs : ℝ) from by rw [hnum]; simp]
     -- Gap argument: no integer in (lower·2^s, upper·2^s]
     have h_no_int : ∀ m : ℤ,
         ¬((lower : ℝ) * 2 ^ s < (m : ℝ) ∧ (m : ℝ) ≤ (upper : ℝ) * 2 ^ s) := by
@@ -759,7 +751,7 @@ theorem expTryOne_of_tight_bracket (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : �
         have : q_lo < q_hi + 1 := by exact_mod_cast h
         omega
       calc (q_lo : ℝ) ≤ (lower : ℝ) * 2 ^ s := by
-              rw [cast_eq lower hl_pos, div_mul_eq_mul_div,
+              rw [Rat.cast_eq_natAbs_div_den lower hl_pos, div_mul_eq_mul_div,
                 le_div_iff₀ (Nat.cast_pos.mpr lower.den_pos)]
               exact_mod_cast nat_floor_div_mul_le lower.num.natAbs lower.den s
         _ ≤ (upper : ℝ) * 2 ^ s := by
@@ -767,7 +759,7 @@ theorem expTryOne_of_tight_bracket (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : �
                 (by exact_mod_cast le_of_lt (lt_of_lt_of_le hl_lt_exp hexp_le_u))
                 h2s_pos.le
         _ < (q_hi : ℝ) + 1 := by
-              rw [cast_eq upper hu_pos, div_mul_eq_mul_div,
+              rw [Rat.cast_eq_natAbs_div_den upper hu_pos, div_mul_eq_mul_div,
                 div_lt_iff₀ (Nat.cast_pos.mpr upper.den_pos)]
               rw [show (↑q_hi + (1 : ℝ)) * ↑upper.den = ((q_hi + 1 : ℕ) : ℝ) * ↑upper.den
                 from by push_cast; ring]
@@ -776,11 +768,11 @@ theorem expTryOne_of_tight_bracket (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : �
     have hlt : q_lo < q_hi := lt_of_le_of_ne hle hne
     -- m := q_lo + 1 lies in (lower·2^s, upper·2^s]
     have hm_lo : (lower : ℝ) * 2 ^ s < ((q_lo + 1 : ℕ) : ℝ) := by
-      rw [cast_eq lower hl_pos, div_mul_eq_mul_div,
+      rw [Rat.cast_eq_natAbs_div_den lower hl_pos, div_mul_eq_mul_div,
         div_lt_iff₀ (Nat.cast_pos.mpr lower.den_pos)]
       exact real_lt_nat_floor_div_succ_mul lower.num.natAbs lower.den s lower.den_pos
     have hm_hi : ((q_lo + 1 : ℕ) : ℝ) ≤ (upper : ℝ) * 2 ^ s := by
-      rw [cast_eq upper hu_pos, div_mul_eq_mul_div,
+      rw [Rat.cast_eq_natAbs_div_den upper hu_pos, div_mul_eq_mul_div,
         le_div_iff₀ (Nat.cast_pos.mpr upper.den_pos)]
       calc ((q_lo + 1 : ℕ) : ℝ) * ↑upper.den
           ≤ (q_hi : ℝ) * ↑upper.den := by

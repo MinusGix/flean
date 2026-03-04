@@ -204,3 +204,12 @@ theorem List.pairwise_disjoint_range {n : ℕ} : List.Pairwise (fun a b => a ≠
       intro hn
       rw [hn] at ain
       exact List.not_mem_range_self ain
+
+/-- A positive rational equals `natAbs(num) / den` as a real. -/
+theorem Rat.cast_eq_natAbs_div_den (r : ℚ) (hr : 0 < r) :
+    (r : ℝ) = (r.num.natAbs : ℝ) / (r.den : ℝ) := by
+  have hnum : r.num = (r.num.natAbs : ℤ) :=
+    (Int.natAbs_of_nonneg (le_of_lt (Rat.num_pos.mpr hr))).symm
+  have h1 : (r : ℝ) = (r.num : ℝ) / (r.den : ℝ) := by
+    push_cast [Rat.cast_def]; ring
+  rw [h1, show (r.num : ℝ) = (r.num.natAbs : ℝ) from by rw [hnum]; simp]
