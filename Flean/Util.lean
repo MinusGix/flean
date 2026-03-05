@@ -213,3 +213,80 @@ theorem Rat.cast_eq_natAbs_div_den (r : ℚ) (hr : 0 < r) :
   have h1 : (r : ℝ) = (r.num : ℝ) / (r.den : ℝ) := by
     push_cast [Rat.cast_def]; ring
   rw [h1, show (r.num : ℝ) = (r.num.natAbs : ℝ) from by rw [hnum]; simp]
+
+/-! ### Floor division bounds -/
+
+/-- Nat floor division gives a lower bound in ℝ. -/
+theorem nat_floor_div_mul_le (p d s : ℕ) :
+    ((p * 2 ^ s / d : ℕ) : ℝ) * (d : ℝ) ≤ (p : ℝ) * 2 ^ s := by
+  have := Nat.div_mul_le_self (p * 2 ^ s) d
+  exact_mod_cast this
+
+/-- Nat floor division gives a strict upper bound in ℝ. -/
+theorem real_lt_nat_floor_div_succ_mul (p d s : ℕ) (hd : 0 < d) :
+    (p : ℝ) * 2 ^ s < ((p * 2 ^ s / d + 1 : ℕ) : ℝ) * (d : ℝ) := by
+  set a := p * 2 ^ s
+  have h2 : a % d < d := Nat.mod_lt _ hd
+  have h3 : d * (a / d) + a % d = a := Nat.div_add_mod a d
+  have h4 : a < (a / d + 1) * d := by nlinarith
+  exact_mod_cast h4
+
+/-- `2 * x * 2^(-(s+1)) = x * 2^(-s)` for `s : ℤ`. -/
+theorem two_mul_zpow_neg_succ (x : ℝ) (s : ℤ) :
+    2 * x * (2 : ℝ) ^ (-s - 1) = x * (2 : ℝ) ^ (-s) := by
+  rw [show -s - 1 = -s + (-1) from by ring, zpow_add₀ (by norm_num : (2:ℝ) ≠ 0)]
+  ring
+
+/-! ### Rational absolute value bound -/
+
+theorem rat_abs_le_natAbs (x : ℚ) : |(x : ℝ)| ≤ (x.num.natAbs : ℝ) := by
+  rw [show (x : ℝ) = (x.num : ℝ) / (x.den : ℝ) from by
+    exact_mod_cast (Rat.num_div_den x).symm, abs_div,
+    abs_of_pos (show (0 : ℝ) < ↑x.den from by exact_mod_cast x.pos),
+    show (x.num.natAbs : ℝ) = |(x.num : ℝ)| from by rw [Nat.cast_natAbs, Int.cast_abs]]
+  exact div_le_self (abs_nonneg _) (by exact_mod_cast x.pos : (1 : ℝ) ≤ ↑x.den)
+
+/-! ### Real.exp / Real.log utility lemmas -/
+
+/-- `exp(k * log 2) = 2^k` for integer k. -/
+theorem exp_int_mul_log2 (k : ℤ) :
+    Real.exp (↑k * Real.log 2) = (2 : ℝ) ^ k := by
+  rw [show (↑k : ℝ) * Real.log 2 = Real.log 2 * ↑k from by ring,
+      Real.exp_mul, Real.exp_log (by norm_num : (0:ℝ) < 2), Real.rpow_intCast]
+
+/-- `exp(x) = 2^k * exp(x - k * log 2)` for integer k. -/
+theorem exp_arg_red (x : ℝ) (k : ℤ) :
+    Real.exp x = (2 : ℝ) ^ k * Real.exp (x - ↑k * Real.log 2) := by
+  conv_lhs => rw [show x = ↑k * Real.log 2 + (x - ↑k * Real.log 2) from by ring]
+  rw [Real.exp_add, exp_int_mul_log2]
+
+theorem log2_gt_half : (1 : ℝ) / 2 < Real.log 2 := by
+  rw [show (1:ℝ)/2 = Real.log (Real.exp (1/2)) from (Real.log_exp (1/2)).symm]
+  exact Real.log_lt_log (Real.exp_pos _) (by
+    have := Real.exp_bound' (show (0:ℝ) ≤ 1/2 by norm_num) (show (1:ℝ)/2 ≤ 1 by norm_num)
+      (show 0 < 2 by omega)
+    simp [Finset.sum_range_succ] at this; linarith)
+
+theorem log2_lt_one : Real.log 2 < 1 := by
+  calc Real.log 2 < Real.log (Real.exp 1) :=
+        Real.log_lt_log (by norm_num) (by
+          have := Real.sum_le_exp_of_nonneg (show (0:ℝ) ≤ 1 by norm_num) 3
+          simp [Finset.sum_range_succ] at this; linarith)
+    _ = 1 := Real.log_exp 1
+
+theorem log2_lt_seven_eighths : Real.log 2 < 7 / 8 := by
+  rw [show (7:ℝ)/8 = Real.log (Real.exp (7/8)) from (Real.log_exp (7/8)).symm]
+  exact Real.log_lt_log (by norm_num) (by
+    have := Real.sum_le_exp_of_nonneg (show (0:ℝ) ≤ 7/8 by norm_num) 3
+    simp [Finset.sum_range_succ] at this; linarith)
+
+/-- MVT-type bound: `exp(b) - exp(a) ≤ exp(b) * (b - a)` for `a ≤ b`. -/
+theorem exp_sub_le_mul_exp (a b : ℝ) :
+    Real.exp b - Real.exp a ≤ Real.exp b * (b - a) := by
+  have h1 : 1 - (b - a) ≤ Real.exp (-(b - a)) := by
+    linarith [Real.add_one_le_exp (-(b - a))]
+  have h2 : Real.exp b * (1 - (b - a)) ≤ Real.exp b * Real.exp (-(b - a)) :=
+    mul_le_mul_of_nonneg_left h1 (Real.exp_pos b).le
+  have h3 : Real.exp b * Real.exp (-(b - a)) = Real.exp a := by
+    rw [← Real.exp_add]; ring_nf
+  linarith

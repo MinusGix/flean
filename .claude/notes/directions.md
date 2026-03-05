@@ -30,15 +30,31 @@ Tracked iteratively. Priorities ordered top-to-bottom within each tier.
 - [ ] **Common constants verification** — prove binary32/64 constants match claimed values
 
 ## ExpComputable Cleanup
-- [ ] **File splitting** — ExpComputable.lean is ~2900 lines. Split into:
-  - `TaylorExp.lean`: Taylor series machinery (taylorExpQ, cast lemmas, monotonicity, lower/upper bounds, taylorRemainder). General-purpose, no dependency on sticky intervals.
-  - `StickyInterval.lean` (or inline into Exp.lean): `inStickyInterval_of_bracket`, floor arithmetic helpers. Pure number theory.
-  - `ExpTermination.lean`: padeP_abs_le, padeConvergenceN₀_le, pade_delta_log_bound, expFuel_sufficient, expTryOne_terminates. The heaviest section.
-  - `ExpComputable.lean`: remaining glue — expBounds, expTryOne, expExtractLoop, the instance.
-- [ ] **Unify expBounds sign cases** — expBounds has 3 near-identical case splits (r_lo ≥ 0 ∧ r_hi ≥ 0, mixed, both negative) sharing ~300 lines of Taylor reasoning. A unified `expRBracket` handling signs once would reduce duplication.
-- [ ] **Factor `cast_eq` helper** — "positive rational as natAbs/den" pattern appears in several theorems. Extract to a utility lemma (e.g., in Util.lean).
-- [ ] **Make `expShift_bound` concrete** — currently existential (`∃ S, ...`). Since the concrete bound is `prec + 9 + |k|`, state it directly to simplify `expFuel_sufficient`.
-- [ ] **Move `padeConvergenceN₀_le` to PadeExp.lean** — the bound lives in ExpComputable.lean but conceptually belongs next to the definition in PadeExp.lean.
+- [x] **File splitting** — Done. Split into 4 files:
+  - `ExpTaylor.lean` (203 lines): Taylor series (taylorExpQ, taylorRemainder, bounds)
+  - `ExpComputableDefs.lean` (1121 lines): computation defs + bracket correctness
+  - `ExpTermination.lean` (1559 lines): width bounds + Padé gap + fuel sufficiency
+  - `ExpComputable.lean` (148 lines): final assembly + ExpRefExecSound instance
+- [x] **Unify expBounds sign cases** — Extracted `expLowerBound`/`expUpperBound` to ExpTaylor.lean ✓
+- [x] **Factor `cast_eq` helper** — Extracted as `Rat.cast_eq_natAbs_div_den` in Util.lean ✓
+- [x] **Make `expShift_bound` concrete** — Direct `≤ prec + 9 + |k|` bound ✓
+- [x] **Move `padeConvergenceN₀_le` to PadeExp.lean** ✓
+
+## Exp Code Audit Findings
+- [x] **Move general lemmas to Util.lean** — 9+ lemmas in ExpComputableDefs/ExpTermination already marked `omit [FloatFormat]`:
+  - `nat_floor_div_mul_le` (ExpComputableDefs:311) — generic floor division bound
+  - `real_lt_nat_floor_div_succ_mul` (ExpComputableDefs:318) — generic floor upper bound
+  - `two_mul_zpow_neg_succ` (ExpComputableDefs:330) — zpow simplification
+  - `exp_int_mul_log2` (ExpComputableDefs:378) — `exp(k * log 2) = 2^k`
+  - `exp_arg_red` (ExpComputableDefs:385) — `exp(x) = 2^k * exp(x - k*log 2)`
+  - `log2_gt_half` (ExpComputableDefs:475), `log2_lt_one` (483), `log2_lt_seven_eighths` (491)
+  - `rat_abs_le_natAbs` (ExpComputableDefs:498)
+  - `exp_sub_le_mul_exp` (ExpTermination:262) — general MVT-type bound
+- [ ] **Extract duplicate `k.natAbs` bound** — `k.natAbs ≤ 2 * x.num.natAbs + 1` proved twice in ExpTermination (~lines 1052-1081 and 1192-1201, ~30 lines each). Should be a shared lemma.
+- [ ] **Fix misleading comment** — ExpTermination:1300 says "sorry-ed helper bounds" but there are no sorries. Quick fix.
+- [ ] **Trim exploratory comments** — `expBounds_lower_lt_exp` (ExpComputableDefs:869-954) has ~25 lines of exploration comments that could be condensed.
+- [ ] **Missing API lemmas in ExpTaylor** — `taylorExpQ_pos` (strict positivity for n ≥ 1, y ≥ 0), `taylorRemainder_pos` (strict, for y > 0). Low priority.
+- [ ] **Constants documentation** — The constants 500, 113, 27 in termination bounds lack brief derivation explanations. Low priority.
 
 ## Long-Term
 - [ ] Error-minimizing tactic (reorder FP computations)

@@ -258,18 +258,6 @@ theorem expShift_bound (x : ℚ) (k : ℤ) (iter : ℕ)
   exact le_trans hshift (Int.toNat_le_toNat this)
 
 omit [FloatFormat] in
-/-- MVT-type bound: `exp(b) - exp(a) ≤ exp(b) * (b - a)` for `a ≤ b`. -/
-theorem exp_sub_le_mul_exp (a b : ℝ) :
-    Real.exp b - Real.exp a ≤ Real.exp b * (b - a) := by
-  have h1 : 1 - (b - a) ≤ Real.exp (-(b - a)) := by
-    linarith [Real.add_one_le_exp (-(b - a))]
-  have h2 : Real.exp b * (1 - (b - a)) ≤ Real.exp b * Real.exp (-(b - a)) :=
-    mul_le_mul_of_nonneg_left h1 (Real.exp_pos b).le
-  have h3 : Real.exp b * Real.exp (-(b - a)) = Real.exp a := by
-    rw [← Real.exp_add]; ring_nf
-  linarith
-
-omit [FloatFormat] in
 /-- The r-interval width from `expRIntervalWith` is at most `k.natAbs / 2^N_ln2` (in ℝ). -/
 lemma expRIntervalWith_width_le (x : ℚ) (k : ℤ) (lo2 : ℚ) (N_ln2 : ℕ) :
     let hi2 := lo2 + 1 / 2 ^ N_ln2
