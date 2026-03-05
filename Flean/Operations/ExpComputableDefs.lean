@@ -1,5 +1,6 @@
 import Flean.Operations.Exp
 import Flean.Operations.ExpTaylor
+import Flean.Operations.StickyExtract
 import Flean.NumberTheory.ExpEffectiveBound
 import Mathlib.Analysis.SpecialFunctions.Log.Deriv
 
@@ -106,28 +107,19 @@ def expRInterval (x : ℚ) (k : ℤ) : ℚ × ℚ :=
 
 /-! ## Sticky cell extraction -/
 
-/-- Compute shift `s` from a positive rational, targeting `prec + 3` bits in `q`. -/
-def expShift (r : ℚ) : ℕ :=
-  let p := r.num.natAbs
-  let d := r.den
-  let targetBits := FloatFormat.prec.toNat + 4
-  let s_int : ℤ := (targetBits : ℤ) + (Nat.log2 d : ℤ) - (Nat.log2 p : ℤ)
-  s_int.toNat
+/-- Compute shift `s` from a positive rational, targeting `prec + 3` bits in `q`.
+Alias for `stickyShift` from the generic extraction machinery. -/
+abbrev expShift := @stickyShift
 
 /-- Extract `(q, e_base)` from lower and upper rational bounds for exp.
 
 Given `lower ≤ exp(x) ≤ upper` where both are positive rationals,
 finds `q, e_base` such that `exp(x) ∈ (2q·2^e_base, 2(q+1)·2^e_base)`.
 
-Uses ⌊lower·2^s⌋ as `q`. Soundness requires that both `q_lo` and `q_hi`
-(floors of lower and upper scaled by 2^s) agree, ensuring exp(x) is in cell q. -/
+Uses ⌊lower·2^s⌋ as `q`. Wraps `stickyExtract` with `isExact := false`. -/
 def expExtract (lower _upper : ℚ) : ExpRefOut :=
-  let s := expShift lower
-  let p_lo := lower.num.natAbs
-  let d_lo := lower.den
-  let q := p_lo * 2 ^ s / d_lo
-  let e_base : ℤ := -((s : ℤ)) - 1
-  { q := q, e_base := e_base, isExact := false }
+  let s := stickyExtract lower
+  { q := s.q, e_base := s.e_base, isExact := false }
 
 /-- Compute r interval using adaptive ln2 bounds. -/
 def expRIntervalWith (x : ℚ) (k : ℤ) (lo2 hi2 : ℚ) : ℚ × ℚ :=
@@ -211,66 +203,11 @@ theorem expExtract_isExact_false (lower upper : ℚ) :
     (expExtract lower upper).isExact = false := by
   simp [expExtract]
 
-/-- Core arithmetic: with the log2-based shift, `p * 2^s / d ≥ 2^(prec+3)`. -/
-theorem initial_q_ge_minQ (p d : ℕ) (hp : 0 < p) (hd : 0 < d) :
-    let s_int : ℤ := ((FloatFormat.prec.toNat + 4 : ℕ) : ℤ) +
-      ((Nat.log2 d : ℕ) : ℤ) - ((Nat.log2 p : ℕ) : ℤ)
-    2 ^ (FloatFormat.prec.toNat + 3) ≤ p * 2 ^ s_int.toNat / d := by
-  simp only
-  set prec2 := FloatFormat.prec.toNat + 3
-  set lp := Nat.log2 p
-  set ld := Nat.log2 d
-  set s_int : ℤ := ((prec2 + 1 : ℕ) : ℤ) + (ld : ℤ) - (lp : ℤ)
-  set s := s_int.toNat
-  have hp_ne : p ≠ 0 := by omega
-  have hd_ne : d ≠ 0 := by omega
-  have hlp : 2 ^ lp ≤ p := Nat.log2_self_le hp_ne
-  have hdlt : d < 2 ^ (ld + 1) := (Nat.log2_lt hd_ne).mp (Nat.lt_succ_of_le (le_refl ld))
-  rw [Nat.le_div_iff_mul_le (by omega : 0 < d)]
-  by_cases hs : (0 : ℤ) ≤ s_int
-  · have hlp_le : lp ≤ prec2 + 1 + ld := by omega
-    have hs_eq : s = prec2 + 1 + ld - lp := by omega
-    have key : 2 ^ (prec2 + 1 + ld) ≤ p * 2 ^ s := by
-      calc 2 ^ (prec2 + 1 + ld)
-          = 2 ^ (lp + (prec2 + 1 + ld - lp)) := by congr 1; omega
-        _ = 2 ^ lp * 2 ^ (prec2 + 1 + ld - lp) := by rw [Nat.pow_add]
-        _ ≤ p * 2 ^ s := by rw [hs_eq]; exact Nat.mul_le_mul_right _ hlp
-    exact le_of_lt (calc 2 ^ prec2 * d
-        < 2 ^ prec2 * 2 ^ (ld + 1) :=
-          Nat.mul_lt_mul_of_pos_left hdlt (by positivity)
-      _ = 2 ^ (prec2 + 1 + ld) := by rw [← Nat.pow_add]; congr 1; omega
-      _ ≤ p * 2 ^ s := key)
-  · push_neg at hs
-    have hs_eq : s = 0 := Int.toNat_eq_zero.mpr (le_of_lt hs)
-    rw [hs_eq, Nat.pow_zero, Nat.mul_one]
-    have step1 : 2 ^ prec2 * d < 2 ^ (prec2 + ld + 1) := by
-      calc 2 ^ prec2 * d < 2 ^ prec2 * 2 ^ (ld + 1) :=
-            Nat.mul_lt_mul_of_pos_left hdlt (by positivity)
-        _ = 2 ^ (prec2 + (ld + 1)) := by rw [← Nat.pow_add]
-        _ = 2 ^ (prec2 + ld + 1) := by ring_nf
-    have step2 : prec2 + ld + 1 ≤ lp := by omega
-    exact le_of_lt (lt_of_lt_of_le step1
-      (le_trans (Nat.pow_le_pow_right (by omega) step2) hlp))
-
-/-- `expShift`-based q for a positive rational is ≥ 2^(prec+3). -/
-theorem expShift_q_ge (r : ℚ) (hpos : 0 < r) :
-    let p := r.num.natAbs
-    let d := r.den
-    let s := expShift r
-    2 ^ (FloatFormat.prec.toNat + 3) ≤ p * 2 ^ s / d := by
-  have hp : 0 < r.num.natAbs :=
-    Int.natAbs_pos.mpr (ne_of_gt (Rat.num_pos.mpr hpos))
-  exact initial_q_ge_minQ r.num.natAbs r.den hp r.den_pos
-
 /-- `expExtract` produces `q ≥ 2^(prec+2)` for positive lower bound. -/
 theorem expExtract_q_ge (lower upper : ℚ) (hpos : 0 < lower) :
     2 ^ (FloatFormat.prec.toNat + 2) ≤ (expExtract lower upper).q := by
-  have hraw := expShift_q_ge lower hpos
-  simp only at hraw
-  simp only [expExtract]
-  have : 2 ^ (FloatFormat.prec.toNat + 2) ≤ 2 ^ (FloatFormat.prec.toNat + 3) :=
-    Nat.pow_le_pow_right (by omega) (by omega)
-  omega
+  show 2 ^ (FloatFormat.prec.toNat + 2) ≤ (stickyExtract lower).q
+  exact stickyExtract_q_ge lower hpos
 
 /-- When `expTryOne` succeeds, the result has `isExact = false`. -/
 theorem expTryOne_isExact (x : ℚ) (k : ℤ) (iter : ℕ) (r : ExpRefOut)
@@ -305,45 +242,6 @@ theorem expComputableRun_zero (a : FiniteFp) (hm : a.m = 0) :
   simp [expComputableRun, hm]
 
 /-! ## Sticky interval from floor + error bounds -/
-
-omit [FloatFormat] in
-/-- If `lower < v ≤ upper` and both `⌊lower·2^s⌋ = ⌊upper·2^s⌋ = q`,
-then `v ∈ (q·2^(-s), (q+1)·2^(-s))` i.e. `inStickyInterval q (-(s+1)) v`. -/
-theorem inStickyInterval_of_bracket
-    (lower upper : ℚ) (hl_pos : 0 < lower) (v : ℝ) (s : ℕ)
-    (hv_lower : (lower : ℝ) < v)
-    (hv_upper : v ≤ (upper : ℝ))
-    (hq_agree : lower.num.natAbs * 2 ^ s / lower.den =
-      upper.num.natAbs * 2 ^ s / upper.den) :
-    let q := lower.num.natAbs * 2 ^ s / lower.den
-    inStickyInterval (R := ℝ) q (-((s : ℤ)) - 1) v := by
-  simp only
-  set p_lo := lower.num.natAbs
-  set d_lo := lower.den
-  set p_hi := upper.num.natAbs
-  set d_hi := upper.den
-  set q := p_lo * 2 ^ s / d_lo
-  have hd_lo : 0 < d_lo := lower.den_pos
-  have hd_hi : 0 < d_hi := upper.den_pos
-  have h2s_pos : (0 : ℝ) < (2 : ℝ) ^ s := by positivity
-  have hu_pos : 0 < upper := lt_of_lt_of_le hl_pos (by exact_mod_cast le_of_lt (lt_of_lt_of_le hv_lower hv_upper))
-  have hq_le_lower : (q : ℝ) / (2 : ℝ) ^ s ≤ (lower : ℝ) := by
-    rw [div_le_iff₀ h2s_pos, Rat.cast_eq_natAbs_div_den lower hl_pos, div_mul_eq_mul_div,
-      le_div_iff₀ (Nat.cast_pos.mpr hd_lo)]
-    exact_mod_cast nat_floor_div_mul_le p_lo d_lo s
-  have hupper_lt : (upper : ℝ) < ((q : ℝ) + 1) / (2 : ℝ) ^ s := by
-    rw [lt_div_iff₀ h2s_pos, Rat.cast_eq_natAbs_div_den upper hu_pos, div_mul_eq_mul_div,
-      div_lt_iff₀ (Nat.cast_pos.mpr hd_hi)]
-    have hq_eq : q = p_hi * 2 ^ s / d_hi := hq_agree
-    rw [hq_eq]
-    exact_mod_cast real_lt_nat_floor_div_succ_mul p_hi d_hi s hd_hi
-  constructor
-  · rw [two_mul_zpow_neg_succ, show (q : ℝ) * (2 : ℝ) ^ (-(s : ℤ)) =
-      (q : ℝ) / (2 : ℝ) ^ s from by rw [zpow_neg, zpow_natCast]; ring]
-    exact lt_of_le_of_lt hq_le_lower hv_lower
-  · rw [two_mul_zpow_neg_succ, show ((q : ℝ) + 1) * (2 : ℝ) ^ (-(s : ℤ)) =
-      ((q : ℝ) + 1) / (2 : ℝ) ^ s from by rw [zpow_neg, zpow_natCast]; ring]
-    exact lt_of_le_of_lt hv_upper hupper_lt
 
 /-! ## ln(2) series soundness -/
 

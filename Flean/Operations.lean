@@ -7,6 +7,7 @@ import Flean.Operations.Div
 import Flean.Operations.Sqrt
 import Flean.Operations.Exp
 import Flean.Operations.ExpTaylor
+import Flean.Operations.StickyExtract
 import Flean.Operations.ExpComputableDefs
 import Flean.Operations.ExpComputableSound
 import Flean.Operations.ExpTermination
