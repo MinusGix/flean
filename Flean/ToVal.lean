@@ -93,6 +93,20 @@ theorem toVal_neg_one [Field R] [LinearOrder R] [IsStrictOrderedRing R] : toVal 
 theorem toVal_neg_zero [Field R] : toVal (-(0 : FiniteFp)) = (0 : R) := by
   rw [toVal_neg_eq_neg, toVal_zero, neg_zero]
 
+/-- `toVal` commutes with the `ℚ → ℝ` cast: computing in ℚ then casting gives
+the same result as computing directly in ℝ. This is the bridge lemma for proofs
+that compute in ℚ (for decidability) but state results about ℝ. -/
+@[simp]
+theorem toVal_ratCast (x : FiniteFp) : (x.toVal (R := ℚ) : ℝ) = x.toVal (R := ℝ) := by
+  simp only [toVal, sign', FloatFormat.radix_val_eq_two]
+  split_ifs <;> push_cast <;> ring
+
+/-- `toVal_mag` commutes with the `ℚ → ℝ` cast. -/
+@[simp]
+theorem toVal_mag_ratCast (x : FiniteFp) : (x.toVal_mag (R := ℚ) : ℝ) = x.toVal_mag (R := ℝ) := by
+  simp only [toVal_mag, FloatFormat.radix_val_eq_two]
+  push_cast; ring
+
 /-- The integral significand of a finite float is zero iff the float converted to a value is zero -/
 theorem toVal_significand_zero_iff [Field R] [LinearOrder R] [IsStrictOrderedRing R] {x : FiniteFp} : x.m = 0 ↔ toVal x = (0 : R) := by
   constructor

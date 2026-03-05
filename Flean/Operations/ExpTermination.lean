@@ -1,4 +1,4 @@
-import Flean.Operations.ExpComputableDefs
+import Flean.Operations.ExpComputableSound
 import Flean.Operations.ExpTaylor
 import Flean.NumberTheory.PadeExp
 import Flean.NumberTheory.ExpEffectiveBound
@@ -329,7 +329,7 @@ lemma expBounds_r_width_le (r_lo r_hi : ℚ) (N : ℕ) (hN : 0 < N)
   -- Key facts
   have hexp_sub := exp_sub_le_mul_exp (r_lo : ℝ) (r_hi : ℝ)
   have hexp_hi_lt8 : Real.exp (r_hi : ℝ) < 8 :=
-    lt_trans (Real.exp_lt_exp_of_lt hr_hi_lt2) exp_two_lt_eight
+    lt_trans (Real.exp_strictMono hr_hi_lt2) exp_two_lt_eight
   have hDr_nn : 0 ≤ (r_hi : ℝ) - (r_lo : ℝ) := sub_nonneg.mpr hr_le
   -- B₁ = 2 * R(2)
   have hR2_eq : (taylorRemainder (2 : ℚ) (N + 1) : ℝ) =
@@ -387,6 +387,41 @@ lemma expBounds_r_width_le (r_lo r_hi : ℚ) (N : ℕ) (hN : 0 < N)
                 (mul_le_mul hD_ge1 (Real.one_le_exp (by exact_mod_cast hy)) zero_le_one
                   (le_trans zero_le_one hD_ge1)))
         _ = (taylorRemainder (2 : ℚ) (N + 1) : ℝ) := div_one _
+  -- Helper: for y ≥ 0 with y < 1, the reciprocal upper bound 1/S_N(y) - exp(-y) ≤ R(2)
+  have recip_upper_bound : ∀ (y : ℚ), 0 ≤ y → (y : ℝ) < 1 →
+      1 / (taylorExpQ y N : ℝ) - Real.exp (-(y : ℝ)) ≤
+      (taylorRemainder (2 : ℚ) (N + 1) : ℝ) := by
+    intro y hy hy_lt1
+    have hS_ge1 := taylorExpQ_ge_one y hy N
+    have hS_pos : (0 : ℝ) < (taylorExpQ y N : ℝ) :=
+      by exact_mod_cast lt_of_lt_of_le one_pos hS_ge1
+    have hS_le := taylorExpQ_le_exp y hy N
+    have hexp_upper := exp_le_taylor_upper y hy (le_of_lt hy_lt1) N hN
+    have hR := taylorRemainder_le_of_le y 2 N hN hy
+      (le_of_lt (by linarith : (y : ℝ) < 2))
+    have hexp_pos := Real.exp_pos (y : ℝ)
+    have hR_nn : 0 ≤ (taylorRemainder y (N + 1) : ℝ) := by
+      unfold taylorRemainder; simp only [show N + 1 ≠ 0 from by omega, ↓reduceIte]
+      exact_mod_cast div_nonneg (mul_nonneg (pow_nonneg hy _) (by positivity)) (by positivity)
+    rw [show Real.exp (-(y : ℝ)) = (Real.exp (y : ℝ))⁻¹ from Real.exp_neg _,
+        one_div,
+        show (taylorExpQ y N : ℝ)⁻¹ - (Real.exp (y : ℝ))⁻¹ =
+          (Real.exp (y : ℝ) - (taylorExpQ y N : ℝ)) /
+          ((taylorExpQ y N : ℝ) * Real.exp (y : ℝ)) from by field_simp]
+    calc (Real.exp (y : ℝ) - (taylorExpQ y N : ℝ)) /
+            ((taylorExpQ y N : ℝ) * Real.exp (y : ℝ))
+        ≤ (taylorRemainder y (N + 1) : ℝ) /
+            ((taylorExpQ y N : ℝ) * Real.exp (y : ℝ)) := by
+          apply div_le_div_of_nonneg_right _ (by positivity)
+          linarith [hexp_upper]
+      _ ≤ (taylorRemainder y (N + 1) : ℝ) / 1 :=
+          div_le_div_of_nonneg_left hR_nn one_pos (by
+            calc (1 : ℝ) = 1 * 1 := (one_mul 1).symm
+              _ ≤ (taylorExpQ y N : ℝ) * Real.exp (y : ℝ) :=
+                mul_le_mul (by exact_mod_cast hS_ge1)
+                  (Real.one_le_exp (by exact_mod_cast hy))
+                  zero_le_one (by positivity))
+      _ ≤ (taylorRemainder (2 : ℚ) (N + 1) : ℝ) := by rw [div_one]; exact hR
   -- Case split on signs using by_cases for predictable hypothesis names
   rw [hB1_eq]
   by_cases h_rhi : (0 : ℚ) ≤ r_hi <;> by_cases h_rlo : (0 : ℚ) ≤ r_lo <;>
@@ -421,42 +456,12 @@ lemma expBounds_r_width_le (r_lo r_hi : ℚ) (N : ℕ) (hN : 0 < N)
     have habs_hi : (0 : ℚ) ≤ -r_hi := by linarith
     have habs_lo_lt2 : ((-r_lo : ℚ) : ℝ) < 2 := by push_cast; linarith
     have habs_hi_lt1 : ((-r_hi : ℚ) : ℝ) < 1 := by push_cast; linarith
-    -- Upper: 1/S_N(-r_hi) - exp(r_hi) ≤ R(2)
-    -- (exp(-r_hi) - S_N(-r_hi))/(S_N(-r_hi)*exp(-r_hi)) ≤ R(-r_hi) ≤ R(2)
-    have hS_hi_ge1 := taylorExpQ_ge_one (-r_hi) habs_hi N
-    have hS_hi_pos : (0 : ℝ) < (taylorExpQ (-r_hi) N : ℝ) :=
-      by exact_mod_cast lt_of_lt_of_le one_pos hS_hi_ge1
-    have hS_hi_le := taylorExpQ_le_exp (-r_hi) habs_hi N
-    have hexp_mhi_upper := exp_le_taylor_upper (-r_hi) habs_hi (le_of_lt habs_hi_lt1) N hN
-    have hR_hi := taylorRemainder_le_of_le (-r_hi) 2 N hN habs_hi
-      (le_of_lt (by linarith : ((-r_hi : ℚ) : ℝ) < 2))
-    have hexp_mhi_pos := Real.exp_pos ((-r_hi : ℚ) : ℝ)
-    have hR_mhi_nn : 0 ≤ (taylorRemainder (-r_hi) (N + 1) : ℝ) := by
-      unfold taylorRemainder; simp only [show N + 1 ≠ 0 from by omega, ↓reduceIte]
-      exact_mod_cast div_nonneg (mul_nonneg (pow_nonneg habs_hi _) (by positivity)) (by positivity)
+    -- Upper: 1/S_N(-r_hi) - exp(r_hi) ≤ R(2) via recip_upper_bound
     have h_up : 1 / (taylorExpQ (-r_hi) N : ℝ) - Real.exp (r_hi : ℝ) ≤
         (taylorRemainder (2 : ℚ) (N + 1) : ℝ) := by
-      rw [show Real.exp (r_hi : ℝ) = (Real.exp ((-r_hi : ℚ) : ℝ))⁻¹ from by
-            rw [show ((-r_hi : ℚ) : ℝ) = -((r_hi : ℚ) : ℝ) from by push_cast; ring,
-                Real.exp_neg, inv_inv],
-          one_div,
-          show (taylorExpQ (-r_hi) N : ℝ)⁻¹ - (Real.exp ((-r_hi : ℚ) : ℝ))⁻¹ =
-            (Real.exp ((-r_hi : ℚ) : ℝ) - (taylorExpQ (-r_hi) N : ℝ)) /
-            ((taylorExpQ (-r_hi) N : ℝ) * Real.exp ((-r_hi : ℚ) : ℝ)) from by field_simp]
-      calc (Real.exp ((-r_hi : ℚ) : ℝ) - (taylorExpQ (-r_hi) N : ℝ)) /
-              ((taylorExpQ (-r_hi) N : ℝ) * Real.exp ((-r_hi : ℚ) : ℝ))
-          ≤ (taylorRemainder (-r_hi) (N + 1) : ℝ) /
-              ((taylorExpQ (-r_hi) N : ℝ) * Real.exp ((-r_hi : ℚ) : ℝ)) := by
-            apply div_le_div_of_nonneg_right _ (by positivity)
-            linarith [hexp_mhi_upper]
-        _ ≤ (taylorRemainder (-r_hi) (N + 1) : ℝ) / 1 :=
-            div_le_div_of_nonneg_left hR_mhi_nn one_pos (by
-              calc (1 : ℝ) = 1 * 1 := (one_mul 1).symm
-                _ ≤ (taylorExpQ (-r_hi) N : ℝ) * Real.exp ((-r_hi : ℚ) : ℝ) :=
-                  mul_le_mul (by exact_mod_cast hS_hi_ge1)
-                    (Real.one_le_exp (by exact_mod_cast habs_hi))
-                    zero_le_one (by positivity))
-        _ ≤ (taylorRemainder (2 : ℚ) (N + 1) : ℝ) := by rw [div_one]; exact hR_hi
+      have := recip_upper_bound (-r_hi) habs_hi habs_hi_lt1
+      simp only [show -((-r_hi : ℚ) : ℝ) = (r_hi : ℝ) from by push_cast; ring] at this
+      exact this
     -- Lower bound from recip_bound
     have h_lo := recip_bound (-r_lo) habs_lo habs_lo_lt2
     simp only [show -((-r_lo : ℚ) : ℝ) = (r_lo : ℝ) from by push_cast; ring] at h_lo
@@ -517,9 +522,9 @@ theorem expBounds_width_bound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
   set lower_r := expLowerBound r_lo N with hlr_def
   -- Factor: upper = upper_r * 2^k, lower = lower_r * 2^k
   have h_upper_eq : upper = upper_r * (2:ℚ) ^ k := by
-    simp only [upper, upper_r, expBounds, hrp_def, hN_def, hN_ln2_def, hlo2_def]; ring
+    simp only [upper, upper_r, expBounds, hN_def]; ring
   have h_lower_eq : lower = lower_r * (2:ℚ) ^ k := by
-    simp only [lower, lower_r, expBounds, hrp_def, hN_def, hN_ln2_def, hlo2_def]; ring
+    simp only [lower, lower_r, expBounds, hN_def]; ring
   -- upper - lower = (upper_r - lower_r) * 2^k
   have h_factor : (upper : ℝ) - (lower : ℝ) = ((upper_r : ℝ) - (lower_r : ℝ)) * (2:ℝ) ^ k := by
     rw [h_upper_eq, h_lower_eq]; push_cast; ring
@@ -805,12 +810,14 @@ theorem expTryOne_of_tight_bracket (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : �
   · exact absurd hq h
 
 -- Helper: 2^a * (1/2)^(a+b) = (1/2)^b
+omit [FloatFormat] in
 lemma two_pow_mul_half_pow (a b : ℕ) :
     (2:ℝ)^a * (1/2:ℝ)^(a+b) = (1/2:ℝ)^b := by
   rw [one_div_pow, one_div_pow, pow_add]
   field_simp
 
 -- Helper: err₁ bound from factorial geometric decay
+omit [FloatFormat] in
 lemma err1_factorial_bound (N : ℕ) (hN : 4 ≤ N) :
     (2:ℝ)^(N+2) * (N+2:ℝ) / ((N+1).factorial * (N+1:ℝ)) ≤ (8/3:ℝ) * (1/2:ℝ)^(N-4) := by
   have hfac_pos : (0:ℝ) < (N.factorial : ℝ) := Nat.cast_pos.mpr (Nat.factorial_pos _)
@@ -853,6 +860,7 @@ lemma err1_factorial_bound (N : ℕ) (hN : 4 ≤ N) :
       ≤ 4 * (2:ℝ)^N / ↑N.factorial := herr1_aux
     _ ≤ (8/3:ℝ) * (1/2:ℝ)^(N-4) := h4_fac
 
+omit [FloatFormat] in
 /-- **Fuel sufficiency**: within `expFuel x` iterations, `expTryOne` succeeds.
 This is the quantitative core combining all three ingredients:
 1. Effective δ from `pade_effective_delta` for the shift `s` at each iteration
@@ -910,7 +918,7 @@ lemma pade_delta_log_bound (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0) (s : 
       have hab_r : (0 : ℝ) ≤ (ab : ℝ) := Nat.cast_nonneg _
       -- Handle N = 0 trivially
       rcases Nat.eq_zero_or_pos N with rfl | hN_pos
-      · simp [Nat.factorial, padeP, padeCoeff, Finset.sum_range_one]
+      · simp [Nat.factorial, padeP, padeCoeff]
         exact one_le_pow₀ (by exact_mod_cast (show 1 ≤ ab by omega))
       -- Step A: N! * b^N * |P_N(x)| ≤ N! * (4b)^N * exp(|x|)
       have h1 : (N.factorial : ℝ) * (b : ℝ) ^ N * |padeP N x| ≤
@@ -1187,7 +1195,7 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
            8 * (k.natAbs + 1 : ℝ) / 2 ^ N_ln2) := by
       have := hbound
       rw [show expBounds x k iter = (lower, upper) from by ext <;> rfl] at this
-      dsimp only at this; push_cast at this ⊢
+      dsimp only at this
       exact this
     have hS_iter : expShift lower ≤ S := hS iter
     -- 2^{|k|+s} ≤ 2^{|k|+S}

@@ -8,6 +8,7 @@ import Flean.Operations.Sqrt
 import Flean.Operations.Exp
 import Flean.Operations.ExpTaylor
 import Flean.Operations.ExpComputableDefs
+import Flean.Operations.ExpComputableSound
 import Flean.Operations.ExpTermination
 import Flean.Operations.ExpComputable
 import Flean.Operations.FMA

@@ -1,4 +1,4 @@
-import Flean.Operations.ExpComputableDefs
+import Flean.Operations.ExpComputableSound
 import Flean.Operations.ExpTermination
 
 /-! # Computable `ExpRefExec` and `ExpRefExecSound` Instances
@@ -110,10 +110,7 @@ private theorem expComputableRun_sticky_interval (a : FiniteFp) (o : ExpRefOut)
     (hr : expComputableRun a = o) (hFalse : o.isExact = false) :
     inStickyInterval (R := ℝ) o.q o.e_base (Real.exp (a.toVal : ℝ)) := by
   have hsound := (expComputableRun_loop_sound a o hr hFalse).2
-  -- Bridge: (↑(a.toVal : ℚ) : ℝ) = (a.toVal : ℝ)
-  suffices hcast : (a.toVal (R := ℚ) : ℝ) = (a.toVal (R := ℝ)) by rw [← hcast]; exact hsound
-  simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two]
-  split_ifs <;> push_cast <;> ring
+  rw [← FiniteFp.toVal_ratCast]; exact hsound
 
 /-! ## ExpRefExecSound instance
 
