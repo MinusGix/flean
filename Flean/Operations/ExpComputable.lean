@@ -12,10 +12,10 @@ proof establishes that the result is always correct. **All proofs are sorry-free
 1. **Special case**: `x = ±0` → return exact `exp(0) = 1`.
 2. **Argument reduction** (`expArgRedK`): compute `k = round(x / ln 2)` using a rational
    approximation to `ln 2`, giving `exp(x) = 2^k · exp(r)` with `|r| < 1`.
-3. **Iterative refinement** (`expExtractLoop`): at increasing precision levels `iter`,
-   compute rational brackets `(lower, upper)` around `exp(x)` via Taylor series with
-   explicit Lagrange remainder (`expBounds`), then check if `⌊lower · 2^s⌋ = ⌊upper · 2^s⌋`.
-   When floors agree, we've identified the sticky cell.
+3. **Iterative refinement** (`stickyExtractLoop (expBounds x k)`): at increasing precision
+   levels `iter`, compute rational brackets `(lower, upper)` around `exp(x)` via Taylor
+   series with explicit Lagrange remainder (`expBounds`), then check if
+   `⌊lower · 2^s⌋ = ⌊upper · 2^s⌋`. When floors agree, we've identified the sticky cell.
 4. **Output**: `{q, e_base, isExact}` where `exp(x) ∈ (2q · 2^e_base, 2(q+1) · 2^e_base)`.
 
 ## Proof structure
@@ -28,8 +28,7 @@ taylorExpQ_lt_exp, exp_le_taylor_upper    -- Taylor bounds on exp(r)
     → expBounds_lower_lt_exp              -- lower < exp(x)
     → expBounds_exp_le_upper              -- exp(x) ≤ upper
     → inStickyInterval_of_bracket         -- floor agreement → sticky cell
-    → expTryOne_sound                     -- if expTryOne succeeds, result is correct
-    → expExtractLoop_sound                -- induction on fuel
+    → stickyTryOne_sound / stickyExtractLoop_sound  -- generic loop soundness
 ```
 
 ### Thread 2 — Termination (the loop eventually succeeds within `expFuel x` steps)
@@ -39,16 +38,19 @@ pade_effective_delta (PadeExp.lean)        -- ∃ δ > 0, exp(x)·2^s avoids int
     → pade_delta_log_bound                -- 1/δ ≤ 2^(114·ab·log(ab))
     → expBounds_width_bound               -- bracket width ≤ C · (1/N! + 1/2^N_ln2)
     → expFuel_sufficient                  -- ∃ iter < expFuel(x), width < δ
-    → expTryOne_terminates
+    → stickyTryOne_expBounds_terminates
 ```
 
 ### Meeting point: `expLoop_sound`
-Combines `expExtractLoop_sound` (correctness) with `expTryOne_terminates` (termination)
-to prove the loop output is valid. The four `OpRefExecSound expTarget` obligations then follow directly.
+Combines `stickyExtractLoop_sound` (correctness) with `stickyTryOne_expBounds_terminates`
+(termination) to prove the loop output is valid. The four `OpRefExecSound expTarget`
+obligations then follow directly.
 
 ## File organization
+- `StickyExtract.lean`: generic sticky cell extraction (`stickyTryOne`, `stickyExtractLoop`)
 - `ExpTaylor.lean`: Taylor series machinery (`taylorExpQ`, `taylorRemainder`, bounds)
-- `ExpComputableDefs.lean`: computation definitions + bracket correctness (Thread 1)
+- `ExpComputableDefs.lean`: computation definitions + `expBounds` + `OpRefExec expTarget` instance
+- `ExpComputableSound.lean`: bracket correctness (Thread 1)
 - `ExpTermination.lean`: width bounds + termination proof (Thread 2)
 - `ExpComputable.lean` (this file): final assembly + `OpRefExecSound expTarget` instance
 -/
@@ -62,30 +64,32 @@ variable [FloatFormat]
 For nonzero x, the loop output brackets exp(x) in a valid sticky cell with q ≥ 2^(prec+2).
 
 This is where Thread 1 (bracket correctness) and Thread 2 (termination) meet:
-- `expExtractLoop_sound` needs `0 < o.q` to conclude the result is correct.
-- `expExtractLoop_pos_of_success` derives `0 < o.q` from `expTryOne_terminates`,
+- `stickyExtractLoop_sound` needs `0 < s.q` to conclude the result is correct.
+- `stickyExtractLoop_pos_of_success` derives `0 < s.q` from `stickyTryOne_expBounds_terminates`,
   which guarantees some iteration succeeds within `expFuel x` steps.
-- `expExtractLoop_q_ge` then lifts `0 < o.q` to `2^(prec+2) ≤ o.q`. -/
+- `stickyExtractLoop_q_ge` then lifts `0 < s.q` to `2^(prec+2) ≤ s.q`. -/
 private theorem expLoop_sound (x : ℚ) (hx : x ≠ 0) (k : ℤ)
     (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1) :
-    let o := expExtractLoop x k 0 (expFuel x)
-    2 ^ (FloatFormat.prec.toNat + 2) ≤ o.q ∧
-    inStickyInterval (R := ℝ) o.q o.e_base (Real.exp (x : ℝ)) := by
-  set o := expExtractLoop x k 0 (expFuel x) with ho
-  -- Both properties require q > 0, which requires the loop to have found a good iteration
-  -- (the fallback at fuel=0 gives q=0)
-  suffices hq_pos : 0 < o.q by
-    exact ⟨expExtractLoop_q_ge x k 0 (expFuel x) hq_pos,
-           expExtractLoop_sound x hx k 0 (expFuel x) hk_bound hq_pos⟩
-  -- Reduce to the termination claim: some iteration succeeds within the fuel budget
-  rw [ho]
-  apply expExtractLoop_pos_of_success
-  exact expTryOne_terminates x hx k hk_bound
+    let s := stickyExtractLoop (expBounds x k) 0 (expFuel x)
+    2 ^ (FloatFormat.prec.toNat + 2) ≤ s.q ∧
+    inStickyInterval (R := ℝ) s.q s.e_base (Real.exp (x : ℝ)) := by
+  set s := stickyExtractLoop (expBounds x k) 0 (expFuel x) with hs
+  suffices hq_pos : 0 < s.q by
+    exact ⟨stickyExtractLoop_q_ge (expBounds x k) 0 (expFuel x)
+              (fun i => expBounds_lower_pos x k i) hq_pos,
+           stickyExtractLoop_sound (expBounds x k) 0 (expFuel x) (Real.exp (x : ℝ))
+              (fun i => expBounds_lower_pos x k i)
+              (fun i => expBounds_lower_lt_exp x hx k i hk_bound)
+              (fun i => expBounds_exp_le_upper x k i hk_bound) hq_pos⟩
+  rw [hs]
+  apply stickyExtractLoop_pos_of_success (expBounds x k) 0 (expFuel x)
+    (fun i => expBounds_lower_pos x k i)
+  exact stickyTryOne_expBounds_terminates x hx k hk_bound
 
 /-! ## Main soundness theorems -/
 
 /-- Shared preamble for the sticky-cell proofs: for nonzero input, `expComputableRun`
-reduces to `expExtractLoop` and `expLoop_sound` applies. -/
+reduces to `stickyExtractLoop` and `expLoop_sound` applies. -/
 private theorem expComputableRun_loop_sound (a : FiniteFp) (o : OpRefOut)
     (hr : expComputableRun a = o) (hFalse : o.isExact = false) :
     2 ^ (FloatFormat.prec.toNat + 2) ≤ o.q ∧
@@ -94,11 +98,13 @@ private theorem expComputableRun_loop_sound (a : FiniteFp) (o : OpRefOut)
     intro h; rw [expComputableRun_zero a h] at hr; rw [← hr] at hFalse; exact absurd hFalse (by decide)
   have hx : (a.toVal : ℚ) ≠ 0 :=
     FiniteFp.toVal_ne_zero_of_m_pos a (Nat.pos_of_ne_zero hm)
-  have hval : expComputableRun a = expExtractLoop (a.toVal (R := ℚ)) (expArgRedK (a.toVal (R := ℚ))) 0 (expFuel (a.toVal (R := ℚ))) := by
-    simp only [expComputableRun, hm, ↓reduceIte]
   set x : ℚ := a.toVal with hx_def
   set k := expArgRedK x with hk_def
+  have hval : expComputableRun a =
+      (stickyExtractLoop (expBounds x k) 0 (expFuel x)).toOpRefOut := by
+    simp only [expComputableRun, hm, ↓reduceIte, hx_def, hk_def]
   rw [hval] at hr; rw [← hr]
+  simp only [StickyOut.toOpRefOut_q, StickyOut.toOpRefOut_e_base]
   exact expLoop_sound x hx k (expArgRedK_bound x)
 
 private theorem expComputableRun_sticky_q_lower (a : FiniteFp) (o : OpRefOut)

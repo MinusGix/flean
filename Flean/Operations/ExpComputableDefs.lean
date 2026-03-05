@@ -16,7 +16,7 @@ See `ExpComputable.lean` for the high-level architecture overview. This file con
 - Basic properties (positivity, q bounds, exact-case handling)
 - Floor/sticky interval arithmetic
 - ln(2) series soundness and argument reduction correctness
-- **Bracket correctness** (Thread 1): `expTryOne_sound`, `expExtractLoop_sound`
+- **Bracket correctness** (Thread 1): bracket proofs for `expBounds`
 -/
 
 section ExpComputable
@@ -105,17 +105,6 @@ def expRInterval (x : ℚ) (k : ℤ) : ℚ × ℚ :=
     -- k < 0: k·ln2_hi ≤ k·ln(2) ≤ k·ln2_lo, so x - k·ln2_lo ≤ r ≤ x - k·ln2_hi
     (x - k * ln2_lo, x - k * ln2_hi)
 
-/-! ## Sticky cell extraction -/
-
-/-- Extract `(q, e_base)` from lower and upper rational bounds for exp.
-
-Given `lower ≤ exp(x) ≤ upper` where both are positive rationals,
-finds `q, e_base` such that `exp(x) ∈ (2q·2^e_base, 2(q+1)·2^e_base)`.
-
-Uses ⌊lower·2^s⌋ as `q`. Wraps `stickyExtract` with `isExact := false`. -/
-def expExtract (lower _upper : ℚ) : OpRefOut :=
-  (stickyExtract lower).toOpRefOut
-
 /-- Compute r interval using adaptive ln2 bounds. -/
 def expRIntervalWith (x : ℚ) (k : ℤ) (lo2 hi2 : ℚ) : ℚ × ℚ :=
   if 0 ≤ k then (x - k * hi2, x - k * lo2)
@@ -132,36 +121,15 @@ def expBounds (x : ℚ) (k : ℤ) (iter : ℕ) : ℚ × ℚ :=
   let N := expNumTerms + iter * 10
   (expLowerBound r_lo N * (2 : ℚ) ^ k, expUpperBound r_hi N * (2 : ℚ) ^ k)
 
-/-- Try one extraction attempt at given precision level.
-Returns `some result` if `⌊lower·2^s⌋ = ⌊upper·2^s⌋`, `none` otherwise. -/
-def expTryOne (x : ℚ) (k : ℤ) (iter : ℕ) : Option OpRefOut :=
-  let (lower, upper) := expBounds x k iter
-  let result := expExtract lower upper
-  let s := stickyShift lower
-  let q_hi := upper.num.natAbs * 2 ^ s / upper.den
-  if result.q = q_hi then some result
-  else none
-
-/-- Iterative sticky cell extraction. Refines precision until cell agreement. -/
-def expExtractLoop (x : ℚ) (k : ℤ) (iter : ℕ) : ℕ → OpRefOut
-  | 0 => { q := 0, e_base := 0, isExact := false }
-  | fuel + 1 =>
-    match expTryOne x k iter with
-    | some r => r
-    | none => expExtractLoop x k (iter + 1) fuel
-
 /-! ## Main kernel -/
 
 /-- Computable exp reference kernel (standard mod-ln(2) method).
 
 For `a.m = 0` (input is ±0): returns exact result for `exp(0) = 1`.
-Otherwise:
+Otherwise: uses `stickyExtractLoop` with `expBounds` to extract the sticky cell.
 1. Reduce `x = k·ln(2) + r` with `k = round(x/ln(2))`
 2. Iteratively refine ln(2) and Taylor bounds until cell agreement
-3. Use directional Taylor bounds for `exp(r)`:
-   - For `y ≥ 0`: lower bound = `T_N(y)`, upper bound = `T_N(y) + R_{N+1}(y)`
-   - For `y < 0`: use `exp(y) = 1/exp(-y)` and bound `exp(-y)` instead
-4. Extract sticky cell when `⌊lower·2^s⌋ = ⌊upper·2^s⌋` -/
+3. Extract sticky cell when `⌊lower·2^s⌋ = ⌊upper·2^s⌋` -/
 def expComputableRun (a : FiniteFp) : OpRefOut :=
   if a.m = 0 then
     -- exp(0) = 1 = 2 · 1 · 2^(-1)
@@ -169,23 +137,12 @@ def expComputableRun (a : FiniteFp) : OpRefOut :=
   else
     let x : ℚ := a.toVal
     let k := expArgRedK x
-    expExtractLoop x k 0 (expFuel x)
+    (stickyExtractLoop (expBounds x k) 0 (expFuel x)).toOpRefOut
 
 instance (priority := 500) : OpRefExec expTarget where
   run := expComputableRun
 
 /-! ## Soundness helpers -/
-
-/-- The lower bound passed to `expExtract` in the non-zero branch is positive. -/
-theorem expComputableRun_lower_pos (a : FiniteFp) (_hm : a.m ≠ 0) :
-    let x : ℚ := a.toVal
-    let k := expArgRedK x
-    let (r_lo, _r_hi) := expRInterval x k
-    let N := expNumTerms
-    let lower := expLowerBound r_lo N * (2 : ℚ) ^ k
-    0 < lower := by
-  simp only
-  exact mul_pos (expLowerBound_pos _ _) (zpow_pos (by norm_num) _)
 
 /-- The lower bound from `expBounds` is always positive. -/
 theorem expBounds_lower_pos (x : ℚ) (k : ℤ) (iter : ℕ) :
@@ -193,42 +150,12 @@ theorem expBounds_lower_pos (x : ℚ) (k : ℤ) (iter : ℕ) :
   simp only [expBounds]
   exact mul_pos (expLowerBound_pos _ _) (zpow_pos (by norm_num) _)
 
-/-- `expExtract` always returns `isExact = false`. -/
-theorem expExtract_isExact_false (lower upper : ℚ) :
-    (expExtract lower upper).isExact = false := by
-  simp [expExtract, StickyOut.toOpRefOut]
-
-/-- `expExtract` produces `q ≥ 2^(prec+2)` for positive lower bound. -/
-theorem expExtract_q_ge (lower upper : ℚ) (hpos : 0 < lower) :
-    2 ^ (FloatFormat.prec.toNat + 2) ≤ (expExtract lower upper).q := by
-  show 2 ^ (FloatFormat.prec.toNat + 2) ≤ (stickyExtract lower).q
-  exact stickyExtract_q_ge lower hpos
-
-/-- When `expTryOne` succeeds, the result has `isExact = false`. -/
-theorem expTryOne_isExact (x : ℚ) (k : ℤ) (iter : ℕ) (r : OpRefOut)
-    (h : expTryOne x k iter = some r) : r.isExact = false := by
-  simp only [expTryOne] at h
-  split_ifs at h
-  all_goals first | contradiction | (simp at h; subst h; rfl)
-
-/-- The extraction loop always returns `isExact = false`. -/
-theorem expExtractLoop_isExact_false (x : ℚ) (k : ℤ) (iter fuel : ℕ) :
-    (expExtractLoop x k iter fuel).isExact = false := by
-  induction fuel generalizing iter with
-  | zero => rfl
-  | succ n ih =>
-    simp only [expExtractLoop]
-    match hm : expTryOne x k iter with
-    | some r => exact expTryOne_isExact x k iter r hm
-    | none => exact ih (iter + 1)
-
 /-- When `isExact = true`, we must be in the zero branch. -/
 theorem expComputableRun_exact_is_zero (a : FiniteFp)
     (hExact : (expComputableRun a).isExact = true) : a.m = 0 := by
   by_contra h
   have : (expComputableRun a).isExact = false := by
-    simp only [expComputableRun, h, ↓reduceIte]
-    exact expExtractLoop_isExact_false _ _ _ _
+    simp only [expComputableRun, h, ↓reduceIte, StickyOut.toOpRefOut_isExact]
   rw [this] at hExact; exact absurd hExact (by decide)
 
 /-- In the zero branch, the output is `{q := 1, e_base := -1, isExact := true}`. -/

@@ -4,9 +4,8 @@ import Flean.Operations.ExpComputableDefs
 
 Soundness proofs for the computable exp kernel. Shows that:
 - The exact case (x = 0) produces correct output
-- `expTryOne` produces a valid sticky interval when it succeeds
-- `expExtractLoop` preserves correctness through iteration
-- Output q satisfies the magnitude bound q ≥ 2^(prec+2)
+- `expBounds` produces valid brackets (`lower < exp(x) ≤ upper`)
+- These feed into the generic `stickyTryOne`/`stickyExtractLoop` soundness
 -/
 
 section ExpComputable
@@ -33,87 +32,6 @@ theorem expComputableRun_exact_value (a : FiniteFp) (o : OpRefOut)
     FiniteFp.toVal_isZero (show a.isZero from hm)
   rw [hval, Real.exp_zero]
   norm_num
-
-/-! ## Loop output properties -/
-
-/-- When `expTryOne` succeeds, the q satisfies q ≥ 2^(prec+2).
-This follows from the `stickyShift` arithmetic: the shift is chosen so that
-the scaled value has enough bits. -/
-theorem expTryOne_q_ge (x : ℚ) (k : ℤ) (iter : ℕ) (r : OpRefOut)
-    (hr : expTryOne x k iter = some r)
-    (hpos : 0 < r.q) :
-    2 ^ (FloatFormat.prec.toNat + 2) ≤ r.q := by
-  simp only [expTryOne] at hr
-  split_ifs at hr with heq
-  obtain rfl := Option.some.inj hr
-  exact expExtract_q_ge _ _ (expBounds_lower_pos x k iter)
-
-/-- For the extraction loop: if q > 0, then q ≥ 2^(prec+2). -/
-theorem expExtractLoop_q_ge (x : ℚ) (k : ℤ) (iter fuel : ℕ)
-    (hq : 0 < (expExtractLoop x k iter fuel).q) :
-    2 ^ (FloatFormat.prec.toNat + 2) ≤ (expExtractLoop x k iter fuel).q := by
-  induction fuel generalizing iter with
-  | zero => simp [expExtractLoop] at hq
-  | succ n ih =>
-    simp only [expExtractLoop] at hq ⊢
-    match hm : expTryOne x k iter with
-    | some r =>
-      simp [hm] at hq ⊢
-      exact expTryOne_q_ge x k iter r hm hq
-    | none =>
-      simp [hm] at hq ⊢
-      exact ih (iter + 1) hq
-
-/-! ## Loop termination and soundness via irrationality -/
-
-/-- When `expTryOne` succeeds, the result has positive `q`.
-This follows from `expExtract_q_ge` + `expBounds_lower_pos` without any additional hypothesis. -/
-theorem expTryOne_q_pos (x : ℚ) (k : ℤ) (iter : ℕ) (r : OpRefOut)
-    (hr : expTryOne x k iter = some r) :
-    0 < r.q := by
-  have h1 : 2 ^ (FloatFormat.prec.toNat + 2) ≤ r.q := by
-    simp only [expTryOne] at hr
-    split_ifs at hr with heq
-    obtain rfl := Option.some.inj hr
-    exact expExtract_q_ge _ _ (expBounds_lower_pos x k iter)
-  have h2 : 0 < 2 ^ (FloatFormat.prec.toNat + 2) := Nat.pos_of_ne_zero (by positivity)
-  omega
-
-/-- If some iteration in `[start, start + fuel)` succeeds, the loop returns positive `q`.
-Proved by induction on fuel: either the current iteration succeeds (giving `q > 0`),
-or we recurse to a later iteration. -/
-theorem expExtractLoop_pos_of_success (x : ℚ) (k : ℤ) (start fuel : ℕ)
-    (hsuccess : ∃ n, start ≤ n ∧ n < start + fuel ∧
-      (expTryOne x k n).isSome = true) :
-    0 < (expExtractLoop x k start fuel).q := by
-  induction fuel generalizing start with
-  | zero => obtain ⟨_, _, hlt, _⟩ := hsuccess; omega
-  | succ fuel ih =>
-    simp only [expExtractLoop]
-    match hm : expTryOne x k start with
-    | some r =>
-      simp
-      exact expTryOne_q_pos x k start r hm
-    | none =>
-      simp
-      apply ih (start + 1)
-      obtain ⟨n, hge, hlt, hn⟩ := hsuccess
-      refine ⟨n, ?_, by omega, hn⟩
-      by_cases h : n = start
-      · subst h; simp [hm] at hn
-      · omega
-
-/-- If the loop encounters a successful `expTryOne` at any iteration, it returns that result. -/
-theorem expExtractLoop_of_isSome (x : ℚ) (k : ℤ) (iter fuel : ℕ)
-    (h : (expTryOne x k iter).isSome)
-    (hfuel : 0 < fuel) :
-    expExtractLoop x k iter fuel = (expTryOne x k iter).get h := by
-  match fuel, hfuel with
-  | fuel + 1, _ =>
-    simp only [expExtractLoop]
-    have := Option.isSome_iff_exists.mp h
-    obtain ⟨r, hr⟩ := this
-    simp [hr]
 
 /-! ## Bracket correctness -/
 
@@ -369,40 +287,16 @@ theorem expBounds_exp_le_upper (x : ℚ) (k : ℤ) (iter : ℕ)
               exact inv_anti₀ htpos (by exact_mod_cast taylorExpQ_le_exp (-r_hi) habs N)
     ) (le_of_lt h2k)
 
-/-- When `expTryOne` succeeds, the result is in the correct sticky interval. -/
-theorem expTryOne_sound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ) (r : OpRefOut)
-    (hr : expTryOne x k iter = some r)
+/-- When `stickyTryOne (expBounds x k)` succeeds, the result brackets `exp(x)`. -/
+theorem expBounds_stickyTryOne_sound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
+    (r : StickyOut)
+    (hr : stickyTryOne (expBounds x k) iter = some r)
     (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1) :
-    inStickyInterval (R := ℝ) r.q r.e_base (Real.exp (x : ℝ)) := by
-  simp only [expTryOne] at hr
-  split_ifs at hr with heq
-  obtain rfl := Option.some.inj hr
-  -- r = expExtract lower upper with q_lo = q_hi
-  set lower := (expBounds x k iter).1
-  set upper := (expBounds x k iter).2
-  have hl_pos := expBounds_lower_pos x k iter
-  have hlower_lt := expBounds_lower_lt_exp x hx k iter hk_bound
-  have hupper_le := expBounds_exp_le_upper x k iter hk_bound
-  exact inStickyInterval_of_bracket lower upper hl_pos (Real.exp (x : ℝ))
-    (stickyShift lower) hlower_lt hupper_le heq
-
-/-- When the loop finds a result via `expTryOne`, that result satisfies inStickyInterval. -/
-theorem expExtractLoop_sound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter fuel : ℕ)
-    (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1)
-    (hq : 0 < (expExtractLoop x k iter fuel).q) :
-    inStickyInterval (R := ℝ) (expExtractLoop x k iter fuel).q
-      (expExtractLoop x k iter fuel).e_base (Real.exp (x : ℝ)) := by
-  induction fuel generalizing iter with
-  | zero => simp [expExtractLoop] at hq
-  | succ n ih =>
-    simp only [expExtractLoop] at hq ⊢
-    match hm : expTryOne x k iter with
-    | some r =>
-      simp [hm] at hq ⊢
-      exact expTryOne_sound x hx k iter r hm hk_bound
-    | none =>
-      simp [hm] at hq ⊢
-      exact ih (iter + 1) hq
+    inStickyInterval (R := ℝ) r.q r.e_base (Real.exp (x : ℝ)) :=
+  stickyTryOne_sound (expBounds x k) iter r (Real.exp (x : ℝ)) hr
+    (expBounds_lower_lt_exp x hx k iter hk_bound)
+    (expBounds_exp_le_upper x k iter hk_bound)
+    (expBounds_lower_pos x k iter)
 
 
 end ExpComputable

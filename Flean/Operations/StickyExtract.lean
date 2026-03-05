@@ -45,6 +45,13 @@ deriving Repr, DecidableEq
 def StickyOut.toOpRefOut (s : StickyOut) : OpRefOut :=
   { q := s.q, e_base := s.e_base, isExact := false }
 
+omit [FloatFormat] in
+@[simp] theorem StickyOut.toOpRefOut_q (s : StickyOut) : s.toOpRefOut.q = s.q := rfl
+omit [FloatFormat] in
+@[simp] theorem StickyOut.toOpRefOut_e_base (s : StickyOut) : s.toOpRefOut.e_base = s.e_base := rfl
+omit [FloatFormat] in
+@[simp] theorem StickyOut.toOpRefOut_isExact (s : StickyOut) : s.toOpRefOut.isExact = false := rfl
+
 /-! ## Shift and extraction -/
 
 /-- Compute shift `s` from a positive rational, targeting `prec + 3` bits in `q`. -/
