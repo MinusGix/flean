@@ -50,9 +50,9 @@ Tracked iteratively. Priorities ordered top-to-bottom within each tier.
   - `log2_gt_half` (ExpComputableDefs:475), `log2_lt_one` (483), `log2_lt_seven_eighths` (491)
   - `rat_abs_le_natAbs` (ExpComputableDefs:498)
   - `exp_sub_le_mul_exp` (ExpTermination:262) — general MVT-type bound
-- [ ] **Extract duplicate `k.natAbs` bound** — `k.natAbs ≤ 2 * x.num.natAbs + 1` proved twice in ExpTermination (~lines 1052-1081 and 1192-1201, ~30 lines each). Should be a shared lemma.
-- [ ] **Fix misleading comment** — ExpTermination:1300 says "sorry-ed helper bounds" but there are no sorries. Quick fix.
-- [ ] **Trim exploratory comments** — `expBounds_lower_lt_exp` (ExpComputableDefs:869-954) has ~25 lines of exploration comments that could be condensed.
+- [x] **Extract duplicate `k.natAbs` bound** — `k.natAbs ≤ 2 * x.num.natAbs + 1` proved twice in ExpTermination (~lines 1052-1081 and 1192-1201, ~30 lines each). Should be a shared lemma.
+- [x] **Fix misleading comment** — ExpTermination:1300 says "sorry-ed helper bounds" but there are no sorries. Quick fix.
+- [x] **Trim exploratory comments** — `expBounds_lower_lt_exp` (ExpComputableDefs:869-954) has ~25 lines of exploration comments that could be condensed.
 - [ ] **Missing API lemmas in ExpTaylor** — `taylorExpQ_pos` (strict positivity for n ≥ 1, y ≥ 0), `taylorRemainder_pos` (strict, for y > 0). Low priority.
 - [ ] **Constants documentation** — The constants 500, 113, 27 in termination bounds lack brief derivation explanations. Low priority.
 

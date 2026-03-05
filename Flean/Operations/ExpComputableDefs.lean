@@ -451,22 +451,8 @@ theorem expArgRedK_bound (x : ℚ) :
   have hmid_pos : (0 : ℝ) < (mid : ℝ) := by rw [hmid_cast]; linarith
   -- mid < 1 and mid ≥ 1/2
   have hmid_lt_1 : (mid : ℝ) < 1 := by
-    -- mid = lo2 + 1/(2*2^N) ≤ log2 + 1/(2*2^N) < 1 + 0 < 1 ... no
-    -- Need: lo2 + 1/(2*2^N) < 1. Since lo2 ≤ log2 < 1 and 1/(2*2^N) ≤ 1/2:
-    -- lo2 + 1/(2*2^N) ≤ log2 + 1/2 < 1 + 1/2... that's too loose.
-    -- Actually: lo2 ≤ log2 < 1, so lo2 < 1. And 1/(2*2^N) < 1.
-    -- But lo2 + 1/(2*2^N) could be > 1 in theory (if lo2 ≈ 0.999...).
-    -- Since lo2 ≤ log2 < 0.694 and 1/(2*2^N) ≤ 1/2 < 0.5, sum < 1.194... that's > 1!
-    -- Wait, for N = 0: lo2 = 0, 1/(2*1) = 0.5, so mid = 0.5 < 1. OK.
-    -- For N ≥ 1: lo2 ≤ log2 < 0.694 and 1/(2*2^N) ≤ 1/4 < 0.25. Sum < 0.944 < 1.
-    -- For general N: mid ≤ log2 + 1/(2*2^N). We need log2 + 1/(2*2^N) < 1.
-    -- i.e., 1/(2*2^N) < 1 - log2 ≈ 0.307. For N = 0: 1/2 = 0.5 > 0.307!
-    -- So for N = 0, mid = 0.5 < 1, but NOT from this chain.
-    -- For N = 0: mid = lo2 + 1/2 = 0 + 0.5 = 0.5 < 1. Direct.
-    -- For N ≥ 1: mid ≤ log2 + 1/4 < 0.694 + 0.25 = 0.944 < 1. OK.
-    -- Since N ≥ 10 (from definition), 1/(2*2^N) ≤ 1/2048 ≈ 0.
+    -- lo2 ≤ log2 < 7/8 and N ≥ 10 so 1/(2·2^N) ≤ 1/2048; sum < 1.
     rw [hmid_cast]
-    -- lo2 + 1/(2*2^N) < 1: since lo2 ≤ log2 < 7/8 and 1/(2*2^N) ≤ 1/(2*2^10) = 1/2048
     have h2_10_le : (2 : ℝ) ^ (10 : ℕ) ≤ (2 : ℝ) ^ N :=
       pow_le_pow_right₀ (by norm_num : (1:ℝ) ≤ 2) (by omega : 10 ≤ N)
     have hfrac_small : 1 / (2 * (2:ℝ) ^ N) ≤ 1 / (2 * (2:ℝ) ^ (10:ℕ)) := by
@@ -784,49 +770,13 @@ theorem expBounds_lower_lt_exp (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
             _ < Real.exp r := by
                 rw [show (1 : ℝ) = Real.exp 0 from (Real.exp_zero).symm]
                 exact Real.exp_strictMono hr_pos
-        · -- r ≤ 0: use Taylor upper bound for -r, then monotonicity to -r_lo
+        · -- r ≤ 0: bound via exp(-r) ≤ S_N(-r_lo) + R(-r_lo) using Real.exp_bound'
+          -- and monotonicity of S_N, R in -r_lo ≥ -r > 0.
           push_neg at hr_pos
           have hr_neg : r < 0 := lt_of_le_of_ne hr_pos hr_ne
-          -- -r > 0 and -r < 1 (from hk_bound)
           have hnr_pos : (0 : ℝ) < -r := by linarith
           have hnr_lt_one : -r ≤ 1 := by
             have := hk_bound; rw [abs_lt] at this; linarith
-          -- Cast -r to ℚ framework: we use the Taylor upper bound for a ℚ value
-          -- Strategy: exp(-r) ≤ S_N(-r) + R(-r) ≤ S_N(-r_lo) + R(-r_lo)
-          -- since -r_lo ≥ -r > 0, and S_N, R are increasing for positive args
-          -- Then 1/(S_N(-r_lo) + R(-r_lo)) ≤ 1/exp(-r) = exp(r) < exp(r)
-          -- Actually use: exp(-r) < S_N(-r_lo) + R(-r_lo) since S_N(-r_lo) ≥ S_N(-r) and
-          -- exp(-r) < S_N(-r) + R(-r) (strict, from exp_lt_taylor_upper for -r)
-          -- BUT -r is irrational... we need the ℚ version.
-          -- Instead: use that exp(-r) ≤ exp(-r_lo) < S_N(-r_lo) + R(-r_lo)
-          -- wait, we need strict: exp(-r_lo) is the tighter comparison.
-          -- Use: exp(-r) ≤ exp(-r_lo) and S_N(-r_lo) + R(-r_lo) > exp(-r_lo) [if -r_lo ≤ 1]
-          -- But -r_lo could be > -r.
-          -- Simplest: show exp(-r) < exp(-r_lo) < S_N(-r_lo) + R(-r_lo)
-          -- First: -r < -r_lo (if r > r_lo) or r = r_lo (if r = r_lo)
-          -- If r_lo < r (strict): exp(-r) < exp(-r_lo) and exp(-r_lo) ≤ S_N(-r_lo) + R(-r_lo)
-          -- If r_lo = r: exp(-r) = exp(-r_lo) < S_N(-r_lo) + R(-r_lo) [via exp_lt_taylor_upper]
-          -- In both cases we need exp(-r_lo) ≤ S_N(-r_lo) + R(-r_lo), needing -r_lo ≤ 1.
-          -- Since -r ≤ 1, and -r_lo ≤ -r + width, but we don't easily bound the width here.
-          -- INSTEAD: Use the weaker approach via -r only.
-          -- Have: ∀ k, S_N(-r_lo) ≥ S_k(-r) (since -r_lo ≥ -r, all terms y^k/k! increase)
-          -- So S_N(-r_lo) ≥ S_N(-r). Also R(-r_lo) ≥ R(-r) (same reason).
-          -- Thus S_N(-r_lo) + R(-r_lo) ≥ S_N(-r) + R(-r) ≥ exp(-r) [Taylor upper for -r]
-          -- Strict: S_N(-r_lo) + R(-r_lo) ≥ S_N(-r) + R(-r) > exp(-r)
-          -- because exp_lt_taylor_upper for -r gives strict
-          -- PROBLEM: -r is a real, not a rational. Our exp_lt_taylor_upper takes a ℚ.
-          -- But we can construct -r as... hmm, r = x - k*log2 which is NOT rational.
-          -- OK, so we can't directly apply exp_lt_taylor_upper to -r.
-          -- Alternative: Use Mathlib's Real.exp_bound' directly.
-          -- Real.exp_bound' (h1 : 0 ≤ x) (h2 : x ≤ 1) (hn : 0 < n):
-          --   exp x ≤ S_n(x) + x^n * (n+1)/(n! * n)
-          -- where S_n uses range n (i.e., terms 0..n-1).
-          -- With x = -r and n = N + 1:
-          -- exp(-r) ≤ S_{N+1}(-r) + (-r)^{N+1}*(N+2)/((N+1)!*(N+1))
-          -- Then S_{N+1}(-r) = Σ_{k=0}^{N} (-r)^k/k! and the remainder is the same form.
-          -- And we need S_{N+1}(-r) ≤ S_{N+1}(-r_lo) = taylorExpQ(-r_lo, N) [cast form]
-          -- and similarly for the remainder.
-          -- This works! Let me implement it.
           have hN_pos : 0 < N := by show 0 < expNumTerms + iter * 10; unfold expNumTerms; omega
           -- exp(-r) ≤ S_N(-r_lo) + R(-r_lo): use monotonicity of S_N and R
           -- Step 1: exp(-r) ≤ Σ_{range(N+1)} (-r)^k/k! + (-r)^{N+1}*(N+2)/((N+1)!*(N+1))

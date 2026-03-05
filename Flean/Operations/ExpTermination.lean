@@ -258,6 +258,35 @@ theorem expShift_bound (x : ℚ) (k : ℤ) (iter : ℕ)
   exact le_trans hshift (Int.toNat_le_toNat this)
 
 omit [FloatFormat] in
+/-- `|k| ≤ 2·|x.num| + 1` when `|x - k·log 2| < 1`: triangle inequality + `log 2 > 1/2`. -/
+theorem expArgRedK_natAbs_bound (x : ℚ) (k : ℤ)
+    (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1) :
+    k.natAbs ≤ 2 * x.num.natAbs + 1 := by
+  by_contra h; push_neg at h
+  have hlog2_gt : (1 : ℝ) / 2 < Real.log 2 :=
+    lt_trans (by norm_num) Real.log_two_gt_d9
+  have hlog2_pos : (0 : ℝ) < Real.log 2 := lt_trans (by norm_num) hlog2_gt
+  have hx_abs : |(x : ℝ)| ≤ x.num.natAbs := rat_abs_le_natAbs x
+  have hk_r : (k.natAbs : ℝ) ≥ 2 * ↑x.num.natAbs + 2 := by exact_mod_cast h
+  have : (k.natAbs : ℝ) * Real.log 2 ≥ ↑x.num.natAbs + 1 := by
+    calc (k.natAbs : ℝ) * Real.log 2
+        ≥ (2 * ↑x.num.natAbs + 2) * Real.log 2 := by nlinarith
+      _ ≥ (2 * ↑x.num.natAbs + 2) * (1 / 2) :=
+          mul_le_mul_of_nonneg_left hlog2_gt.le (by positivity)
+      _ = ↑x.num.natAbs + 1 := by ring
+  have : (k.natAbs : ℝ) * Real.log 2 < ↑x.num.natAbs + 1 := by
+    have h1 : (k.natAbs : ℝ) * Real.log 2 = |↑k * Real.log 2| := by
+      rw [abs_mul, abs_of_pos hlog2_pos, ← Int.cast_abs, Nat.cast_natAbs]
+    rw [h1]
+    calc |↑k * Real.log 2|
+        = |↑x - (↑x - ↑k * Real.log 2)| := by rw [sub_sub_cancel]
+      _ ≤ |↑x| + |↑x - ↑k * Real.log 2| := abs_sub _ _
+      _ = |↑x - ↑k * Real.log 2| + |↑x| := add_comm _ _
+      _ < 1 + ↑x.num.natAbs := add_lt_add_of_lt_of_le hk_bound hx_abs
+      _ = ↑x.num.natAbs + 1 := by ring
+  linarith
+
+omit [FloatFormat] in
 /-- The r-interval width from `expRIntervalWith` is at most `k.natAbs / 2^N_ln2` (in ℝ). -/
 lemma expRIntervalWith_width_le (x : ℚ) (k : ℤ) (lo2 : ℚ) (N_ln2 : ℕ) :
     let hi2 := lo2 + 1 / 2 ^ N_ln2
@@ -1037,36 +1066,7 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
       have : k ≤ k.natAbs := Int.le_natAbs
       omega
     exact le_trans hshift (Int.toNat_le_toNat this)
-  have hk_bound_nat : k.natAbs ≤ 2 * x.num.natAbs + 1 := by
-    by_contra h; push_neg at h
-    have hlog2_gt : (1 : ℝ) / 2 < Real.log 2 :=
-      lt_trans (by norm_num) Real.log_two_gt_d9
-    have hlog2_pos : (0 : ℝ) < Real.log 2 := lt_trans (by norm_num) hlog2_gt
-    have hden_r : (0 : ℝ) < x.den := by exact_mod_cast x.den_pos
-    have hden_ge1 : (1 : ℝ) ≤ x.den := by exact_mod_cast x.den_pos
-    have hx_abs : |(x : ℝ)| ≤ x.num.natAbs := by
-      have h1 : |(x : ℝ)| = |(x.num : ℝ)| / x.den := by
-        push_cast [Rat.cast_def]; rw [abs_div, abs_of_pos hden_r]
-      rw [h1, ← Int.cast_abs, Nat.cast_natAbs]
-      exact le_trans (div_le_div_of_nonneg_left (by positivity) one_pos hden_ge1) (by rw [div_one])
-    have hk_r : (k.natAbs : ℝ) ≥ 2 * ↑x.num.natAbs + 2 := by exact_mod_cast h
-    have : (k.natAbs : ℝ) * Real.log 2 ≥ ↑x.num.natAbs + 1 := by
-      calc (k.natAbs : ℝ) * Real.log 2
-          ≥ (2 * ↑x.num.natAbs + 2) * Real.log 2 := by nlinarith
-        _ ≥ (2 * ↑x.num.natAbs + 2) * (1 / 2) :=
-            mul_le_mul_of_nonneg_left hlog2_gt.le (by positivity)
-        _ = ↑x.num.natAbs + 1 := by ring
-    have hk_ln2 : (k.natAbs : ℝ) * Real.log 2 < ↑x.num.natAbs + 1 := by
-      have h1 : (k.natAbs : ℝ) * Real.log 2 = |↑k * Real.log 2| := by
-        rw [abs_mul, abs_of_pos hlog2_pos, ← Int.cast_abs, Nat.cast_natAbs]
-      rw [h1]
-      calc |↑k * Real.log 2|
-          = |↑x - (↑x - ↑k * Real.log 2)| := by rw [sub_sub_cancel]
-        _ ≤ |↑x| + |↑x - ↑k * Real.log 2| := abs_sub _ _
-        _ = |↑x - ↑k * Real.log 2| + |↑x| := add_comm _ _
-        _ < 1 + ↑x.num.natAbs := add_lt_add_of_lt_of_le hk_bound hx_abs
-        _ = ↑x.num.natAbs + 1 := by ring
-    linarith
+  have hk_bound_nat := expArgRedK_natAbs_bound x k hk_bound
   have hSab : FloatFormat.prec.toNat + 9 + k.natAbs ≤ ab := by
     have hsq : 0 ≤ x.num.natAbs ^ 2 / x.den := Nat.zero_le _
     have hden1 : 1 ≤ x.den := x.den_pos
@@ -1150,44 +1150,8 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
         FloatFormat.prec.toNat + 100 := rfl
       omega
     have hk_le : k.natAbs ≤ ab := by
-      -- Step 1: k.natAbs ≤ 2 * x.num.natAbs + 1
-      have hlog2_gt : (1 : ℝ) / 2 < Real.log 2 :=
-        lt_trans (by norm_num) Real.log_two_gt_d9
-      have hlog2_pos : (0 : ℝ) < Real.log 2 := lt_trans (by norm_num) hlog2_gt
-      -- |x| ≤ natAbs since |x| = |num|/den and den ≥ 1
-      have hden_r : (0 : ℝ) < x.den := by exact_mod_cast x.den_pos
-      have hden_ge1 : (1 : ℝ) ≤ x.den := by exact_mod_cast x.den_pos
-      have hnum_abs : |(x.num : ℝ)| = (x.num.natAbs : ℝ) := by
-        rw [← Int.cast_abs, Nat.cast_natAbs]
-      have hx_abs : |(x : ℝ)| ≤ x.num.natAbs := by
-        have h1 : |(x : ℝ)| = |(x.num : ℝ)| / x.den := by
-          push_cast [Rat.cast_def]; rw [abs_div, abs_of_pos hden_r]
-        rw [h1, hnum_abs]
-        exact le_trans (div_le_div_of_nonneg_left (by positivity) one_pos hden_ge1)
-          (by rw [div_one])
-      -- |k|*ln2 ≤ |x - k*ln2| + |x| < 1 + natAbs
-      have hk_ln2 : (k.natAbs : ℝ) * Real.log 2 < ↑x.num.natAbs + 1 := by
-        have h1 : (k.natAbs : ℝ) * Real.log 2 = |↑k * Real.log 2| := by
-          rw [abs_mul, abs_of_pos hlog2_pos, ← Int.cast_abs, Nat.cast_natAbs]
-        rw [h1]
-        calc |↑k * Real.log 2|
-            = |↑x - (↑x - ↑k * Real.log 2)| := by rw [sub_sub_cancel]
-          _ ≤ |↑x| + |↑x - ↑k * Real.log 2| := abs_sub _ _
-          _ = |↑x - ↑k * Real.log 2| + |↑x| := add_comm _ _
-          _ < 1 + ↑x.num.natAbs := add_lt_add_of_lt_of_le hk_bound hx_abs
-          _ = ↑x.num.natAbs + 1 := by ring
-      -- k.natAbs < 2*(natAbs + 1) since ln2 > 1/2
-      have hk_bound_nat : k.natAbs ≤ 2 * x.num.natAbs + 1 := by
-        by_contra h; push_neg at h
-        have : (k.natAbs : ℝ) ≥ 2 * ↑x.num.natAbs + 2 := by exact_mod_cast h
-        have : (k.natAbs : ℝ) * Real.log 2 ≥ (2 * ↑x.num.natAbs + 2) * (1 / 2) := by
-          calc (k.natAbs : ℝ) * Real.log 2
-              ≥ (2 * ↑x.num.natAbs + 2) * Real.log 2 := by nlinarith
-            _ ≥ (2 * ↑x.num.natAbs + 2) * (1 / 2) :=
-                mul_le_mul_of_nonneg_left hlog2_gt.le (by positivity)
-        have : (k.natAbs : ℝ) * Real.log 2 ≥ ↑x.num.natAbs + 1 := by linarith
-        linarith
-      -- Step 2: 2*natAbs + 1 ≤ ab (three-way case split)
+      have hk_bound_nat := expArgRedK_natAbs_bound x k hk_bound
+      -- 2*natAbs + 1 ≤ ab (three-way case split)
       have h_ab : ab = x.num.natAbs ^ 2 / x.den + x.num.natAbs + x.den +
         FloatFormat.prec.toNat + 100 := rfl
       rcases le_or_gt x.num.natAbs 100 with hle | hgt
@@ -1285,7 +1249,7 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
       simp only [N_ln2, iter, S]; omega
     -- Combine: width * 2^s ≤ C * (err₁ + err₂) < δ
     -- We show each of C*err₁ and C*err₂ is small, then combine.
-    -- The full proof is broken into sorry-ed helper bounds to keep heartbeats low.
+    -- The full proof is broken into separately-stated helper bounds to keep heartbeats low.
     -- Step A: δ ≥ 1/2^L (from hL_delta : 1/δ ≤ 2^L)
     have h2L_pos : (0 : ℝ) < (2 : ℝ) ^ L := by positivity
     have h_delta_lb : (1 : ℝ) / 2 ^ L ≤ δ := by
