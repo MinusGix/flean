@@ -384,9 +384,6 @@ This section introduces a computable execution interface meant for a softfloat-s
 with a soundness contract and adapter instances.
 -/
 
-/-- Backward-compatible alias: exp uses the generic `OpRefOut` from `StickyExtract`. -/
-abbrev ExpRefOut := @OpRefOut
-
 namespace OpRefOut
 
 /-- Convert executable reference output into operation-layer approximation data. -/
@@ -401,32 +398,32 @@ end OpRefOut
 
 /-- Computable reference-kernel execution hook for `exp`. -/
 class ExpRefExec where
-  run : FiniteFp → ExpRefOut
+  run : FiniteFp → OpRefOut
 
 /-- Soundness contract for a computable reference-kernel execution hook. -/
 class ExpRefExecSound [ExpRefExec] : Prop where
   exact_mag_ne_zero :
-    ∀ (a : FiniteFp) (o : ExpRefOut),
+    ∀ (a : FiniteFp) (o : OpRefOut),
       ExpRefExec.run a = o →
       o.isExact = true →
       (2 * o.q) ≠ 0
   exact_value :
-    ∀ (a : FiniteFp) (o : ExpRefOut),
+    ∀ (a : FiniteFp) (o : OpRefOut),
       ExpRefExec.run a = o →
       o.isExact = true →
       intSigVal (R := ℝ) false (2 * o.q) o.e_base = Real.exp (a.toVal : ℝ)
   sticky_q_lower :
-    ∀ (a : FiniteFp) (o : ExpRefOut),
+    ∀ (a : FiniteFp) (o : OpRefOut),
       ExpRefExec.run a = o →
       o.isExact = false →
       2 ^ (FloatFormat.prec.toNat + 2) ≤ o.q
   sticky_interval :
-    ∀ (a : FiniteFp) (o : ExpRefOut),
+    ∀ (a : FiniteFp) (o : OpRefOut),
       ExpRefExec.run a = o →
       o.isExact = false →
       inStickyInterval (R := ℝ) o.q o.e_base (Real.exp (a.toVal : ℝ))
 
-private noncomputable def expRefConcreteRun (a : FiniteFp) : ExpRefOut :=
+private noncomputable def expRefConcreteRun (a : FiniteFp) : OpRefOut :=
   if _ : a.m = 0 then
     { q := 1, e_base := -1, isExact := true }
   else if _ : expScaled a = (expQ a : ℝ) then
