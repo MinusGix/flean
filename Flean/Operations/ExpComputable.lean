@@ -86,7 +86,7 @@ private theorem expLoop_sound (x : ℚ) (hx : x ≠ 0) (k : ℤ)
 
 /-- Shared preamble for the sticky-cell proofs: for nonzero input, `expComputableRun`
 reduces to `expExtractLoop` and `expLoop_sound` applies. -/
-private theorem expComputableRun_loop_sound (a : FiniteFp) (o : ExpRefOut)
+private theorem expComputableRun_loop_sound (a : FiniteFp) (o : OpRefOut)
     (hr : expComputableRun a = o) (hFalse : o.isExact = false) :
     2 ^ (FloatFormat.prec.toNat + 2) ≤ o.q ∧
     inStickyInterval (R := ℝ) o.q o.e_base (Real.exp (a.toVal (R := ℚ) : ℝ)) := by
@@ -101,12 +101,12 @@ private theorem expComputableRun_loop_sound (a : FiniteFp) (o : ExpRefOut)
   rw [hval] at hr; rw [← hr]
   exact expLoop_sound x hx k (expArgRedK_bound x)
 
-private theorem expComputableRun_sticky_q_lower (a : FiniteFp) (o : ExpRefOut)
+private theorem expComputableRun_sticky_q_lower (a : FiniteFp) (o : OpRefOut)
     (hr : expComputableRun a = o) (hFalse : o.isExact = false) :
     2 ^ (FloatFormat.prec.toNat + 2) ≤ o.q :=
   (expComputableRun_loop_sound a o hr hFalse).1
 
-private theorem expComputableRun_sticky_interval (a : FiniteFp) (o : ExpRefOut)
+private theorem expComputableRun_sticky_interval (a : FiniteFp) (o : OpRefOut)
     (hr : expComputableRun a = o) (hFalse : o.isExact = false) :
     inStickyInterval (R := ℝ) o.q o.e_base (Real.exp (a.toVal : ℝ)) := by
   have hsound := (expComputableRun_loop_sound a o hr hFalse).2

@@ -30,6 +30,21 @@ structure StickyOut where
   e_base : ℤ
 deriving Repr, DecidableEq
 
+/-- Generic operation reference-kernel output.
+
+Extends `StickyOut` with an `isExact` flag:
+- `isExact = true` encodes exact branch with magnitude `2*q`.
+- `isExact = false` encodes sticky branch with sticky index `q`. -/
+structure OpRefOut where
+  q : ℕ
+  e_base : ℤ
+  isExact : Bool
+deriving Repr, DecidableEq
+
+/-- Convert a sticky cell to an `OpRefOut` with `isExact := false`. -/
+def StickyOut.toOpRefOut (s : StickyOut) : OpRefOut :=
+  { q := s.q, e_base := s.e_base, isExact := false }
+
 /-! ## Shift and extraction -/
 
 /-- Compute shift `s` from a positive rational, targeting `prec + 3` bits in `q`. -/

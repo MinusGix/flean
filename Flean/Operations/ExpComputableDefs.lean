@@ -117,9 +117,8 @@ Given `lower ≤ exp(x) ≤ upper` where both are positive rationals,
 finds `q, e_base` such that `exp(x) ∈ (2q·2^e_base, 2(q+1)·2^e_base)`.
 
 Uses ⌊lower·2^s⌋ as `q`. Wraps `stickyExtract` with `isExact := false`. -/
-def expExtract (lower _upper : ℚ) : ExpRefOut :=
-  let s := stickyExtract lower
-  { q := s.q, e_base := s.e_base, isExact := false }
+def expExtract (lower _upper : ℚ) : OpRefOut :=
+  (stickyExtract lower).toOpRefOut
 
 /-- Compute r interval using adaptive ln2 bounds. -/
 def expRIntervalWith (x : ℚ) (k : ℤ) (lo2 hi2 : ℚ) : ℚ × ℚ :=
@@ -139,7 +138,7 @@ def expBounds (x : ℚ) (k : ℤ) (iter : ℕ) : ℚ × ℚ :=
 
 /-- Try one extraction attempt at given precision level.
 Returns `some result` if `⌊lower·2^s⌋ = ⌊upper·2^s⌋`, `none` otherwise. -/
-def expTryOne (x : ℚ) (k : ℤ) (iter : ℕ) : Option ExpRefOut :=
+def expTryOne (x : ℚ) (k : ℤ) (iter : ℕ) : Option OpRefOut :=
   let (lower, upper) := expBounds x k iter
   let result := expExtract lower upper
   let s := expShift lower
@@ -148,7 +147,7 @@ def expTryOne (x : ℚ) (k : ℤ) (iter : ℕ) : Option ExpRefOut :=
   else none
 
 /-- Iterative sticky cell extraction. Refines precision until cell agreement. -/
-def expExtractLoop (x : ℚ) (k : ℤ) (iter : ℕ) : ℕ → ExpRefOut
+def expExtractLoop (x : ℚ) (k : ℤ) (iter : ℕ) : ℕ → OpRefOut
   | 0 => { q := 0, e_base := 0, isExact := false }
   | fuel + 1 =>
     match expTryOne x k iter with
@@ -167,7 +166,7 @@ Otherwise:
    - For `y ≥ 0`: lower bound = `T_N(y)`, upper bound = `T_N(y) + R_{N+1}(y)`
    - For `y < 0`: use `exp(y) = 1/exp(-y)` and bound `exp(-y)` instead
 4. Extract sticky cell when `⌊lower·2^s⌋ = ⌊upper·2^s⌋` -/
-def expComputableRun (a : FiniteFp) : ExpRefOut :=
+def expComputableRun (a : FiniteFp) : OpRefOut :=
   if a.m = 0 then
     -- exp(0) = 1 = 2 · 1 · 2^(-1)
     { q := 1, e_base := -1, isExact := true }
@@ -201,7 +200,7 @@ theorem expBounds_lower_pos (x : ℚ) (k : ℤ) (iter : ℕ) :
 /-- `expExtract` always returns `isExact = false`. -/
 theorem expExtract_isExact_false (lower upper : ℚ) :
     (expExtract lower upper).isExact = false := by
-  simp [expExtract]
+  simp [expExtract, StickyOut.toOpRefOut]
 
 /-- `expExtract` produces `q ≥ 2^(prec+2)` for positive lower bound. -/
 theorem expExtract_q_ge (lower upper : ℚ) (hpos : 0 < lower) :
@@ -210,7 +209,7 @@ theorem expExtract_q_ge (lower upper : ℚ) (hpos : 0 < lower) :
   exact stickyExtract_q_ge lower hpos
 
 /-- When `expTryOne` succeeds, the result has `isExact = false`. -/
-theorem expTryOne_isExact (x : ℚ) (k : ℤ) (iter : ℕ) (r : ExpRefOut)
+theorem expTryOne_isExact (x : ℚ) (k : ℤ) (iter : ℕ) (r : OpRefOut)
     (h : expTryOne x k iter = some r) : r.isExact = false := by
   simp only [expTryOne] at h
   split_ifs at h

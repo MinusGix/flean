@@ -1,4 +1,4 @@
-import Flean.Operations.RoundIntSig
+import Flean.Operations.StickyExtract
 import Flean.Rounding.PolicyInstances
 import Mathlib.Analysis.SpecialFunctions.Exp
 
@@ -384,24 +384,20 @@ This section introduces a computable execution interface meant for a softfloat-s
 with a soundness contract and adapter instances.
 -/
 
-/-- Executable reference-kernel output shape.
+/-- Backward-compatible alias: exp uses the generic `OpRefOut` from `StickyExtract`. -/
+abbrev ExpRefOut := @OpRefOut
 
-`isExact = true` encodes exact branch with magnitude `2*q`.
-`isExact = false` encodes sticky branch with sticky index `q`.
--/
-structure ExpRefOut where
-  q : ℕ
-  e_base : ℤ
-  isExact : Bool
-deriving Repr, DecidableEq
+namespace OpRefOut
 
 /-- Convert executable reference output into operation-layer approximation data. -/
-def ExpRefOut.toApproxData (o : ExpRefOut) : ExpApproxData :=
+def toExpApproxData [FloatFormat] (o : OpRefOut) : ExpApproxData :=
   if o.isExact then .exact (2 * o.q) o.e_base else .sticky o.q o.e_base
 
 /-- Helper constructor in quotient/remainder form, matching softfloat conventions. -/
-def ExpRefOut.ofQuotRem (q rem : ℕ) (e_base : ℤ) : ExpRefOut :=
+def ofQuotRem (q rem : ℕ) (e_base : ℤ) : OpRefOut :=
   { q := q, e_base := e_base, isExact := decide (rem = 0) }
+
+end OpRefOut
 
 /-- Computable reference-kernel execution hook for `exp`. -/
 class ExpRefExec where
@@ -439,8 +435,8 @@ private noncomputable def expRefConcreteRun (a : FiniteFp) : ExpRefOut :=
     { q := expQ a, e_base := expEBase a, isExact := false }
 
 private theorem expRefConcrete_toApproxData (a : FiniteFp) :
-    ExpRefOut.toApproxData (expRefConcreteRun a) = expApproxConcrete a := by
-  unfold expRefConcreteRun ExpRefOut.toApproxData expApproxConcrete
+    OpRefOut.toExpApproxData (expRefConcreteRun a) = expApproxConcrete a := by
+  unfold expRefConcreteRun OpRefOut.toExpApproxData expApproxConcrete
   by_cases hz : a.m = 0
   · simp [hz]
   · by_cases hEq : expScaled a = (expQ a : ℝ)
@@ -456,11 +452,11 @@ noncomputable instance (priority := 120) : ExpRefExecSound where
     have ho : o = expRefConcreteRun a := by
       simpa [ExpRefExec.run] using hr.symm
     subst ho
-    have hto : ExpRefOut.toApproxData (expRefConcreteRun a) = expApproxConcrete a :=
+    have hto : OpRefOut.toExpApproxData (expRefConcreteRun a) = expApproxConcrete a :=
       expRefConcrete_toApproxData a
     have happ : expApproxConcrete a =
         .exact (2 * (expRefConcreteRun a).q) (expRefConcreteRun a).e_base := by
-      simpa [ExpRefOut.toApproxData, hExact] using hto.symm
+      simpa [OpRefOut.toExpApproxData, hExact] using hto.symm
     exact ExpApproxSound.exact_mag_ne_zero a
       (2 * (expRefConcreteRun a).q) (expRefConcreteRun a).e_base happ
   exact_value := by
@@ -468,11 +464,11 @@ noncomputable instance (priority := 120) : ExpRefExecSound where
     have ho : o = expRefConcreteRun a := by
       simpa [ExpRefExec.run] using hr.symm
     subst ho
-    have hto : ExpRefOut.toApproxData (expRefConcreteRun a) = expApproxConcrete a :=
+    have hto : OpRefOut.toExpApproxData (expRefConcreteRun a) = expApproxConcrete a :=
       expRefConcrete_toApproxData a
     have happ : expApproxConcrete a =
         .exact (2 * (expRefConcreteRun a).q) (expRefConcreteRun a).e_base := by
-      simpa [ExpRefOut.toApproxData, hExact] using hto.symm
+      simpa [OpRefOut.toExpApproxData, hExact] using hto.symm
     exact ExpApproxSound.exact_value a
       (2 * (expRefConcreteRun a).q) (expRefConcreteRun a).e_base happ
   sticky_q_lower := by
@@ -480,11 +476,11 @@ noncomputable instance (priority := 120) : ExpRefExecSound where
     have ho : o = expRefConcreteRun a := by
       simpa [ExpRefExec.run] using hr.symm
     subst ho
-    have hto : ExpRefOut.toApproxData (expRefConcreteRun a) = expApproxConcrete a :=
+    have hto : OpRefOut.toExpApproxData (expRefConcreteRun a) = expApproxConcrete a :=
       expRefConcrete_toApproxData a
     have happ : expApproxConcrete a =
         .sticky (expRefConcreteRun a).q (expRefConcreteRun a).e_base := by
-      simpa [ExpRefOut.toApproxData, hFalse] using hto.symm
+      simpa [OpRefOut.toExpApproxData, hFalse] using hto.symm
     exact ExpApproxSound.sticky_q_lower a
       (expRefConcreteRun a).q (expRefConcreteRun a).e_base happ
   sticky_interval := by
@@ -492,52 +488,50 @@ noncomputable instance (priority := 120) : ExpRefExecSound where
     have ho : o = expRefConcreteRun a := by
       simpa [ExpRefExec.run] using hr.symm
     subst ho
-    have hto : ExpRefOut.toApproxData (expRefConcreteRun a) = expApproxConcrete a :=
+    have hto : OpRefOut.toExpApproxData (expRefConcreteRun a) = expApproxConcrete a :=
       expRefConcrete_toApproxData a
     have happ : expApproxConcrete a =
         .sticky (expRefConcreteRun a).q (expRefConcreteRun a).e_base := by
-      simpa [ExpRefOut.toApproxData, hFalse] using hto.symm
+      simpa [OpRefOut.toExpApproxData, hFalse] using hto.symm
     exact ExpApproxSound.sticky_interval a
       (expRefConcreteRun a).q (expRefConcreteRun a).e_base happ
 
 instance (priority := 1000) [ExpRefExec] : ExpApprox where
-  approx a := (ExpRefOut.toApproxData (ExpRefExec.run a))
+  approx a := (OpRefOut.toExpApproxData (ExpRefExec.run a))
 
-omit [FloatFormat] in
-/-- When `toApproxData o = .exact mag e_base`, we get `o.isExact = true` and parameter equalities. -/
-private theorem ExpRefOut.toApproxData_exact {o : ExpRefOut} {mag : ℕ} {e_base : ℤ}
-    (h : o.toApproxData = .exact mag e_base) :
+/-- When `toExpApproxData o = .exact mag e_base`, we get `o.isExact = true` and parameter equalities. -/
+private theorem toExpApproxData_exact {o : OpRefOut} {mag : ℕ} {e_base : ℤ}
+    (h : o.toExpApproxData = .exact mag e_base) :
     o.isExact = true ∧ mag = 2 * o.q ∧ e_base = o.e_base := by
-  simp only [toApproxData] at h
+  simp only [OpRefOut.toExpApproxData] at h
   split at h <;> simp_all
 
-omit [FloatFormat] in
-/-- When `toApproxData o = .sticky q e_base`, we get `o.isExact = false` and parameter equalities. -/
-private theorem ExpRefOut.toApproxData_sticky {o : ExpRefOut} {q : ℕ} {e_base : ℤ}
-    (h : o.toApproxData = .sticky q e_base) :
+/-- When `toExpApproxData o = .sticky q e_base`, we get `o.isExact = false` and parameter equalities. -/
+private theorem toExpApproxData_sticky {o : OpRefOut} {q : ℕ} {e_base : ℤ}
+    (h : o.toExpApproxData = .sticky q e_base) :
     o.isExact = false ∧ q = o.q ∧ e_base = o.e_base := by
-  simp only [toApproxData] at h
+  simp only [OpRefOut.toExpApproxData] at h
   split at h <;> simp_all
 
 instance (priority := 1000) [ExpRefExec] [ExpRefExecSound] : ExpApproxSound where
   exact_mag_ne_zero := by
     intro a mag e_base h
-    obtain ⟨hExact, hmag, he⟩ := ExpRefOut.toApproxData_exact h
+    obtain ⟨hExact, hmag, he⟩ := toExpApproxData_exact h
     subst hmag; subst he
     exact ExpRefExecSound.exact_mag_ne_zero a _ rfl hExact
   exact_value := by
     intro a mag e_base h
-    obtain ⟨hExact, hmag, he⟩ := ExpRefOut.toApproxData_exact h
+    obtain ⟨hExact, hmag, he⟩ := toExpApproxData_exact h
     subst hmag; subst he
     exact ExpRefExecSound.exact_value a _ rfl hExact
   sticky_q_lower := by
     intro a q e_base h
-    obtain ⟨hFalse, hq, he⟩ := ExpRefOut.toApproxData_sticky h
+    obtain ⟨hFalse, hq, he⟩ := toExpApproxData_sticky h
     subst hq; subst he
     exact ExpRefExecSound.sticky_q_lower a _ rfl hFalse
   sticky_interval := by
     intro a q e_base h
-    obtain ⟨hFalse, hq, he⟩ := ExpRefOut.toApproxData_sticky h
+    obtain ⟨hFalse, hq, he⟩ := toExpApproxData_sticky h
     subst hq; subst he
     exact ExpRefExecSound.sticky_interval a _ rfl hFalse
 

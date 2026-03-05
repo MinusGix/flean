@@ -15,14 +15,14 @@ variable [FloatFormat]
 
 /-! ## Soundness -/
 
-theorem expComputableRun_exact_mag_ne_zero (a : FiniteFp) (o : ExpRefOut)
+theorem expComputableRun_exact_mag_ne_zero (a : FiniteFp) (o : OpRefOut)
     (hr : expComputableRun a = o) (hExact : o.isExact = true) : o.q ≠ 0 := by
   have hm := expComputableRun_exact_is_zero a (hr ▸ hExact)
   rw [expComputableRun_zero a hm] at hr
   subst hr
   norm_num
 
-theorem expComputableRun_exact_value (a : FiniteFp) (o : ExpRefOut)
+theorem expComputableRun_exact_value (a : FiniteFp) (o : OpRefOut)
     (hr : expComputableRun a = o) (hExact : o.isExact = true) :
     intSigVal (R := ℝ) false (2 * o.q) o.e_base = Real.exp (a.toVal : ℝ) := by
   have hm := expComputableRun_exact_is_zero a (hr ▸ hExact)
@@ -39,7 +39,7 @@ theorem expComputableRun_exact_value (a : FiniteFp) (o : ExpRefOut)
 /-- When `expTryOne` succeeds, the q satisfies q ≥ 2^(prec+2).
 This follows from the `expShift` arithmetic: the shift is chosen so that
 the scaled value has enough bits. -/
-theorem expTryOne_q_ge (x : ℚ) (k : ℤ) (iter : ℕ) (r : ExpRefOut)
+theorem expTryOne_q_ge (x : ℚ) (k : ℤ) (iter : ℕ) (r : OpRefOut)
     (hr : expTryOne x k iter = some r)
     (hpos : 0 < r.q) :
     2 ^ (FloatFormat.prec.toNat + 2) ≤ r.q := by
@@ -68,7 +68,7 @@ theorem expExtractLoop_q_ge (x : ℚ) (k : ℤ) (iter fuel : ℕ)
 
 /-- When `expTryOne` succeeds, the result has positive `q`.
 This follows from `expExtract_q_ge` + `expBounds_lower_pos` without any additional hypothesis. -/
-theorem expTryOne_q_pos (x : ℚ) (k : ℤ) (iter : ℕ) (r : ExpRefOut)
+theorem expTryOne_q_pos (x : ℚ) (k : ℤ) (iter : ℕ) (r : OpRefOut)
     (hr : expTryOne x k iter = some r) :
     0 < r.q := by
   have h1 : 2 ^ (FloatFormat.prec.toNat + 2) ≤ r.q := by
@@ -370,7 +370,7 @@ theorem expBounds_exp_le_upper (x : ℚ) (k : ℤ) (iter : ℕ)
     ) (le_of_lt h2k)
 
 /-- When `expTryOne` succeeds, the result is in the correct sticky interval. -/
-theorem expTryOne_sound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ) (r : ExpRefOut)
+theorem expTryOne_sound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ) (r : OpRefOut)
     (hr : expTryOne x k iter = some r)
     (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1) :
     inStickyInterval (R := ℝ) r.q r.e_base (Real.exp (x : ℝ)) := by
