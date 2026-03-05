@@ -107,10 +107,6 @@ def expRInterval (x : ℚ) (k : ℤ) : ℚ × ℚ :=
 
 /-! ## Sticky cell extraction -/
 
-/-- Compute shift `s` from a positive rational, targeting `prec + 3` bits in `q`.
-Alias for `stickyShift` from the generic extraction machinery. -/
-abbrev expShift := @stickyShift
-
 /-- Extract `(q, e_base)` from lower and upper rational bounds for exp.
 
 Given `lower ≤ exp(x) ≤ upper` where both are positive rationals,
@@ -141,7 +137,7 @@ Returns `some result` if `⌊lower·2^s⌋ = ⌊upper·2^s⌋`, `none` otherwise
 def expTryOne (x : ℚ) (k : ℤ) (iter : ℕ) : Option OpRefOut :=
   let (lower, upper) := expBounds x k iter
   let result := expExtract lower upper
-  let s := expShift lower
+  let s := stickyShift lower
   let q_hi := upper.num.natAbs * 2 ^ s / upper.den
   if result.q = q_hi then some result
   else none

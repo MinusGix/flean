@@ -73,10 +73,10 @@ lemma int_log_le_nat_log2_diff (r : ℚ) (hr : 0 < r) :
           zpow_add₀ (by norm_num : (2 : ℚ) ≠ 0), zpow_natCast,
           mul_div_cancel_right₀ _ (by positivity : (2 : ℚ) ^ ld ≠ 0)]
 
-/-- The shift `expShift r` for a positive rational is bounded by `prec + 4 - Int.log 2 r`. -/
-lemma expShift_le_of_int_log (r : ℚ) (hr : 0 < r) :
-    expShift r ≤ ((FloatFormat.prec.toNat : ℤ) + 4 - Int.log 2 r).toNat := by
-  simp only [expShift]
+/-- The shift `stickyShift r` for a positive rational is bounded by `prec + 4 - Int.log 2 r`. -/
+lemma stickyShift_le_of_int_log (r : ℚ) (hr : 0 < r) :
+    stickyShift r ≤ ((FloatFormat.prec.toNat : ℤ) + 4 - Int.log 2 r).toNat := by
+  simp only [stickyShift]
   have h := int_log_le_nat_log2_diff r hr
   exact Int.toNat_le_toNat (by omega)
 
@@ -241,15 +241,15 @@ theorem expBounds_int_log_ge (x : ℚ) (k : ℤ) (iter : ℕ)
           _ < 3 * 8 := by linarith [h_exp]
           _ ≤ 32 := by norm_num)
 
-/-- The shift `s = expShift(lower)` is uniformly bounded across all iterations.
+/-- The shift `s = stickyShift(lower)` is uniformly bounded across all iterations.
 Uses `expBounds_int_log_ge` to bound `Int.log 2 lower ≥ k - 5`, then
-`expShift_le_of_int_log` gives `s ≤ prec + 4 - (k - 5) = prec + 9 - k ≤ prec + 9 + |k|`. -/
-theorem expShift_bound (x : ℚ) (k : ℤ) (iter : ℕ)
+`stickyShift_le_of_int_log` gives `s ≤ prec + 4 - (k - 5) = prec + 9 - k ≤ prec + 9 + |k|`. -/
+theorem stickyShift_bound (x : ℚ) (k : ℤ) (iter : ℕ)
     (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1) :
-    expShift (expBounds x k iter).1 ≤ FloatFormat.prec.toNat + 9 + k.natAbs := by
+    stickyShift (expBounds x k iter).1 ≤ FloatFormat.prec.toNat + 9 + k.natAbs := by
   have hlower_pos := expBounds_lower_pos x k iter
   have hlog_ge := expBounds_int_log_ge x k iter hk_bound
-  have hshift := expShift_le_of_int_log _ hlower_pos
+  have hshift := stickyShift_le_of_int_log _ hlower_pos
   have : (FloatFormat.prec.toNat : ℤ) + 4 - Int.log 2 (expBounds x k iter).1 ≤
          FloatFormat.prec.toNat + 9 + k.natAbs := by
     have : Int.log 2 (expBounds x k iter).1 ≥ k - 5 := hlog_ge
@@ -475,8 +475,8 @@ theorem expBounds_width_bound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
     let (lower, upper) := expBounds x k iter
     let N := expNumTerms + iter * 10
     let N_ln2 := Nat.log2 k.natAbs + 52 + iter * 50
-    ((upper : ℝ) - (lower : ℝ)) * 2 ^ (expShift lower) ≤
-      (2 : ℝ) ^ (k.natAbs + expShift lower) *
+    ((upper : ℝ) - (lower : ℝ)) * 2 ^ (stickyShift lower) ≤
+      (2 : ℝ) ^ (k.natAbs + stickyShift lower) *
         ((2 : ℝ) ^ (N + 2) * (N + 2 : ℝ) / ((N + 1).factorial * (N + 1)) +
          8 * (k.natAbs + 1 : ℝ) / 2 ^ N_ln2) := by
   -- Step 1: Rewrite the goal using expBounds pair structure
@@ -503,13 +503,13 @@ theorem expBounds_width_bound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
   have hB_nn : 0 ≤ B := by positivity
   -- The bound follows from:
   -- (upper - lower) ≤ 2^|k| * B  (then multiply both sides by 2^s)
-  have h2s_pos : (0 : ℝ) < 2 ^ expShift lower := by positivity
+  have h2s_pos : (0 : ℝ) < 2 ^ stickyShift lower := by positivity
   suffices h : (upper : ℝ) - (lower : ℝ) ≤ (2:ℝ) ^ k.natAbs * B by
     have h2s_nn := h2s_pos.le
-    calc ((upper : ℝ) - lower) * 2 ^ expShift lower
-        ≤ (2:ℝ) ^ k.natAbs * B * 2 ^ expShift lower :=
+    calc ((upper : ℝ) - lower) * 2 ^ stickyShift lower
+        ≤ (2:ℝ) ^ k.natAbs * B * 2 ^ stickyShift lower :=
           mul_le_mul_of_nonneg_right h h2s_nn
-      _ = 2 ^ (k.natAbs + expShift lower) * B := by rw [pow_add]; ring
+      _ = 2 ^ (k.natAbs + stickyShift lower) * B := by rw [pow_add]; ring
   -- Set up the r-level variables from expBounds definition
   set N_ln2 := Nat.log2 k.natAbs + 52 + iter * 50 with hN_ln2_def
   set lo2 := ln2SeriesSum N_ln2 with hlo2_def
@@ -608,12 +608,12 @@ theorem expBounds_width_tendsto_zero (x : ℚ) (hx : x ≠ 0) (k : ℤ)
     (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1) (eps : ℝ) (heps : 0 < eps) :
     ∃ iter₀ : ℕ, ∀ iter, iter₀ ≤ iter →
       let (lower, upper) := expBounds x k iter
-      ((upper : ℝ) - (lower : ℝ)) * 2 ^ (expShift lower) < eps := by
-  -- Step 1: The shift s = expShift(lower) is uniformly bounded by prec + 9 + |k|,
+      ((upper : ℝ) - (lower : ℝ)) * 2 ^ (stickyShift lower) < eps := by
+  -- Step 1: The shift s = stickyShift(lower) is uniformly bounded by prec + 9 + |k|,
   -- because lower = lower_r · 2^k with lower_r ≥ 1/4, so log2(lower) ≥ k - 2.
   set S := FloatFormat.prec.toNat + 9 + k.natAbs
-  have hS : ∀ iter, expShift (expBounds x k iter).1 ≤ S :=
-    fun iter => expShift_bound x k iter hk_bound
+  have hS : ∀ iter, stickyShift (expBounds x k iter).1 ≤ S :=
+    fun iter => stickyShift_bound x k iter hk_bound
   -- Step 2: The width bound from expBounds_width_bound gives
   -- width * 2^s ≤ 2^(|k|+s) * (err₁ + err₂)
   -- where err₁ = 2^(N+2)·(N+2)/((N+1)!·(N+1)) and err₂ = 8·(|k|+1)/2^N_ln2.
@@ -696,8 +696,8 @@ theorem expBounds_width_tendsto_zero (x : ℚ) (hx : x ≠ 0) (k : ℤ)
   -- Unfold the match in hbound
   set lower := (expBounds x k iter).1
   set upper := (expBounds x k iter).2
-  have hbound' : ((upper : ℝ) - (lower : ℝ)) * 2 ^ expShift lower ≤
-      (2 : ℝ) ^ (k.natAbs + expShift lower) *
+  have hbound' : ((upper : ℝ) - (lower : ℝ)) * 2 ^ stickyShift lower ≤
+      (2 : ℝ) ^ (k.natAbs + stickyShift lower) *
         ((2 : ℝ) ^ (expNumTerms + iter * 10 + 2) *
           (expNumTerms + iter * 10 + 2 : ℝ) /
           ((expNumTerms + iter * 10 + 1).factorial * (expNumTerms + iter * 10 + 1)) +
@@ -707,8 +707,8 @@ theorem expBounds_width_tendsto_zero (x : ℚ) (hx : x ≠ 0) (k : ℤ)
     rw [show expBounds x k iter = (lower, upper) from by ext <;> rfl] at this
     dsimp only at this; push_cast at this ⊢
     exact this
-  have hS_iter : expShift lower ≤ S := hS iter
-  have h2s_le : (2 : ℝ) ^ (k.natAbs + expShift lower) ≤ C :=
+  have hS_iter : stickyShift lower ≤ S := hS iter
+  have h2s_le : (2 : ℝ) ^ (k.natAbs + stickyShift lower) ≤ C :=
     pow_le_pow_right₀ (by norm_num : (1:ℝ) ≤ 2) (by omega)
   have herr := hiter₀ iter hiter
   dsimp only at herr; push_cast at herr
@@ -718,8 +718,8 @@ theorem expBounds_width_tendsto_zero (x : ℚ) (hx : x ≠ 0) (k : ℤ)
       ((expNumTerms + iter * 10 + 1).factorial * (expNumTerms + iter * 10 + 1)) +
       8 * (k.natAbs + 1 : ℝ) /
       2 ^ (Nat.log2 k.natAbs + 52 + iter * 50) := by positivity
-  calc ((upper : ℝ) - lower) * 2 ^ expShift lower
-      ≤ (2 : ℝ) ^ (k.natAbs + expShift lower) * _ := hbound'
+  calc ((upper : ℝ) - lower) * 2 ^ stickyShift lower
+      ≤ (2 : ℝ) ^ (k.natAbs + stickyShift lower) * _ := hbound'
     _ ≤ C * _ := mul_le_mul_of_nonneg_right h2s_le herr_nn
     _ < eps := herr
 
@@ -732,19 +732,19 @@ to any integer, then `⌊lower · 2^s⌋ = ⌊upper · 2^s⌋` and `expTryOne` r
 theorem expTryOne_of_tight_bracket (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
     (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1)
     (δ : ℝ)
-    (hδ_gap : ∀ m : ℤ, |Real.exp (x : ℝ) * 2 ^ (expShift (expBounds x k iter).1) -
+    (hδ_gap : ∀ m : ℤ, |Real.exp (x : ℝ) * 2 ^ (stickyShift (expBounds x k iter).1) -
       (m : ℝ)| ≥ δ)
     (hwidth : let (lower, upper) := expBounds x k iter
-      ((upper : ℝ) - (lower : ℝ)) * 2 ^ (expShift lower) < δ) :
+      ((upper : ℝ) - (lower : ℝ)) * 2 ^ (stickyShift lower) < δ) :
     (expTryOne x k iter).isSome = true := by
   -- Step 1: Prove the nat-div floors agree
   have hq : (expBounds x k iter).1.num.natAbs *
-      2 ^ expShift (expBounds x k iter).1 / (expBounds x k iter).1.den =
+      2 ^ stickyShift (expBounds x k iter).1 / (expBounds x k iter).1.den =
       (expBounds x k iter).2.num.natAbs *
-      2 ^ expShift (expBounds x k iter).1 / (expBounds x k iter).2.den := by
+      2 ^ stickyShift (expBounds x k iter).1 / (expBounds x k iter).2.den := by
     set lower := (expBounds x k iter).1
     set upper := (expBounds x k iter).2
-    set s := expShift lower
+    set s := stickyShift lower
     set q_lo := lower.num.natAbs * 2 ^ s / lower.den
     set q_hi := upper.num.natAbs * 2 ^ s / upper.den
     have hl_pos := expBounds_lower_pos x k iter
@@ -1022,13 +1022,13 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
   -- Define ab early so the L bound can reference it in the induction.
   set ab := x.num.natAbs ^ 2 / x.den + x.num.natAbs + x.den +
     FloatFormat.prec.toNat + 100 with hab_def
-  -- Define S (shift bound) concretely and prove it bounds expShift.
-  have hS_bound : ∀ iter, expShift (expBounds x k iter).1 ≤
+  -- Define S (shift bound) concretely and prove it bounds stickyShift.
+  have hS_bound : ∀ iter, stickyShift (expBounds x k iter).1 ≤
       FloatFormat.prec.toNat + 9 + k.natAbs := by
     intro iter
     have hlower_pos := expBounds_lower_pos x k iter
     have hlog_ge := expBounds_int_log_ge x k iter hk_bound
-    have hshift := expShift_le_of_int_log _ hlower_pos
+    have hshift := stickyShift_le_of_int_log _ hlower_pos
     have : (FloatFormat.prec.toNat : ℤ) + 4 - Int.log 2 (expBounds x k iter).1 ≤
            FloatFormat.prec.toNat + 9 + k.natAbs := by
       have : Int.log 2 (expBounds x k iter).1 ≥ k - 5 := hlog_ge
@@ -1061,7 +1061,7 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
       ∃ δ > 0, ∃ L : ℕ, L ≤ 114 * ab * (Nat.log2 ab + 1) ∧
       (1 : ℝ) / δ ≤ (2 : ℝ) ^ L ∧
       ∀ iter, ∀ m : ℤ,
-      |Real.exp (x : ℝ) * 2 ^ expShift (expBounds x k iter).1 - ↑m| ≥ δ := by
+      |Real.exp (x : ℝ) * 2 ^ stickyShift (expBounds x k iter).1 - ↑m| ≥ δ := by
     -- Suffices to prove for all shifts ≤ T for some T ≥ shift bound
     suffices h_unif : ∀ T, T ≤ ab → ∃ δ > 0, ∃ L : ℕ,
         L ≤ 114 * ab * (Nat.log2 ab + 1) ∧ (1 : ℝ) / δ ≤ (2 : ℝ) ^ L ∧
@@ -1109,7 +1109,7 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
         · exact le_trans (min_le_left _ _) (hδ₁ s (by omega) m)
   -- Step 3: Pick concrete iteration within fuel budget.
   set S := FloatFormat.prec.toNat + 9 + k.natAbs with hS_def
-  have hS : ∀ iter, expShift (expBounds x k iter).1 ≤ S := hS_bound
+  have hS : ∀ iter, stickyShift (expBounds x k iter).1 ≤ S := hS_bound
   set iter := (L + 3 * k.natAbs + FloatFormat.prec.toNat + 20) / 10 with hiter_def
   have hiter_fuel : iter < expFuel x := by
     -- ab ≥ 100 and contains |k|, prec as summands
@@ -1182,14 +1182,14 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
   -- width * 2^s ≤ 2^{|k|+s} * (err₁ + err₂) by expBounds_width_bound
   -- where err₁ ≤ 4 * 2^N / N! and err₂ = 8*(|k|+1)/2^{N_ln2}
   have hwidth : let (lower, upper) := expBounds x k iter
-      ((upper : ℝ) - (lower : ℝ)) * 2 ^ (expShift lower) < δ := by
+      ((upper : ℝ) - (lower : ℝ)) * 2 ^ (stickyShift lower) < δ := by
     have hbound := expBounds_width_bound x hx k iter hk_bound
     set lower := (expBounds x k iter).1
     set upper := (expBounds x k iter).2
     set N := expNumTerms + iter * 10 with hN_def
     set N_ln2 := Nat.log2 k.natAbs + 52 + iter * 50 with hN_ln2_def
-    have hbound' : ((upper : ℝ) - (lower : ℝ)) * 2 ^ expShift lower ≤
-        (2 : ℝ) ^ (k.natAbs + expShift lower) *
+    have hbound' : ((upper : ℝ) - (lower : ℝ)) * 2 ^ stickyShift lower ≤
+        (2 : ℝ) ^ (k.natAbs + stickyShift lower) *
           ((2 : ℝ) ^ (N + 2) * (N + 2 : ℝ) /
             ((N + 1).factorial * (N + 1 : ℝ)) +
            8 * (k.natAbs + 1 : ℝ) / 2 ^ N_ln2) := by
@@ -1197,11 +1197,11 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
       rw [show expBounds x k iter = (lower, upper) from by ext <;> rfl] at this
       dsimp only at this
       exact this
-    have hS_iter : expShift lower ≤ S := hS iter
+    have hS_iter : stickyShift lower ≤ S := hS iter
     -- 2^{|k|+s} ≤ 2^{|k|+S}
     set C := (2 : ℝ) ^ (k.natAbs + S) with hC_def
     have hC_pos : 0 < C := by positivity
-    have h2s_le : (2 : ℝ) ^ (k.natAbs + expShift lower) ≤ C :=
+    have h2s_le : (2 : ℝ) ^ (k.natAbs + stickyShift lower) ≤ C :=
       pow_le_pow_right₀ (by norm_num : (1:ℝ) ≤ 2) (by omega)
     -- Bound err₁: 2^{N+2}*(N+2)/((N+1)!*(N+1)) ≤ 4*2^N/N!
     -- Then 2^N/N! ≤ (2/3)*(1/2)^{N-4} by pow_div_factorial_effective with d=2
@@ -1293,8 +1293,8 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
             linarith [show 1/(3*(2:ℝ)^L) + 1/(2*(2:ℝ)^L) + 1/(6*(2:ℝ)^L) = 1/(2:ℝ)^L from by
               field_simp; ring]
     -- Step C: Combine with hbound' and h2s_le
-    calc ((upper : ℝ) - (lower : ℝ)) * 2 ^ expShift lower
-        ≤ (2:ℝ)^(k.natAbs + expShift lower) *
+    calc ((upper : ℝ) - (lower : ℝ)) * 2 ^ stickyShift lower
+        ≤ (2:ℝ)^(k.natAbs + stickyShift lower) *
           ((2:ℝ)^(N+2) * (N+2:ℝ) / ((N+1).factorial * (N+1:ℝ)) +
           8 * (↑k.natAbs + 1) / (2:ℝ)^N_ln2) := hbound'
       _ ≤ C * ((2:ℝ)^(N+2) * (N+2:ℝ) / ((N+1).factorial * (N+1:ℝ)) +

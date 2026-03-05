@@ -37,7 +37,7 @@ theorem expComputableRun_exact_value (a : FiniteFp) (o : OpRefOut)
 /-! ## Loop output properties -/
 
 /-- When `expTryOne` succeeds, the q satisfies q ≥ 2^(prec+2).
-This follows from the `expShift` arithmetic: the shift is chosen so that
+This follows from the `stickyShift` arithmetic: the shift is chosen so that
 the scaled value has enough bits. -/
 theorem expTryOne_q_ge (x : ℚ) (k : ℤ) (iter : ℕ) (r : OpRefOut)
     (hr : expTryOne x k iter = some r)
@@ -384,7 +384,7 @@ theorem expTryOne_sound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ) (r : OpR
   have hlower_lt := expBounds_lower_lt_exp x hx k iter hk_bound
   have hupper_le := expBounds_exp_le_upper x k iter hk_bound
   exact inStickyInterval_of_bracket lower upper hl_pos (Real.exp (x : ℝ))
-    (expShift lower) hlower_lt hupper_le heq
+    (stickyShift lower) hlower_lt hupper_le heq
 
 /-- When the loop finds a result via `expTryOne`, that result satisfies inStickyInterval. -/
 theorem expExtractLoop_sound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter fuel : ℕ)
