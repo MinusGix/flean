@@ -804,39 +804,6 @@ theorem expTryOne_of_tight_bracket (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : �
   · rfl
   · exact absurd hq h
 
--- |padeP N x| ≤ 4^N * exp(|x|).
--- Proof: |padeP N x| ≤ Σ C(2N-k,N)/k! * |x|^k ≤ 4^N * Σ |x|^k/k! ≤ 4^N * exp(|x|).
-lemma padeP_abs_le (N : ℕ) (x : ℝ) :
-    |padeP N x| ≤ (4 : ℝ) ^ N * Real.exp |x| := by
-  simp only [padeP]
-  have h4N_pos : (0 : ℝ) ≤ (4 : ℝ) ^ N := pow_nonneg (by norm_num) N
-  calc |∑ k ∈ Finset.range (N + 1), padeCoeff N k * (-x) ^ k|
-      ≤ ∑ k ∈ Finset.range (N + 1), |padeCoeff N k * (-x) ^ k| :=
-        Finset.abs_sum_le_sum_abs _ _
-    _ = ∑ k ∈ Finset.range (N + 1), padeCoeff N k * |x| ^ k := by
-        congr 1; ext k; simp [padeCoeff, abs_mul, abs_div, abs_pow]
-    _ ≤ ∑ k ∈ Finset.range (N + 1), (4 : ℝ) ^ N * (|x| ^ k / k.factorial) := by
-        apply Finset.sum_le_sum; intro k hk
-        have hk_le : k ≤ N := by simp [Finset.mem_range] at hk; omega
-        simp only [padeCoeff, div_mul_eq_mul_div]
-        have hcoeff : (Nat.choose (2 * N - k) N : ℝ) ≤ (4 : ℝ) ^ N := by
-          have h4eq : (4 : ℝ) ^ N = (2 : ℝ) ^ (2 * N) := by
-            rw [show (4 : ℝ) = (2 : ℝ) ^ 2 from by norm_num, ← pow_mul]
-          rw [h4eq]
-          calc (Nat.choose (2 * N - k) N : ℝ) ≤ (2 : ℝ) ^ (2 * N - k) := by
-                exact_mod_cast Nat.choose_le_two_pow (2 * N - k) N
-            _ ≤ (2 : ℝ) ^ (2 * N) := pow_le_pow_right₀ (by norm_num) (by omega)
-        -- Goal: C(2N-k,N) * |x|^k / k! ≤ 4^N * (|x|^k / k!)
-        rw [mul_div_assoc]
-        exact mul_le_mul_of_nonneg_right hcoeff
-          (div_nonneg (pow_nonneg (abs_nonneg x) k)
-            (Nat.cast_pos.mpr (Nat.factorial_pos k)).le)
-    _ = (4 : ℝ) ^ N * ∑ k ∈ Finset.range (N + 1), |x| ^ k / k.factorial := by
-        rw [← Finset.mul_sum]
-    _ ≤ (4 : ℝ) ^ N * Real.exp |x| := by
-        apply mul_le_mul_of_nonneg_left _ h4N_pos
-        exact Real.sum_le_exp_of_nonneg (abs_nonneg x) (N + 1)
-
 -- Helper: 2^a * (1/2)^(a+b) = (1/2)^b
 lemma two_pow_mul_half_pow (a b : ℕ) :
     (2:ℝ)^a * (1/2:ℝ)^(a+b) = (1/2:ℝ)^b := by

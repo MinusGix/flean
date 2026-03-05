@@ -73,6 +73,12 @@ Chain: `N₀ ≤ 27·ab → D ≤ ab^(113·ab) → 2D ≤ 2^L, L ≤ 500·ab·lo
 | **50** (ln2 bits/iter) | ln2 precision growth | Affects computation speed | 50 | Not worth changing |
 | **52** (base ln2) | Base ln2 bits | Initial precision | 52 | Minor |
 
+**Theoretical optimum**: The asymptotic growth `L = O(ab · log ab)` is optimal. The leading
+constant 114 could be ~55-60 using Stirling (`N! ≈ (N/e)^N`) instead of `N! ≤ N^N` in the
+`hD_pow` block. This is the main source of the remaining 2x slack: `N^N` vs `(N/e)^N` doubles
+the exponent (113 → ~56, then 114 → ~57). Mathlib has Stirling bounds but wiring them through
+would be a moderate refactor of `pade_delta_log_bound`.
+
 ## Long-Term
 - [ ] Error-minimizing tactic (reorder FP computations)
 - [ ] Linearize tactic improvements (multiplicative cases, edge cases)

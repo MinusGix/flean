@@ -84,9 +84,12 @@ private theorem expLoop_sound (x : ℚ) (hx : x ≠ 0) (k : ℤ)
 
 /-! ## Main soundness theorems -/
 
-private theorem expComputableRun_sticky_q_lower (a : FiniteFp) (o : ExpRefOut)
+/-- Shared preamble for the sticky-cell proofs: for nonzero input, `expComputableRun`
+reduces to `expExtractLoop` and `expLoop_sound` applies. -/
+private theorem expComputableRun_loop_sound (a : FiniteFp) (o : ExpRefOut)
     (hr : expComputableRun a = o) (hFalse : o.isExact = false) :
-    2 ^ (FloatFormat.prec.toNat + 2) ≤ o.q := by
+    2 ^ (FloatFormat.prec.toNat + 2) ≤ o.q ∧
+    inStickyInterval (R := ℝ) o.q o.e_base (Real.exp (a.toVal (R := ℚ) : ℝ)) := by
   have hm : a.m ≠ 0 := by
     intro h; rw [expComputableRun_zero a h] at hr; rw [← hr] at hFalse; exact absurd hFalse (by decide)
   have hx : (a.toVal : ℚ) ≠ 0 :=
@@ -96,24 +99,19 @@ private theorem expComputableRun_sticky_q_lower (a : FiniteFp) (o : ExpRefOut)
   set x : ℚ := a.toVal with hx_def
   set k := expArgRedK x with hk_def
   rw [hval] at hr; rw [← hr]
-  exact (expLoop_sound x hx k (expArgRedK_bound x)).1
+  exact expLoop_sound x hx k (expArgRedK_bound x)
+
+private theorem expComputableRun_sticky_q_lower (a : FiniteFp) (o : ExpRefOut)
+    (hr : expComputableRun a = o) (hFalse : o.isExact = false) :
+    2 ^ (FloatFormat.prec.toNat + 2) ≤ o.q :=
+  (expComputableRun_loop_sound a o hr hFalse).1
 
 private theorem expComputableRun_sticky_interval (a : FiniteFp) (o : ExpRefOut)
     (hr : expComputableRun a = o) (hFalse : o.isExact = false) :
     inStickyInterval (R := ℝ) o.q o.e_base (Real.exp (a.toVal : ℝ)) := by
-  have hm : a.m ≠ 0 := by
-    intro h; rw [expComputableRun_zero a h] at hr; rw [← hr] at hFalse; exact absurd hFalse (by decide)
-  have hx : (a.toVal : ℚ) ≠ 0 :=
-    FiniteFp.toVal_ne_zero_of_m_pos a (Nat.pos_of_ne_zero hm)
-  have hval : expComputableRun a = expExtractLoop (a.toVal (R := ℚ)) (expArgRedK (a.toVal (R := ℚ))) 0 (expFuel (a.toVal (R := ℚ))) := by
-    simp only [expComputableRun, hm, ↓reduceIte]
-  set x : ℚ := a.toVal with hx_def
-  set k := expArgRedK x with hk_def
-  rw [hval] at hr; rw [← hr]
-  have hsound := (expLoop_sound x hx k (expArgRedK_bound x)).2
+  have hsound := (expComputableRun_loop_sound a o hr hFalse).2
   -- Bridge: (↑(a.toVal : ℚ) : ℝ) = (a.toVal : ℝ)
-  suffices hcast : (x : ℝ) = (a.toVal (R := ℝ)) by rw [← hcast]; exact hsound
-  show (a.toVal (R := ℚ) : ℝ) = a.toVal (R := ℝ)
+  suffices hcast : (a.toVal (R := ℚ) : ℝ) = (a.toVal (R := ℝ)) by rw [← hcast]; exact hsound
   simp only [FiniteFp.toVal, FiniteFp.sign', FloatFormat.radix_val_eq_two]
   split_ifs <;> push_cast <;> ring
 

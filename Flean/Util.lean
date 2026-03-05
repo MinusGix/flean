@@ -290,3 +290,58 @@ theorem exp_sub_le_mul_exp (a b : ℝ) :
   have h3 : Real.exp b * Real.exp (-(b - a)) = Real.exp a := by
     rw [← Real.exp_add]; ring_nf
   linarith
+
+/-! ### Factorial / geometric decay bounds -/
+
+/-- For `N ≥ 2 * m` and `d ≤ m`, the ratio `d^N / N!` is bounded by
+`d^(2*m) / (2*m)! · (1/2)^(N - 2*m)`.
+The idea: for `k > 2m ≥ 2d`, the factor `d/k ≤ d/(2m) ≤ 1/2`. -/
+theorem pow_div_factorial_geometric_bound (d : ℝ) (hd : 0 ≤ d) (m : ℕ) (hm : d ≤ m)
+    (N : ℕ) (hN : 2 * m ≤ N) :
+    d ^ N / (N.factorial : ℝ) ≤
+      d ^ (2 * m) / ((2 * m).factorial : ℝ) * (1 / 2) ^ (N - 2 * m) := by
+  -- Reduce to induction on j = N - 2m
+  suffices h : ∀ j : ℕ, d ^ (2 * m + j) / ((2 * m + j).factorial : ℝ) ≤
+      d ^ (2 * m) / ((2 * m).factorial : ℝ) * (1 / 2) ^ j by
+    have := h (N - 2 * m)
+    rwa [Nat.add_sub_cancel' hN] at this
+  intro j
+  induction j with
+  | zero => simp
+  | succ j ih =>
+    -- Factor: d^(2m+j+1)/(2m+j+1)! = (d^(2m+j)/(2m+j)!) · d/(2m+j+1)
+    have hfac_ne : ((2 * m + j).factorial : ℝ) ≠ 0 :=
+      Nat.cast_ne_zero.mpr (Nat.factorial_ne_zero _)
+    have hn1_pos : (0 : ℝ) < ((2 * m + j + 1 : ℕ) : ℝ) := Nat.cast_pos.mpr (by omega)
+    have hratio : d ^ (2 * m + j + 1) / ((2 * m + j + 1).factorial : ℝ) =
+        (d ^ (2 * m + j) / ((2 * m + j).factorial : ℝ)) *
+        (d / ((2 * m + j + 1 : ℕ) : ℝ)) := by
+      rw [show 2 * m + j + 1 = (2 * m + j) + 1 from by omega,
+          pow_succ, Nat.factorial_succ, Nat.cast_mul]
+      field_simp
+    -- Bound: d/(2m+j+1) ≤ 1/2 since d ≤ m and 2m+j+1 ≥ 2m+1 ≥ 2d
+    have hfactor : d / ((2 * m + j + 1 : ℕ) : ℝ) ≤ 1 / 2 := by
+      rw [div_le_div_iff₀ hn1_pos (by norm_num : (0:ℝ) < 2)]
+      simp only [one_mul]
+      calc d * 2 ≤ (m : ℝ) * 2 := by nlinarith
+        _ = ((2 * m : ℕ) : ℝ) := by push_cast; ring
+        _ ≤ ((2 * m + j + 1 : ℕ) : ℝ) := Nat.cast_le.mpr (by omega)
+    -- Combine with inductive hypothesis
+    rw [show 2 * m + (j + 1) = 2 * m + j + 1 from by omega, hratio]
+    calc (d ^ (2 * m + j) / ↑(2 * m + j).factorial) *
+            (d / ↑(2 * m + j + 1))
+        ≤ (d ^ (2 * m) / ↑(2 * m).factorial * (1 / 2) ^ j) * (1 / 2) :=
+          mul_le_mul ih hfactor (div_nonneg hd hn1_pos.le) (by positivity)
+      _ = d ^ (2 * m) / ↑(2 * m).factorial * (1 / 2) ^ (j + 1) := by
+          rw [pow_succ]; ring
+
+/-- Explicit bound: `d^N / N! ≤ C · (1/2)^M` when `N = 2⌈d⌉ + M`. -/
+theorem pow_div_factorial_effective (d : ℝ) (hd : 0 ≤ d) (M : ℕ) :
+    let m := ⌈d⌉₊  -- Nat.ceil d
+    let N := 2 * m + M
+    d ^ N / (N.factorial : ℝ) ≤
+      d ^ (2 * m) / ((2 * m).factorial : ℝ) * (1 / 2) ^ M := by
+  simp only
+  have hm : d ≤ ↑⌈d⌉₊ := Nat.le_ceil d
+  have h := pow_div_factorial_geometric_bound d hd ⌈d⌉₊ hm (2 * ⌈d⌉₊ + M) (by omega)
+  rwa [show 2 * ⌈d⌉₊ + M - 2 * ⌈d⌉₊ = M from by omega] at h
