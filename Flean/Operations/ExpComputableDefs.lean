@@ -12,7 +12,7 @@ extraction step produces a correct sticky interval.
 See `ExpComputable.lean` for the high-level architecture overview. This file contains:
 - Constants (ln2 bounds, fuel, Taylor order)
 - Computation definitions (argument reduction, Taylor bounds, extraction loop)
-- `ExpRefExec` instance (the computable kernel)
+- `OpRefExec expTarget` instance (the computable kernel)
 - Basic properties (positivity, q bounds, exact-case handling)
 - Floor/sticky interval arithmetic
 - ln(2) series soundness and argument reduction correctness
@@ -175,7 +175,7 @@ def expComputableRun (a : FiniteFp) : OpRefOut :=
     let k := expArgRedK x
     expExtractLoop x k 0 (expFuel x)
 
-instance (priority := 500) : ExpRefExec where
+instance (priority := 500) : OpRefExec expTarget where
   run := expComputableRun
 
 /-! ## Soundness helpers -/

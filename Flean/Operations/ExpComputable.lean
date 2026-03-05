@@ -1,7 +1,7 @@
 import Flean.Operations.ExpComputableSound
 import Flean.Operations.ExpTermination
 
-/-! # Computable `ExpRefExec` and `ExpRefExecSound` Instances
+/-! # Computable `OpRefExec` and `OpRefExecSound` Instances for exp
 
 Provides a fully verified computable `exp` for floating-point arithmetic. The computation
 returns either an exact representation or a "sticky cell" bracketing `exp(x)`, and the
@@ -44,13 +44,13 @@ pade_effective_delta (PadeExp.lean)        -- ∃ δ > 0, exp(x)·2^s avoids int
 
 ### Meeting point: `expLoop_sound`
 Combines `expExtractLoop_sound` (correctness) with `expTryOne_terminates` (termination)
-to prove the loop output is valid. The four `ExpRefExecSound` obligations then follow directly.
+to prove the loop output is valid. The four `OpRefExecSound expTarget` obligations then follow directly.
 
 ## File organization
 - `ExpTaylor.lean`: Taylor series machinery (`taylorExpQ`, `taylorRemainder`, bounds)
 - `ExpComputableDefs.lean`: computation definitions + bracket correctness (Thread 1)
 - `ExpTermination.lean`: width bounds + termination proof (Thread 2)
-- `ExpComputable.lean` (this file): final assembly + `ExpRefExecSound` instance
+- `ExpComputable.lean` (this file): final assembly + `OpRefExecSound expTarget` instance
 -/
 
 section ExpComputable
@@ -112,13 +112,13 @@ private theorem expComputableRun_sticky_interval (a : FiniteFp) (o : OpRefOut)
   have hsound := (expComputableRun_loop_sound a o hr hFalse).2
   rw [← FiniteFp.toVal_ratCast]; exact hsound
 
-/-! ## ExpRefExecSound instance
+/-! ## OpRefExecSound expTarget instance
 
 The final assembly. Each obligation routes through `expLoop_sound`:
 - `exact_value`, `exact_mag_ne_zero`: the `x = 0` branch (trivial).
 - `sticky_q_lower`, `sticky_interval`: the `x ≠ 0` branch, via `expLoop_sound`. -/
 
-instance (priority := 500) : ExpRefExecSound where
+instance (priority := 500) : OpRefExecSound expTarget where
   exact_mag_ne_zero := fun a o hr hExact => by
     have := expComputableRun_exact_mag_ne_zero a o hr hExact; omega
   exact_value := fun a o hr hExact =>

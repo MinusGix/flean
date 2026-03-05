@@ -301,4 +301,40 @@ theorem stickyExtractLoop_sound (bounds : ℕ → ℚ × ℚ) (iter fuel : ℕ) 
       simp [hm] at hq ⊢
       exact ih (iter + 1) hq
 
+/-! ## Generic reference-kernel classes
+
+Parametric execution and soundness contracts for any operation whose
+reference kernel produces an `OpRefOut`. The target function
+`target : FiniteFp → ℝ` gives the positive magnitude of the exact result. -/
+
+/-- Computable reference-kernel execution hook, parametric over the target function. -/
+class OpRefExec (target : FiniteFp → ℝ) where
+  run : FiniteFp → OpRefOut
+
+/-- Soundness contract for a computable reference kernel.
+
+The `target` function returns the *positive magnitude* of the exact result.
+Sign handling is part of the operation-specific layer. -/
+class OpRefExecSound (target : FiniteFp → ℝ) [OpRefExec target] : Prop where
+  exact_mag_ne_zero :
+    ∀ (a : FiniteFp) (o : OpRefOut),
+      OpRefExec.run (target := target) a = o →
+      o.isExact = true →
+      (2 * o.q) ≠ 0
+  exact_value :
+    ∀ (a : FiniteFp) (o : OpRefOut),
+      OpRefExec.run (target := target) a = o →
+      o.isExact = true →
+      intSigVal (R := ℝ) false (2 * o.q) o.e_base = target a
+  sticky_q_lower :
+    ∀ (a : FiniteFp) (o : OpRefOut),
+      OpRefExec.run (target := target) a = o →
+      o.isExact = false →
+      2 ^ (FloatFormat.prec.toNat + 2) ≤ o.q
+  sticky_interval :
+    ∀ (a : FiniteFp) (o : OpRefOut),
+      OpRefExec.run (target := target) a = o →
+      o.isExact = false →
+      inStickyInterval (R := ℝ) o.q o.e_base (target a)
+
 end StickyExtract
