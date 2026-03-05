@@ -3,19 +3,123 @@ import Flean.Operations.RoundIntSig
 
 /-! # Generic sticky cell extraction
 
-Parametric machinery for extracting a sticky cell from rational brackets.
-Given a function `bounds : ℕ → ℚ × ℚ` producing progressively tighter brackets
-around a target value, this module provides:
-- `stickyShift`: compute the bit shift from a positive rational lower bound
-- `stickyExtract`: extract `(q, e_base)` from lower/upper bounds
-- `stickyTryOne`: try one extraction at a given precision level
-- `stickyExtractLoop`: iterate with fuel until cell agreement
+## What this module does
 
-These are independent of the operation being computed (exp, log, sin, etc.).
-Operation-specific code provides:
-1. A `bounds` function producing correct brackets at each iteration
-2. A fuel bound guaranteeing termination
-3. Bracket correctness proofs (`lower < target ≤ upper`)
+Given a real value `v` (e.g. `exp(x)`, `log(x)`, `sin(x)`) that we can bracket with
+rational intervals of increasing precision, this module identifies which **sticky cell**
+of the floating-point grid `v` falls into. A sticky cell is the half-open interval
+`(2q · 2^e_base, 2(q+1) · 2^e_base)` that contains `v`.
+
+The extraction is fully operation-independent: the same loop works for any function,
+as long as you can compute progressively tighter rational brackets around the target.
+
+## Core algorithm
+
+1. **Shift computation** (`stickyShift`): Given a positive rational lower bound `lower`,
+   compute a bit shift `s` such that `⌊lower · 2^s⌋` has at least `prec + 3` bits.
+   This ensures the sticky index `q` is large enough for correct rounding.
+
+2. **Extraction** (`stickyExtract`): Compute `q = ⌊lower · 2^s⌋` and `e_base = -(s+1)`.
+
+3. **Try-one** (`stickyTryOne`): Given brackets `(lower, upper)` at precision level `iter`,
+   check if `⌊lower · 2^s⌋ = ⌊upper · 2^s⌋`. If so, we've identified the cell; return it.
+   Otherwise return `none` (need tighter brackets).
+
+4. **Loop** (`stickyExtractLoop`): Iterate `stickyTryOne` with increasing `iter` until
+   cell agreement, consuming fuel. Returns `{q := 0, e_base := 0}` if fuel runs out.
+
+## How to use for a new operation
+
+To implement `op(x)` (e.g. `log`, `sin`), you need to provide four things:
+
+### 1. A bounds function: `opBounds : ... → ℕ → ℚ × ℚ`
+
+Takes operation-specific parameters (the input value, any precomputed reduction constants)
+and an iteration index `iter : ℕ`, returns `(lower, upper)` bracketing `op(x)`.
+The brackets must get tighter as `iter` increases.
+
+**Example** (exp): `expBounds (x : ℚ) (k : ℤ) (iter : ℕ) : ℚ × ℚ` computes Taylor
+bounds with `expNumTerms + iter * 10` terms and `Nat.log2 k.natAbs + 52 + iter * 50`
+bits of ln(2) precision.
+
+### 2. A fuel bound: `opFuel : ... → ℕ`
+
+An upper bound on how many iterations the loop needs. Must be large enough that
+`stickyTryOne` succeeds at some `iter < opFuel`.
+
+**Example** (exp): `expFuel x = 15 * ab * (Nat.log2 ab + 1) + 200` where `ab` combines
+the input numerator, denominator, and precision.
+
+### 3. Bracket correctness proofs (Thread 1)
+
+Three theorems about `opBounds`:
+
+- **Lower positivity**: `∀ iter, 0 < (opBounds ... iter).1`
+  The lower bound is always positive. (Needed for `stickyShift` to produce valid output.)
+
+- **Strict lower bound**: `∀ iter, ((opBounds ... iter).1 : ℝ) < op(x)`
+  The lower bound is strictly below the target. (Strict inequality is essential because
+  the sticky cell is an open interval on the left.)
+
+- **Upper bound**: `∀ iter, op(x) ≤ ((opBounds ... iter).2 : ℝ)`
+  The target is at or below the upper bound.
+
+These feed directly into `stickyExtractLoop_sound` via the `hpos`, `hv_lower`, `hv_upper`
+arguments.
+
+### 4. Termination proof (Thread 2)
+
+A theorem of the form:
+```
+∃ n, 0 ≤ n ∧ n < 0 + opFuel ... ∧ (stickyTryOne (opBounds ...) n).isSome = true
+```
+
+This guarantees the loop finds a cell within the fuel budget. The proof typically
+combines:
+- A **gap bound**: `|op(x) · 2^s - m| ≥ δ` for all integers `m` (from irrationality
+  or transcendence results — e.g. Padé approximants for exp).
+- A **width bound**: `(upper - lower) · 2^s < δ` at some iteration (from the rate
+  at which `opBounds` narrows).
+
+### Assembly
+
+With these four pieces, the final kernel and its soundness proof are short:
+
+```lean
+def opComputableRun (a : FiniteFp) : OpRefOut :=
+  if «exact case» then { q := ..., e_base := ..., isExact := true }
+  else (stickyExtractLoop (opBounds ...) 0 (opFuel ...)).toOpRefOut
+
+-- Soundness combines the generic lemmas:
+-- • stickyExtractLoop_pos_of_success  (termination → q > 0)
+-- • stickyExtractLoop_q_ge            (q > 0 → q ≥ 2^(prec+2))
+-- • stickyExtractLoop_sound           (q > 0 + brackets correct → inStickyInterval)
+```
+
+Register as `OpRefExec opTarget` / `OpRefExecSound opTarget` (see below).
+
+## Positivity constraint
+
+The extraction assumes `lower > 0` (positive target value). This is natural for
+floating-point: operations decompose into sign + magnitude, and the magnitude is
+always positive. The sign is handled separately in the operation-specific layer.
+
+## Module contents
+
+- `StickyOut`, `OpRefOut`: output types
+- `stickyShift`, `stickyExtract`: shift computation and cell extraction
+- `stickyTryOne`, `stickyExtractLoop`: parametric try-one and iterative loop
+- `inStickyInterval_of_bracket`: floor agreement → valid sticky cell
+- `stickyTryOne_sound`, `stickyExtractLoop_sound`: generic loop soundness
+- `stickyExtractLoop_q_ge`, `stickyExtractLoop_pos_of_success`: q magnitude bounds
+- `OpRefExec`, `OpRefExecSound`: typeclass interface for operation kernels
+
+## See also
+
+- `ExpComputableDefs.lean`: concrete `expBounds`, `expFuel`, `OpRefExec expTarget` instance
+- `ExpComputableSound.lean`: bracket correctness for exp (Thread 1)
+- `ExpTermination.lean`: termination for exp via Padé approximants (Thread 2)
+- `ExpComputable.lean`: final assembly + `OpRefExecSound expTarget` instance
 -/
 
 section StickyExtract
