@@ -12,6 +12,8 @@ import Flean.Operations.ExpComputableDefs
 import Flean.Operations.ExpComputableSound
 import Flean.Operations.ExpTermination
 import Flean.Operations.ExpComputable
+import Flean.Operations.LogTaylor
+import Flean.Operations.LogComputableDefs
 import Flean.Operations.FMA
 import Flean.Operations.Sterbenz
 import Flean.Operations.MulPow2
