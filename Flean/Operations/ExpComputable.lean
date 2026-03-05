@@ -36,7 +36,7 @@ taylorExpQ_lt_exp, exp_le_taylor_upper    -- Taylor bounds on exp(r)
 ```
 pade_effective_delta (PadeExp.lean)        -- ∃ δ > 0, exp(x)·2^s avoids integers by ≥ δ
     → padeConvergenceN₀_le                -- Padé threshold ≤ 27·ab
-    → pade_delta_log_bound                -- 1/δ ≤ 2^(500·ab·log(ab))
+    → pade_delta_log_bound                -- 1/δ ≤ 2^(114·ab·log(ab))
     → expBounds_width_bound               -- bracket width ≤ C · (1/N! + 1/2^N_ln2)
     → expFuel_sufficient                  -- ∃ iter < expFuel(x), width < δ
     → expTryOne_terminates

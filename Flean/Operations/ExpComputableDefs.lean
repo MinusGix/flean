@@ -74,7 +74,7 @@ which is the effective threshold for the factorial decay in the bracket width
 to overcome the Padé irrationality denominator `D = N₀! · b^{N₀} · |P_{N₀}|`. -/
 def expFuel (x : ℚ) : ℕ :=
   let ab := x.num.natAbs ^ 2 / x.den + x.num.natAbs + x.den + FloatFormat.prec.toNat + 100
-  100 * ab * (Nat.log2 ab + 1) + 1000
+  15 * ab * (Nat.log2 ab + 1) + 200
 
 /-! ## Constants -/
 

@@ -13,7 +13,7 @@ The proof has three parts:
    by `C · (1/N! + 1/2^{N_ln2})`, which decreases super-exponentially in `iter`.
 2. **Padé gap** (`pade_delta_log_bound`): using Padé approximants from `PadeExp.lean`,
    `exp(x) · 2^s` stays at least `δ > 0` away from every integer, with `1/δ ≤ 2^L`
-   where `L ≤ 500 · ab · log₂(ab)`.
+   where `L ≤ 114 · ab · log₂(ab)`.
 3. **Fuel sufficiency** (`expFuel_sufficient`): at a concrete iteration within `expFuel x`,
    the bracket width drops below `δ`, so `expTryOne` succeeds.
 -/
@@ -900,7 +900,7 @@ lemma pade_delta_log_bound (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0) (s : 
     let D := max ((N₀.factorial : ℝ) * (b : ℝ) ^ N₀ * |padeP N₀ ((a : ℝ) / b)|)
                  (((N₀ + 1).factorial : ℝ) * (b : ℝ) ^ (N₀ + 1) *
                    |padeP (N₀ + 1) ((a : ℝ) / b)|)
-    ∃ L : ℕ, L ≤ 500 * ab * (Nat.log2 ab + 1) ∧ 2 * D ≤ (2 : ℝ) ^ L := by
+    ∃ L : ℕ, L ≤ 114 * ab * (Nat.log2 ab + 1) ∧ 2 * D ≤ (2 : ℝ) ^ L := by
   simp only
   set N₀ := padeConvergenceN₀ a b s
   set x := (a : ℝ) / (b : ℝ) with hx_def
@@ -1016,8 +1016,8 @@ lemma pade_delta_log_bound (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0) (s : 
           pow_le_pow_left₀ (by positivity) hab_le_pow _
       _ = (2 : ℝ) ^ ((Nat.log2 ab + 1) * (113 * ab)) := by rw [← pow_mul]
       _ = (2 : ℝ) ^ (113 * ab * (Nat.log2 ab + 1)) := by ring_nf
-  -- Combine: 2*D ≤ 2 * ab^(113*ab) ≤ 2^(1 + 113*ab*(log₂(ab)+1)) ≤ 2^(500*ab*(log₂(ab)+1))
-  refine ⟨500 * ab * (Nat.log2 ab + 1), le_refl _, ?_⟩
+  -- Combine: 2*D ≤ 2·ab^(113ab) ≤ 2^(1 + 113·ab·log₂ab) ≤ 2^(114·ab·log₂ab)
+  refine ⟨114 * ab * (Nat.log2 ab + 1), le_refl _, ?_⟩
   have hab_pos : (0 : ℝ) < ab := by exact_mod_cast (show 0 < ab by omega)
   calc 2 * max ((N₀.factorial : ℝ) * (b : ℝ) ^ N₀ * |padeP N₀ x|)
                (N₁.factorial * (b : ℝ) ^ N₁ * |padeP N₁ x|)
@@ -1025,26 +1025,20 @@ lemma pade_delta_log_bound (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0) (s : 
     _ ≤ 2 * (2 : ℝ) ^ (113 * ab * (Nat.log2 ab + 1)) := by linarith [hpow_bound]
     _ ≤ (2 : ℝ) ^ 1 * (2 : ℝ) ^ (113 * ab * (Nat.log2 ab + 1)) := by norm_num
     _ = (2 : ℝ) ^ (1 + 113 * ab * (Nat.log2 ab + 1)) := by rw [← pow_add]
-    _ ≤ (2 : ℝ) ^ (500 * ab * (Nat.log2 ab + 1)) := by
+    _ ≤ (2 : ℝ) ^ (114 * ab * (Nat.log2 ab + 1)) := by
         apply pow_le_pow_right₀ (by norm_num)
-        have h1 : 1 + 113 * ab * (Nat.log2 ab + 1) ≤ 500 * ab * (Nat.log2 ab + 1) := by
-          have hX := Nat.zero_le (ab * (Nat.log2 ab + 1))
-          have : 113 * (ab * (Nat.log2 ab + 1)) ≤ 499 * (ab * (Nat.log2 ab + 1)) :=
-            Nat.mul_le_mul_right _ (by omega)
-          have : 1 ≤ ab * (Nat.log2 ab + 1) :=
-            le_trans (show 1 ≤ 100 * 1 by omega)
-              (Nat.mul_le_mul hab_ge (by omega))
-          linarith [show 113 * ab * (Nat.log2 ab + 1) = 113 * (ab * (Nat.log2 ab + 1)) by ring,
-                    show 500 * ab * (Nat.log2 ab + 1) = 500 * (ab * (Nat.log2 ab + 1)) by ring]
-        linarith
+        -- 1 ≤ ab·(log₂ab+1) since ab ≥ 100, so 1 + 113·X ≤ 114·X
+        have : 1 ≤ ab * (Nat.log2 ab + 1) :=
+          le_trans (show 1 ≤ 100 * 1 by omega) (Nat.mul_le_mul hab_ge (by omega))
+        nlinarith
 
 /-- **Heart of the termination proof.**
 
 Shows that `expTryOne` succeeds at some iteration within `expFuel x` steps.
 The proof constructs a concrete iteration `iter₀` and shows:
-1. The Padé gap `δ` (from `pade_effective_delta`) satisfies `1/δ ≤ 2^L` with `L ≤ 500·ab·log₂(ab)`.
+1. The Padé gap `δ` (from `pade_effective_delta`) satisfies `1/δ ≤ 2^L` with `L ≤ 114·ab·log₂(ab)`.
 2. At `iter₀ = (L + 3|k| + prec + 20) / 10`, the bracket width `< δ`.
-3. `iter₀ < expFuel x` since `expFuel x = 100·ab·(log₂(ab)+1) + 1000 ≫ L/10`. -/
+3. `iter₀ < expFuel x` since `expFuel x = 15·ab·(log₂(ab)+1) + 200 > L/10`. -/
 theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
     (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1) :
     ∃ iter, iter < expFuel x ∧ (expTryOne x k iter).isSome = true := by
@@ -1089,13 +1083,13 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
   have hx_eq : (x : ℝ) = (x.num : ℝ) / (x.den : ℝ) := by
     push_cast [Rat.cast_def]; ring
   have ⟨δ, hδ_pos, L, hL_bound, hL_delta, hδ_gap⟩ :
-      ∃ δ > 0, ∃ L : ℕ, L ≤ 500 * ab * (Nat.log2 ab + 1) ∧
+      ∃ δ > 0, ∃ L : ℕ, L ≤ 114 * ab * (Nat.log2 ab + 1) ∧
       (1 : ℝ) / δ ≤ (2 : ℝ) ^ L ∧
       ∀ iter, ∀ m : ℤ,
       |Real.exp (x : ℝ) * 2 ^ expShift (expBounds x k iter).1 - ↑m| ≥ δ := by
     -- Suffices to prove for all shifts ≤ T for some T ≥ shift bound
     suffices h_unif : ∀ T, T ≤ ab → ∃ δ > 0, ∃ L : ℕ,
-        L ≤ 500 * ab * (Nat.log2 ab + 1) ∧ (1 : ℝ) / δ ≤ (2 : ℝ) ^ L ∧
+        L ≤ 114 * ab * (Nat.log2 ab + 1) ∧ (1 : ℝ) / δ ≤ (2 : ℝ) ^ L ∧
         ∀ s, s ≤ T → ∀ m : ℤ,
         |Real.exp (x : ℝ) * 2 ^ s - ↑m| ≥ δ by
       obtain ⟨δ, hδ_pos, L, hL, hLd, hδ⟩ :=
@@ -1176,30 +1170,39 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
         FloatFormat.prec.toNat + 100 := rfl
       omega
     set fuel := expFuel x with hfuel_def
-    have hfuel_eq : fuel = 100 * ab * (Nat.log2 ab + 1) + 1000 := by
+    have hfuel_eq : fuel = 15 * ab * (Nat.log2 ab + 1) + 200 := by
       simp only [hfuel_def, expFuel]; rfl
-    -- The numerator: L + 3|k| + prec + 20 ≤ 500*ab*(log₂(ab)+1) + 4*ab + 20
-    -- iter = numerator / 10 ≤ 50*ab*(log₂(ab)+1) + (4*ab + 20)/10
-    --      < 51*ab*(log₂(ab)+1) + 3 ≤ fuel
+    -- Numerator ≤ 114·ab·X + 4·ab + 20, iter = numerator/10
+    -- Need iter < 15·ab·X + 200
     have hnum : L + 3 * k.natAbs + FloatFormat.prec.toNat + 20 ≤
-        500 * ab * (Nat.log2 ab + 1) + 4 * ab + 20 := by omega
+        114 * ab * (Nat.log2 ab + 1) + 4 * ab + 20 := by omega
     calc iter = (L + 3 * k.natAbs + FloatFormat.prec.toNat + 20) / 10 := rfl
-      _ ≤ (500 * ab * (Nat.log2 ab + 1) + 4 * ab + 20) / 10 :=
+      _ ≤ (114 * ab * (Nat.log2 ab + 1) + 4 * ab + 20) / 10 :=
           Nat.div_le_div_right hnum
       _ < fuel := by
           rw [hfuel_eq]
-          apply Nat.div_lt_of_lt_mul
-          -- 500*ab*X + 4*ab + 20 < 1000*ab*X + 10000
+          -- (114·ab·X + 4·ab + 20)/10 < 15·ab·X + 200
+          -- Upper-bound numerator: ≤ 120·ab·X (since 4·ab+20 ≤ 6·ab·X for X≥7,ab≥100)
+          -- Then 120·ab·X/10 = 12·ab·X < 15·ab·X + 200.
           set X := Nat.log2 ab + 1
-          have hX : 1 ≤ X := by omega
-          -- Need: 500*ab*X + 4*ab + 20 < 10 * (100*ab*X + 1000)
-          -- i.e., 500*ab*X + 4*ab + 20 < 1000*ab*X + 10000
-          -- i.e., 4*ab + 20 < 500*ab*X + 10000
-          -- Since ab ≥ 0 and X ≥ 1:
-          have h500 : 500 * ab * X = 500 * (ab * X) := by ring
-          have habX : ab ≤ ab * X := Nat.le_mul_of_pos_right _ (by omega)
-          have h1000 : 1000 * ab * X = 1000 * (ab * X) := by ring
-          linarith [Nat.zero_le (ab * X)]
+          have hX : 7 ≤ X := by
+            have : 6 ≤ Nat.log2 ab :=
+              (Nat.le_log2 (by omega : ab ≠ 0)).mpr (by omega : 2 ^ 6 ≤ ab)
+            omega
+          have habX_ge : 100 * 7 ≤ ab * X :=
+            Nat.mul_le_mul hab_ge hX
+          have h_num_le : 114 * ab * X + 4 * ab + 20 ≤ 120 * (ab * X) := by
+            have h114 : 114 * ab * X = 114 * (ab * X) := by ring
+            have : 4 * ab + 20 ≤ 6 * (ab * X) := by
+              calc 4 * ab + 20 ≤ 5 * ab := by omega
+                _ ≤ 5 * (ab * X) := Nat.mul_le_mul_left _ (Nat.le_mul_of_pos_right _ (by omega))
+                _ ≤ 6 * (ab * X) := by omega
+            omega
+          calc (114 * ab * X + 4 * ab + 20) / 10
+              ≤ 120 * (ab * X) / 10 := Nat.div_le_div_right h_num_le
+            _ = 12 * (ab * X) := by omega
+            _ < 15 * (ab * X) + 200 := by omega
+            _ = 15 * ab * X + 200 := by ring
   -- Step 4: Show width * 2^s < δ at this iteration.
   -- width * 2^s ≤ 2^{|k|+s} * (err₁ + err₂) by expBounds_width_bound
   -- where err₁ ≤ 4 * 2^N / N! and err₂ = 8*(|k|+1)/2^{N_ln2}
