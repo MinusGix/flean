@@ -205,6 +205,46 @@ theorem logUpperBound_pos (t : ℚ) (ht : 0 < t) (ht1 : (t : ℝ) < 1) (N : ℕ)
     _ ≤ (logUpperBound t N : ℝ) := by
         exact log_le_taylorLogQ_odd t ht.le ht1 N
 
+/-- Even partial sums are monotonically increasing: `S_{2M} ≤ S_{2N}` for `M ≤ N`. -/
+theorem logLowerBound_mono (t : ℚ) (ht : 0 ≤ t) (ht1 : (t : ℝ) ≤ 1) (M N : ℕ) (hMN : M ≤ N) :
+    (logLowerBound t M : ℝ) ≤ (logLowerBound t N : ℝ) := by
+  suffices h : ∀ k : ℕ, (logLowerBound t M : ℝ) ≤ (logLowerBound t (M + k) : ℝ) by
+    have := h (N - M)
+    rwa [show M + (N - M) = N from by omega] at this
+  intro k; induction k with
+  | zero => simp
+  | succ k ih =>
+    calc (logLowerBound t M : ℝ) ≤ (logLowerBound t (M + k) : ℝ) := ih
+      _ ≤ (logLowerBound t (M + k + 1) : ℝ) := by
+          unfold logLowerBound
+          rw [taylorLogQ_cast_eq_sum, taylorLogQ_cast_eq_sum]
+          rw [show 2 * (M + k + 1) = 2 * (M + k) + 1 + 1 from by omega]
+          rw [Finset.sum_range_succ, Finset.sum_range_succ]
+          simp only [mul_div_assoc]
+          set S := ∑ i ∈ Finset.range (2 * (M + k)),
+            (-1 : ℝ) ^ i * ((t : ℝ) ^ (i + 1) / ((i : ℝ) + 1))
+          -- Adding pair: (-1)^{2(M+k)} * a + (-1)^{2(M+k)+1} * a' = a - a' ≥ 0
+          have h_even : (-1 : ℝ) ^ (2 * (M + k)) = 1 := by simp
+          have h_odd : (-1 : ℝ) ^ (2 * (M + k) + 1) = -1 := by simp [pow_succ]
+          simp only [h_even, h_odd, one_mul, neg_one_mul, neg_div]
+          have hanti := logTerms_antitone t ht ht1
+            (show 2 * (M + k) ≤ 2 * (M + k) + 1 by omega)
+          simp only [show (2 * (M + k) + 1 : ℕ) + 1 = 2 * (M + k) + 1 + 1 from by omega,
+                     show ((2 * (M + k) + 1 : ℕ) : ℝ) + 1 = ↑(2 * (M + k) + 1) + 1 from by push_cast; ring,
+                     show ((2 * (M + k) : ℕ) : ℝ) + 1 = ↑(2 * (M + k)) + 1 from by push_cast; ring] at hanti
+          linarith
+
+/-- `logLowerBound t N > 0` for `0 < t < 1` and `N ≥ 1`.
+`S_2 = t - t²/2 > 0`, and even partial sums are increasing. -/
+theorem logLowerBound_pos (t : ℚ) (ht : 0 < t) (ht1 : (t : ℝ) < 1) (N : ℕ) (hN : 1 ≤ N) :
+    (0 : ℝ) < (logLowerBound t N : ℝ) := by
+  calc (0 : ℝ) < (logLowerBound t 1 : ℝ) := by
+        unfold logLowerBound; rw [taylorLogQ_two_terms]; push_cast
+        have ht' : (0 : ℝ) < (t : ℝ) := by exact_mod_cast ht
+        nlinarith [sq_nonneg ((t : ℝ) - 1)]
+    _ ≤ (logLowerBound t N : ℝ) :=
+        logLowerBound_mono t ht.le ht1.le 1 N hN
+
 /-- `logLowerBound t N ≥ 0` for `0 ≤ t < 1`. -/
 theorem logLowerBound_nonneg (t : ℚ) (ht : 0 ≤ t) (ht1 : (t : ℝ) < 1) (N : ℕ) :
     (0 : ℝ) ≤ (logLowerBound t N : ℝ) := by
