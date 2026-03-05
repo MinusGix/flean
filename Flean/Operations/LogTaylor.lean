@@ -82,12 +82,43 @@ theorem taylorLogQ_go_add (t : ℚ) (fuel k : ℕ) (term c acc : ℚ) :
         c + (acc + term * (-t) * ((↑k + 1) / (↑k + 2))) from by ring]
     exact ih _ _ _
 
-/-- The k-th term (1-indexed) of the log series: `(-1)^{k+1} · t^k / k`. -/
-noncomputable def logSeriesTerm (t : ℝ) (k : ℕ) : ℝ :=
-  (-1) ^ (k + 1) * t ^ k / k
+/-- The `go` function with `term = (-t)^k · t / (k+1)` and `acc = 0` produces
+the partial sum from index k to k+fuel. Cast version to ℝ. -/
+theorem taylorLogQ_go_cast_eq (t : ℚ) (fuel k : ℕ) (term acc : ℚ)
+    (hterm : (term : ℝ) = (-(t : ℝ)) ^ k * (t : ℝ) / ((k : ℝ) + 1)) :
+    (taylorLogQ.go t fuel k term acc : ℝ) = (acc : ℝ) +
+      ∑ j ∈ Finset.Ico (k + 1) (k + 1 + fuel),
+        (-1 : ℝ) ^ j * (↑t : ℝ) ^ (j + 1) / ((j : ℝ) + 1) := by
+  induction fuel generalizing k term acc with
+  | zero =>
+    simp [taylorLogQ.go, Finset.Ico_self]
+  | succ n ih =>
+    simp only [taylorLogQ.go]
+    have hk2 : (k : ℝ) + 2 ≠ 0 := by positivity
+    have hk2q : (k : ℚ) + 2 ≠ 0 := by positivity
+    set nextTerm := term * (-t) * ((↑k + 1) / (↑k + 2)) with hnext_def
+    have hnext_cast : (nextTerm : ℝ) = (-(t : ℝ)) ^ (k + 1) * (t : ℝ) / ((↑(k + 1) : ℝ) + 1) := by
+      simp only [hnext_def]; push_cast; rw [hterm]
+      field_simp; ring
+    rw [ih (k + 1) nextTerm (acc + nextTerm) hnext_cast]
+    push_cast
+    rw [show k + 1 + 1 + n = k + 1 + (n + 1) from by omega]
+    rw [show Finset.Ico (k + 1 + 1) (k + 1 + (n + 1)) =
+        Finset.Ico (k + 2) (k + 2 + n) from by congr 1 <;> omega]
+    have hIco : Finset.Ico (k + 1) (k + 1 + (n + 1)) =
+        {k + 1} ∪ Finset.Ico (k + 2) (k + 2 + n) := by
+      ext x; simp [Finset.mem_Ico, Finset.mem_union, Finset.mem_singleton]; omega
+    rw [hIco]
+    have hdisj : Disjoint ({k + 1} : Finset ℕ) (Finset.Ico (k + 2) (k + 2 + n)) := by
+      rw [Finset.disjoint_left]; intro x hx hx2
+      simp [Finset.mem_singleton] at hx; simp [Finset.mem_Ico] at hx2; omega
+    rw [Finset.sum_union hdisj, Finset.sum_singleton, hnext_cast]
+    rw [show (-(t : ℝ)) ^ (k + 1) * (↑t : ℝ) / (↑(k + 1) + 1) =
+        (-1 : ℝ) ^ (k + 1) * (↑t : ℝ) ^ (k + 1 + 1) / (↑(k + 1) + 1) from by
+      rw [neg_pow]; ring]
+    push_cast; ring
 
-/-- `taylorLogQ t n` cast to ℝ equals `∑_{k=1}^{n} (-t)^{k-1} · t / k · (-1)^...`,
-i.e., the standard log(1+t) partial sum. -/
+/-- `taylorLogQ t n` cast to ℝ equals `∑_{i=0}^{n-1} (-1)^i · t^(i+1) / (i+1)`. -/
 theorem taylorLogQ_cast_eq_sum (t : ℚ) (n : ℕ) :
     (taylorLogQ t n : ℝ) =
       ∑ k ∈ Finset.range n, (-1 : ℝ) ^ k * (t : ℝ) ^ (k + 1) / (↑k + 1) := by
@@ -97,34 +128,104 @@ theorem taylorLogQ_cast_eq_sum (t : ℚ) (n : ℕ) :
   · case isFalse h =>
     push_neg at h
     have hn : 0 < n := Nat.pos_of_ne_zero h
-    -- Prove by induction on fuel that go computes the partial sum
-    sorry
+    show (taylorLogQ.go t (n - 1) 0 t t : ℝ) = _
+    have hterm : (t : ℝ) = (-(t : ℝ)) ^ 0 * (↑t : ℝ) / ((↑(0 : ℕ) : ℝ) + 1) := by simp
+    rw [taylorLogQ_go_cast_eq t (n - 1) 0 t t hterm]
+    push_cast
+    rw [show 0 + 1 + (n - 1) = n from by omega]
+    -- acc = t = the k=0 term, plus sum from k=1 to n-1
+    rw [show Finset.range n = {0} ∪ Finset.Ico 1 n from by
+      ext x; simp [Finset.mem_range, Finset.mem_union, Finset.mem_singleton, Finset.mem_Ico]
+      omega]
+    rw [Finset.sum_union (by
+      rw [Finset.disjoint_left]; intro x hx hx2
+      simp [Finset.mem_singleton, Finset.mem_Ico] at hx hx2; omega)]
+    simp only [Finset.sum_singleton, pow_zero, one_mul, Nat.cast_zero, zero_add]
+    ring
 
 /-! ## Alternating series bounds -/
 
-/-- For `0 ≤ t ≤ 1` and even `N`, `taylorLogQ t N ≤ log(1+t)` (lower bound). -/
-theorem taylorLogQ_even_le_log (t : ℚ) (ht : 0 ≤ t) (ht1 : (t : ℝ) ≤ 1) (N : ℕ) :
+/-- The log Taylor terms `t^(k+1)/(k+1)` are antitone for `0 ≤ t ≤ 1`. -/
+private theorem logTerms_antitone (t : ℚ) (ht : 0 ≤ t) (ht1 : (t : ℝ) ≤ 1) :
+    Antitone (fun k : ℕ => (t : ℝ) ^ (k + 1) / ((k : ℝ) + 1)) := by
+  have ht' : (0 : ℝ) ≤ (t : ℝ) := by exact_mod_cast ht
+  intro a b hab
+  -- t^(b+1)/(b+1) ≤ t^(a+1)/(a+1) because t^(b+1) ≤ t^(a+1) and 1/(b+1) ≤ 1/(a+1)
+  apply mul_le_mul
+  · exact pow_le_pow_of_le_one ht' ht1 (by omega)
+  · exact inv_anti₀ (by positivity) (by linarith [show (a : ℝ) ≤ b from Nat.cast_le.mpr hab])
+  · positivity
+  · exact pow_nonneg ht' _
+
+/-- The log Taylor series `∑ (-1)^k t^(k+1)/(k+1)` converges to `log(1+t)` for `0 ≤ t < 1`. -/
+theorem hasSum_log_taylor (t : ℚ) (ht : 0 ≤ t) (ht1 : (t : ℝ) < 1) :
+    HasSum (fun k : ℕ => (-1 : ℝ) ^ k * (t : ℝ) ^ (k + 1) / ((k : ℝ) + 1))
+      (Real.log (1 + (t : ℝ))) := by
+  have htabs : |(-↑t : ℝ)| < 1 := by rwa [abs_neg, abs_of_nonneg (by exact_mod_cast ht)]
+  have h := Real.hasSum_pow_div_log_of_abs_lt_one htabs
+  -- h : HasSum (fun n => (-t)^(n+1) / (n+1)) (-log(1-(-t))) = (-log(1+t))
+  -- We want: HasSum (fun n => (-1)^n * t^(n+1) / (n+1)) (log(1+t))
+  simp only [neg_neg, ← neg_pow] at h
+  convert h.neg using 1
+  · ext k; ring
+  · simp
+
+/-- Tendsto version of `hasSum_log_taylor` in the `(-1)^i * f i` form. -/
+theorem tendsto_log_taylor (t : ℚ) (ht : 0 ≤ t) (ht1 : (t : ℝ) < 1) :
+    Filter.Tendsto (fun n => ∑ i ∈ Finset.range n,
+        (-1 : ℝ) ^ i * ((t : ℝ) ^ (i + 1) / ((i : ℝ) + 1)))
+      Filter.atTop (nhds (Real.log (1 + (t : ℝ)))) := by
+  have h := (hasSum_log_taylor t ht ht1).tendsto_sum_nat
+  simp only [mul_div_assoc] at h
+  exact h
+
+/-- For `0 ≤ t < 1` and even `N`, `taylorLogQ t (2N) ≤ log(1+t)` (lower bound). -/
+theorem taylorLogQ_even_le_log (t : ℚ) (ht : 0 ≤ t) (ht1 : (t : ℝ) < 1) (N : ℕ) :
     (taylorLogQ t (2 * N) : ℝ) ≤ Real.log (1 + (t : ℝ)) := by
-  sorry
+  rw [taylorLogQ_cast_eq_sum]
+  simp only [mul_div_assoc]
+  exact Antitone.alternating_series_le_tendsto
+    (tendsto_log_taylor t ht ht1) (logTerms_antitone t ht ht1.le) N
 
-/-- For `0 ≤ t ≤ 1` and odd `N ≥ 1`, `log(1+t) ≤ taylorLogQ t (2N+1)` (upper bound). -/
-theorem log_le_taylorLogQ_odd (t : ℚ) (ht : 0 ≤ t) (ht1 : (t : ℝ) ≤ 1) (N : ℕ) :
+/-- For `0 ≤ t < 1`, `log(1+t) ≤ taylorLogQ t (2N+1)` (upper bound). -/
+theorem log_le_taylorLogQ_odd (t : ℚ) (ht : 0 ≤ t) (ht1 : (t : ℝ) < 1) (N : ℕ) :
     Real.log (1 + (t : ℝ)) ≤ (taylorLogQ t (2 * N + 1) : ℝ) := by
-  sorry
-
-/-- For `0 < t ≤ 1`, the even partial sum is *strictly* less than `log(1+t)`. -/
-theorem taylorLogQ_even_lt_log (t : ℚ) (ht : 0 < t) (ht1 : (t : ℝ) ≤ 1) (N : ℕ) :
-    (taylorLogQ t (2 * N) : ℝ) < Real.log (1 + (t : ℝ)) := by
-  sorry
+  rw [taylorLogQ_cast_eq_sum]
+  simp only [mul_div_assoc]
+  exact Antitone.tendsto_le_alternating_series
+    (tendsto_log_taylor t ht ht1) (logTerms_antitone t ht ht1.le) N
 
 /-! ## Positivity -/
 
-/-- `logUpperBound t N > 0` for `0 < t ≤ 1`. -/
-theorem logUpperBound_pos (t : ℚ) (ht : 0 < t) (ht1 : (t : ℝ) ≤ 1) (N : ℕ) :
+/-- `logUpperBound t N > 0` for `0 < t < 1`. -/
+theorem logUpperBound_pos (t : ℚ) (ht : 0 < t) (ht1 : (t : ℝ) < 1) (N : ℕ) :
     (0 : ℝ) < (logUpperBound t N : ℝ) := by
-  sorry
+  calc (0 : ℝ) < Real.log (1 + (t : ℝ)) := by
+        apply Real.log_pos; linarith [show (0 : ℝ) < (t : ℝ) from by exact_mod_cast ht]
+    _ ≤ (logUpperBound t N : ℝ) := by
+        exact log_le_taylorLogQ_odd t ht.le ht1 N
 
-/-- `logLowerBound t N ≥ 0` for `0 ≤ t ≤ 1`. -/
-theorem logLowerBound_nonneg (t : ℚ) (ht : 0 ≤ t) (ht1 : (t : ℝ) ≤ 1) (N : ℕ) :
+/-- `logLowerBound t N ≥ 0` for `0 ≤ t < 1`. -/
+theorem logLowerBound_nonneg (t : ℚ) (ht : 0 ≤ t) (ht1 : (t : ℝ) < 1) (N : ℕ) :
     (0 : ℝ) ≤ (logLowerBound t N : ℝ) := by
-  sorry
+  -- S_0 = 0 ≤ S_2 ≤ ... ≤ S_{2N} (even partial sums are monotonically increasing
+  -- for antitone alternating series), so 0 = S_0 ≤ S_{2N}.
+  unfold logLowerBound
+  rw [taylorLogQ_cast_eq_sum]
+  induction N with
+  | zero => simp
+  | succ N ih =>
+    rw [show 2 * (N + 1) = 2 * N + 1 + 1 from by omega]
+    rw [Finset.sum_range_succ, Finset.sum_range_succ]
+    have ht' : (0 : ℝ) ≤ (t : ℝ) := by exact_mod_cast ht
+    -- Adding two consecutive terms: (-1)^{2N} * a_{2N} + (-1)^{2N+1} * a_{2N+1}
+    -- = a_{2N} - a_{2N+1} ≥ 0 since a is antitone
+    have h2N_even : (-1 : ℝ) ^ (2 * N) = 1 := by simp
+    have h2N1_odd : (-1 : ℝ) ^ (2 * N + 1) = -1 := by simp [pow_succ]
+    simp only [mul_div_assoc, h2N_even, h2N1_odd, one_mul, neg_one_mul, neg_div] at ih ⊢
+    have hanti := logTerms_antitone t ht ht1.le (show 2 * N ≤ 2 * N + 1 by omega)
+    -- hanti : t^(2N+2)/(2N+2) ≤ t^(2N+1)/(2N+1)
+    simp only [show (2 * N + 1 : ℕ) + 1 = 2 * N + 1 + 1 from by omega,
+               show ((2 * N + 1 : ℕ) : ℝ) + 1 = ↑(2 * N + 1) + 1 from by push_cast; ring,
+               show ((2 * N : ℕ) : ℝ) + 1 = ↑(2 * N) + 1 from by push_cast; ring] at hanti
+    linarith
