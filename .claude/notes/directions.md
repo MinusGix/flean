@@ -87,9 +87,21 @@ constant 114 could be ~55-60 using Stirling (`N! ≈ (N/e)^N`) instead of `N! �
 the exponent (113 → ~56, then 114 → ~57). Mathlib has Stirling bounds but wiring them through
 would be a moderate refactor of `pade_delta_log_bound`.
 
+## Linearize Tactic
+- [x] **ℕ exponent support** — `pow_le_pow_right₀`/`pow_lt_pow_right₀` for ℕ exponents ✓
+- [x] **omega in side goals** — `trySideGoalTactics` tries assumption → omega → exact_mod_cast → norm_num → linarith ✓
+- [x] **`asInt` fix** — Proper literal/variable handling for omega compatibility ✓
+- [ ] **Non-literal base syntax** (`linearize (base := expr)`) — Highest priority extension
+  - Unblocks ~3 exp/log sites using variable/expression bases
+- [ ] **Reciprocal recognition** — See `1/2^a` as `2^(-a)`, handle `div_le_div` monotonicity
+- [ ] **`unfold_let` preprocessing** — Handle `set` aliases
+- [ ] **Side goal `norm_cast` pass** — Fix `have`-block zpow elaboration issue
+- [ ] **Multiplicative monotonicity** — Separate `bound_calc` tactic for `*`, `/`, `^` chains
+
+Known limitations documented in memory/linearize-issues.md. Tests in FinalTest.lean.
+
 ## Long-Term
 - [ ] Error-minimizing tactic (reorder FP computations)
-- [ ] Linearize tactic improvements (multiplicative cases, edge cases)
 - [ ] Verified computation examples (e.g. count of floats between 0 and 1)
 - [ ] Gradient descent error analysis for common functions
 - [ ] Prove approximation bounds on specific papers (e.g. arxiv 2410.00907)

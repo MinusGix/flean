@@ -79,7 +79,22 @@ initialize registerTraceClass `linearize
 def asInt (e : Expr) : MetaM Q(ℤ) := do
   if (← inferType e).constName? == .some ``Nat then
     have e : Q(ℕ) := e
-    pure q(Int.ofNat $e)
+    -- For nat literals: produce @OfNat.ofNat ℤ n _ (the canonical ℤ literal).
+    -- For nat variables: produce @Nat.cast ℤ _ N (matches how omega coerces hyps).
+    -- Using the wrong form causes omega proof construction to fail with type mismatches.
+    match (e : Expr).getAppFnArgs with
+    | (``OfNat.ofNat, #[_, nRaw, _]) =>
+      match nRaw.rawNatLit? with
+      | some _ =>
+        let instType := mkApp2 (mkConst ``OfNat [.zero]) q(ℤ) nRaw
+        let inst ← synthInstance instType
+        pure (mkApp3 (mkConst ``OfNat.ofNat [.zero]) q(ℤ) nRaw inst)
+      | none =>
+        let _inst ← synthInstanceQ q(NatCast ℤ)
+        pure q(($e : ℤ))
+    | _ =>
+      let _inst ← synthInstanceQ q(NatCast ℤ)
+      pure q(($e : ℤ))
   else
     pure e
 
@@ -132,145 +147,52 @@ def isLiteralZero (e : Expr) : Bool :=
       | _ => false)
    | _ => false)
 
-/-- Try to solve an LT side goal of the form `lhs < rhs` -/
-def solveLTSideGoal (g : MVarId) (lhs _rhs : Expr) : TacticM (Option MVarId) := do
-  -- Save the current goal state
+/-- Try a sequence of tactics to solve a side goal.
+    Tries: assumption → norm_num → omega → linarith, returning `none` if any succeeds. -/
+private def trySideGoalTactics (g : MVarId) (skipAssumption : Bool := false) :
+    TacticM (Option MVarId) := do
   let savedGoals ← getGoals
-
-  -- Check if lhs is 1
-  let isOne := isLiteralOne lhs
-  if isOne then
-    -- This is a 1 < b goal, try norm_num first
-    trace[linearize] "Detected 1 < b pattern, trying norm_num"
+  -- Try each tactic: assumption, omega, exact_mod_cast, norm_num, linarith
+  for (name, stx) in [
+    ("assumption",      ← `(tactic| assumption)),
+    ("omega",           ← `(tactic| omega)),
+    ("exact_mod_cast",  ← `(tactic| exact_mod_cast (by omega))),
+    ("norm_num",        ← `(tactic| norm_num)),
+    ("linarith",        ← `(tactic| linarith))
+  ] do
+    if skipAssumption && name == "assumption" then continue
+    let saved ← saveState
     try
       setGoals [g]
-      evalTactic (← `(tactic| norm_num))
-      let remainingGoals ← getGoals
-      setGoals savedGoals
-      if remainingGoals.isEmpty then
-        return none  -- Goal was solved
-      else
-        return some g
+      evalTactic stx
+      if (← getGoals).isEmpty then
+        trace[linearize] "Side goal solved by {name}"
+        setGoals savedGoals
+        return none
+      restoreState saved
     catch _ =>
-      -- norm_num failed, try linarith
-      trace[linearize] "norm_num failed, trying linarith"
-      try
-        setGoals [g]
-        evalTactic (← `(tactic| linarith))
-        let remainingGoals ← getGoals
-        setGoals savedGoals
-        if remainingGoals.isEmpty then
-          return none  -- Goal was solved
-        else
-          return some g
-      catch _ =>
-        setGoals savedGoals
-        trace[linearize] "linarith also failed, keeping as side goal"
-        return some g
+      restoreState saved
+  setGoals savedGoals
+  trace[linearize] "All side goal tactics failed"
+  return some g
+
+/-- Try to solve an LT side goal of the form `lhs < rhs` -/
+def solveLTSideGoal (g : MVarId) (lhs _rhs : Expr) : TacticM (Option MVarId) := do
+  if isLiteralOne lhs then
+    trace[linearize] "Detected 1 < b pattern"
+    trySideGoalTactics g (skipAssumption := true)
   else
-    -- This is a 0 < a type goal, try assumption first
-    trace[linearize] "Detected 0 < a pattern, trying assumption"
-    let result ← observing? g.assumption
-    match result with
-    | some _ => return none  -- Goal was solved
-    | none =>
-      -- assumption failed, try norm_num first (good for numeric casts like 0 < ↑2)
-      trace[linearize] "assumption failed, trying norm_num"
-      try
-        setGoals [g]
-        evalTactic (← `(tactic| norm_num))
-        let remainingGoals ← getGoals
-        setGoals savedGoals
-        if remainingGoals.isEmpty then
-          return none  -- Goal was solved
-        else
-          return some g
-      catch _ =>
-        -- norm_num failed, try linarith
-        trace[linearize] "norm_num failed, trying linarith"
-        try
-          setGoals [g]
-          evalTactic (← `(tactic| linarith))
-          let remainingGoals ← getGoals
-          setGoals savedGoals
-          if remainingGoals.isEmpty then
-            return none  -- Goal was solved
-          else
-            return some g
-        catch _ =>
-          setGoals savedGoals
-          trace[linearize] "linarith also failed, keeping as side goal"
-          return some g
+    trace[linearize] "Detected 0 < a pattern"
+    trySideGoalTactics g
 
 /-- Try to solve an LE side goal of the form `lhs ≤ rhs` -/
 def solveLESideGoal (g : MVarId) (lhs _rhs : Expr) : TacticM (Option MVarId) := do
-  -- Save the current goal state
-  let savedGoals ← getGoals
-
-  -- Check if lhs is 1 (for patterns like 1 ≤ b)
-  let isOne := isLiteralOne lhs
-  if isOne then
-    -- This is a 1 ≤ b goal, try norm_num first
-    trace[linearize] "Detected 1 ≤ b pattern, trying norm_num"
-    try
-      setGoals [g]
-      evalTactic (← `(tactic| norm_num))
-      let remainingGoals ← getGoals
-      setGoals savedGoals
-      if remainingGoals.isEmpty then
-        return none  -- Goal was solved
-      else
-        return some g
-    catch _ =>
-      -- norm_num failed, try linarith
-      trace[linearize] "norm_num failed, trying linarith"
-      try
-        setGoals [g]
-        evalTactic (← `(tactic| linarith))
-        let remainingGoals ← getGoals
-        setGoals savedGoals
-        if remainingGoals.isEmpty then
-          return none  -- Goal was solved
-        else
-          return some g
-      catch _ =>
-        setGoals savedGoals
-        trace[linearize] "linarith also failed, keeping as side goal"
-        return some g
+  if isLiteralOne lhs then
+    trace[linearize] "Detected 1 ≤ b pattern"
+    trySideGoalTactics g (skipAssumption := true)
   else
-    -- This is a 0 ≤ a type goal, try assumption first
-    trace[linearize] "Detected 0 ≤ a pattern, trying assumption"
-    let result ← observing? g.assumption
-    match result with
-    | some _ => return none  -- Goal was solved
-    | none =>
-      -- assumption failed, try norm_num first (good for numeric casts like 0 ≤ ↑2)
-      trace[linearize] "assumption failed, trying norm_num"
-      try
-        setGoals [g]
-        evalTactic (← `(tactic| norm_num))
-        let remainingGoals ← getGoals
-        setGoals savedGoals
-        if remainingGoals.isEmpty then
-          return none  -- Goal was solved
-        else
-          return some g
-      catch _ =>
-        -- norm_num failed, try linarith
-        trace[linearize] "norm_num failed, trying linarith"
-        try
-          setGoals [g]
-          evalTactic (← `(tactic| linarith))
-          let remainingGoals ← getGoals
-          setGoals savedGoals
-          if remainingGoals.isEmpty then
-            return none  -- Goal was solved
-          else
-            return some g
-        catch _ =>
-          setGoals savedGoals
-          trace[linearize] "linarith also failed, keeping as side goal"
-          return some g
+    trace[linearize] "Detected 0 ≤ a pattern"
+    trySideGoalTactics g
 
 /-- Try to solve a side goal automatically based on its type -/
 def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
@@ -294,74 +216,34 @@ def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
     | (``LE.le, #[_, _, lhs, rhs]) =>
       solveLESideGoal g lhs rhs
     | (``Ne, #[_, _lhs, _rhs]) =>
-      -- This is a ≠ goal, try assumption first
-      trace[linearize] "Detected ≠ pattern, trying assumption"
-      let result ← observing? g.assumption
-      match result with
-      | some _ => return none  -- Goal was solved
-      | none =>
-        -- Try to solve using zpow_ne_zero for goals of the form a^n ≠ 0
-        let zpow_solved ← observing? do
-          let gs ← g.apply (← mkConstWithFreshMVarLevels ``zpow_ne_zero)
-          setGoals gs
-          evalTactic (← `(tactic| first | norm_num | assumption))
-          let remainingGoals ← getGoals
-          if not remainingGoals.isEmpty then
-            throwError "norm_num failed to solve zpow_ne_zero side goal"
-
-        if zpow_solved.isSome then
-          trace[linearize] "Solved with zpow_ne_zero"
-          return none
-
-        -- if that fails, try to solve `0 ≠ a^n` by applying symmetry first
-        let zpow_symm_solved ← observing? do
-          let [g'] ← g.apply (← mkConstWithFreshMVarLevels ``Ne.symm) | throwError "Ne.symm produced more/less than one goal"
-          setGoals [g']
-          let gs ← g'.apply (← mkConstWithFreshMVarLevels ``zpow_ne_zero)
-          setGoals gs
-          evalTactic (← `(tactic| first | norm_num | assumption))
-          let remainingGoals ← getGoals
-          if not remainingGoals.isEmpty then
-            throwError "norm_num failed to solve zpow_ne_zero side goal"
-
-        if zpow_symm_solved.isSome then
-            trace[linearize] "Solved with Ne.symm and zpow_ne_zero"
-            return none
-
-        -- if all else fails, try norm_num on the original goal
-        trace[linearize] "zpow_ne_zero failed, trying norm_num on original goal"
-        let savedGoals ← getGoals
-        try
-          setGoals [g]
-          evalTactic (← `(tactic| norm_num))
-          let remainingGoals ← getGoals
-          setGoals savedGoals
-          if remainingGoals.isEmpty then
-            return none  -- Goal was solved
-          else
-            return some g
-        catch _ =>
-          setGoals savedGoals
-          trace[linearize] "norm_num also failed, keeping as side goal"
-          return some g
+      trace[linearize] "Detected ≠ pattern"
+      -- Try zpow_ne_zero (a^n ≠ 0)
+      let zpow_solved ← observing? do
+        let gs ← g.apply (← mkConstWithFreshMVarLevels ``zpow_ne_zero)
+        setGoals gs
+        evalTactic (← `(tactic| first | norm_num | assumption))
+        let remaining ← getGoals
+        if !remaining.isEmpty then throwError "zpow_ne_zero side goals remain"
+      if zpow_solved.isSome then
+        trace[linearize] "Solved with zpow_ne_zero"
+        return none
+      -- Try Ne.symm + zpow_ne_zero (0 ≠ a^n)
+      let zpow_symm_solved ← observing? do
+        let [g'] ← g.apply (← mkConstWithFreshMVarLevels ``Ne.symm)
+          | throwError "Ne.symm failed"
+        let gs ← g'.apply (← mkConstWithFreshMVarLevels ``zpow_ne_zero)
+        setGoals gs
+        evalTactic (← `(tactic| first | norm_num | assumption))
+        let remaining ← getGoals
+        if !remaining.isEmpty then throwError "zpow_ne_zero side goals remain"
+      if zpow_symm_solved.isSome then
+        trace[linearize] "Solved with Ne.symm + zpow_ne_zero"
+        return none
+      -- Fall back to generic tactics
+      trySideGoalTactics g
     | _ =>
-      -- Unknown goal type, try norm_num as a last resort
-      trace[linearize] "Unknown side goal type, trying norm_num"
-      let savedGoals ← getGoals
-      try
-        setGoals [g]
-        evalTactic (← `(tactic| norm_num))
-        let remainingGoals ← getGoals
-        setGoals savedGoals
-        if remainingGoals.isEmpty then
-          return none  -- Goal was solved
-        else
-          trace[linearize] "norm_num couldn't solve it, keeping as side goal"
-          return some g
-      catch _ =>
-        setGoals savedGoals
-        trace[linearize] "norm_num failed, keeping as side goal"
-        return some g
+      trace[linearize] "Unknown side goal type"
+      trySideGoalTactics g
 
 
 
@@ -702,38 +584,53 @@ def linearizeLTGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
         return [haGoal.mvarId!]
     else
       throwError "linearize: goal linearization for 0 < ... only supports zpow expressions"
-  else if let some (b_rhs, _, exp_rhs, _) ← isNatCastZpow rhs then
+  else if let some (b_rhs, base_rhs, exp_rhs, _) ← isNatCastZpow rhs then
     trace[linearize] "  Pattern: LHS not literal, but RHS is zpow"
-    if let some (b_lhs, _, exp_lhs, _) ← isNatCastZpow lhs then
+    if let some (b_lhs, _base_lhs, exp_lhs, _) ← isNatCastZpow lhs then
       -- Both sides are zpow with same base: a^m < a^n ↔ m < n (when 1 < a)
       if b_lhs == b_rhs then
-        trace[linearize] "Applying zpow_lt_zpow_right₀ for base {b_lhs}"
-
         let ⟨_, R, _⟩ ← inferTypeQ' lhs
 
-        let exp_lhs : Q(ℤ) ← asInt exp_lhs
-        let exp_rhs : Q(ℤ) ← asInt exp_rhs
-        have a : Q(ℕ) := mkNatLit b_lhs
+        -- Check if exponents are ℕ (pow) or need ℤ casting (zpow)
+        let expType_lhs ← inferType exp_lhs
+        if expType_lhs.isConstOf ``Nat then do
+          -- ℕ exponents: use pow_lt_pow_right₀
+          trace[linearize] "Applying pow_lt_pow_right₀ for ℕ exponents, base {b_lhs}"
+          have exp_lhs : Q(ℕ) := exp_lhs
+          have exp_rhs : Q(ℕ) := exp_rhs
+          have baseExpr : Q($R) := base_rhs
 
-        -- Need instances for zpow_lt_zpow_right₀
-        let _inst1 ← synthInstanceQ q(DivisionRing $R)
-        let _inst2 ← synthInstanceQ q(LinearOrder $R)
-        let _inst3 ← synthInstanceQ q(PosMulReflectLT $R)
-        let _inst4 ← synthInstanceQ q(ZeroLEOneClass $R)
+          let _inst1 ← synthInstanceQ q(MonoidWithZero $R)
+          let _inst2 ← synthInstanceQ q(PartialOrder $R)
+          let _inst3 ← synthInstanceQ q(PosMulStrictMono $R)
+          let _inst4 ← synthInstanceQ q(ZeroLEOneClass $R)
+          assumeInstancesCommute
 
-        assumeInstancesCommute
+          let haGoal ← mkFreshExprMVarQ q((1 : $R) < $baseExpr) MetavarKind.syntheticOpaque (`ha)
+          let hmnGoal ← mkFreshExprMVarQ q($exp_lhs < $exp_rhs) MetavarKind.syntheticOpaque (`hmn)
+          g.assign q(pow_lt_pow_right₀ $haGoal $hmnGoal)
+          Term.synthesizeSyntheticMVarsUsingDefault
+          return [haGoal.mvarId!, hmnGoal.mvarId!]
+        else
+          -- ℤ exponents: use zpow_lt_zpow_right₀
+          trace[linearize] "Applying zpow_lt_zpow_right₀ for ℤ exponents, base {b_lhs}"
+          let exp_lhs : Q(ℤ) ← asInt exp_lhs
+          let exp_rhs : Q(ℤ) ← asInt exp_rhs
+          have a : Q(ℕ) := mkNatLit b_lhs
 
-        let haGoal ← mkFreshExprMVarQ q(1 < ($a : $R)) MetavarKind.syntheticOpaque (`ha)
-        let hmnGoal ← mkFreshExprMVarQ q($exp_lhs < $exp_rhs) MetavarKind.syntheticOpaque (`hmn)
+          let _inst1 ← synthInstanceQ q(DivisionRing $R)
+          let _inst2 ← synthInstanceQ q(LinearOrder $R)
+          let _inst3 ← synthInstanceQ q(PosMulReflectLT $R)
+          let _inst4 ← synthInstanceQ q(ZeroLEOneClass $R)
+          assumeInstancesCommute
 
-        have thmProof : Q(($a : $R) ^ $exp_lhs < ($a : $R) ^ $exp_rhs) := q(zpow_lt_zpow_right₀ $haGoal $hmnGoal)
+          let haGoal ← mkFreshExprMVarQ q(1 < ($a : $R)) MetavarKind.syntheticOpaque (`ha)
+          let hmnGoal ← mkFreshExprMVarQ q($exp_lhs < $exp_rhs) MetavarKind.syntheticOpaque (`hmn)
 
-        -- Apply the theorem to reduce the goal
-        g.assign thmProof
-
-        Term.synthesizeSyntheticMVarsUsingDefault
-
-        return [haGoal.mvarId!, hmnGoal.mvarId!]
+          have thmProof : Q(($a : $R) ^ $exp_lhs < ($a : $R) ^ $exp_rhs) := q(zpow_lt_zpow_right₀ $haGoal $hmnGoal)
+          g.assign thmProof
+          Term.synthesizeSyntheticMVarsUsingDefault
+          return [haGoal.mvarId!, hmnGoal.mvarId!]
       else
         throwError "linearize: different bases not supported"
     else
@@ -872,39 +769,52 @@ def linearizeLEGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
         return [haGoal.mvarId!, hnGoal.mvarId!]
     else
       throwError "linearize: goal linearization for 1 ≤ ... only supports power expressions with natural base"
-  else if let some (b_rhs, _, exp_rhs, _) ← isNatCastZpow rhs then
-    if let some (b_lhs, _, exp_lhs, _) ← isNatCastZpow lhs then
-      -- Both sides are zpow with same base: a^m ≤ a^n ↔ m ≤ n (when 1 < a)
+  else if let some (b_rhs, base_rhs, exp_rhs, _) ← isNatCastZpow rhs then
+    if let some (b_lhs, _base_lhs, exp_lhs, _) ← isNatCastZpow lhs then
+      -- Both sides are zpow with same base: a^m ≤ a^n ↔ m ≤ n (when 1 ≤ a)
       if b_lhs == b_rhs then
-        trace[linearize] "Applying zpow_le_zpow_right₀ for base {b_lhs}"
-
         let ⟨_, R, _⟩ ← inferTypeQ' lhs
-        trace[linearize] "R = {R}"
 
-        let exp_lhs : Q(ℤ) ← asInt exp_lhs
-        let exp_rhs : Q(ℤ) ← asInt exp_rhs
-        have a : Q(ℕ) := mkNatLit b_lhs
-        trace[linearize] "exp_lhs={exp_lhs}; exp_rhs={exp_rhs}; a={a}"
+        -- Check if exponents are ℕ (pow) or need ℤ casting (zpow)
+        let expType_lhs ← inferType exp_lhs
+        if expType_lhs.isConstOf ``Nat then do
+          -- ℕ exponents: use pow_le_pow_right₀
+          trace[linearize] "Applying pow_le_pow_right₀ for ℕ exponents, base {b_lhs}"
+          have exp_lhs : Q(ℕ) := exp_lhs
+          have exp_rhs : Q(ℕ) := exp_rhs
+          have baseExpr : Q($R) := base_rhs
 
-        -- Need instances for zpow_le_zpow_right₀
-        let _inst1 ← synthInstanceQ q(DivisionRing $R)
-        let _inst2 ← synthInstanceQ q(LinearOrder $R)
-        let _inst3 ← synthInstanceQ q(PosMulReflectLE $R)
-        let _inst4 ← synthInstanceQ q(ZeroLEOneClass $R)
+          let _inst1 ← synthInstanceQ q(MonoidWithZero $R)
+          let _inst2 ← synthInstanceQ q(Preorder $R)
+          let _inst3 ← synthInstanceQ q(ZeroLEOneClass $R)
+          let _inst4 ← synthInstanceQ q(PosMulMono $R)
+          assumeInstancesCommute
 
-        assumeInstancesCommute
+          let haGoal ← mkFreshExprMVarQ q((1 : $R) ≤ $baseExpr) MetavarKind.syntheticOpaque (`ha)
+          let hmnGoal ← mkFreshExprMVarQ q($exp_lhs ≤ $exp_rhs) MetavarKind.syntheticOpaque (`hmn)
+          g.assign q(pow_le_pow_right₀ $haGoal $hmnGoal)
+          Term.synthesizeSyntheticMVarsUsingDefault
+          return [haGoal.mvarId!, hmnGoal.mvarId!]
+        else
+          -- ℤ exponents: use zpow_le_zpow_right₀
+          trace[linearize] "Applying zpow_le_zpow_right₀ for ℤ exponents, base {b_lhs}"
+          let exp_lhs : Q(ℤ) ← asInt exp_lhs
+          let exp_rhs : Q(ℤ) ← asInt exp_rhs
+          have a : Q(ℕ) := mkNatLit b_lhs
 
-        let haGoal ← mkFreshExprMVarQ q(1 ≤ ($a : $R)) MetavarKind.syntheticOpaque (`ha)
-        let hmnGoal ← mkFreshExprMVarQ q($exp_lhs ≤ $exp_rhs) MetavarKind.syntheticOpaque (`hmn)
+          let _inst1 ← synthInstanceQ q(DivisionRing $R)
+          let _inst2 ← synthInstanceQ q(LinearOrder $R)
+          let _inst3 ← synthInstanceQ q(PosMulReflectLE $R)
+          let _inst4 ← synthInstanceQ q(ZeroLEOneClass $R)
+          assumeInstancesCommute
 
-        have thmProof : Q(($a : $R) ^ $exp_lhs ≤ ($a : $R) ^ $exp_rhs) := q(zpow_le_zpow_right₀ $haGoal $hmnGoal)
+          let haGoal ← mkFreshExprMVarQ q(1 ≤ ($a : $R)) MetavarKind.syntheticOpaque (`ha)
+          let hmnGoal ← mkFreshExprMVarQ q($exp_lhs ≤ $exp_rhs) MetavarKind.syntheticOpaque (`hmn)
 
-        -- Apply the theorem to reduce the goal
-        g.assign thmProof
-
-        Term.synthesizeSyntheticMVarsUsingDefault
-
-        return [haGoal.mvarId!, hmnGoal.mvarId!]
+          have thmProof : Q(($a : $R) ^ $exp_lhs ≤ ($a : $R) ^ $exp_rhs) := q(zpow_le_zpow_right₀ $haGoal $hmnGoal)
+          g.assign thmProof
+          Term.synthesizeSyntheticMVarsUsingDefault
+          return [haGoal.mvarId!, hmnGoal.mvarId!]
       else
         throwError "linearize: different bases not supported"
     else
