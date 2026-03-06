@@ -664,8 +664,7 @@ theorem expBounds_width_tendsto_zero (x : ℚ) (hx : x ≠ 0) (k : ℤ)
     dsimp only at this; push_cast at this ⊢
     exact this
   have hS_iter : stickyShift lower ≤ S := hS iter
-  have h2s_le : (2 : ℝ) ^ (k.natAbs + stickyShift lower) ≤ C :=
-    pow_le_pow_right₀ (by norm_num : (1:ℝ) ≤ 2) (by omega)
+  have h2s_le : (2 : ℝ) ^ (k.natAbs + stickyShift lower) ≤ C := by linearize
   have herr := hiter₀ iter hiter
   dsimp only at herr; push_cast at herr
   -- width * 2^s ≤ 2^(|k|+s) * err ≤ C * err < eps
@@ -1016,8 +1015,7 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
     -- 2^{|k|+s} ≤ 2^{|k|+S}
     set C := (2 : ℝ) ^ (k.natAbs + S) with hC_def
     have hC_pos : 0 < C := by positivity
-    have h2s_le : (2 : ℝ) ^ (k.natAbs + stickyShift lower) ≤ C :=
-      pow_le_pow_right₀ (by norm_num : (1:ℝ) ≤ 2) (by omega)
+    have h2s_le : (2 : ℝ) ^ (k.natAbs + stickyShift lower) ≤ C := by linearize
     -- Bound err₁: 2^{N+2}*(N+2)/((N+1)!*(N+1)) ≤ 4*2^N/N!
     -- Then 2^N/N! ≤ (2/3)*(1/2)^{N-4} by pow_div_factorial_effective with d=2
     have hN_ge : 4 ≤ N := by simp only [N, expNumTerms]; omega
@@ -1083,8 +1081,7 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
       -- Term 2: C * err₂ ≤ 1/(2*2^L)
       have ht2 : C * (8 * (↑k.natAbs + 1) / (2:ℝ)^N_ln2) ≤ 1 / (2 * (2:ℝ)^L) := by
         -- 2^(L+2|k|+S+4) ≤ 2^N_ln2
-        have h2Nln2 : (2:ℝ)^(L+2*k.natAbs+S+4) ≤ (2:ℝ)^N_ln2 :=
-          pow_le_pow_right₀ (by norm_num) hN_ln2_ge
+        have h2Nln2 : (2:ℝ)^(L+2*k.natAbs+S+4) ≤ (2:ℝ)^N_ln2 := by linearize
         calc C * (8 * (↑k.natAbs + 1) / (2:ℝ)^N_ln2)
             ≤ C * (8 * (↑k.natAbs + 1) / (2:ℝ)^(L+2*k.natAbs+S+4)) := by
               apply mul_le_mul_of_nonneg_left _ hC_pos.le

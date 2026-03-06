@@ -250,13 +250,14 @@ def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
 
 /-- Unfold local let-bound fvars (from `set`) to their definitions, recursively. -/
 partial def unfoldLetFVars (e : Expr) : MetaM Expr := do
-  -- First handle the top-level: if it's an fvar with a value, unfold it
-  let e ← if e.isFVar then
+  -- If the top-level expression is an fvar with a let-binding (from `set`), unfold it.
+  -- We intentionally do NOT zeta-reduce the result, so that fvars inside
+  -- (e.g., in exponents) stay as-is. This preserves omega's ability to match
+  -- hypotheses that use the same fvar names.
+  if e.isFVar then
     let ldecl ← e.fvarId!.getDecl
     if let some val := ldecl.value? then pure val else pure e
   else pure e
-  -- Then zeta-reduce any remaining let expressions
-  zetaReduce e
 
 /-- Check if an expression is of the form `(b : R)^z` where `b` is a natural number literal -/
 def isNatCastZpow (e : Expr) : MetaM (Option (ℕ × Expr × Expr × Expr)) := do

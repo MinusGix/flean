@@ -649,7 +649,7 @@ private theorem log_effective_gap (y : ℚ) (hy1 : 1 < y) (s : ℕ)
             _ ≤ (2 : ℝ) ^ ab * (2 : ℝ) ^ L_pade :=
                 mul_le_mul_of_nonneg_right h3ab2 (by positivity)
             _ = (2 : ℝ) ^ (ab + L_pade) := by rw [← pow_add]
-            _ ≤ (2 : ℝ) ^ L := pow_le_pow_right₀ (by norm_num) hL_pade_ab
+            _ ≤ (2 : ℝ) ^ L := by linearize
         -- 1/2^L ≤ 2^s/(6Ddp) ≤ gap
         rw [ge_iff_le]
         calc (1 : ℝ) / (2 : ℝ) ^ L
@@ -836,11 +836,10 @@ private theorem logWidth_lt_delta (y : ℚ) (hy : 1 ≤ y) (hy1 : 1 < y)
         (le_trans (Nat.div_le_self _ _) hp_le)
   have hab_le_2ab : (ab : ℝ) ≤ (2 : ℝ) ^ ab := by exact_mod_cast Nat.lt_two_pow_self.le
   have ht1 : (k : ℝ) * 2 ^ S / 2 ^ N_ln2 ≤ 1 / (4 * (2 : ℝ) ^ L) := by
-    have h2Nln2 : (2 : ℝ) ^ (L + 2 * ab + 2) ≤ (2 : ℝ) ^ N_ln2 :=
-      pow_le_pow_right₀ (by norm_num) hN_ln2_ge
+    have h2Nln2 : (2 : ℝ) ^ (L + 2 * ab + 2) ≤ (2 : ℝ) ^ N_ln2 := by linearize
     have hkS : (k : ℝ) * 2 ^ S ≤ (ab : ℝ) * 2 ^ ab := by
       apply mul_le_mul (by exact_mod_cast hk_le)
-        (pow_le_pow_right₀ (by norm_num) hS_le) (by positivity) (by positivity)
+        (by linearize) (by positivity) (by positivity)
     calc (k : ℝ) * 2 ^ S / 2 ^ N_ln2
         ≤ (k : ℝ) * 2 ^ S / 2 ^ (L + 2 * ab + 2) :=
           div_le_div_of_nonneg_left (by positivity) (by positivity) h2Nln2
