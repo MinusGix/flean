@@ -91,8 +91,8 @@ would be a moderate refactor of `pade_delta_log_bound`.
 - [x] **ℕ exponent support** — `pow_le_pow_right₀`/`pow_lt_pow_right₀` for ℕ exponents ✓
 - [x] **omega in side goals** — `trySideGoalTactics` tries assumption → omega → exact_mod_cast → norm_num → linarith ✓
 - [x] **`asInt` fix** — Proper literal/variable handling for omega compatibility ✓
-- [ ] **Non-literal base syntax** (`linearize (base := expr)`) — Highest priority extension
-  - Unblocks ~3 exp/log sites using variable/expression bases
+- [x] **Non-literal base syntax** (`linearize (base := expr)`) ✓
+  - Works for variables, products, any expression via `isDefEq` matching
 - [ ] **Reciprocal recognition** — See `1/2^a` as `2^(-a)`, handle `div_le_div` monotonicity
 - [ ] **`unfold_let` preprocessing** — Handle `set` aliases
 - [ ] **Side goal `norm_cast` pass** — Fix `have`-block zpow elaboration issue

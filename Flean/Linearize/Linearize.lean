@@ -354,6 +354,104 @@ def isNatCastZpow (e : Expr) : MetaM (Option (ℕ × Expr × Expr × Expr)) := d
       return none
   | _ => return none
 
+/-- Check if an expression is `expectedBase ^ exp` (via HPow or Pow), returning the exponent.
+    Uses `isDefEq` to match the base, so it works with arbitrary expressions. -/
+def isExprPow (expectedBase : Expr) (e : Expr) : MetaM (Option (Expr × Expr)) := do
+  match e.getAppFnArgs with
+  | (``HPow.hPow, #[_, _, _, _, base, exponent]) =>
+    if (← isDefEq base expectedBase) then
+      return some (base, exponent)
+    else
+      return none
+  | (``Pow.pow, #[_, _, _, base, exponent]) =>
+    if (← isDefEq base expectedBase) then
+      return some (base, exponent)
+    else
+      return none
+  | _ => return none
+
+/-- Linearize a goal of the form `base^m cmp base^n` for an arbitrary base expression.
+    Returns side goals for the base condition and exponent comparison. -/
+def linearizeBaseGoal (g : MVarId) (baseStx : Expr) : TacticM (List MVarId) := do
+  g.withContext do
+    let goalType ← g.getType
+    match goalType.getAppFnArgs with
+    | (``LE.le, #[_, _, lhs, rhs]) =>
+      if let some (baseLhs, expLhs) ← isExprPow baseStx lhs then
+        if let some (_baseRhs, expRhs) ← isExprPow baseStx rhs then
+          let ⟨_, R, _⟩ ← inferTypeQ' lhs
+          let expType ← inferType expLhs
+          if expType.isConstOf ``Nat then
+            -- ℕ exponents: pow_le_pow_right₀
+            have expLhs : Q(ℕ) := expLhs
+            have expRhs : Q(ℕ) := expRhs
+            have baseExpr : Q($R) := baseLhs
+            let _inst1 ← synthInstanceQ q(MonoidWithZero $R)
+            let _inst2 ← synthInstanceQ q(Preorder $R)
+            let _inst3 ← synthInstanceQ q(ZeroLEOneClass $R)
+            let _inst4 ← synthInstanceQ q(PosMulMono $R)
+            assumeInstancesCommute
+            let haGoal ← mkFreshExprMVarQ q((1 : $R) ≤ $baseExpr) MetavarKind.syntheticOpaque (`ha)
+            let hmnGoal ← mkFreshExprMVarQ q($expLhs ≤ $expRhs) MetavarKind.syntheticOpaque (`hmn)
+            g.assign q(pow_le_pow_right₀ $haGoal $hmnGoal)
+            Term.synthesizeSyntheticMVarsUsingDefault
+            return [haGoal.mvarId!, hmnGoal.mvarId!]
+          else
+            -- ℤ exponents: zpow_le_zpow_right₀
+            let expLhs : Q(ℤ) ← asInt expLhs
+            let expRhs : Q(ℤ) ← asInt expRhs
+            have baseExpr : Q($R) := baseLhs
+            let _inst1 ← synthInstanceQ q(DivisionRing $R)
+            let _inst2 ← synthInstanceQ q(LinearOrder $R)
+            let _inst3 ← synthInstanceQ q(PosMulReflectLE $R)
+            let _inst4 ← synthInstanceQ q(ZeroLEOneClass $R)
+            assumeInstancesCommute
+            let haGoal ← mkFreshExprMVarQ q((1 : $R) ≤ $baseExpr) MetavarKind.syntheticOpaque (`ha)
+            let hmnGoal ← mkFreshExprMVarQ q($expLhs ≤ $expRhs) MetavarKind.syntheticOpaque (`hmn)
+            g.assign q(zpow_le_zpow_right₀ $haGoal $hmnGoal)
+            Term.synthesizeSyntheticMVarsUsingDefault
+            return [haGoal.mvarId!, hmnGoal.mvarId!]
+        else throwError "linearize (base := ...): RHS is not a power of the given base"
+      else throwError "linearize (base := ...): LHS is not a power of the given base"
+    | (``LT.lt, #[_, _, lhs, rhs]) =>
+      if let some (baseLhs, expLhs) ← isExprPow baseStx lhs then
+        if let some (_baseRhs, expRhs) ← isExprPow baseStx rhs then
+          let ⟨_, R, _⟩ ← inferTypeQ' lhs
+          let expType ← inferType expLhs
+          if expType.isConstOf ``Nat then
+            -- ℕ exponents: pow_lt_pow_right₀
+            have expLhs : Q(ℕ) := expLhs
+            have expRhs : Q(ℕ) := expRhs
+            have baseExpr : Q($R) := baseLhs
+            let _inst1 ← synthInstanceQ q(MonoidWithZero $R)
+            let _inst2 ← synthInstanceQ q(PartialOrder $R)
+            let _inst3 ← synthInstanceQ q(PosMulStrictMono $R)
+            let _inst4 ← synthInstanceQ q(ZeroLEOneClass $R)
+            assumeInstancesCommute
+            let haGoal ← mkFreshExprMVarQ q((1 : $R) < $baseExpr) MetavarKind.syntheticOpaque (`ha)
+            let hmnGoal ← mkFreshExprMVarQ q($expLhs < $expRhs) MetavarKind.syntheticOpaque (`hmn)
+            g.assign q(pow_lt_pow_right₀ $haGoal $hmnGoal)
+            Term.synthesizeSyntheticMVarsUsingDefault
+            return [haGoal.mvarId!, hmnGoal.mvarId!]
+          else
+            -- ℤ exponents: zpow_lt_zpow_right₀
+            let expLhs : Q(ℤ) ← asInt expLhs
+            let expRhs : Q(ℤ) ← asInt expRhs
+            have baseExpr : Q($R) := baseLhs
+            let _inst1 ← synthInstanceQ q(DivisionRing $R)
+            let _inst2 ← synthInstanceQ q(LinearOrder $R)
+            let _inst3 ← synthInstanceQ q(PosMulReflectLT $R)
+            let _inst4 ← synthInstanceQ q(ZeroLEOneClass $R)
+            assumeInstancesCommute
+            let haGoal ← mkFreshExprMVarQ q((1 : $R) < $baseExpr) MetavarKind.syntheticOpaque (`ha)
+            let hmnGoal ← mkFreshExprMVarQ q($expLhs < $expRhs) MetavarKind.syntheticOpaque (`hmn)
+            g.assign q(zpow_lt_zpow_right₀ $haGoal $hmnGoal)
+            Term.synthesizeSyntheticMVarsUsingDefault
+            return [haGoal.mvarId!, hmnGoal.mvarId!]
+        else throwError "linearize (base := ...): RHS is not a power of the given base"
+      else throwError "linearize (base := ...): LHS is not a power of the given base"
+    | _ => throwError "linearize (base := ...): goal is not ≤ or <"
+
 /-- Check if an expression is a comparison that we can linearize -/
 def isLinearizableComparison (e : Expr) : MetaM Bool := do
   match e.getAppFnArgs with
@@ -1288,27 +1386,46 @@ def linearizeAtLocation (loc : Location) : TacticM Unit := do
         else
           replaceMainGoal (currentGoal :: remainingSideGoals)
 
+/-- Helper: run linearizeBaseGoal and solve side goals, replacing main goal -/
+def linearizeBaseAtGoal (baseExpr : Expr) : TacticM Unit := do
+  let g ← getMainGoal
+  let newGoals ← linearizeBaseGoal g baseExpr
+  let mut remainingSideGoals : List MVarId := []
+  for sideGoal in newGoals do
+    match ← trySolveSideGoal sideGoal with
+    | none => pure ()
+    | some g => remainingSideGoals := remainingSideGoals ++ [g]
+  replaceMainGoal remainingSideGoals
+
 /-- The linearize tactic syntax -/
-syntax (name := linearize) "linearize" (location)? : tactic
+syntax (name := linearize) "linearize" ("(base" ":=" term ")")? (location)? : tactic
 
 /-- Elaboration rule for linearize tactic -/
 elab_rules : tactic
-  | `(tactic| linearize $[$loc:location]?) => do
-    let location := match loc with
-    | none => Location.targets #[] true
-    | some loc => expandLocation loc
-    linearizeAtLocation location
+  | `(tactic| linearize $[(base := $base)]? $[$loc:location]?) => do
+    if let some baseTerm := base then
+      let baseExpr ← Tactic.elabTerm baseTerm none
+      linearizeBaseAtGoal baseExpr
+    else
+      let location := match loc with
+      | none => Location.targets #[] true
+      | some loc => expandLocation loc
+      linearizeAtLocation location
 
 /-- The linearize! tactic that applies linearize then linarith -/
-syntax (name := linearizeBang) "linearize!" (&" only")? (" [" term,* "]")? (location)? : tactic
+syntax (name := linearizeBang) "linearize!" ("(base" ":=" term ")")? (&" only")? (" [" term,* "]")? (location)? : tactic
 
 /-- Elaboration rule for linearize! tactic -/
 elab_rules : tactic
-  | `(tactic| linearize! $[only%$o]? $[ [ $args,* ] ]? $[$loc:location]?) => do
-    let location := match loc with
-    | none => Location.wildcard
-    | some loc => expandLocation loc
-    linearizeAtLocation location
+  | `(tactic| linearize! $[(base := $base)]? $[only%$o]? $[ [ $args,* ] ]? $[$loc:location]?) => do
+    if let some baseTerm := base then
+      let baseExpr ← Tactic.elabTerm baseTerm none
+      linearizeBaseAtGoal baseExpr
+    else
+      let location := match loc with
+      | none => Location.wildcard
+      | some loc => expandLocation loc
+      linearizeAtLocation location
     -- Apply norm_num then linarith to all remaining goals
     let initialGoals ← getGoals
     let mut remainingGoals : List MVarId := []

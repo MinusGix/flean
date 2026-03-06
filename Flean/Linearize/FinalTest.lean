@@ -340,3 +340,41 @@ example (N : ℤ) (hN : 10 ≤ N) : (2 : ℝ) ^ (10 : ℤ) ≤ (2 : ℝ) ^ N := 
   linearize!
 
 end OmegaSideGoalTests
+
+section BaseExprTests
+
+/-! ### Pattern: `linearize (base := expr)` for non-literal bases
+
+These test cases mirror patterns from ExpTermination.lean where the base
+is a variable or expression, not a literal like 2. -/
+
+-- B1: Variable base, ℕ exponents, ≤
+example (N ab : ℕ) (hN_pos : 1 ≤ N) (hN_le : N ≤ 28 * ab) :
+    (N : ℝ) ^ N ≤ (N : ℝ) ^ (28 * ab) := by
+  linearize (base := (N : ℝ))
+
+-- B2: Expression base (4 * b), ℕ exponents
+example (N ab : ℕ) (b : ℕ) (hb : 1 ≤ b) (hN_le : N ≤ 28 * ab) :
+    ((4 : ℝ) * b) ^ N ≤ ((4 : ℝ) * b) ^ (28 * ab) := by
+  linearize (base := (4 : ℝ) * b)
+
+-- B3: Variable base (ab), ℕ exponents
+example (ab : ℕ) (a_natAbs : ℕ) (hab : 1 ≤ ab) (ha_le : a_natAbs ≤ ab) :
+    (ab : ℝ) ^ a_natAbs ≤ (ab : ℝ) ^ ab := by
+  linearize (base := (ab : ℝ))
+
+-- B4: linearize! auto-solves when side goals are tractable
+example (ab : ℕ) (a_natAbs : ℕ) (hab : 1 ≤ ab) (ha_le : a_natAbs ≤ ab) :
+    (ab : ℝ) ^ a_natAbs ≤ (ab : ℝ) ^ ab := by
+  linearize! (base := (ab : ℝ))
+
+-- B5: Literal base still works with (base := ...) syntax
+example (a b : ℕ) (h : a ≤ b) : (2 : ℝ) ^ a ≤ (2 : ℝ) ^ b := by
+  linearize! (base := (2 : ℝ))
+
+-- B6: Strict inequality with variable base
+example (N ab : ℕ) (hN_pos : 1 < N) (hN_lt : N < 28 * ab) :
+    (N : ℝ) ^ N < (N : ℝ) ^ (28 * ab) := by
+  linearize (base := (N : ℝ))
+
+end BaseExprTests
