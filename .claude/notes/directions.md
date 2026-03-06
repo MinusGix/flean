@@ -95,7 +95,7 @@ would be a moderate refactor of `pade_delta_log_bound`.
   - Works for variables, products, any expression via `isDefEq` matching
 - [x] **Reciprocal recognition** ✓ — `c/base^m ≤ c/base^n` via `div_le_div_of_nonneg_left` with recursive side goal solving
 - [x] **`unfold_let` preprocessing** ✓ — `unfoldLetFVars` + `instantiateMVars` sees through `set` aliases
-- [ ] **Side goal `norm_cast` pass** — Fix `have`-block zpow elaboration issue
+- [x] **Side goal `norm_cast` pass** ✓ — Already resolved by exact_mod_cast + asInt fixes
 - [ ] **Multiplicative monotonicity** — Separate `bound_calc` tactic for `*`, `/`, `^` chains
 
 Known limitations documented in memory/linearize-issues.md. Tests in FinalTest.lean.

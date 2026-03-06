@@ -313,15 +313,9 @@ example (k : ℤ) (s S : ℕ) (hS : s ≤ S) :
     (2 : ℝ) ^ (k.natAbs + s) ≤ (2 : ℝ) ^ (k.natAbs + S) := by
   linearize!
 
--- Test: have pattern (as used in exp/log code)
--- Inside `have`, Lean may choose zpow; omega fails on the resulting ℤ side goal
--- due to Int.ofNat vs OfNat.ofNat mismatch. This is a known limitation.
--- The actual exp/log code writes `pow_le_pow_right₀ (by norm_num) (by omega)`
--- which avoids this issue. For now, use `linearize` (not `!`) and close side goals manually.
--- TODO: Fix the zpow side goal solver to handle cross-type omega goals.
+-- Test: have pattern (as used in exp/log code) — now works with linearize!
 example (N : ℕ) (hN : 10 ≤ N) : True := by
-  have _h2_10_le : (2 : ℝ) ^ (10 : ℕ) ≤ (2 : ℝ) ^ N :=
-    pow_le_pow_right₀ (by norm_num) hN
+  have _h2_10_le : (2 : ℝ) ^ (10 : ℕ) ≤ (2 : ℝ) ^ N := by linearize!
   trivial
 
 -- Test: exponent side goal with linarith-solvable bound
@@ -433,3 +427,44 @@ example (a b : ℕ) (h : b ≤ a) : (1 : ℝ) / 2 ^ a ≤ 1 / 2 ^ b := by
   linearize
 
 end UnfoldLetTests
+
+section NormCastTests
+
+/-! ### Pattern: `have` block zpow elaboration
+
+Inside `have` blocks, Lean may choose zpow (ℤ exponents) instead of pow (ℕ)
+for expressions like `(2:ℝ)^10`. The side goal then has `Int.ofNat` vs
+`@OfNat.ofNat ℤ` mismatch that omega can't handle. -/
+
+-- N1: linearize! inside have — previously failed due to Int.ofNat mismatch
+example (N : ℕ) (hN : 10 ≤ N) : True := by
+  have _h : (2 : ℝ) ^ (10 : ℕ) ≤ (2 : ℝ) ^ N := by linearize!
+  trivial
+
+-- N2: have with variable-only exponents
+example (N M : ℕ) (hN : N ≤ M) : True := by
+  have _h : (2 : ℝ) ^ N ≤ (2 : ℝ) ^ M := by linearize!
+  trivial
+
+-- N3: have inside a proof term (the original failing pattern)
+example (N : ℕ) (hN : 10 ≤ N) : (2 : ℝ) ^ (10 : ℕ) ≤ (2 : ℝ) ^ N := by
+  linearize!
+
+-- N4: nested have
+example (N : ℕ) (hN : 10 ≤ N) : True := by
+  have : True := by
+    have _h : (2 : ℝ) ^ (10 : ℕ) ≤ (2 : ℝ) ^ N := by linearize!
+    trivial
+  trivial
+
+-- N5: zpow path inside have (Lean may choose ℤ exponents)
+example (N : ℤ) (hN : 10 ≤ N) : True := by
+  have _h : (2 : ℝ) ^ (10 : ℤ) ≤ (2 : ℝ) ^ N := by linearize!
+  trivial
+
+-- N6: complex expression inside have
+example (k : ℤ) (s S : ℕ) (hS : s ≤ S) : True := by
+  have _h : (2 : ℝ) ^ (k.natAbs + s) ≤ (2 : ℝ) ^ (k.natAbs + S) := by linearize!
+  trivial
+
+end NormCastTests
