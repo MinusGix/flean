@@ -230,11 +230,9 @@ example (L₁ L₂ : ℕ) : (2 : ℝ) ^ L₁ ≤ (2 : ℝ) ^ (max L₁ L₂) := 
 `k * 2^S / 2^N ≤ 1/(4 * 2^L)` reduces to exponent arithmetic.
 Can linearize help simplify these? -/
 
--- F1: `1 / 2^a ≤ 1 / 2^b` from `b ≤ a` — FAIL (not same-base zpow comparison)
--- Would need: recognize `1/2^a` as `2^(-a)` or handle reciprocal monotonicity
+-- F1: `1 / 2^a ≤ 1 / 2^b` from `b ≤ a` — PASS (reciprocal recognition)
 example (a b : ℕ) (h : b ≤ a) : (1 : ℝ) / 2 ^ a ≤ 1 / 2 ^ b := by
-  -- linearize  -- fails: not same-base zpow comparison
-  exact div_le_div_of_nonneg_left one_pos.le (by positivity) (pow_le_pow_right₀ (by norm_num) h)
+  linearize
 
 -- F2: `2^a / 2^b = 2^(a-b)` — FAIL (equality, not comparison)
 -- Out of scope for linearize (this is field_simp + zpow_sub territory)
@@ -378,3 +376,29 @@ example (N ab : ℕ) (hN_pos : 1 < N) (hN_lt : N < 28 * ab) :
   linearize (base := (N : ℝ))
 
 end BaseExprTests
+
+section ReciprocalTests
+
+/-! ### Pattern: Reciprocal monotonicity `c / base^m ≤ c / base^n`
+
+These test cases mirror `div_le_div_of_nonneg_left` patterns from
+ExpTermination.lean and LogTermination.lean. -/
+
+-- R1: Basic reciprocal with literal base
+example (a b : ℕ) (h : b ≤ a) : (1 : ℝ) / 2 ^ a ≤ 1 / 2 ^ b := by
+  linearize
+
+-- R2: Reciprocal with general numerator
+example (c : ℝ) (hc : 0 ≤ c) (a b : ℕ) (h : b ≤ a) :
+    c / 2 ^ a ≤ c / 2 ^ b := by
+  linearize
+
+-- R3: Strict reciprocal
+example (a b : ℕ) (h : b < a) : (1 : ℝ) / 2 ^ a < 1 / 2 ^ b := by
+  linearize
+
+-- R4: linearize! auto-solves
+example (a b : ℕ) (h : b ≤ a) : (1 : ℝ) / 2 ^ a ≤ 1 / 2 ^ b := by
+  linearize!
+
+end ReciprocalTests

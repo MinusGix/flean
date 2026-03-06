@@ -152,12 +152,13 @@ def isLiteralZero (e : Expr) : Bool :=
 private def trySideGoalTactics (g : MVarId) (skipAssumption : Bool := false) :
     TacticM (Option MVarId) := do
   let savedGoals ← getGoals
-  -- Try each tactic: assumption, omega, exact_mod_cast, norm_num, linarith
+  -- Try each tactic: assumption, omega, exact_mod_cast, norm_num, positivity, linarith
   for (name, stx) in [
     ("assumption",      ← `(tactic| assumption)),
     ("omega",           ← `(tactic| omega)),
     ("exact_mod_cast",  ← `(tactic| exact_mod_cast (by omega))),
     ("norm_num",        ← `(tactic| norm_num)),
+    ("positivity",      ← `(tactic| positivity)),
     ("linarith",        ← `(tactic| linarith))
   ] do
     if skipAssumption && name == "assumption" then continue
@@ -451,6 +452,53 @@ def linearizeBaseGoal (g : MVarId) (baseStx : Expr) : TacticM (List MVarId) := d
         else throwError "linearize (base := ...): RHS is not a power of the given base"
       else throwError "linearize (base := ...): LHS is not a power of the given base"
     | _ => throwError "linearize (base := ...): goal is not ≤ or <"
+
+/-- Check if an expression is `a / b`, returning (a, b). -/
+def isDiv (e : Expr) : MetaM (Option (Expr × Expr)) := do
+  match e.getAppFnArgs with
+  | (``HDiv.hDiv, #[_, _, _, _, num, den]) => return some (num, den)
+  | _ => return none
+
+/-- Check if an expression is `base^exp` for any recognized base (literal or arbitrary).
+    Returns (base, exponent) if it's any kind of power expression. -/
+def isAnyPow (e : Expr) : MetaM (Option (Expr × Expr)) := do
+  match e.getAppFnArgs with
+  | (``HPow.hPow, #[_, _, _, _, base, exponent]) => return some (base, exponent)
+  | (``Pow.pow, #[_, _, _, base, exponent]) => return some (base, exponent)
+  | _ => return none
+
+/-- Linearize a goal of the form `c / base^m ≤ c / base^n` (reciprocal monotonicity).
+    Reduces to `base^n ≤ base^m` (flipped) + `0 ≤ c` + `0 < base^n`.
+    Also handles `<` variant. Uses `apply` to let Lean handle instance resolution. -/
+def linearizeRecipGoal (g : MVarId) : TacticM (List MVarId) := do
+  g.withContext do
+    let goalType ← g.getType
+    match goalType.getAppFnArgs with
+    | (``LE.le, #[_, _, lhs, rhs]) =>
+      let some (numL, denL) ← isDiv lhs | throwError "linearize: LHS is not a division"
+      let some (numR, denR) ← isDiv rhs | throwError "linearize: RHS is not a division"
+      unless (← isDefEq numL numR) do
+        throwError "linearize: numerators don't match in reciprocal pattern"
+      let some (baseL, _) ← isAnyPow denL | throwError "linearize: LHS denominator is not a power"
+      let some (baseR, _) ← isAnyPow denR | throwError "linearize: RHS denominator is not a power"
+      unless (← isDefEq baseL baseR) do
+        throwError "linearize: bases don't match in reciprocal pattern"
+      -- Apply div_le_div_of_nonneg_left via `apply`, let Lean resolve instances
+      let gs ← g.apply (← mkConstWithFreshMVarLevels ``div_le_div_of_nonneg_left)
+      return gs
+    | (``LT.lt, #[_, _, lhs, rhs]) =>
+      let some (numL, denL) ← isDiv lhs | throwError "linearize: LHS is not a division"
+      let some (numR, denR) ← isDiv rhs | throwError "linearize: RHS is not a division"
+      unless (← isDefEq numL numR) do
+        throwError "linearize: numerators don't match in reciprocal pattern"
+      let some (baseL, _) ← isAnyPow denL | throwError "linearize: LHS denominator is not a power"
+      let some (baseR, _) ← isAnyPow denR | throwError "linearize: RHS denominator is not a power"
+      unless (← isDefEq baseL baseR) do
+        throwError "linearize: bases don't match in reciprocal pattern"
+      -- Apply div_lt_div_of_pos_left via `apply`, let Lean resolve instances
+      let gs ← g.apply (← mkConstWithFreshMVarLevels ``div_lt_div_of_pos_left)
+      return gs
+    | _ => throwError "linearize: reciprocal pattern only supports ≤ and <"
 
 /-- Check if an expression is a comparison that we can linearize -/
 def isLinearizableComparison (e : Expr) : MetaM Bool := do
@@ -957,8 +1005,8 @@ def linearizeNEGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
   else
     throwError "linearize: goal linearization for ≠ only supports comparisons with 0"
 
-/-- Apply linearization to a goal of the form a^m < a^n using zpow_lt_zpow_right₀ -/
-def linearizeGoal (g : MVarId) : TacticM (List MVarId) := do
+/-- Try direct power linearization, then reciprocal as fallback -/
+def linearizeGoalCore (g : MVarId) : TacticM (List MVarId) := do
   g.withContext do
     let goalType ← g.getType
     trace[linearize] "=== ENTERING linearizeGoal ==="
@@ -967,94 +1015,95 @@ def linearizeGoal (g : MVarId) : TacticM (List MVarId) := do
     let (fn, args) := goalType.getAppFnArgs
     trace[linearize] "  Goal app function: {fn}"
     trace[linearize] "  Goal app args count: {args.size}"
-    trace[linearize] "  Goal app args: {args}"
-
-    -- Manual inspection of the goal structure
-    trace[linearize] "  Goal expr kind: {goalType.ctorName}"
-    match goalType with
-    | .app f a =>
-      trace[linearize] "  Goal is app: f={f}, a={a}"
-      let (f2, args2) := f.getAppFnArgs
-      trace[linearize] "    f app function: {f2}, args: {args2}"
-    | .mvar id => trace[linearize] "  Goal is mvar: {id}"
-    | .fvar _id => trace[linearize] "  Goal is fvar"
-    | .const name levels => trace[linearize] "  Goal is const: {name}, levels: {levels}"
-    | _ => trace[linearize] "  Goal is other: {goalType.ctorName}"
 
     -- Try reducing the goal type first
     let goalTypeReduced ← whnf goalType
-    trace[linearize] "  Reduced goal: {goalTypeReduced}"
-    let (fnReduced, argsReduced) := goalTypeReduced.getAppFnArgs
-    trace[linearize] "  Reduced app function: {fnReduced}"
-    trace[linearize] "  Reduced app args count: {argsReduced.size}"
 
     -- Dispatch to specialized handlers based on comparison type
     -- First try the original goal type (works for most cases)
     match goalType.getAppFnArgs with
     | (``LT.lt, #[_, _, lhs, rhs]) =>
-      trace[linearize] "  Dispatching to linearizeLTGoal (original 4-arg pattern)"
       linearizeLTGoal g lhs rhs
     | (``LE.le, #[_, _, lhs, rhs]) =>
-      trace[linearize] "  Dispatching to linearizeLEGoal (original 4-arg pattern)"
       linearizeLEGoal g lhs rhs
     | (``Ne, #[_, lhs, rhs]) =>
-      trace[linearize] "  Dispatching to linearizeNEGoal (original 3-arg pattern)"
       linearizeNEGoal g lhs rhs
     | _ =>
       -- If original doesn't work, try the reduced version (for mvar cases)
       trace[linearize] "  Original pattern didn't match, trying reduced goal"
+      let (fnReduced, argsReduced) := goalTypeReduced.getAppFnArgs
+      trace[linearize] "  Reduced app function: {fnReduced}, args: {argsReduced.size}"
       match goalTypeReduced.getAppFnArgs with
       | (``LT.lt, #[_, _, lhs, rhs]) =>
-        trace[linearize] "  Dispatching to linearizeLTGoal (reduced 4-arg pattern)"
         linearizeLTGoal g lhs rhs
       | (``LE.le, #[_, _, lhs, rhs]) =>
-        trace[linearize] "  Dispatching to linearizeLEGoal (reduced 4-arg pattern)"
         linearizeLEGoal g lhs rhs
       | (``Ne, #[_, lhs, rhs]) =>
-        trace[linearize] "  Dispatching to linearizeNEGoal (reduced 3-arg pattern)"
         linearizeNEGoal g lhs rhs
-      | (fn, #[lhs, rhs]) =>
-        -- Check if this is a 2-argument LT or LE pattern
-        trace[linearize] "  Checking reduced 2-arg pattern, fn={fn}"
-        -- Use the reduced goal type expression to check structure
+      | (_, #[lhs, rhs]) =>
         if goalTypeReduced.isApp then
           let actualFn := goalTypeReduced.getAppFn
-          trace[linearize] "  Actual function from reduced goal: {actualFn}, constName: {actualFn.constName?}"
-          trace[linearize] "  Function kind: {actualFn.ctorName}"
-
-          -- Check if it's a direct LT.lt or LE.le constant
           if actualFn.constName? == some ``LT.lt then
-            trace[linearize] "  Dispatching to linearizeLTGoal (reduced 2-arg LT pattern)"
             linearizeLTGoal g lhs rhs
           else if actualFn.constName? == some ``LE.le then
-            trace[linearize] "  Dispatching to linearizeLEGoal (reduced 2-arg LE pattern)"
             linearizeLEGoal g lhs rhs
           else
-            -- Check if it's a projection or field that ultimately refers to LT.lt
-            -- The structure might be something like `instX.toY.toLT.1` where `.1` is the `<` operator
             match actualFn with
-            | .proj typeName idx _ =>
-              trace[linearize] "  Function is projection: typeName={typeName}, idx={idx}"
-              -- Check if this is a projection from a type that should contain LT
+            | .proj typeName _ _ =>
               if typeName == ``LT || typeName.toString.endsWith "LT" then
-                trace[linearize] "  Dispatching to linearizeLTGoal (LT projection pattern)"
                 linearizeLTGoal g lhs rhs
               else if typeName == ``LE || typeName.toString.endsWith "LE" then
-                trace[linearize] "  Dispatching to linearizeLEGoal (LE projection pattern)"
                 linearizeLEGoal g lhs rhs
               else
-                trace[linearize] "  Projection is not LT/LE: {typeName}"
-                throwError "linearize: goal linearization only supports < and ≤ comparisons"
-            | _ =>
-              trace[linearize] "  Function is not LT/LE: {actualFn.constName?}"
-              throwError "linearize: goal linearization only supports < and ≤ comparisons"
-        else
-          trace[linearize] "  Reduced goal is not an app: {goalTypeReduced}"
-          throwError "linearize: goal linearization only supports < and ≤ comparisons"
-      | _ =>
-        trace[linearize] "  Goal pattern not recognized - wrong number of args"
-        trace[linearize] "  Original args count: {args.size}, Reduced args count: {argsReduced.size}"
-        throwError "linearize: goal linearization only supports <, ≤, and ≠ comparisons"
+                throwError "linearize: goal not a power comparison"
+            | _ => throwError "linearize: goal not a power comparison"
+        else throwError "linearize: goal not a power comparison"
+      | _ => throwError "linearize: goal not a power comparison"
+
+/-- Try to solve a side goal, including recursive linearization for power comparisons.
+    This extends `trySolveSideGoal` with the ability to decompose `base^n ≤ base^m`
+    side goals that arise from reciprocal linearization. -/
+def trySolveSideGoalDeep (g : MVarId) : TacticM (Option MVarId) := do
+  -- First try the basic solver
+  match ← trySolveSideGoal g with
+  | none => return none
+  | some g =>
+    -- If basic solver failed, try recursive linearization
+    let saved ← saveState
+    try
+      let subGoals ← linearizeGoalCore g
+      -- Try to solve all sub-goals
+      for sg in subGoals do
+        match ← trySolveSideGoal sg with
+        | none => pure ()
+        | some _ =>
+          restoreState saved
+          return some g
+      return none
+    catch _ =>
+      restoreState saved
+      return some g
+
+/-- Apply linearization to a goal. Tries direct power patterns first,
+    then reciprocal `c / base^m ≤ c / base^n` as fallback.
+    For reciprocal, recursively linearizes the `base^n ≤ base^m` side goal. -/
+def linearizeGoal (g : MVarId) : TacticM (List MVarId) := do
+  try
+    linearizeGoalCore g
+  catch e₁ =>
+    -- Try reciprocal recognition as fallback
+    trace[linearize] "Direct power linearization failed, trying reciprocal pattern"
+    try
+      let sideGoals ← linearizeRecipGoal g
+      -- Try to recursively solve side goals (especially power comparisons)
+      let mut remaining : List MVarId := []
+      for sg in sideGoals do
+        match ← trySolveSideGoalDeep sg with
+        | none => pure ()
+        | some sg' => remaining := remaining ++ [sg']
+      return remaining
+    catch _ =>
+      throw e₁  -- Rethrow the original error if reciprocal also fails
 
 /-- Linearize LT hypotheses of various patterns involving zpow -/
 def linearizeLTHyp (h : FVarId) (g : MVarId) (d : LocalDecl) (transformed : Q(Prop)) (lhs rhs : Expr) : TacticM (List MVarId) := do

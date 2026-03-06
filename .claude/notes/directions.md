@@ -93,7 +93,7 @@ would be a moderate refactor of `pade_delta_log_bound`.
 - [x] **`asInt` fix** — Proper literal/variable handling for omega compatibility ✓
 - [x] **Non-literal base syntax** (`linearize (base := expr)`) ✓
   - Works for variables, products, any expression via `isDefEq` matching
-- [ ] **Reciprocal recognition** — See `1/2^a` as `2^(-a)`, handle `div_le_div` monotonicity
+- [x] **Reciprocal recognition** ✓ — `c/base^m ≤ c/base^n` via `div_le_div_of_nonneg_left` with recursive side goal solving
 - [ ] **`unfold_let` preprocessing** — Handle `set` aliases
 - [ ] **Side goal `norm_cast` pass** — Fix `have`-block zpow elaboration issue
 - [ ] **Multiplicative monotonicity** — Separate `bound_calc` tactic for `*`, `/`, `^` chains
