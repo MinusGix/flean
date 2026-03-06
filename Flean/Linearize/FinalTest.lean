@@ -376,6 +376,9 @@ example : ∀ N ≤ 100, ∀ ab : ℕ, 0 < N → N ≤ 28 * ab →
   intro N _hN_le ab hN_pos hN_le
   linearize (base := (N : ℝ))
 
+-- B8: zpow with Int.le_natAbs — omega handles k ≤ ↑k.natAbs
+example (k : ℤ) : (2:ℝ) ^ k ≤ (2:ℝ) ^ (k.natAbs : ℤ) := by linearize
+
 end BaseExprTests
 
 section ReciprocalTests

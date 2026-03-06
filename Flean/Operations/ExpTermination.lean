@@ -551,7 +551,7 @@ theorem expBounds_width_bound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
   calc ((upper_r : ℝ) - lower_r) * (2:ℝ) ^ k
       ≤ ((upper_r : ℝ) - lower_r) * (2:ℝ) ^ (k.natAbs : ℤ) := by
         apply mul_le_mul_of_nonneg_left _ hur_lr_nn
-        exact zpow_le_zpow_right₀ (by norm_num : 1 ≤ (2:ℝ)) Int.le_natAbs
+        exact by linearize
     _ ≤ B * (2:ℝ) ^ (k.natAbs : ℤ) :=
         mul_le_mul_of_nonneg_right hur_lr_le_B (by positivity)
     _ = (2:ℝ) ^ k.natAbs * B := by
