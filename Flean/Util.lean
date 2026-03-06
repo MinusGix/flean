@@ -345,3 +345,80 @@ theorem pow_div_factorial_effective (d : ℝ) (hd : 0 ≤ d) (M : ℕ) :
   have hm : d ≤ ↑⌈d⌉₊ := Nat.le_ceil d
   have h := pow_div_factorial_geometric_bound d hd ⌈d⌉₊ hm (2 * ⌈d⌉₊ + M) (by omega)
   rwa [show 2 * ⌈d⌉₊ + M - 2 * ⌈d⌉₊ = M from by omega] at h
+
+/-! ## Rational number bounds -/
+
+/-- For rational `y > 1`, the numerator strictly exceeds the denominator. -/
+theorem Rat.den_lt_num_of_one_lt (y : ℚ) (hy1 : 1 < y) : (y.den : ℤ) < y.num := by
+  by_contra h; push_neg at h
+  have : (y : ℚ) ≤ 1 := by
+    rw [show (y : ℚ) = y.num / y.den from (Rat.num_div_den y).symm]
+    exact (div_le_one (by exact_mod_cast y.den_pos : (0:ℚ) < y.den)).mpr (by exact_mod_cast h)
+  linarith
+
+/-! ## Real analysis bounds -/
+
+/-- MVT-like bound: `|log(a) - log(b)| ≥ |a - b| / max(a, b)` for `a, b > 0`.
+Proof uses `log(x) ≥ 1 - 1/x` applied to `a/b` (or `b/a`). -/
+theorem Real.log_abs_sub_ge_div_max (a b : ℝ) (ha : 0 < a) (hb : 0 < b) :
+    |Real.log a - Real.log b| ≥ |a - b| / max a b := by
+  rcases le_or_gt a b with hab | hab
+  · rw [abs_of_nonpos (sub_nonpos.mpr (Real.log_le_log ha hab)),
+        abs_of_nonpos (sub_nonpos.mpr hab), neg_sub, neg_sub,
+        max_eq_right hab]
+    have := Real.one_sub_inv_le_log_of_pos (div_pos hb ha)
+    rw [Real.log_div hb.ne' ha.ne', inv_div] at this
+    have : 1 - a / b = (b - a) / b := by field_simp
+    linarith
+  · rw [abs_of_pos (sub_pos.mpr (Real.log_lt_log hb hab)),
+        abs_of_pos (sub_pos.mpr hab), max_eq_left hab.le]
+    have := Real.one_sub_inv_le_log_of_pos (div_pos ha hb)
+    rw [Real.log_div ha.ne' hb.ne', inv_div] at this
+    have : 1 - b / a = (a - b) / a := by field_simp
+    linarith
+
+/-- Geometric decay: if `0 ≤ t ≤ 1 - 1/B` and `M ≥ B·n`, then `t^M ≤ (1/2)^n`. -/
+theorem geom_decay_bound (t : ℝ) (B n M : ℕ)
+    (ht : 0 ≤ t) (hB : 1 ≤ B) (hgap : t ≤ 1 - 1 / (B : ℝ)) (hM : B * n ≤ M) :
+    t ^ M ≤ (1 / 2 : ℝ) ^ n := by
+  have hB_pos : (0 : ℝ) < B := by exact_mod_cast hB
+  have h_exp_lb : 1 - 1 / (B : ℝ) ≤ Real.exp (-1 / (B : ℝ)) := by
+    rw [show (-1 : ℝ) / B = -(1 / B) from by ring]
+    exact Real.one_sub_le_exp_neg _
+  have ht_le_exp : t ≤ Real.exp (-1 / (B : ℝ)) := le_trans hgap h_exp_lb
+  calc t ^ M ≤ (Real.exp (-1 / (B : ℝ))) ^ M :=
+        pow_le_pow_left₀ ht ht_le_exp M
+    _ = Real.exp (-(M : ℝ) / (B : ℝ)) := by
+        rw [← Real.exp_nat_mul]; congr 1; field_simp
+    _ ≤ Real.exp (-(n : ℝ)) := by
+        apply Real.exp_le_exp.mpr
+        rw [neg_div]; apply neg_le_neg
+        rw [le_div_iff₀ hB_pos, mul_comm]
+        exact_mod_cast hM
+    _ = (Real.exp (-1)) ^ n := by rw [← Real.exp_nat_mul]; simp [mul_neg, mul_one]
+    _ ≤ (1 / 2 : ℝ) ^ n := by
+        apply pow_le_pow_left₀ (Real.exp_nonneg _)
+        rw [Real.exp_neg]
+        rw [inv_le_comm₀ (Real.exp_pos 1) (by norm_num : (0:ℝ) < 1 / 2)]
+        linarith [Real.add_one_le_exp (1 : ℝ)]
+
+/-! ## Combinatorial bounds -/
+
+/-- For `n ≥ 10`, `n ^ 3 < 2 ^ n`. -/
+theorem cube_lt_two_pow (n : ℕ) (hn : 10 ≤ n) : n ^ 3 < 2 ^ n := by
+  induction n with
+  | zero => omega
+  | succ k ih =>
+    rcases le_or_gt 10 k with hk | hk
+    · have hk3 := ih hk
+      have h1 : (k + 1) ^ 3 ≤ 2 * k ^ 3 := by
+        have : 3 * k + 1 ≤ k ^ 2 := by nlinarith
+        nlinarith
+      linarith [show 2 ^ (k + 1) = 2 * 2 ^ k from by ring]
+    · interval_cases k <;> omega
+
+/-- For `ab ≥ 100`, `2 * ab ^ 2 < 2 ^ ab`. -/
+theorem two_mul_sq_lt_two_pow (ab : ℕ) (hab : 100 ≤ ab) : 2 * ab ^ 2 < 2 ^ ab := by
+  have h1 : 2 * ab ^ 2 ≤ ab ^ 3 := by nlinarith
+  have h2 : ab ^ 3 < 2 ^ ab := cube_lt_two_pow ab (by omega)
+  linarith

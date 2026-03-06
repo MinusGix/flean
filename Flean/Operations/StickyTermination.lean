@@ -213,4 +213,36 @@ theorem stickyTryOne_of_tight_bracket
   · rfl
   · exact absurd hq h
 
+/-! ## Uniform gap from pointwise gap
+
+When each shift value `s` has its own irrationality gap `δ_s > 0` with `1/δ_s ≤ 2^{L_s}`
+and all `L_s` share a common upper bound, we can take the minimum over `s ≤ T` to get
+a single uniform `δ` that works for all shifts simultaneously. -/
+
+omit [FloatFormat] in
+/-- Combine pointwise irrationality gaps into a uniform gap over bounded shifts.
+Given `gap_at s` producing `(δ, L)` for each `s`, returns a single `(δ, L)` for all `s ≤ T`. -/
+theorem uniform_gap_from_pointwise (T L_bound : ℕ)
+    (gap : ℕ → ℤ → ℝ)
+    (gap_at : ∀ s ≤ T, ∃ δ > 0, ∃ L : ℕ, L ≤ L_bound ∧
+      (1 : ℝ) / δ ≤ (2 : ℝ) ^ L ∧ ∀ m : ℤ, gap s m ≥ δ) :
+    ∃ δ > 0, ∃ L : ℕ, L ≤ L_bound ∧
+    (1 : ℝ) / δ ≤ (2 : ℝ) ^ L ∧ ∀ s ≤ T, ∀ m : ℤ, gap s m ≥ δ := by
+  induction T with
+  | zero =>
+    obtain ⟨δ, hδ, L, hL, hLd, hg⟩ := gap_at 0 (by omega)
+    exact ⟨δ, hδ, L, hL, hLd, fun s hs m => by interval_cases s; exact hg m⟩
+  | succ n ih =>
+    obtain ⟨δ₁, hδ₁, L₁, hL₁, hL₁d, hδ₁g⟩ := ih (fun s hs => gap_at s (by omega))
+    obtain ⟨δ₂, hδ₂, L₂, hL₂, hL₂d, hδ₂g⟩ := gap_at (n + 1) (by omega)
+    refine ⟨min δ₁ δ₂, lt_min hδ₁ hδ₂, max L₁ L₂, max_le hL₁ hL₂, ?_, fun s hs m => ?_⟩
+    · rcases le_total δ₁ δ₂ with h | h
+      · rw [min_eq_left h]
+        exact le_trans hL₁d (pow_le_pow_right₀ (by norm_num) (le_max_left _ _))
+      · rw [min_eq_right h]
+        exact le_trans hL₂d (pow_le_pow_right₀ (by norm_num) (le_max_right _ _))
+    · rcases Nat.eq_or_lt_of_le hs with rfl | hlt
+      · exact le_trans (min_le_right _ _) (hδ₂g m)
+      · exact le_trans (min_le_left _ _) (hδ₁g s (by omega) m)
+
 end StickyTermination

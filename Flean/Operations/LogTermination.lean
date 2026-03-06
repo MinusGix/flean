@@ -26,17 +26,6 @@ section LogComputable
 
 variable [FloatFormat]
 
-/-! ## Common helper -/
-
-omit [FloatFormat] in
-/-- For rational `y > 1`, the numerator strictly exceeds the denominator. -/
-private theorem rat_den_lt_num_of_one_lt (y : ℚ) (hy1 : 1 < y) : (y.den : ℤ) < y.num := by
-  by_contra h; push_neg at h
-  have : (y : ℚ) ≤ 1 := by
-    rw [show (y : ℚ) = y.num / y.den from (Rat.num_div_den y).symm]
-    exact (div_le_one (by exact_mod_cast y.den_pos : (0:ℚ) < y.den)).mpr (by exact_mod_cast h)
-  linarith
-
 /-! ## Helper: lower bound on log(y) for rationals -/
 
 omit [FloatFormat] in
@@ -57,7 +46,7 @@ theorem log_rat_lower_bound (y : ℚ) (hy1 : 1 < y) :
     rw [Real.exp_neg, Real.exp_log hy_pos, inv_eq_one_div] at h
     linarith
   -- Step 2: 1/p ≤ 1 - 1/y = (y-1)/y ≥ (p-d)/p ≥ 1/p
-  have hpd := rat_den_lt_num_of_one_lt y hy1
+  have hpd := Rat.den_lt_num_of_one_lt y hy1
   suffices (1 : ℝ) / y.num.natAbs ≤ 1 - 1 / (y : ℝ) by linarith
   have hd_pos : (0 : ℝ) < y.den := by exact_mod_cast y.den_pos
   have hp2 : (y.den : ℝ) + 1 ≤ (y.num.natAbs : ℝ) := by
@@ -120,12 +109,12 @@ private theorem logBounds_lower_ge (y : ℚ) (hy : 1 ≤ y) (hy1 : 1 < y) (iter 
       rw [ht_eq]; push_cast
       rw [Rat.cast_def, show (y.num : ℝ) / (y.den : ℝ) - 1 = ((y.num : ℝ) - y.den) / y.den from
         by field_simp]
-      have hpd := rat_den_lt_num_of_one_lt y hy1
+      have hpd := Rat.den_lt_num_of_one_lt y hy1
       apply div_le_div_of_nonneg_right _ (by positivity : (0:ℝ) ≤ (y.den : ℝ))
       have : (1 : ℤ) ≤ y.num - ↑y.den := by omega
       linarith [show (1 : ℝ) ≤ (y.num : ℝ) - (y.den : ℝ) from by exact_mod_cast this]
     -- y.den ≤ y.num.natAbs (since y > 1 means num > den)
-    have hpd := rat_den_lt_num_of_one_lt y hy1
+    have hpd := Rat.den_lt_num_of_one_lt y hy1
     have hden_le : (y.den : ℝ) ≤ y.num.natAbs := by
       have h1 : y.den ≤ y.num.natAbs := by
         have := Int.natAbs_of_nonneg (show 0 ≤ y.num by omega)
@@ -229,14 +218,15 @@ theorem logTaylor_width (t : ℚ) (N : ℕ) :
   have : (-1 : ℝ) ^ (2 * N) = 1 := by simp
   rw [this, one_mul]; push_cast; ring
 
-/-- Width bound for logBounds: the bracket width is bounded by ln2 error + Taylor error. -/
+/-- Width bound for logBounds: the bracket width is bounded by
+`k / 2^N_ln2 + t^(2N+1) / (2N+1)` where `k = logArgRedK y`, `t = logReducedArg y k`,
+`N = logNumTerms + iter * 10`, `N_ln2 = Nat.log2 k + 52 + iter * 50`. -/
 theorem logBounds_width_bound (y : ℚ) (iter : ℕ) :
-    let bounds := logBounds y (logArgRedK y) iter
     let k := logArgRedK y
     let t := logReducedArg y k
     let N := logNumTerms + iter * 10
     let N_ln2 := Nat.log2 k + 52 + iter * 50
-    ((bounds.2 : ℝ) - (bounds.1 : ℝ)) ≤
+    ((logBounds y k iter).2 : ℝ) - ((logBounds y k iter).1 : ℝ) ≤
       (k : ℝ) / 2 ^ N_ln2 + (t : ℝ) ^ (2 * N + 1) / ((2 * N : ℝ) + 1) := by
   set k := logArgRedK y with hk_def
   set t := logReducedArg y k with ht_def
@@ -295,65 +285,6 @@ private theorem log_gap_m_zero (y : ℚ) (hy1 : 1 < y) (s : ℕ) :
           (Real.log_pos (by exact_mod_cast hy1)).le
     _ = Real.log (y : ℝ) := mul_one _
     _ ≥ 1 / y.num.natAbs := log_rat_lower_bound y hy1
-
-omit [FloatFormat] in
-/-- For any integer m, `|log(y)·2^s - m| > 0` for rational y > 1.
-- m ≤ 0: gap ≥ log(y)·2^s > 0
-- m > 0: by MVT, `|log(y) - m/2^s| ≥ |y - exp(m/2^s)|/max(y, exp(m/2^s))`,
-  and Padé gives `|exp(m/2^s)·y.den - y.num| ≥ 1/(2D)`.
-  For m far from log(y)·2^s, the gap is trivially ≥ 1/2. -/
-private theorem log_gap_pos (y : ℚ) (hy1 : 1 < y) (s : ℕ) (m : ℤ) :
-    (0 : ℝ) < |Real.log (y : ℝ) * 2 ^ s - (m : ℝ)| := by
-  have hy_pos : (0 : ℝ) < (y : ℝ) := by exact_mod_cast lt_trans one_pos hy1
-  have hlog_pos : 0 < Real.log (y : ℝ) := Real.log_pos (by exact_mod_cast hy1)
-  rw [abs_pos]
-  intro h
-  -- log(y) = m / 2^s, so y = exp(m/2^s)
-  have h2s_pos : (0 : ℝ) < 2 ^ s := by positivity
-  have hm_eq : Real.log (y : ℝ) = (m : ℝ) / 2 ^ s := by
-    have := h; rw [sub_eq_zero] at this
-    rwa [eq_div_iff h2s_pos.ne']
-  have hy_exp : (y : ℝ) = Real.exp ((m : ℝ) / 2 ^ s) := by
-    rw [← hm_eq, Real.exp_log hy_pos]
-  -- y is rational but exp(m/2^s) is irrational (for m ≠ 0) or = 1 (for m = 0)
-  rcases eq_or_ne m 0 with rfl | hm_ne
-  · -- m = 0: log(y) * 2^s = 0 contradicts log(y) > 0
-    simp only [Int.cast_zero, sub_zero] at h
-    have := mul_pos hlog_pos h2s_pos
-    linarith
-  · -- exp(m/2^s) is irrational: it's exp(a/b) for a/b ≠ 0
-    -- m/2^s is a nonzero rational
-    set q : ℚ := (m : ℚ) / (2 : ℚ) ^ s with hq_def
-    have hq_ne : q ≠ 0 := by
-      simp [hq_def]; exact Int.cast_ne_zero.mpr hm_ne
-    have hq_cast : (q : ℝ) = (m : ℝ) / 2 ^ s := by simp [hq_def]
-    have hirr := irrational_exp_rat q hq_ne
-    rw [hq_cast] at hirr
-    exact hirr ⟨y, hy_exp⟩
-
-/-! ## MVT for log -/
-
-omit [FloatFormat] in
-/-- MVT-like bound: `|log(a) - log(b)| ≥ |a - b| / max(a, b)` for `a, b > 0`.
-Proof uses `log(x) ≥ 1 - 1/x` applied to `a/b` (or `b/a`). -/
-private theorem log_abs_sub_ge_div_max (a b : ℝ) (ha : 0 < a) (hb : 0 < b) :
-    |Real.log a - Real.log b| ≥ |a - b| / max a b := by
-  rcases le_or_gt a b with hab | hab
-  · -- a ≤ b: |log a - log b| = log(b) - log(a) = log(b/a) ≥ 1 - a/b = (b-a)/b
-    rw [abs_of_nonpos (sub_nonpos.mpr (Real.log_le_log ha hab)),
-        abs_of_nonpos (sub_nonpos.mpr hab), neg_sub, neg_sub,
-        max_eq_right hab]
-    have := Real.one_sub_inv_le_log_of_pos (div_pos hb ha)
-    rw [Real.log_div hb.ne' ha.ne', inv_div] at this
-    have : 1 - a / b = (b - a) / b := by field_simp
-    linarith
-  · -- a > b: |log a - log b| = log(a) - log(b) = log(a/b) ≥ 1 - b/a = (a-b)/a
-    rw [abs_of_pos (sub_pos.mpr (Real.log_lt_log hb hab)),
-        abs_of_pos (sub_pos.mpr hab), max_eq_left hab.le]
-    have := Real.one_sub_inv_le_log_of_pos (div_pos ha hb)
-    rw [Real.log_div ha.ne' hb.ne', inv_div] at this
-    have : 1 - b / a = (a - b) / a := by field_simp
-    linarith
 
 /-! ## Fuel sufficiency -/
 
@@ -466,7 +397,7 @@ private theorem log_gap_m_pos_close (y : ℚ) (hy1 : 1 < y) (s : ℕ) (m : ℤ)
   have hmax_le : max ((y : ℝ)) (Real.exp x) ≤ 3 * (y.num.natAbs : ℝ) :=
     max_le (by linarith) (by linarith [hexp_lt])
   -- Step 4: MVT + combine
-  have hmvt := log_abs_sub_ge_div_max ((y : ℝ)) (Real.exp x) hy_pos (Real.exp_pos _)
+  have hmvt := Real.log_abs_sub_ge_div_max ((y : ℝ)) (Real.exp x) hy_pos (Real.exp_pos _)
   rw [Real.log_exp] at hmvt
   -- |log(y) - x| ≥ |y - exp(x)| / max(y, exp(x)) ≥ 1/(2Dd) / (3p) = 1/(6Ddp)
   have hlogx : |Real.log (y : ℝ) - x| ≥ 1 / (6 * D * y.den * y.num.natAbs) := by
@@ -549,29 +480,6 @@ private theorem log_ab_pade_bound (y : ℚ) (hy1 : 1 < y) (s : ℕ) (m : ℤ)
           Nat.sub_add_cancel hab2]
 
 omit [FloatFormat] in
-/-- For `n ≥ 10`, `n ^ 3 < 2 ^ n`. -/
-private theorem cube_lt_two_pow (n : ℕ) (hn : 10 ≤ n) : n ^ 3 < 2 ^ n := by
-  induction n with
-  | zero => omega
-  | succ k ih =>
-    rcases le_or_gt 10 k with hk | hk
-    · -- (k+1)^3 ≤ 2*k^3 for k ≥ 4: 3k²+3k+1 ≤ k³
-      have hk3 := ih hk
-      have h1 : (k + 1) ^ 3 ≤ 2 * k ^ 3 := by
-        -- k ≥ 10, so k³ ≥ 10k², 3k²+3k+1 ≤ 3k²+3k² = 6k² ≤ k³
-        have : 3 * k + 1 ≤ k ^ 2 := by nlinarith
-        nlinarith
-      linarith [show 2 ^ (k + 1) = 2 * 2 ^ k from by ring]
-    · interval_cases k <;> omega
-
-omit [FloatFormat] in
-/-- For `ab ≥ 100`, `2 * ab ^ 2 < 2 ^ ab`. -/
-private theorem two_sq_lt_two_pow (ab : ℕ) (hab : 100 ≤ ab) : 2 * ab ^ 2 < 2 ^ ab := by
-  have h1 : 2 * ab ^ 2 ≤ ab ^ 3 := by nlinarith
-  have h2 : ab ^ 3 < 2 ^ ab := cube_lt_two_pow ab (by omega)
-  linarith
-
-omit [FloatFormat] in
 /-- For `ab ≥ 100`, `Nat.log2(2 * ab^2 * 2^ab) + 1 ≤ 2 * ab`. -/
 private theorem log2_ab_pade_bound (ab : ℕ) (hab : 100 ≤ ab) :
     Nat.log2 (2 * ab ^ 2 * 2 ^ ab) + 1 ≤ 2 * ab := by
@@ -580,7 +488,7 @@ private theorem log2_ab_pade_bound (ab : ℕ) (hab : 100 ≤ ab) :
   rw [Nat.log2_eq_log_two]
   have h_lt : 2 * ab ^ 2 * 2 ^ ab < 2 ^ (2 * ab) := by
     rw [show 2 ^ (2 * ab) = 2 ^ ab * 2 ^ ab from by rw [two_mul]; exact pow_add 2 ab ab]
-    exact Nat.mul_lt_mul_of_pos_right (two_sq_lt_two_pow ab hab) (Nat.two_pow_pos ab)
+    exact Nat.mul_lt_mul_of_pos_right (two_mul_sq_lt_two_pow ab hab) (Nat.two_pow_pos ab)
   -- Nat.log 2 x < k when x < 2^k
   have h_log : Nat.log 2 (2 * ab ^ 2 * 2 ^ ab) < 2 * ab :=
     Nat.log_lt_of_lt_pow' (by omega) h_lt
@@ -702,7 +610,7 @@ private theorem log_effective_gap (y : ℚ) (hy1 : 1 < y) (s : ℕ)
         -- We need 1/(2^L) ≤ gap, i.e., 6Ddp/2^s ≤ 2^L.
         -- 6D = 3*(2D) ≤ 3*2^L_pade. dp ≤ ab². 1/2^s ≤ 1.
         -- So 6Ddp/2^s ≤ 3*ab²*2^L_pade.
-        -- 3*ab² < 2^ab (from two_sq_lt_two_pow + 3 < 2). Actually 3*ab² ≤ 2^ab for ab ≥ 100.
+        -- 3*ab² < 2^ab (from two_mul_sq_lt_two_pow + 3 < 2). Actually 3*ab² ≤ 2^ab for ab ≥ 100.
         -- So 3*ab²*2^L_pade ≤ 2^ab * 2^L_pade = 2^(ab + L_pade) ≤ 2^(ab + 456*ab³*2^ab) ≤ 2^(500*ab³*2^ab) = 2^L.
         rw [ge_iff_le] at hgap
         -- Show 1/2^L ≤ 2^s/(6Ddp) via bounding 6Ddp ≤ 2^s * 2^L
@@ -755,41 +663,6 @@ private theorem log_effective_gap (y : ℚ) (hy1 : 1 < y) (s : ℕ)
               rw [div_le_one (by positivity)]
               exact one_le_pow₀ (by norm_num : (1:ℝ) ≤ 2)
           _ ≤ |Real.log (y : ℝ) * 2 ^ s - (m : ℝ)| := hfar
-
-/-! ## Geometric decay bound
-
-For the log Taylor series, the error decays geometrically as `t^(2N+1)` where `t ∈ [0, 1)`.
-When `t ≤ 1 - 1/B`, this is `≤ (1/2)^n` for `M ≥ B·n`, using `1 - x ≤ exp(-x)`. -/
-
-omit [FloatFormat] in
-/-- Geometric decay: if `0 ≤ t ≤ 1 - 1/B` and `M ≥ B·n`, then `t^M ≤ (1/2)^n`. -/
-private theorem geom_decay_bound (t : ℝ) (B n M : ℕ)
-    (ht : 0 ≤ t) (hB : 1 ≤ B) (hgap : t ≤ 1 - 1 / (B : ℝ)) (hM : B * n ≤ M) :
-    t ^ M ≤ (1 / 2 : ℝ) ^ n := by
-  have hB_pos : (0 : ℝ) < B := by exact_mod_cast hB
-  -- Step 1: 1 - 1/B ≤ exp(-1/B) from add_one_le_exp
-  have h_exp_lb : 1 - 1 / (B : ℝ) ≤ Real.exp (-1 / (B : ℝ)) := by
-    rw [show (-1 : ℝ) / B = -(1 / B) from by ring]
-    exact Real.one_sub_le_exp_neg _
-  -- Step 2: t^M ≤ exp(-1/B)^M = exp(-M/B) ≤ exp(-n) = exp(-1)^n ≤ (1/2)^n
-  have ht_le_exp : t ≤ Real.exp (-1 / (B : ℝ)) := le_trans hgap h_exp_lb
-  calc t ^ M ≤ (Real.exp (-1 / (B : ℝ))) ^ M :=
-        pow_le_pow_left₀ ht ht_le_exp M
-    _ = Real.exp (-(M : ℝ) / (B : ℝ)) := by
-        rw [← Real.exp_nat_mul]; congr 1; field_simp
-    _ ≤ Real.exp (-(n : ℝ)) := by
-        apply Real.exp_le_exp.mpr
-        rw [neg_div]
-        apply neg_le_neg
-        rw [le_div_iff₀ hB_pos, mul_comm]
-        exact_mod_cast hM
-    _ = (Real.exp (-1)) ^ n := by rw [← Real.exp_nat_mul]; simp [mul_neg, mul_one]
-    _ ≤ (1 / 2 : ℝ) ^ n := by
-        apply pow_le_pow_left₀ (Real.exp_nonneg _)
-        rw [Real.exp_neg]
-        rw [inv_le_comm₀ (Real.exp_pos 1) (by norm_num : (0:ℝ) < 1 / 2)]
-        -- Goal: 2 ≤ exp(1), i.e., 1 + 1 ≤ exp(1)
-        linarith [Real.add_one_le_exp (1 : ℝ)]
 
 /-! ## Reduced argument gap bound
 
@@ -1023,14 +896,9 @@ private theorem logWidth_lt_delta (y : ℚ) (hy : 1 ≤ y) (hy1 : 1 < y)
   have hwidth_bound : ((bounds.2 : ℝ) - (bounds.1 : ℝ)) * 2 ^ S ≤
       (k : ℝ) * 2 ^ S / 2 ^ N_ln2 +
       (t : ℝ) ^ (2 * N + 1) * 2 ^ S / ((2 * N : ℝ) + 1) := by
-    have hb := hbound
-    rw [show logBounds y (logArgRedK y) iter =
-      ((logBounds y (logArgRedK y) iter).1,
-       (logBounds y (logArgRedK y) iter).2) from by ext <;> rfl] at hb
-    dsimp only at hb
     calc ((bounds.2 : ℝ) - (bounds.1 : ℝ)) * 2 ^ S
         ≤ ((k : ℝ) / 2 ^ N_ln2 + (t : ℝ) ^ (2 * N + 1) / ((2 * N : ℝ) + 1)) * 2 ^ S :=
-          mul_le_mul_of_nonneg_right hb (by positivity)
+          mul_le_mul_of_nonneg_right hbound (by positivity)
       _ = (k : ℝ) * 2 ^ S / 2 ^ N_ln2 +
           (t : ℝ) ^ (2 * N + 1) * 2 ^ S / ((2 * N : ℝ) + 1) := by ring
   calc ((bounds.2 : ℝ) - (bounds.1 : ℝ)) * 2 ^ S
@@ -1084,31 +952,11 @@ theorem logFuel_sufficient (y : ℚ) (hy : 1 ≤ y) (hy1 : 1 < y) :
       (1 : ℝ) / δ ≤ (2 : ℝ) ^ L ∧
       ∀ iter, ∀ m : ℤ,
       |Real.log (y : ℝ) * 2 ^ (stickyShift (logBounds y (logArgRedK y) iter).1) - (m : ℝ)| ≥ δ := by
-    suffices h : ∀ T ≤ ab, ∃ δ > 0, ∃ L : ℕ,
-        L ≤ 500 * ab ^ 3 * 2 ^ ab ∧ (1 : ℝ) / δ ≤ (2 : ℝ) ^ L ∧
-        ∀ s ≤ T, ∀ m : ℤ,
-        |Real.log (y : ℝ) * 2 ^ s - (m : ℝ)| ≥ δ by
-      obtain ⟨δ, hδ, L, hL, hLd, hδ_all⟩ := h _ hS_le_ab
-      exact ⟨δ, hδ, L, hL, hLd, fun iter m => hδ_all _ (hS_bound iter) m⟩
-    intro T hT
-    induction T with
-    | zero =>
-      obtain ⟨δ, hδ, L, hL_le, hLd, hg⟩ := log_effective_gap y hy1 0 ab hab_eq (by omega)
-      exact ⟨δ, hδ, L, hL_le, hLd, fun s hs m => by interval_cases s; exact hg m⟩
-    | succ n ih =>
-      obtain ⟨δ₁, hδ₁, L₁, hL₁, hL₁d, hδ₁g⟩ := ih (by omega)
-      obtain ⟨δ₂, hδ₂, L₂, hL₂, hL₂d, hδ₂g⟩ :=
-        log_effective_gap y hy1 (n + 1) ab hab_eq (by omega)
-      refine ⟨min δ₁ δ₂, lt_min hδ₁ hδ₂, max L₁ L₂,
-             max_le hL₁ hL₂, ?_, fun s hs m => ?_⟩
-      · rcases le_total δ₁ δ₂ with h | h
-        · rw [min_eq_left h]
-          exact le_trans hL₁d (pow_le_pow_right₀ (by norm_num) (le_max_left _ _))
-        · rw [min_eq_right h]
-          exact le_trans hL₂d (pow_le_pow_right₀ (by norm_num) (le_max_right _ _))
-      · rcases Nat.eq_or_lt_of_le hs with rfl | hlt
-        · exact le_trans (min_le_right _ _) (hδ₂g m)
-        · exact le_trans (min_le_left _ _) (hδ₁g s (by omega) m)
+    have h := uniform_gap_from_pointwise ab (500 * ab ^ 3 * 2 ^ ab)
+      (fun s m => |Real.log (y : ℝ) * 2 ^ s - (m : ℝ)|)
+      (fun s hs => log_effective_gap y hy1 s ab hab_eq hs)
+    obtain ⟨δ, hδ, L, hL, hLd, hδ_all⟩ := h
+    exact ⟨δ, hδ, L, hL, hLd, fun iter m => hδ_all _ (hS_le iter) m⟩
   -- Step 2: Apply logWidth_lt_delta
   set iter := ab * (L + ab + 1)
   have hiter_fuel : iter < 600 * ab ^ 4 * 2 ^ ab + 200 :=
