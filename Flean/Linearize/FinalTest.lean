@@ -402,3 +402,34 @@ example (a b : ℕ) (h : b ≤ a) : (1 : ℝ) / 2 ^ a ≤ 1 / 2 ^ b := by
   linearize!
 
 end ReciprocalTests
+
+section UnfoldLetTests
+
+/-! ### Pattern: `set` alias transparency
+
+After `set C := (2:ℝ)^k`, linearize should see through C to the underlying power. -/
+
+-- U1: set alias for power expression in goal
+example (m n : ℤ) (h : m ≤ n) : (2 : ℝ) ^ m ≤ (2 : ℝ) ^ n := by
+  set C := (2 : ℝ) ^ m
+  linearize
+
+-- U2: set alias used on both sides
+example (k : ℤ) (m n : ℤ) (h : m ≤ n) : (2 : ℝ) ^ m ≤ (2 : ℝ) ^ n := by
+  set a := (2 : ℝ) ^ m
+  set b := (2 : ℝ) ^ n
+  linearize
+
+-- U3: set alias in hypothesis
+example (a : ℝ) (ha : 0 < a) (h : a < (2 : ℝ) ^ 100) : Int.log 2 a < 100 := by
+  set bound := (2 : ℝ) ^ (100 : ℤ)
+  linearize at h
+  trivial
+
+-- U4: set alias in reciprocal pattern
+example (a b : ℕ) (h : b ≤ a) : (1 : ℝ) / 2 ^ a ≤ 1 / 2 ^ b := by
+  set da := (2 : ℝ) ^ a
+  set db := (2 : ℝ) ^ b
+  linearize
+
+end UnfoldLetTests

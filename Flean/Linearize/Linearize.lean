@@ -248,17 +248,29 @@ def trySolveSideGoal (g : MVarId) : TacticM (Option MVarId) := do
 
 
 
+/-- Unfold local let-bound fvars (from `set`) to their definitions, recursively. -/
+partial def unfoldLetFVars (e : Expr) : MetaM Expr := do
+  -- First handle the top-level: if it's an fvar with a value, unfold it
+  let e ← if e.isFVar then
+    let ldecl ← e.fvarId!.getDecl
+    if let some val := ldecl.value? then pure val else pure e
+  else pure e
+  -- Then zeta-reduce any remaining let expressions
+  zetaReduce e
+
 /-- Check if an expression is of the form `(b : R)^z` where `b` is a natural number literal -/
 def isNatCastZpow (e : Expr) : MetaM (Option (ℕ × Expr × Expr × Expr)) := do
   trace[linearize] "isNatCastZpow checking: {e}"
   trace[linearize] "  Expression kind: {e.ctorName}"
 
-  -- If the expression is a metavariable, try to instantiate it first
-  let e' ← if e.isMVar then
-    trace[linearize] "  Expression is mvar, attempting to instantiate"
-    instantiateMVars e
-  else
-    pure e
+  -- Unfold let bindings (from `set`) and instantiate metavariables
+  let e' ← do
+    let e ← unfoldLetFVars e
+    if e.isMVar then
+      trace[linearize] "  Expression is mvar, attempting to instantiate"
+      instantiateMVars e
+    else
+      pure e
 
   let appInfo := e'.getAppFnArgs
   trace[linearize] "  getAppFnArgs function: {appInfo.1}"
@@ -358,6 +370,7 @@ def isNatCastZpow (e : Expr) : MetaM (Option (ℕ × Expr × Expr × Expr)) := d
 /-- Check if an expression is `expectedBase ^ exp` (via HPow or Pow), returning the exponent.
     Uses `isDefEq` to match the base, so it works with arbitrary expressions. -/
 def isExprPow (expectedBase : Expr) (e : Expr) : MetaM (Option (Expr × Expr)) := do
+  let e ← unfoldLetFVars e
   match e.getAppFnArgs with
   | (``HPow.hPow, #[_, _, _, _, base, exponent]) =>
     if (← isDefEq base expectedBase) then
@@ -455,6 +468,7 @@ def linearizeBaseGoal (g : MVarId) (baseStx : Expr) : TacticM (List MVarId) := d
 
 /-- Check if an expression is `a / b`, returning (a, b). -/
 def isDiv (e : Expr) : MetaM (Option (Expr × Expr)) := do
+  let e ← unfoldLetFVars e
   match e.getAppFnArgs with
   | (``HDiv.hDiv, #[_, _, _, _, num, den]) => return some (num, den)
   | _ => return none
@@ -462,6 +476,7 @@ def isDiv (e : Expr) : MetaM (Option (Expr × Expr)) := do
 /-- Check if an expression is `base^exp` for any recognized base (literal or arbitrary).
     Returns (base, exponent) if it's any kind of power expression. -/
 def isAnyPow (e : Expr) : MetaM (Option (Expr × Expr)) := do
+  let e ← unfoldLetFVars e
   match e.getAppFnArgs with
   | (``HPow.hPow, #[_, _, _, _, base, exponent]) => return some (base, exponent)
   | (``Pow.pow, #[_, _, _, base, exponent]) => return some (base, exponent)
@@ -1008,7 +1023,7 @@ def linearizeNEGoal (g : MVarId) (lhs rhs : Expr) : TacticM (List MVarId) := do
 /-- Try direct power linearization, then reciprocal as fallback -/
 def linearizeGoalCore (g : MVarId) : TacticM (List MVarId) := do
   g.withContext do
-    let goalType ← g.getType
+    let goalType ← instantiateMVars (← g.getType)
     trace[linearize] "=== ENTERING linearizeGoal ==="
     trace[linearize] "Analyzing goal: {goalType}"
 
@@ -1069,6 +1084,7 @@ def trySolveSideGoalDeep (g : MVarId) : TacticM (Option MVarId) := do
   | none => return none
   | some g =>
     -- If basic solver failed, try recursive linearization
+    trace[linearize] "trySolveSideGoalDeep: trying linearizeGoalCore on side goal"
     let saved ← saveState
     try
       let subGoals ← linearizeGoalCore g
