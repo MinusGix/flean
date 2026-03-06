@@ -773,8 +773,7 @@ lemma pade_delta_log_bound (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0) (s : 
       -- Step B: N! ≤ (28*ab)^(28*ab)
       have h_fac : (N.factorial : ℝ) ≤ (ab : ℝ) ^ (56 * ab) := by
         have : (N.factorial : ℝ) ≤ (N : ℝ) ^ N := by exact_mod_cast Nat.factorial_le_pow N
-        have : (N : ℝ) ^ N ≤ (N : ℝ) ^ (28 * ab) :=
-          pow_le_pow_right₀ (by exact_mod_cast hN_pos) hN_le
+        have : (N : ℝ) ^ N ≤ (N : ℝ) ^ (28 * ab) := by linearize (base := (N : ℝ))
         have : (N : ℝ) ^ (28 * ab) ≤ ((ab : ℝ) ^ 2) ^ (28 * ab) := by
           apply pow_le_pow_left₀ (Nat.cast_nonneg _)
           have : (N : ℝ) ≤ (28 * ab : ℝ) := by exact_mod_cast hN_le
@@ -791,10 +790,8 @@ lemma pade_delta_log_bound (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0) (s : 
           have : (4 : ℝ) ≤ ab := by exact_mod_cast (show 4 ≤ ab by omega)
           have : (b : ℝ) ≤ ab := by exact_mod_cast hb_le
           nlinarith
-        calc ((4 : ℝ) * b) ^ N ≤ ((4 : ℝ) * b) ^ (28 * ab) :=
-              pow_le_pow_right₀ (show (1 : ℝ) ≤ 4 * b by
-                have : (1 : ℝ) ≤ b := by exact_mod_cast hb
-                linarith) hN_le
+        calc ((4 : ℝ) * b) ^ N ≤ ((4 : ℝ) * b) ^ (28 * ab) := by
+              linearize (base := (4 : ℝ) * b)
           _ ≤ ((ab : ℝ) ^ 2) ^ (28 * ab) :=
               pow_le_pow_left₀ (by positivity) h4b_le _
           _ = (ab : ℝ) ^ (56 * ab) := by rw [← pow_mul]; ring_nf
@@ -812,8 +809,7 @@ lemma pade_delta_log_bound (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0) (s : 
               pow_le_pow_left₀ (Real.exp_pos _).le hexp1 _
           _ ≤ (ab : ℝ) ^ a.natAbs :=
               pow_le_pow_left₀ (by norm_num) (by exact_mod_cast (show 3 ≤ ab by omega)) _
-          _ ≤ (ab : ℝ) ^ ab :=
-              pow_le_pow_right₀ (by exact_mod_cast (show 1 ≤ ab by omega)) ha_le
+          _ ≤ (ab : ℝ) ^ ab := by linearize (base := (ab : ℝ))
       -- Final: ab^(56ab) * ab^(56ab) * ab^ab = ab^(113ab)
       calc (N.factorial : ℝ) * (b : ℝ) ^ N * |padeP N x|
           ≤ N.factorial * ((4 : ℝ) * b) ^ N * Real.exp |x| := h1

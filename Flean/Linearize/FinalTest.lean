@@ -369,6 +369,13 @@ example (N ab : ℕ) (hN_pos : 1 < N) (hN_lt : N < 28 * ab) :
     (N : ℝ) ^ N < (N : ℝ) ^ (28 * ab) := by
   linearize (base := (N : ℝ))
 
+-- B7: Variable from `intro` inside tactic proof (reproduces L8)
+-- This is the pattern from ExpTermination where N comes from ∀ N ≤ N₁
+example : ∀ N ≤ 100, ∀ ab : ℕ, 0 < N → N ≤ 28 * ab →
+    (N : ℝ) ^ N ≤ (N : ℝ) ^ (28 * ab) := by
+  intro N _hN_le ab hN_pos hN_le
+  linearize (base := (N : ℝ))
+
 end BaseExprTests
 
 section ReciprocalTests

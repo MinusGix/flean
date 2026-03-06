@@ -1469,8 +1469,9 @@ syntax (name := linearize) "linearize" ("(base" ":=" term ")")? (location)? : ta
 elab_rules : tactic
   | `(tactic| linearize $[(base := $base)]? $[$loc:location]?) => do
     if let some baseTerm := base then
-      let baseExpr ← Tactic.elabTerm baseTerm none
-      linearizeBaseAtGoal baseExpr
+      withMainContext do
+        let baseExpr ← Tactic.elabTerm baseTerm none
+        linearizeBaseAtGoal baseExpr
     else
       let location := match loc with
       | none => Location.targets #[] true
@@ -1484,8 +1485,9 @@ syntax (name := linearizeBang) "linearize!" ("(base" ":=" term ")")? (&" only")?
 elab_rules : tactic
   | `(tactic| linearize! $[(base := $base)]? $[only%$o]? $[ [ $args,* ] ]? $[$loc:location]?) => do
     if let some baseTerm := base then
-      let baseExpr ← Tactic.elabTerm baseTerm none
-      linearizeBaseAtGoal baseExpr
+      withMainContext do
+        let baseExpr ← Tactic.elabTerm baseTerm none
+        linearizeBaseAtGoal baseExpr
     else
       let location := match loc with
       | none => Location.wildcard
