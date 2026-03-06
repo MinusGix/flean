@@ -105,7 +105,8 @@ private theorem logTarget_eq_log_y (a : FiniteFp)
 
 /-- **Meeting point of correctness and termination.**
 
-For `y > 1`, the loop output brackets `log(y)` in a valid sticky cell with `q ≥ 2^(prec+2)`. -/
+For `y > 1` (the binding condition is `hy1`; `hy` is the weak form needed by some sub-lemmas),
+the loop output brackets `log(y)` in a valid sticky cell with `q ≥ 2^(prec+2)`. -/
 private theorem logLoop_sound (y : ℚ) (hy : 1 ≤ y) (hy1 : 1 < y) :
     let s := stickyExtractLoop (logBounds y (logArgRedK y)) 0 (logFuel y)
     2 ^ (FloatFormat.prec.toNat + 2) ≤ s.q ∧

@@ -26,6 +26,17 @@ section LogComputable
 
 variable [FloatFormat]
 
+/-! ## Common helper -/
+
+omit [FloatFormat] in
+/-- For rational `y > 1`, the numerator strictly exceeds the denominator. -/
+private theorem rat_den_lt_num_of_one_lt (y : ℚ) (hy1 : 1 < y) : (y.den : ℤ) < y.num := by
+  by_contra h; push_neg at h
+  have : (y : ℚ) ≤ 1 := by
+    rw [show (y : ℚ) = y.num / y.den from (Rat.num_div_den y).symm]
+    exact (div_le_one (by exact_mod_cast y.den_pos : (0:ℚ) < y.den)).mpr (by exact_mod_cast h)
+  linarith
+
 /-! ## Helper: lower bound on log(y) for rationals -/
 
 omit [FloatFormat] in
@@ -46,14 +57,7 @@ theorem log_rat_lower_bound (y : ℚ) (hy1 : 1 < y) :
     rw [Real.exp_neg, Real.exp_log hy_pos, inv_eq_one_div] at h
     linarith
   -- Step 2: 1/p ≤ 1 - 1/y = (y-1)/y ≥ (p-d)/p ≥ 1/p
-  have hpd : (y.den : ℤ) < y.num := by
-    by_contra h; push_neg at h
-    have : (y : ℝ) ≤ 1 := by
-      rw [Rat.cast_def]
-      have : (y.num : ℝ) ≤ y.den := by exact_mod_cast h
-      exact div_le_one (by exact_mod_cast y.den_pos : (0:ℝ) < (y.den : ℝ)) |>.mpr this
-    have : (1 : ℝ) < (y : ℝ) := by exact_mod_cast hy1
-    linarith
+  have hpd := rat_den_lt_num_of_one_lt y hy1
   suffices (1 : ℝ) / y.num.natAbs ≤ 1 - 1 / (y : ℝ) by linarith
   have hd_pos : (0 : ℝ) < y.den := by exact_mod_cast y.den_pos
   have hp2 : (y.den : ℝ) + 1 ≤ (y.num.natAbs : ℝ) := by
@@ -116,25 +120,12 @@ private theorem logBounds_lower_ge (y : ℚ) (hy : 1 ≤ y) (hy1 : 1 < y) (iter 
       rw [ht_eq]; push_cast
       rw [Rat.cast_def, show (y.num : ℝ) / (y.den : ℝ) - 1 = ((y.num : ℝ) - y.den) / y.den from
         by field_simp]
-      have hpd : (y.den : ℤ) < y.num := by
-        by_contra h; push_neg at h
-        have : (y : ℚ) ≤ 1 := by
-          have hnd : (y.num : ℚ) ≤ y.den := by exact_mod_cast h
-          rw [show (y : ℚ) = y.num / y.den from (Rat.num_div_den y).symm]
-          exact (div_le_one (by exact_mod_cast y.den_pos : (0:ℚ) < y.den)).mpr hnd
-        linarith
+      have hpd := rat_den_lt_num_of_one_lt y hy1
       apply div_le_div_of_nonneg_right _ (by positivity : (0:ℝ) ≤ (y.den : ℝ))
-      push_cast
       have : (1 : ℤ) ≤ y.num - ↑y.den := by omega
       linarith [show (1 : ℝ) ≤ (y.num : ℝ) - (y.den : ℝ) from by exact_mod_cast this]
     -- y.den ≤ y.num.natAbs (since y > 1 means num > den)
-    have hpd : (y.den : ℤ) < y.num := by
-      by_contra h; push_neg at h
-      have : (y : ℚ) ≤ 1 := by
-        rw [show (y : ℚ) = y.num / y.den from (Rat.num_div_den y).symm]
-        exact (div_le_one (by exact_mod_cast y.den_pos : (0:ℚ) < y.den)).mpr
-          (by exact_mod_cast h)
-      linarith
+    have hpd := rat_den_lt_num_of_one_lt y hy1
     have hden_le : (y.den : ℝ) ≤ y.num.natAbs := by
       have h1 : y.den ≤ y.num.natAbs := by
         have := Int.natAbs_of_nonneg (show 0 ≤ y.num by omega)
@@ -802,8 +793,9 @@ private theorem geom_decay_bound (t : ℝ) (B n M : ℕ)
 
 /-! ## Reduced argument gap bound
 
-The reduced argument `t = y/2^k - 1` satisfies `t ≤ 1 - 1/y.num.natAbs` for `y > 1`.
-Since `y.num.natAbs ≤ ab`, this gives `t ≤ 1 - 1/ab`. -/
+The reduced argument `t = y/2^k - 1` satisfies `1 - t ≥ 1/p` where `p = y.num.natAbs`,
+equivalently `t ≤ 1 - 1/p`. Since `p ≤ ab`, this gives `t ≤ 1 - 1/ab`, which feeds
+into `geom_decay_bound` for the geometric convergence of the Taylor series. -/
 
 omit [FloatFormat] in
 /-- The reduced argument satisfies `1 - t ≥ 1/p` where `p = y.num.natAbs`. -/
