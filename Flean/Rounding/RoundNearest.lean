@@ -257,7 +257,7 @@ theorem rnEven_ge_inf [FloatFormat] (x : R) (hx : x ≥ FloatFormat.overflowThre
   have hsmall_lt : (FiniteFp.smallestPosSubnormal.toVal : R) / 2 < FloatFormat.overflowThreshold R :=
     calc (FiniteFp.smallestPosSubnormal.toVal : R) / 2
         < (2 : R) ^ FloatFormat.min_exp := FiniteFp.smallestPosSubnormal_half_lt_zpow_min_exp
-      _ < (2 : R) ^ FloatFormat.max_exp := zpow_lt_zpow_right₀ (by norm_num) FloatFormat.exp_order
+      _ < (2 : R) ^ FloatFormat.max_exp := by flinearize!
       _ ≤ FloatFormat.overflowThreshold R := FloatFormat.zpow_max_exp_le_overflow_threshold
   have h_not_small : ¬|x| < FiniteFp.smallestPosSubnormal.toVal / 2 := by
     rw [abs_of_pos hx_pos]
@@ -316,7 +316,7 @@ theorem rnAway_ge_inf [FloatFormat] (x : R) (hx : x ≥ FloatFormat.overflowThre
   have hsmall_lt : (FiniteFp.smallestPosSubnormal.toVal : R) / 2 < FloatFormat.overflowThreshold R :=
     calc (FiniteFp.smallestPosSubnormal.toVal : R) / 2
         < (2 : R) ^ FloatFormat.min_exp := FiniteFp.smallestPosSubnormal_half_lt_zpow_min_exp
-      _ < (2 : R) ^ FloatFormat.max_exp := zpow_lt_zpow_right₀ (by norm_num) FloatFormat.exp_order
+      _ < (2 : R) ^ FloatFormat.max_exp := by flinearize!
       _ ≤ FloatFormat.overflowThreshold R := FloatFormat.zpow_max_exp_le_overflow_threshold
   have h_not_small : ¬|x| < FiniteFp.smallestPosSubnormal.toVal / 2 := by
     rw [abs_of_pos hx_pos]
@@ -343,7 +343,7 @@ theorem rnEven_neg_overflow [FloatFormat] (y : R) (hy_pos : 0 < y)
     linarith [calc (FiniteFp.smallestPosSubnormal.toVal : R) / 2
         < (2 : R) ^ FloatFormat.min_exp := FiniteFp.smallestPosSubnormal_half_lt_zpow_min_exp
       _ < (2 : R) ^ FloatFormat.max_exp :=
-          zpow_lt_zpow_right₀ (by norm_num) FloatFormat.exp_order
+          by flinearize!
       _ ≤ _ := FloatFormat.zpow_max_exp_le_overflow_threshold]
   have hge : |-y| ≥ FloatFormat.overflowThreshold R := by
     rw [habs_eq]; exact hy_ge
@@ -362,7 +362,7 @@ theorem rnAway_neg_overflow [FloatFormat] (y : R) (hy_pos : 0 < y)
     linarith [calc (FiniteFp.smallestPosSubnormal.toVal : R) / 2
         < (2 : R) ^ FloatFormat.min_exp := FiniteFp.smallestPosSubnormal_half_lt_zpow_min_exp
       _ < (2 : R) ^ FloatFormat.max_exp :=
-          zpow_lt_zpow_right₀ (by norm_num) FloatFormat.exp_order
+          by flinearize!
       _ ≤ _ := FloatFormat.zpow_max_exp_le_overflow_threshold]
   have hge : |-y| ≥ FloatFormat.overflowThreshold R := by
     rw [habs_eq]; exact hy_ge

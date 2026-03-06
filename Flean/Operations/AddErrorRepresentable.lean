@@ -77,7 +77,7 @@ theorem round_sum_le_double (a b : FiniteFp)
       calc s_fp.toVal (R := R) < (2 : R) ^ (s_fp.e + 1) :=
             FiniteFp.toVal_lt_zpow_succ s_fp hs_s
         _ ≤ (2 : R) ^ (FloatFormat.max_exp + 1) :=
-            zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2) (by linarith [s_fp.valid.2.1])
+            by flinearize! [s_fp.valid.2.1]
     by_cases ha_normal : _root_.isNormal a.m
     · -- a is normal at max_exp: 2a ≥ 2^(max_exp+1)
       have ha_lower := FiniteFp.toVal_normal_lower (R := R) a ha ha_normal
@@ -361,7 +361,7 @@ private theorem add_error_representable_mixed (a b : FiniteFp)
         lt_of_mul_lt_mul_of_nonneg_right h1 (le_of_lt he₀'_pos)
       calc (isum' : R) < (2:R) ^ (prec - 1 : ℤ) := h3
         _ ≤ (2:R) ^ (precNat : ℤ) :=
-          zpow_le_zpow_right₀ (by norm_num) (by have := FloatFormat.valid_prec; omega)
+          by flinearize!
     have hisum'_ne : isum' ≠ 0 := by omega
     have hisum'_natAbs : isum'.natAbs < 2 ^ precNat := by
       have : (isum'.natAbs : ℤ) < 2 ^ precNat := by
