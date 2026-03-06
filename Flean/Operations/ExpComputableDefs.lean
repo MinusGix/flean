@@ -1,6 +1,6 @@
 import Flean.Operations.Exp
 import Flean.Operations.ExpTaylor
-import Flean.Operations.StickyExtract
+import Flean.Operations.StickyTermination
 import Flean.NumberTheory.ExpEffectiveBound
 import Mathlib.Analysis.SpecialFunctions.Log.Deriv
 
@@ -67,21 +67,19 @@ theorem ln2SeriesSum_ge_half (N : ℕ) (hN : 1 ≤ N) :
           ln2SeriesSum_go_ge_acc n _ _
 
 /-- Generous fuel for the iterative extraction loop.
-Quadratic in `|x.num|` to accommodate the effective irrationality measure from Padé
-approximation (the Padé parameter `d = 4a²/b` requires `O(a²/b)` terms to converge).
-Linear terms cover the shift `s`, ln2 precision, and base Taylor order.
-The `log₂` factor ensures the fuel grows faster than `N₀ · log(N₀ · b)`,
-which is the effective threshold for the factorial decay in the bracket width
-to overcome the Padé irrationality denominator `D = N₀! · b^{N₀} · |P_{N₀}|`. -/
+Same formula as `stickyFuel` from `StickyTermination.lean`. -/
 def expFuel (x : ℚ) : ℕ :=
   let ab := x.num.natAbs ^ 2 / x.den + x.num.natAbs + x.den + FloatFormat.prec.toNat + 100
   15 * ab * (Nat.log2 ab + 1) + 200
 
+theorem expFuel_eq_stickyFuel (x : ℚ) : expFuel x = stickyFuel x := rfl
+
 /-! ## Constants -/
 
-/-- Number of Taylor terms. With mod-ln(2) reduction, `|r| ≤ ln(2)/2 < 1/2`,
-so no input-dependent adjustment is needed. -/
+/-- Number of Taylor terms. Same value as `baseTaylorTerms`. -/
 def expNumTerms : ℕ := FloatFormat.prec.toNat + 10
+
+theorem expNumTerms_eq : expNumTerms = baseTaylorTerms := rfl
 
 /-! ## Argument reduction mod ln(2) -/
 

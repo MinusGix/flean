@@ -8,6 +8,7 @@ import Flean.Operations.Sqrt
 import Flean.Operations.Exp
 import Flean.Operations.ExpTaylor
 import Flean.Operations.StickyExtract
+import Flean.Operations.StickyTermination
 import Flean.Operations.ExpComputableDefs
 import Flean.Operations.ExpComputableSound
 import Flean.Operations.ExpTermination
@@ -15,6 +16,8 @@ import Flean.Operations.ExpComputable
 import Flean.Operations.LogTaylor
 import Flean.Operations.LogComputableDefs
 import Flean.Operations.LogComputableSound
+import Flean.Operations.LogTermination
+import Flean.Operations.LogComputable
 import Flean.Operations.FMA
 import Flean.Operations.Sterbenz
 import Flean.Operations.MulPow2

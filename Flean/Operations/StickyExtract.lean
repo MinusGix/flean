@@ -114,12 +114,31 @@ always positive. The sign is handled separately in the operation-specific layer.
 - `stickyExtractLoop_q_ge`, `stickyExtractLoop_pos_of_success`: q magnitude bounds
 - `OpRefExec`, `OpRefExecSound`: typeclass interface for operation kernels
 
+## Degenerate input handling
+
+The `OpRefExecSound` class requires proofs for *all* `FiniteFp` inputs, but some operations
+have a restricted natural domain (e.g. `log` requires `x > 0`). Since `FiniteFp` can represent
+zero, negative, or other out-of-domain values, the pattern is:
+
+1. **`target` returns a dummy** for out-of-domain inputs (e.g. `logTarget` returns `1`
+   when `x ≤ 0` or `x = 1`).
+2. **`run` returns exact** for the same inputs (e.g. `logComputableRun` returns
+   `{ q := 1, e_base := -1, isExact := true }`).
+3. The exact-case obligations (`exact_mag_ne_zero`, `exact_value`) are trivial for dummies.
+4. The sticky-case obligations never fire for out-of-domain inputs (since those return exact).
+
+This pattern ensures `OpRefExecSound` is satisfiable while keeping the sticky branch
+proofs clean — they only need to handle in-domain inputs where the math is well-defined.
+
+For operations where the function is total on ℝ (like `exp`), no dummy is needed.
+
 ## See also
 
 - `ExpComputableDefs.lean`: concrete `expBounds`, `expFuel`, `OpRefExec expTarget` instance
 - `ExpComputableSound.lean`: bracket correctness for exp (Thread 1)
 - `ExpTermination.lean`: termination for exp via Padé approximants (Thread 2)
 - `ExpComputable.lean`: final assembly + `OpRefExecSound expTarget` instance
+- `StickyTermination.lean`: shared termination infrastructure (generic lemmas, fuel, constants)
 -/
 
 section StickyExtract

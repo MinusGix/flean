@@ -888,7 +888,7 @@ lemma padeConvergenceN₀_le (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0) (s 
     le_of_lt (lt_trans Real.exp_one_lt_d9 (by norm_num))
   have hexp_le_pow (n : ℕ) : Real.exp (↑n * (ab : ℝ)) ≤ (2 : ℝ) ^ (2 * n * ab) := by
     calc Real.exp (↑n * (ab : ℝ))
-        = Real.exp (↑(n * ab) * 1) := by push_cast; ring_nf
+        = Real.exp (↑(n * ab) * 1) := by push_cast [Int.cast_natCast]; ring_nf
       _ = (Real.exp 1) ^ (n * ab) := Real.exp_nat_mul _ _
       _ ≤ 3 ^ (n * ab) := pow_le_pow_left₀ (Real.exp_pos _).le hexp1_le3 _
       _ ≤ (2 ^ 2) ^ (n * ab) := pow_le_pow_left₀ (by norm_num) (by norm_num) _
@@ -968,3 +968,244 @@ lemma padeConvergenceN₀_le (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0) (s 
   -- ====== Combine: N₀ = 2*m + M ≤ 10*ab + 17*ab = 27*ab ======
   calc 2 * m + M ≤ 2 * (5 * ab) + 17 * ab := by omega
     _ = 27 * ab := by ring
+
+/-! ## Generalized effective delta for arbitrary positive integer multipliers
+
+The standard `pade_effective_delta` bounds `|exp(a/b) · 2^s - m|` from below.
+For the log termination proof, we need `|exp(a/b) · c - m|` for arbitrary
+positive integer `c` (specifically `c = y.den` for the rational `y` whose log
+we compute). The proof is identical — the `2^s` in the Padé gap argument is
+only used as a nonzero integer multiplier.
+-/
+
+/-- Generalization of `pade_not_both_zero`: consecutive Padé integers can't both
+satisfy `J_N · c = K_N · d` for any nonzero integer `c`. -/
+private theorem pade_not_both_zero_nat (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0)
+    (N : ℕ) (hN : 0 < N) (c : ℕ) (hc : 0 < c) (d : ℤ) :
+    let x := (a : ℝ) / (b : ℝ)
+    let D := fun n => (n.factorial : ℝ) * (b : ℝ) ^ n
+    let K := fun n => D n * padeP n x
+    let J := fun n => D n * padeQ n x
+    ¬(J N * c = K N * d ∧ J (N + 1) * c = K (N + 1) * d) := by
+  simp only
+  set x := (a : ℝ) / (b : ℝ) with hx_def
+  set D := fun n => (n.factorial : ℝ) * (b : ℝ) ^ n
+  set K := fun n => D n * padeP n x
+  set J := fun n => D n * padeQ n x
+  intro ⟨h1, h2⟩
+  have hx_ne : x ≠ 0 := by
+    simp only [hx_def, ne_eq, div_eq_zero_iff, Int.cast_eq_zero, Nat.cast_eq_zero]
+    exact fun h => h.elim (fun h => ha h) (fun h => by omega)
+  have hc_ne : (c : ℝ) ≠ 0 := Nat.cast_ne_zero.mpr (by omega)
+  have hDN_ne : D N ≠ 0 := ne_of_gt (mul_pos (Nat.cast_pos.mpr (Nat.factorial_pos N))
+    (pow_pos (Nat.cast_pos.mpr hb) N))
+  have hDN1_ne : D (N + 1) ≠ 0 := ne_of_gt (mul_pos
+    (Nat.cast_pos.mpr (Nat.factorial_pos (N + 1)))
+    (pow_pos (Nat.cast_pos.mpr hb) (N + 1)))
+  -- Cancel D to get Q·c = P·d
+  have hQP_N : padeQ N x * (c : ℝ) = padeP N x * (d : ℝ) :=
+    mul_left_cancel₀ hDN_ne (by linarith [h1])
+  have hQP_N1 : padeQ (N + 1) x * (c : ℝ) = padeP (N + 1) x * (d : ℝ) :=
+    mul_left_cancel₀ hDN1_ne (by linarith [h2])
+  -- Cross multiply and cancel c: Q_N·P_{N+1} = Q_{N+1}·P_N
+  have hcross : padeQ N x * padeP (N + 1) x = padeQ (N + 1) x * padeP N x :=
+    mul_right_cancel₀ hc_ne (by
+      calc padeQ N x * padeP (N + 1) x * (c : ℝ)
+          = padeQ N x * (c : ℝ) * padeP (N + 1) x := by ring
+        _ = padeP N x * (d : ℝ) * padeP (N + 1) x := by rw [hQP_N]
+        _ = padeP (N + 1) x * (d : ℝ) * padeP N x := by ring
+        _ = padeQ (N + 1) x * (c : ℝ) * padeP N x := by rw [hQP_N1]
+        _ = padeQ (N + 1) x * padeP N x * (c : ℝ) := by ring)
+  exact pade_cross_product_ne_zero N hN x hx_ne (by linarith)
+
+/-- Generalization of `pade_K_ne_zero`: if the scaled remainder times `c` is `< 1/2`,
+then `K_N = N!·b^N·P_N(a/b) ≠ 0`. -/
+private lemma pade_K_ne_zero_nat (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0)
+    (c : ℕ) (hc : 0 < c)
+    (N : ℕ) (hN : 0 < N)
+    (hR : (N.factorial : ℝ) * (b : ℝ) ^ N * (c : ℝ) *
+      |padeR N ((a : ℝ) / (b : ℝ))| < 1 / 2) :
+    (N.factorial : ℝ) * (b : ℝ) ^ N * padeP N ((a : ℝ) / (b : ℝ)) ≠ 0 := by
+  set x := (a : ℝ) / (b : ℝ) with hx_def
+  set F := (N.factorial : ℝ) * (b : ℝ) ^ N with hF_def
+  have hF_pos : 0 < F := mul_pos (Nat.cast_pos.mpr (Nat.factorial_pos N))
+    (pow_pos (Nat.cast_pos.mpr hb) N)
+  intro hK
+  have hP : padeP N x = 0 := by
+    rcases mul_eq_zero.mp hK with h | h
+    · exact absurd h (ne_of_gt hF_pos)
+    · exact h
+  have hJ_eq : F * padeQ N x = -(F * padeR N x) := by
+    have : F * padeR N x = F * padeP N x * exp x - F * padeQ N x := by
+      rw [show padeR N x = padeP N x * exp x - padeQ N x from rfl]; ring
+    rw [hP, mul_zero, zero_mul, zero_sub] at this; linarith
+  have hJ_small : |F * padeQ N x| < 1 := by
+    rw [hJ_eq, abs_neg, abs_mul, abs_of_pos hF_pos]
+    have hc_ge : (1 : ℝ) ≤ (c : ℝ) := by exact_mod_cast hc
+    nlinarith [abs_nonneg (padeR N x)]
+  obtain ⟨J, hJ_int⟩ := padeQ_clears a b hb N
+  change F * padeQ N x = ↑J at hJ_int
+  have hJ_zero : J = 0 := by
+    by_contra hJ_ne
+    have : (1 : ℝ) ≤ |(J : ℝ)| := by
+      rw [← Int.cast_abs]; exact_mod_cast Int.one_le_abs hJ_ne
+    linarith [show |F * padeQ N x| = |(J : ℝ)| by rw [hJ_int]]
+  have hQ : padeQ N x = 0 := by
+    have : F * padeQ N x = 0 := by rw [hJ_int, hJ_zero, Int.cast_zero]
+    exact (mul_eq_zero.mp this).resolve_left (ne_of_gt hF_pos)
+  have hx_ne : x ≠ 0 := by
+    simp only [hx_def, ne_eq, div_eq_zero_iff, Int.cast_eq_zero, Nat.cast_eq_zero]
+    exact fun h => h.elim (fun h => ha h) (fun h => by omega)
+  rcases lt_or_gt_of_ne hx_ne with hlt | hgt
+  · exact absurd hP (ne_of_gt (padeP_pos_of_neg N hN x hlt))
+  · exact absurd hQ (ne_of_gt (padeQ_pos N hN x hgt))
+
+/-- Effective distance bound for `exp(a/b) · c` from integers, where `c` is any
+positive integer (not just a power of 2).
+
+Uses `padeConvergenceN₀(a, b, t)` with `t = ⌈log₂ c⌉` to ensure the Padé
+remainder scaled by `c` is `< 1/2`, then applies the standard gap principle. -/
+theorem pade_effective_delta_nat (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0)
+    (c : ℕ) (hc : 0 < c) :
+    let t := Nat.log 2 c + 1
+    let N₀ := padeConvergenceN₀ a b t
+    let x := (a : ℝ) / (b : ℝ)
+    let D := max ((N₀.factorial : ℝ) * (b : ℝ) ^ N₀ * |padeP N₀ x|)
+                 (((N₀ + 1).factorial : ℝ) * (b : ℝ) ^ (N₀ + 1) * |padeP (N₀ + 1) x|)
+    0 < D ∧ ∀ m : ℤ,
+      |Real.exp x * (c : ℝ) - (m : ℝ)| ≥ 1 / (2 * D) := by
+  simp only
+  set t := Nat.log 2 c + 1
+  set N₀ := padeConvergenceN₀ a b t
+  set x := (a : ℝ) / (b : ℝ) with hx_def
+  have hN₀_pos := padeConvergenceN₀_pos a b t
+  -- c < 2^t, so remainder scaled by c < remainder scaled by 2^t < 1/2
+  have hc_lt_2t : c < 2 ^ t := Nat.lt_pow_succ_log_self (by norm_num) c
+  have hc_le_2t : (c : ℝ) ≤ (2 : ℝ) ^ t := by
+    exact_mod_cast le_of_lt hc_lt_2t
+  have hR₀_2t := pade_scaled_remainder_effective a b hb t N₀ (le_refl _) hN₀_pos
+  have hR₁_2t := pade_scaled_remainder_effective a b hb t (N₀ + 1) (by omega) (by omega)
+  rw [← hx_def] at hR₀_2t hR₁_2t
+  -- Convert 2^t remainder bounds to c remainder bounds
+  have hR₀ : (N₀.factorial : ℝ) * (b : ℝ) ^ N₀ * (c : ℝ) *
+      |padeR N₀ x| < 1 / 2 := by
+    calc (N₀.factorial : ℝ) * (b : ℝ) ^ N₀ * (c : ℝ) * |padeR N₀ x|
+        ≤ (N₀.factorial : ℝ) * (b : ℝ) ^ N₀ * (2 : ℝ) ^ t * |padeR N₀ x| := by
+          apply mul_le_mul_of_nonneg_right
+          · exact mul_le_mul_of_nonneg_left hc_le_2t (by positivity)
+          · exact abs_nonneg _
+      _ < 1 / 2 := hR₀_2t
+  have hR₁ : ((N₀ + 1).factorial : ℝ) * (b : ℝ) ^ (N₀ + 1) * (c : ℝ) *
+      |padeR (N₀ + 1) x| < 1 / 2 := by
+    calc ((N₀ + 1).factorial : ℝ) * (b : ℝ) ^ (N₀ + 1) * (c : ℝ) * |padeR (N₀ + 1) x|
+        ≤ ((N₀ + 1).factorial : ℝ) * (b : ℝ) ^ (N₀ + 1) * (2 : ℝ) ^ t *
+          |padeR (N₀ + 1) x| := by
+          apply mul_le_mul_of_nonneg_right
+          · exact mul_le_mul_of_nonneg_left hc_le_2t (by positivity)
+          · exact abs_nonneg _
+      _ < 1 / 2 := hR₁_2t
+  have hK₀_ne := pade_K_ne_zero_nat a b hb ha c hc N₀ hN₀_pos hR₀
+  have hK₁_ne := pade_K_ne_zero_nat a b hb ha c hc (N₀ + 1) (by omega) hR₁
+  set D := max ((N₀.factorial : ℝ) * (b : ℝ) ^ N₀ * |padeP N₀ x|)
+               (((N₀ + 1).factorial : ℝ) * (b : ℝ) ^ (N₀ + 1) * |padeP (N₀ + 1) x|)
+  have hD_pos : 0 < D := lt_max_of_lt_left (by
+    have : padeP N₀ x ≠ 0 := by
+      intro h; exact hK₀_ne (by rw [h, mul_zero])
+    positivity)
+  refine ⟨hD_pos, fun m => ?_⟩
+  -- Use pade_not_both_zero_nat: at least one gap is nonzero
+  obtain ⟨A₀, hA₀⟩ := padeP_clears a b hb N₀
+  obtain ⟨A₁, hA₁⟩ := padeP_clears a b hb (N₀ + 1)
+  obtain ⟨B₀, hB₀⟩ := padeQ_clears a b hb N₀
+  obtain ⟨B₁, hB₁⟩ := padeQ_clears a b hb (N₀ + 1)
+  rw [← hx_def] at hA₀ hA₁ hB₀ hB₁
+  set G₀ := B₀ * (c : ℤ) - A₀ * m
+  set G₁ := B₁ * (c : ℤ) - A₁ * m
+  have hG_or : G₀ ≠ 0 ∨ G₁ ≠ 0 := by
+    by_contra h; push_neg at h; obtain ⟨h0, h1⟩ := h
+    exact pade_not_both_zero_nat a b hb ha N₀ hN₀_pos c hc m ⟨by
+      have hG₀_cast : (G₀ : ℝ) = (B₀ : ℝ) * (c : ℝ) - (A₀ : ℝ) * m := by
+        simp only [G₀]; push_cast [Int.cast_natCast]; ring
+      have := show (G₀ : ℝ) = 0 from by exact_mod_cast h0
+      rw [hG₀_cast, ← hB₀, ← hA₀] at this; linarith, by
+      have hG₁_cast : (G₁ : ℝ) = (B₁ : ℝ) * (c : ℝ) - (A₁ : ℝ) * m := by
+        simp only [G₁]; push_cast [Int.cast_natCast]; ring
+      have := show (G₁ : ℝ) = 0 from by exact_mod_cast h1
+      rw [hG₁_cast, ← hB₁, ← hA₁] at this; linarith⟩
+  -- Apply gap principle for the nonzero gap
+  suffices key : ∀ N, 0 < N →
+      (N.factorial : ℝ) * (b : ℝ) ^ N * (c : ℝ) * |padeR N x| < 1 / 2 →
+      (N.factorial : ℝ) * (b : ℝ) ^ N * padeP N x ≠ 0 →
+      ∀ G : ℤ, G ≠ 0 →
+      (N.factorial : ℝ) * (b : ℝ) ^ N * padeQ N x * (c : ℝ) -
+        (N.factorial : ℝ) * (b : ℝ) ^ N * padeP N x * (m : ℝ) = (G : ℝ) →
+      |exp x * (c : ℝ) - (m : ℝ)| ≥
+        1 / (2 * ((N.factorial : ℝ) * (b : ℝ) ^ N * |padeP N x|)) by
+    rcases hG_or with hG₀ | hG₁
+    · have hG₀_real : (N₀.factorial : ℝ) * (b : ℝ) ^ N₀ * padeQ N₀ x * (c : ℝ) -
+          (N₀.factorial : ℝ) * (b : ℝ) ^ N₀ * padeP N₀ x * (m : ℝ) = (G₀ : ℝ) := by
+        have : (G₀ : ℝ) = (B₀ : ℝ) * (c : ℝ) - (A₀ : ℝ) * m := by
+          simp only [G₀]; push_cast [Int.cast_natCast]; ring
+        rw [this, hB₀, hA₀]
+      calc (1 : ℝ) / (2 * D)
+          ≤ 1 / (2 * ((N₀.factorial : ℝ) * (b : ℝ) ^ N₀ * |padeP N₀ x|)) := by
+            apply div_le_div_of_nonneg_left (by norm_num)
+              (by have : padeP N₀ x ≠ 0 := by intro h; exact hK₀_ne (by rw [h, mul_zero])
+                  positivity)
+              (mul_le_mul_of_nonneg_left (le_max_left _ _) (by norm_num))
+        _ ≤ _ := key N₀ hN₀_pos hR₀ hK₀_ne G₀ hG₀ hG₀_real
+    · have hG₁_real : ((N₀+1).factorial : ℝ) * (b : ℝ) ^ (N₀+1) *
+          padeQ (N₀+1) x * (c : ℝ) -
+          ((N₀+1).factorial : ℝ) * (b : ℝ) ^ (N₀+1) *
+          padeP (N₀+1) x * (m : ℝ) = (G₁ : ℝ) := by
+        have : (G₁ : ℝ) = (B₁ : ℝ) * (c : ℝ) - (A₁ : ℝ) * m := by
+          simp only [G₁]; push_cast [Int.cast_natCast]; ring
+        rw [this, hB₁, hA₁]
+      calc (1 : ℝ) / (2 * D)
+          ≤ 1 / (2 * (((N₀+1).factorial : ℝ) * (b : ℝ) ^ (N₀+1) * |padeP (N₀+1) x|)) := by
+            apply div_le_div_of_nonneg_left (by norm_num)
+              (by have : padeP (N₀+1) x ≠ 0 := by intro h; exact hK₁_ne (by rw [h, mul_zero])
+                  positivity)
+              (mul_le_mul_of_nonneg_left (le_max_right _ _) (by norm_num))
+        _ ≤ _ := key (N₀+1) (by omega) hR₁ hK₁_ne G₁ hG₁ hG₁_real
+  -- Prove the key gap principle
+  intro N hN_pos hR_bound hK_ne G hG_ne hG_eq
+  set K := (N.factorial : ℝ) * (b : ℝ) ^ N * padeP N x with hK_def
+  set v := exp x * (c : ℝ) - (m : ℝ)
+  set ε := (N.factorial : ℝ) * (b : ℝ) ^ N * padeR N x * (c : ℝ)
+  have hK_v_eq : K * v = (G : ℝ) + ε := by
+    have hid : padeR N x = padeP N x * exp x - padeQ N x := rfl
+    linarith [show K * v = K * exp x * (c : ℝ) - K * (m : ℝ) from by rw [hK_def]; ring,
+              show K * exp x * (c : ℝ) = ((N.factorial : ℝ) * (b : ℝ) ^ N *
+                padeQ N x * (c : ℝ) + ε) from by
+                rw [hK_def, show ε = (N.factorial : ℝ) * (b : ℝ) ^ N *
+                  padeR N x * (c : ℝ) from rfl, hid]; ring]
+  have hε_bound : |ε| < 1 / 2 := by
+    show |(N.factorial : ℝ) * (b : ℝ) ^ N * padeR N x * (c : ℝ)| < 1 / 2
+    rw [show (N.factorial : ℝ) * (b : ℝ) ^ N * padeR N x * (c : ℝ) =
+        (N.factorial : ℝ) * (b : ℝ) ^ N * (c : ℝ) * padeR N x from by ring,
+        abs_mul,
+        abs_of_nonneg (by positivity : 0 ≤ (N.factorial : ℝ) * (b : ℝ) ^ N * (c : ℝ))]
+    exact hR_bound
+  have hKv : |K| * |v| ≥ 1 / 2 := by
+    rw [← abs_mul, hK_v_eq]
+    have hG_ge : (1 : ℝ) ≤ |(G : ℝ)| := by
+      rw [← Int.cast_abs]; exact_mod_cast Int.one_le_abs hG_ne
+    have : |(↑G : ℝ) + ε| ≥ |(↑G : ℝ)| - |ε| := by
+      have := abs_add_le ((↑G : ℝ) + ε) (-ε)
+      rw [add_neg_cancel_right] at this
+      linarith [abs_neg ε]
+    linarith [le_of_lt hε_bound]
+  have hK_pos : 0 < |K| := abs_pos.mpr hK_ne
+  rw [ge_iff_le]
+  calc 1 / (2 * ((N.factorial : ℝ) * (b : ℝ) ^ N * |padeP N x|))
+      = 1 / (2 * |K|) := by
+          have : |K| = (N.factorial : ℝ) * (b : ℝ) ^ N * |padeP N x| := by
+            rw [hK_def, abs_mul, abs_mul]
+            congr 1; congr 1
+            · exact abs_of_nonneg (Nat.cast_nonneg _)
+            · exact abs_of_nonneg (pow_nonneg (Nat.cast_nonneg _) _)
+          rw [this]
+    _ = 1 / 2 / |K| := by ring
+    _ ≤ |K| * |v| / |K| := div_le_div_of_nonneg_right hKv hK_pos.le
+    _ = |v| := mul_div_cancel_left₀ _ (ne_of_gt hK_pos)

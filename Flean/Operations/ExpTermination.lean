@@ -1,5 +1,6 @@
 import Flean.Operations.ExpComputableSound
 import Flean.Operations.ExpTaylor
+import Flean.Operations.StickyTermination
 import Flean.NumberTheory.PadeExp
 import Flean.NumberTheory.ExpEffectiveBound
 
@@ -32,53 +33,7 @@ The width has two components:
 After scaling by `2^{k+s}`, the bracket width for `exp(x) · 2^s` is bounded by
 a function that decreases super-exponentially in `iter`. -/
 
-omit [FloatFormat] in
-/-- For a positive rational, `Int.log 2 r ≤ Nat.log2 r.num.natAbs - Nat.log2 r.den`.
-This follows from `r < 2^(Nat.log2 p + 1) / 2^(Nat.log2 d) = 2^(lp - ld + 1)`. -/
-lemma int_log_le_nat_log2_diff (r : ℚ) (hr : 0 < r) :
-    Int.log 2 r ≤ (Nat.log2 r.num.natAbs : ℤ) - (Nat.log2 r.den : ℤ) := by
-  set p := r.num.natAbs
-  set d := r.den
-  set lp := Nat.log2 p
-  set ld := Nat.log2 d
-  have hp_pos : 0 < p := Int.natAbs_pos.mpr (ne_of_gt (Rat.num_pos.mpr hr))
-  have hp_ne : p ≠ 0 := by omega
-  have hd_pos : (0 : ℚ) < (d : ℚ) := Nat.cast_pos.mpr r.den_pos
-  have hd_ne : d ≠ 0 := ne_of_gt r.den_pos
-  have hplt : p < 2 ^ (lp + 1) := (Nat.log2_lt hp_ne).mp (Nat.lt_succ_of_le (le_refl lp))
-  have hdle : (2 : ℚ) ^ (ld : ℤ) ≤ (d : ℚ) := by
-    rw [zpow_natCast]; exact_mod_cast Nat.log2_self_le hd_ne
-  -- Show r < 2^(lp - ld + 1), then Int.log 2 r < lp - ld + 1, so Int.log 2 r ≤ lp - ld
-  suffices r < (2 : ℚ) ^ ((lp : ℤ) - (ld : ℤ) + 1) by
-    have := (Int.lt_zpow_iff_log_lt (by norm_num : 1 < (2 : ℕ)) hr).mp this
-    omega
-  -- r = p / d ≤ p / 2^ld < 2^(lp+1) / 2^ld = 2^(lp-ld+1)
-  have hr_eq : r = (p : ℚ) / (d : ℚ) := by
-    have hnum_pos := Rat.num_pos.mpr hr
-    have hnum : (r.num : ℚ) = ((p : ℕ) : ℤ) := by
-      simp [p, Int.natAbs_of_nonneg (le_of_lt hnum_pos)]
-    rw [show (p : ℚ) / (d : ℚ) = ((p : ℕ) : ℤ) / ((d : ℕ) : ℤ) from by push_cast; ring]
-    rw [← hnum]; exact (Rat.num_div_den r).symm
-  have h2ld_pos : (0 : ℚ) < (2 : ℚ) ^ (ld : ℤ) := by positivity
-  calc r = (p : ℚ) / (d : ℚ) := hr_eq
-    _ ≤ (p : ℚ) / (2 : ℚ) ^ (ld : ℤ) := by
-        rw [div_le_div_iff₀ hd_pos h2ld_pos]
-        exact mul_le_mul_of_nonneg_left hdle (by exact_mod_cast hp_pos.le)
-    _ < (2 : ℚ) ^ ((lp + 1 : ℕ) : ℤ) / (2 : ℚ) ^ (ld : ℤ) := by
-        rw [div_lt_div_iff₀ h2ld_pos h2ld_pos, zpow_natCast]
-        exact_mod_cast Nat.mul_lt_mul_of_pos_right hplt (by positivity : 0 < 2 ^ ld)
-    _ = (2 : ℚ) ^ ((lp : ℤ) - (ld : ℤ) + 1) := by
-        rw [show ((lp + 1 : ℕ) : ℤ) = (lp : ℤ) + 1 from by omega,
-          show (lp : ℤ) + 1 = ((lp : ℤ) - (ld : ℤ) + 1) + (ld : ℤ) from by omega,
-          zpow_add₀ (by norm_num : (2 : ℚ) ≠ 0), zpow_natCast,
-          mul_div_cancel_right₀ _ (by positivity : (2 : ℚ) ^ ld ≠ 0)]
-
-/-- The shift `stickyShift r` for a positive rational is bounded by `prec + 4 - Int.log 2 r`. -/
-lemma stickyShift_le_of_int_log (r : ℚ) (hr : 0 < r) :
-    stickyShift r ≤ ((FloatFormat.prec.toNat : ℤ) + 4 - Int.log 2 r).toNat := by
-  simp only [stickyShift]
-  have h := int_log_le_nat_log2_diff r hr
-  exact Int.toNat_le_toNat (by omega)
+-- `int_log_le_nat_log2_diff` and `stickyShift_le_of_int_log` are in StickyTermination.lean
 
 omit [FloatFormat] in
 /-- `exp(2) < 8`, derived from `exp(1) < 2.7182818286`. -/
@@ -725,10 +680,7 @@ theorem expBounds_width_tendsto_zero (x : ℚ) (hx : x ≠ 0) (k : ℤ)
 
 /-- **Key lemma**: When the bracket width · 2^s is less than the distance from
 `exp(x) · 2^s` to the nearest integer, `stickyTryOne (expBounds x k)` succeeds.
-
-More precisely: if `lower < exp(x) ≤ upper` and the bracket is tight enough
-that `(upper - lower) · 2^s < δ`, where `δ` is the min-distance from `exp(x) · 2^s`
-to any integer, then `⌊lower · 2^s⌋ = ⌊upper · 2^s⌋` and `stickyTryOne` returns `some`. -/
+Specializes `stickyTryOne_of_tight_bracket` to `expBounds`. -/
 theorem stickyTryOne_expBounds_of_tight_bracket (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
     (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1)
     (δ : ℝ)
@@ -737,128 +689,17 @@ theorem stickyTryOne_expBounds_of_tight_bracket (x : ℚ) (hx : x ≠ 0) (k : �
     (hwidth : let (lower, upper) := expBounds x k iter
       ((upper : ℝ) - (lower : ℝ)) * 2 ^ (stickyShift lower) < δ) :
     (stickyTryOne (expBounds x k) iter).isSome = true := by
-  -- Step 1: Prove the nat-div floors agree
-  have hq : (expBounds x k iter).1.num.natAbs *
-      2 ^ stickyShift (expBounds x k iter).1 / (expBounds x k iter).1.den =
-      (expBounds x k iter).2.num.natAbs *
-      2 ^ stickyShift (expBounds x k iter).1 / (expBounds x k iter).2.den := by
-    set lower := (expBounds x k iter).1
-    set upper := (expBounds x k iter).2
-    set s := stickyShift lower
-    set q_lo := lower.num.natAbs * 2 ^ s / lower.den
-    set q_hi := upper.num.natAbs * 2 ^ s / upper.den
-    have hl_pos := expBounds_lower_pos x k iter
-    have hl_lt_exp := expBounds_lower_lt_exp x hx k iter hk_bound
-    have hexp_le_u := expBounds_exp_le_upper x k iter hk_bound
-    have hu_pos : 0 < upper :=
-      lt_trans hl_pos (by exact_mod_cast (lt_of_lt_of_le hl_lt_exp hexp_le_u : (lower : ℝ) < upper))
-    have h2s_pos : (0 : ℝ) < 2 ^ s := by positivity
-    have hwidth' : ((upper : ℝ) - (lower : ℝ)) * 2 ^ s < δ := by
-      have := hwidth
-      rw [show expBounds x k iter = (lower, upper) from by ext <;> rfl] at this
-      exact this
-    -- Gap argument: no integer in (lower·2^s, upper·2^s]
-    have h_no_int : ∀ m : ℤ,
-        ¬((lower : ℝ) * 2 ^ s < (m : ℝ) ∧ (m : ℝ) ≤ (upper : ℝ) * 2 ^ s) := by
-      intro m ⟨hm_lo, hm_hi⟩
-      have : |Real.exp ↑x * 2 ^ s - (m : ℝ)| < δ := by
-        rw [abs_lt]; constructor <;>
-        nlinarith [mul_lt_mul_of_pos_right hl_lt_exp h2s_pos,
-                   mul_le_mul_of_nonneg_right hexp_le_u h2s_pos.le, hwidth']
-      linarith [hδ_gap m]
-    -- By contradiction: if q_lo ≠ q_hi, find integer m = q_lo + 1 in the gap
-    by_contra hne
-    have hle : q_lo ≤ q_hi := by
-      -- q_lo ≤ lower·2^s ≤ upper·2^s < q_hi + 1, so q_lo < q_hi + 1
-      suffices h : (q_lo : ℝ) < (q_hi : ℝ) + 1 by
-        have : q_lo < q_hi + 1 := by exact_mod_cast h
-        omega
-      calc (q_lo : ℝ) ≤ (lower : ℝ) * 2 ^ s := by
-              rw [Rat.cast_eq_natAbs_div_den lower hl_pos, div_mul_eq_mul_div,
-                le_div_iff₀ (Nat.cast_pos.mpr lower.den_pos)]
-              exact_mod_cast nat_floor_div_mul_le lower.num.natAbs lower.den s
-        _ ≤ (upper : ℝ) * 2 ^ s := by
-              exact mul_le_mul_of_nonneg_right
-                (by exact_mod_cast le_of_lt (lt_of_lt_of_le hl_lt_exp hexp_le_u))
-                h2s_pos.le
-        _ < (q_hi : ℝ) + 1 := by
-              rw [Rat.cast_eq_natAbs_div_den upper hu_pos, div_mul_eq_mul_div,
-                div_lt_iff₀ (Nat.cast_pos.mpr upper.den_pos)]
-              rw [show (↑q_hi + (1 : ℝ)) * ↑upper.den = ((q_hi + 1 : ℕ) : ℝ) * ↑upper.den
-                from by push_cast; ring]
-              exact_mod_cast real_lt_nat_floor_div_succ_mul
-                upper.num.natAbs upper.den s upper.den_pos
-    have hlt : q_lo < q_hi := lt_of_le_of_ne hle hne
-    -- m := q_lo + 1 lies in (lower·2^s, upper·2^s]
-    have hm_lo : (lower : ℝ) * 2 ^ s < ((q_lo + 1 : ℕ) : ℝ) := by
-      rw [Rat.cast_eq_natAbs_div_den lower hl_pos, div_mul_eq_mul_div,
-        div_lt_iff₀ (Nat.cast_pos.mpr lower.den_pos)]
-      exact real_lt_nat_floor_div_succ_mul lower.num.natAbs lower.den s lower.den_pos
-    have hm_hi : ((q_lo + 1 : ℕ) : ℝ) ≤ (upper : ℝ) * 2 ^ s := by
-      rw [Rat.cast_eq_natAbs_div_den upper hu_pos, div_mul_eq_mul_div,
-        le_div_iff₀ (Nat.cast_pos.mpr upper.den_pos)]
-      calc ((q_lo + 1 : ℕ) : ℝ) * ↑upper.den
-          ≤ (q_hi : ℝ) * ↑upper.den := by
-            exact mul_le_mul_of_nonneg_right (by exact_mod_cast hlt) (Nat.cast_nonneg _)
-        _ ≤ (upper.num.natAbs : ℝ) * 2 ^ s :=
-            nat_floor_div_mul_le upper.num.natAbs upper.den s
-    exact h_no_int (q_lo + 1 : ℕ) ⟨by exact_mod_cast hm_lo, by exact_mod_cast hm_hi⟩
-  -- Step 2: Conclude stickyTryOne returns some
-  simp only [stickyTryOne]
-  split_ifs with h
-  · rfl
-  · exact absurd hq h
+  apply stickyTryOne_of_tight_bracket (expBounds x k) iter (Real.exp (x : ℝ))
+    (expBounds_lower_pos x k iter)
+    (expBounds_lower_lt_exp x hx k iter hk_bound)
+    (expBounds_exp_le_upper x k iter hk_bound)
+    δ hδ_gap
+  have := hwidth
+  rw [show expBounds x k iter = ((expBounds x k iter).1, (expBounds x k iter).2)
+    from by ext <;> rfl] at this
+  exact this
 
--- Helper: 2^a * (1/2)^(a+b) = (1/2)^b
-omit [FloatFormat] in
-lemma two_pow_mul_half_pow (a b : ℕ) :
-    (2:ℝ)^a * (1/2:ℝ)^(a+b) = (1/2:ℝ)^b := by
-  rw [one_div_pow, one_div_pow, pow_add]
-  field_simp
-
--- Helper: err₁ bound from factorial geometric decay
-omit [FloatFormat] in
-lemma err1_factorial_bound (N : ℕ) (hN : 4 ≤ N) :
-    (2:ℝ)^(N+2) * (N+2:ℝ) / ((N+1).factorial * (N+1:ℝ)) ≤ (8/3:ℝ) * (1/2:ℝ)^(N-4) := by
-  have hfac_pos : (0:ℝ) < (N.factorial : ℝ) := Nat.cast_pos.mpr (Nat.factorial_pos _)
-  have h_fac : (2:ℝ)^N / ↑N.factorial ≤
-      (2:ℝ)^4 / ↑(4:ℕ).factorial * (1/2:ℝ)^(N-4) := by
-    have := pow_div_factorial_geometric_bound 2 (by norm_num) 2 (by norm_num) N (by omega)
-    simpa using this
-  have h_init : (2:ℝ)^4 / ↑(4:ℕ).factorial = 2/3 := by norm_num [Nat.factorial]
-  -- 2^(N+2) = 4 * 2^N
-  have h2N2 : (2:ℝ)^(N+2) = 4 * (2:ℝ)^N := by rw [pow_add]; ring
-  -- (N+1)! = (N+1) * N!
-  have hfac_succ : ((N+1).factorial : ℝ) = (N+1:ℝ) * N.factorial := by
-    rw [Nat.factorial_succ]; push_cast; ring
-  -- (N+2) ≤ (N+1)^2
-  have hN_r : (4:ℝ) ≤ N := by exact_mod_cast hN
-  have hN2_le : (N+2:ℝ) ≤ (N+1:ℝ) * (N+1:ℝ) := by nlinarith
-  rw [h2N2, hfac_succ]
-  -- 4*2^N*(N+2) / ((N+1)*N!*(N+1)) ≤ 4*2^N/N!
-  have h2N_pos : (0:ℝ) < (2:ℝ)^N := by positivity
-  have herr1_aux : 4 * (2:ℝ)^N * (N+2:ℝ) / ((N+1:ℝ) * ↑N.factorial * (N+1:ℝ)) ≤
-      4 * (2:ℝ)^N / ↑N.factorial := by
-    have h_cancel : (0:ℝ) < 4 * (2:ℝ)^N * ↑N.factorial := by positivity
-    rw [div_le_div_iff₀ (by positivity) hfac_pos]
-    -- Goal: 4*2^N*(N+2)*N! ≤ 4*2^N * ((N+1)*N!*(N+1))
-    -- ⟺ (N+2) ≤ (N+1)*(N+1) after cancelling 4*2^N*N!
-    have : 4 * (2:ℝ)^N * (N+2:ℝ) * ↑N.factorial =
-        4 * (2:ℝ)^N * ↑N.factorial * (N+2:ℝ) := by ring
-    have : 4 * (2:ℝ)^N * ((N+1:ℝ) * ↑N.factorial * (N+1:ℝ)) =
-        4 * (2:ℝ)^N * ↑N.factorial * ((N+1:ℝ) * (N+1:ℝ)) := by ring
-    nlinarith
-  -- 4*2^N/N! ≤ (8/3)*(1/2)^(N-4)
-  have h4_fac : 4 * (2:ℝ)^N / ↑N.factorial ≤ (8/3:ℝ) * (1/2:ℝ)^(N-4) := by
-    have : 4 * ((2:ℝ)^N / ↑N.factorial) ≤ 4 * ((2:ℝ)^4 / ↑(4:ℕ).factorial * (1/2:ℝ)^(N-4)) :=
-      mul_le_mul_of_nonneg_left h_fac (by norm_num)
-    calc 4 * (2:ℝ)^N / ↑N.factorial
-        = 4 * ((2:ℝ)^N / ↑N.factorial) := by ring
-      _ ≤ 4 * ((2:ℝ)^4 / ↑(4:ℕ).factorial * (1/2:ℝ)^(N-4)) := this
-      _ = (8/3:ℝ) * (1/2:ℝ)^(N-4) := by rw [h_init]; ring
-  calc 4 * (2:ℝ)^N * (N+2:ℝ) / ((N+1:ℝ) * ↑N.factorial * (N+1:ℝ))
-      ≤ 4 * (2:ℝ)^N / ↑N.factorial := herr1_aux
-    _ ≤ (8/3:ℝ) * (1/2:ℝ)^(N-4) := h4_fac
+-- `two_pow_mul_half_pow` and `err1_factorial_bound` are in StickyTermination.lean
 
 omit [FloatFormat] in
 /-- **Fuel sufficiency**: within `expFuel x` iterations, `stickyTryOne (expBounds x k)` succeeds.
