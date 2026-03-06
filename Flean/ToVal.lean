@@ -389,7 +389,7 @@ theorem toVal_lt_zpow_succ [Field R] [LinearOrder R] [IsStrictOrderedRing R]
   rw [toVal_pos_eq x hs]
   calc (x.m : R) * (2 : R) ^ (x.e - FloatFormat.prec + 1)
       < (2 : R) ^ FloatFormat.prec.toNat * (2 : R) ^ (x.e - FloatFormat.prec + 1) := by
-        exact mul_lt_mul_of_pos_right (by exact_mod_cast x.valid.2.2.1) (two_zpow_pos' _)
+        exact mul_lt_mul_of_pos_right (by exact_mod_cast x.valid.2.2.1) (by positivity)
     _ = (2 : R) ^ (x.e + 1) := by
         rw [← zpow_natCast (2 : R) FloatFormat.prec.toNat, two_zpow_mul]
         congr 1; rw [FloatFormat.prec_toNat_eq]; ring
@@ -403,7 +403,7 @@ theorem toVal_normal_lower [Field R] [LinearOrder R] [IsStrictOrderedRing R]
       = (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ (x.e - FloatFormat.prec + 1) := by
         rw [two_zpow_mul]; congr 1; ring
     _ ≤ (x.m : R) * (2 : R) ^ (x.e - FloatFormat.prec + 1) := by
-        apply mul_le_mul_of_nonneg_right _ (le_of_lt (two_zpow_pos' _))
+        apply mul_le_mul_of_nonneg_right _ (le_of_lt (by positivity))
         calc (2 : R) ^ (FloatFormat.prec - 1)
             = (2 : R) ^ (FloatFormat.prec - 1).toNat := FloatFormat.pow_prec_sub_one_nat_int.symm
           _ ≤ (x.m : R) := by exact_mod_cast hn.1
@@ -417,7 +417,7 @@ theorem toVal_subnormal_lt [Field R] [LinearOrder R] [IsStrictOrderedRing R]
     have := hsub.2; have : 0 < 2 ^ (FloatFormat.prec - 1).toNat := Nat.pos_of_ne_zero (by positivity); omega
   calc (f.m : R) * (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1)
       < (2 : R) ^ (FloatFormat.prec - 1).toNat * (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) :=
-        mul_lt_mul_of_pos_right (by exact_mod_cast hm_lt) (two_zpow_pos' _)
+        mul_lt_mul_of_pos_right (by exact_mod_cast hm_lt) (by positivity)
     _ = (2 : R) ^ FloatFormat.min_exp := by
         rw [← zpow_natCast, Int.toNat_of_nonneg (by have := FloatFormat.valid_prec; omega),
             ← zpow_add₀ (by norm_num : (2:R) ≠ 0),

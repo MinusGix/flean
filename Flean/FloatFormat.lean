@@ -405,29 +405,22 @@ private theorem two_zpow_mono {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
 theorem zpow_prec_ge_four [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : (4 : R) ≤ (2 : R)^FloatFormat.prec := by
   have hp := FloatFormat.valid_prec
   calc (4 : R) = (2 : R)^(2 : ℤ) := by norm_num
-    _ ≤ (2 : R)^FloatFormat.prec := by
-        apply two_zpow_mono
-        omega
+    _ ≤ (2 : R)^FloatFormat.prec := by linearize
 
 theorem zpow_prec_sub_one_ge_two [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : (2 : R) ≤ (2 : R)^(FloatFormat.prec - 1) := by
   have hp := FloatFormat.valid_prec
   calc (2 : R) = (2 : R)^(1 : ℤ) := by norm_num
-    _ ≤ (2 : R)^(FloatFormat.prec - 1) := by
-        apply two_zpow_mono
-        omega
+    _ ≤ (2 : R)^(FloatFormat.prec - 1) := by linearize
 
 @[simp]
 theorem zpow_prec_pred_lt [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : (2 : R)^(FloatFormat.prec - 1) < (2 : R)^FloatFormat.prec := by
   have hp := FloatFormat.valid_prec
-  apply zpow_lt_zpow_right₀ (by norm_num : (1 : R) < 2)
-  omega
+  linearize
 
 theorem zpow_neg_prec_plus_one_le_two [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
   : (2 : R)^(-FloatFormat.prec + 1) ≤ (2 : R) := by
   have hp := FloatFormat.valid_prec
-  calc (2 : R)^(-FloatFormat.prec + 1) ≤ (2 : R)^(1 : ℤ) := by
-        apply two_zpow_mono
-        omega
+  calc (2 : R)^(-FloatFormat.prec + 1) ≤ (2 : R)^(1 : ℤ) := by linearize
     _ = 2 := by norm_num
 
 
@@ -436,8 +429,7 @@ theorem zpow_min_exp_prec_plus_one_le_zpow_min_exp_sub_one
   [Field R] [LinearOrder R] [IsStrictOrderedRing R]
   [FloatFormat] : (2 : R)^(FloatFormat.min_exp - FloatFormat.prec + 1) ≤ (2 : R)^(FloatFormat.min_exp - 1) := by
   have h := FloatFormat.valid_prec
-  apply two_zpow_mono
-  omega
+  linearize
 
 theorem zpow_min_exp_prec_plus_one_le_zpow_min_exp
   {R : Type*}
@@ -445,8 +437,7 @@ theorem zpow_min_exp_prec_plus_one_le_zpow_min_exp
   [FloatFormat] : (2 : R)^(FloatFormat.min_exp - FloatFormat.prec + 1) ≤ (2 : R)^(FloatFormat.min_exp) := by
   have := zpow_min_exp_prec_plus_one_le_zpow_min_exp_sub_one (R := R)
   apply le_trans this
-  apply two_zpow_mono
-  omega
+  exact by linearize
 
 theorem zpow_prec_eq_natpow [FloatFormat] {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
   : (2 : R)^FloatFormat.prec = (2 : R)^FloatFormat.prec.toNat := by
@@ -591,10 +582,10 @@ theorem overflowThreshold_lt_zpow_max_exp_succ [FloatFormat] {R : Type*} [Field 
     overflowThreshold R < (2 : R) ^ (FloatFormat.max_exp + 1) := by
   unfold overflowThreshold
   have hcoef_lt : (2 : R) - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2 < 2 :=
-    sub_lt_self _ (div_pos (zpow_pos (by norm_num) _) (by norm_num : (0:R) < 2))
+    sub_lt_self _ (div_pos (by positivity) (by norm_num : (0:R) < 2))
   calc (2 - (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) / 2) * (2 : R) ^ FloatFormat.max_exp
       < 2 * (2 : R) ^ FloatFormat.max_exp :=
-        mul_lt_mul_of_pos_right hcoef_lt (zpow_pos (by norm_num) _)
+        mul_lt_mul_of_pos_right hcoef_lt (by positivity)
     _ = (2 : R) ^ (FloatFormat.max_exp + 1) := by
         rw [mul_comm, ← zpow_add_one₀ (by norm_num : (2:R) ≠ 0)]
 

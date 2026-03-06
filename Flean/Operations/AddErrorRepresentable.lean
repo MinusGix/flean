@@ -169,7 +169,7 @@ theorem add_error_representable (a b : FiniteFp)
       intro hb_norm
       linarith [FiniteFp.toVal_subnormal_lt (R := R) a ha ha_sub,
                 FiniteFp.toVal_normal_lower (R := R) b hb hb_norm,
-                two_zpow_mono (R := R) b.valid.1]
+                show (2 : R) ^ FloatFormat.min_exp ≤ (2 : R) ^ b.e by have := b.valid.1; linearize]
     have hb_sub := b.isNormal_or_isSubnormal.resolve_left hb_not_normal
     -- Subnormal significands are < 2^(prec-1), so sum < 2^prec
     have hfit : a.m + b.m < 2 ^ precNat := by
@@ -191,7 +191,7 @@ theorem add_error_representable (a b : FiniteFp)
   have hNR : isNormalRange ((a.toVal : R) + b.toVal) := by
     constructor
     · calc (2 : R) ^ FloatFormat.min_exp
-          ≤ (2 : R) ^ a.e := two_zpow_mono (R := R) a.valid.1
+          ≤ (2 : R) ^ a.e := by have := a.valid.1; linearize
         _ ≤ a.toVal := FiniteFp.toVal_normal_lower (R := R) a ha ha_normal
         _ ≤ a.toVal + b.toVal := le_add_of_nonneg_right (le_of_lt hb_pos)
     · by_contra h_high; push_neg at h_high
@@ -237,7 +237,7 @@ theorem add_error_representable (a b : FiniteFp)
   have hr_ne : r ≠ 0 := by
     intro h; apply herr; rw [herr_eq, h, Int.cast_zero, zero_mul]
   -- Step F: Bound |r| < 2^prec
-  have he₀_pos : (0 : R) < (2 : R) ^ e₀ := zpow_pos (by norm_num) _
+  have he₀_pos : (0 : R) < (2 : R) ^ e₀ := by positivity
   -- |error| ≤ b.toVal, and b.toVal = b.m * 2^(b.e - e_min) * 2^e₀
   have hb_e_ge : b.e ≥ e_min := min_le_right a.e b.e
   have hb_factor : (b.toVal : R) = (b.m : R) * (2 : R) ^ ((b.e - e_min : ℤ)) * (2 : R) ^ e₀ := by
@@ -262,7 +262,7 @@ theorem add_error_representable (a b : FiniteFp)
       -- From b.toVal ≤ a.toVal and zpow factoring
       have hle_R : (b.m : R) * (2:R) ^ (b.e - prec + 1) ≤ (a.m : R) * (2:R) ^ (a.e - prec + 1) := by
         rw [← FiniteFp.toVal_pos_eq a ha, ← FiniteFp.toVal_pos_eq b hb]; exact hab
-      have hd_pos : (0 : R) < (2:R) ^ (a.e - prec + 1) := zpow_pos (by norm_num) _
+      have hd_pos : (0 : R) < (2:R) ^ (a.e - prec + 1) := by positivity
       -- Factor: b.m * 2^(b.e-prec+1) = b.m * 2^(b.e-a.e) * 2^(a.e-prec+1)
       have hfactor : (b.m : R) * (2:R)^(b.e - prec + 1)
           = (b.m : R) * (2:R)^(b.e - a.e : ℤ) * (2:R)^(a.e - prec + 1) := by
@@ -344,7 +344,7 @@ private theorem add_error_representable_mixed (a b : FiniteFp)
     set e₀' := min a.e b.e - prec + 1
     have hexact' := fpAddFinite_exact_sum R a b
     set isum' := addAlignedSumInt a b
-    have he₀'_pos : (0:R) < (2:R) ^ e₀' := zpow_pos (by norm_num) _
+    have he₀'_pos : (0:R) < (2:R) ^ e₀' := by positivity
     have hisum'_pos : 0 < isum' := by
       by_contra h; push_neg at h
       have : (isum' : R) ≤ 0 := Int.cast_nonpos.mpr h
@@ -401,7 +401,7 @@ private theorem add_error_representable_mixed (a b : FiniteFp)
   have hsfp_ge : (g_ref.toVal : R) ≤ s_fp.toVal :=
     FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff _ _).mp hsfp_ge_g)
   have hs_pos : (0 : R) < s_fp.toVal := by
-    have : (0:R) < (2:R) ^ (min a.e b.e : ℤ) := zpow_pos (by norm_num) _
+    have : (0:R) < (2:R) ^ (min a.e b.e : ℤ) := by positivity
     linarith [hg_toVal]
   have hs_s : s_fp.s = false :=
     ((FiniteFp.toVal_pos_iff (R := R)).mpr hs_pos).1
@@ -492,7 +492,7 @@ private theorem add_error_representable_mixed (a b : FiniteFp)
   have hr_ne : r ≠ 0 := by
     intro h; apply herr; rw [herr_eq, h, Int.cast_zero, zero_mul]
   -- Step F: Bound |r| < 2^prec using |error| ≤ |b| = -b
-  have he₀_pos : (0 : R) < (2 : R) ^ e₀ := zpow_pos (by norm_num) _
+  have he₀_pos : (0 : R) < (2 : R) ^ e₀ := by positivity
   -- |b.toVal| = (-b).toVal = b.m * 2^(b.e - prec + 1)
   have hb_e_ge : b.e ≥ e_min := min_le_right a.e b.e
   have hb_abs_factor : -(b.toVal : R) = (b.m : R) * (2 : R) ^ ((b.e - e_min : ℤ)) * (2 : R) ^ e₀ := by
@@ -525,7 +525,7 @@ private theorem add_error_representable_mixed (a b : FiniteFp)
           simp [FiniteFp.neg_def]
         rw [h_abs, FiniteFp.toVal_pos_eq a ha] at hab
         exact hab
-      have hd_pos : (0 : R) < (2:R) ^ (a.e - prec + 1) := zpow_pos (by norm_num) _
+      have hd_pos : (0 : R) < (2:R) ^ (a.e - prec + 1) := by positivity
       have hfactor : (b.m : R) * (2:R)^(b.e - prec + 1)
           = (b.m : R) * (2:R)^(b.e - a.e : ℤ) * (2:R)^(a.e - prec + 1) := by
         rw [show (b.e - prec + 1 : ℤ) = (b.e - a.e) + (a.e - prec + 1) from by omega,

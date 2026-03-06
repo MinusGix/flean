@@ -66,6 +66,7 @@ theorem toVal_abs_ge_smallest (f : FiniteFp) (hm : 0 < f.m) :
   -- smallestPosSubnormal.toVal = 2^(min_exp - prec + 1)
   -- |f.toVal| = f.m * 2^(f.e - prec + 1) (for the appropriate sign)
   -- Since f.m ≥ 1 and f.e ≥ min_exp, we have f.m * 2^(f.e-p+1) ≥ 1 * 2^(min_exp-p+1)
+  have hfe := f.valid_min_exp
   by_cases hs : f.s = false
   · have hpos : (0 : R) < f.toVal := FiniteFp.toVal_pos f hs hm
     rw [abs_of_pos hpos]
@@ -79,9 +80,8 @@ theorem toVal_abs_ge_smallest (f : FiniteFp) (hm : 0 < f.m) :
       _ ≤ (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
           apply mul_le_mul
           · exact_mod_cast hm
-          · exact two_zpow_mono
-              (by linarith [f.valid_min_exp])
-          · exact le_of_lt (two_zpow_pos' _)
+          · exact by linearize
+          · exact le_of_lt (by positivity)
           · exact Nat.cast_nonneg _
   · have hs_true : f.s = true := by revert hs; cases f.s <;> simp
     have hnf_pos : (0 : R) < (-f).toVal :=
@@ -104,9 +104,8 @@ theorem toVal_abs_ge_smallest (f : FiniteFp) (hm : 0 < f.m) :
       _ ≤ (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
           apply mul_le_mul
           · exact_mod_cast hm
-          · exact two_zpow_mono
-              (by linarith [f.valid_min_exp])
-          · exact le_of_lt (two_zpow_pos' _)
+          · exact by linearize
+          · exact le_of_lt (by positivity)
           · exact Nat.cast_nonneg _
 
 omit [FloorRing R] in
@@ -148,8 +147,8 @@ theorem toVal_abs_lt_overflow (f : FiniteFp) :
     -- largest = 2^max_exp * (2 - 2^(-prec+1)) = 2^max_exp * (2 - 2^(1-prec))
     -- threshold = (2 - 2^(1-prec)/2) * 2^max_exp
     -- threshold - largest = 2^max_exp * 2^(1-prec) / 2 > 0
-    have h2max_pos : (0 : R) < (2 : R) ^ FloatFormat.max_exp := two_zpow_pos' _
-    have h_eps_pos : (0 : R) < (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) := two_zpow_pos' _
+    have h2max_pos : (0 : R) < (2 : R) ^ FloatFormat.max_exp := by positivity
+    have h_eps_pos : (0 : R) < (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) := by positivity
     have h_eq : (-(FloatFormat.prec : ℤ) + 1) = (1 - (FloatFormat.prec : ℤ)) := by ring
     rw [h_eq]; unfold FloatFormat.overflowThreshold at *
     nlinarith

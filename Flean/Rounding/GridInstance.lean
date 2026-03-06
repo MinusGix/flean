@@ -1,6 +1,7 @@
 import Flean.Rounding.Rounding
 import Flean.Rounding.ModeClass
 import Flean.Rounding.PolicyInstances
+import Flean.Linearize.Linearize
 import Flean.ToVal
 
 /-! # RModeGrid Instance
@@ -75,7 +76,7 @@ private theorem grid_exact_representable
   set e_ulp := e - prec + 1
   -- n < 2^(e + 1 - g): divide binade bound by 2^g
   have hn_lt : (n : R) < (2 : R) ^ (e + 1 - g) := by
-    have h2g_pos := zpow_pos (by norm_num : (0 : R) < 2) g
+    have h2g_pos : (0 : R) < (2 : R) ^ g := by positivity
     calc (n : R) = (n : R) * (2 : R) ^ g * ((2 : R) ^ g)⁻¹ := by
           rw [mul_inv_cancel_right₀ (ne_of_gt h2g_pos)]
       _ < (2 : R) ^ (e + 1) * ((2 : R) ^ g)⁻¹ :=
@@ -93,7 +94,7 @@ private theorem grid_exact_representable
       Int.toNat_of_nonneg (by omega)]
     calc (n : R) * (2 : R) ^ (g - e_ulp)
         < (2 : R) ^ (e + 1 - g) * (2 : R) ^ (g - e_ulp) :=
-          mul_lt_mul_of_pos_right hn_lt (zpow_pos (by norm_num) _)
+          mul_lt_mul_of_pos_right hn_lt (by positivity)
       _ = (2 : R) ^ (e + 1 - g + (g - e_ulp)) := by rw [← two_zpow_mul]
       _ = (2 : R) ^ prec := by congr 1; simp only [e_ulp]; ring
   have hcoeff_bound := int_natAbs_lt_of_cast_lt_zpow (R := R) coeff hcoeff_pos hcoeff_lt_R
@@ -118,7 +119,7 @@ private theorem roundDown_preserves_grid_pos
   have hx_pos : (0 : R) < (n : R) * (2 : R) ^ g := by
     apply mul_pos
     · exact_mod_cast hn_pos
-    · exact zpow_pos (by norm_num) _
+    · exact by positivity
   have hf_sign : f.s = false := by
     have hrd : roundDown ((n : R) * (2 : R) ^ g) = Fp.finite (findPredecessorPos _ hx_pos) := by
       simp [roundDown, findPredecessor, ne_of_gt hx_pos, hx_pos]
@@ -144,10 +145,10 @@ private theorem roundDown_preserves_grid_pos
       have hsps_pos := FiniteFp.smallestPosSubnormal_toVal_pos (R := R)
       have hx_ge_sps : FiniteFp.smallestPosSubnormal.toVal ≤ (n : R) * (2 : R) ^ g := by
         rw [FiniteFp.smallestPosSubnormal_toVal]
-        calc (2 : R) ^ (FloatFormat.min_exp - prec + 1) ≤ (2 : R) ^ g := two_zpow_mono (R := R) hg
+        calc (2 : R) ^ (FloatFormat.min_exp - prec + 1) ≤ (2 : R) ^ g := by linearize
           _ = 1 * (2 : R) ^ g := (one_mul _).symm
           _ ≤ (n : R) * (2 : R) ^ g :=
-            mul_le_mul_of_nonneg_right (by exact_mod_cast hn_pos) (le_of_lt (zpow_pos (by norm_num) _))
+            mul_le_mul_of_nonneg_right (by exact_mod_cast hn_pos) (le_of_lt (by positivity))
       have hsps_idem := roundDown_idempotent_nonneg (R := R)
         FiniteFp.smallestPosSubnormal (by rfl) (by norm_num [FiniteFp.smallestPosSubnormal])
       have hsps_pred : findPredecessorPos (FiniteFp.smallestPosSubnormal.toVal (R := R)) hsps_pos
@@ -186,7 +187,7 @@ private theorem roundDown_preserves_grid_pos
         -- By idempotence, roundDown(2^(f.e+1)) = Fp.finite fp_pow
         have hfp_idem := roundDown_idempotent (R := R) fp_pow hfp_cond
         have hfp_pos : (0 : R) < fp_pow.toVal := by
-          rw [hfp_val_eq]; exact zpow_pos (by norm_num) _
+          rw [hfp_val_eq]; positivity
         -- findPredecessorPos(2^(f.e+1)) = fp_pow
         have hfp_pred : findPredecessorPos (fp_pow.toVal (R := R)) hfp_pos = fp_pow := by
           simp [roundDown, findPredecessor, ne_of_gt hfp_pos, hfp_pos] at hfp_idem
@@ -215,7 +216,7 @@ private theorem roundUp_preserves_grid_pos
   have hx_pos : (0 : R) < (n : R) * (2 : R) ^ g := by
     apply mul_pos
     · exact_mod_cast hn_pos
-    · exact zpow_pos (by norm_num) _
+    · exact by positivity
   -- f.toVal ≥ x > 0, so f.s = false and f.m > 0
   have hf_ge : (n : R) * (2 : R) ^ g ≤ f.toVal (R := R) := by
     have hru : roundUp ((n : R) * (2 : R) ^ g) = findSuccessorPos _ hx_pos := by
@@ -254,7 +255,7 @@ instance nearest_RModeGrid [RMode R] [RModeNearest R] [RModeConj R] : RModeGrid 
         have hx_ne : (n : R) * (2 : R) ^ g ≠ 0 := by
           apply mul_ne_zero
           · exact_mod_cast hn
-          · exact ne_of_gt (zpow_pos (by norm_num) _)
+          · exact ne_of_gt (by positivity)
         have hn_neg_pos : 0 < -n := by omega
         have hx_neg : ((-n : ℤ) : R) * (2 : R) ^ g = -((n : R) * (2 : R) ^ g) := by
           push_cast; ring

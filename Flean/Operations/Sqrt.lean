@@ -104,7 +104,7 @@ theorem fpSqrtFinite_correct [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RM
     congr 1; congr 1; omega
   -- Key exponent: 2^(e_half - sqrtShift) = 2 * E where E = 2^e_base
   set E := (2 : ℝ) ^ e_base with hE_def
-  have hE_pos : (0 : ℝ) < E := zpow_pos (by norm_num : (0 : ℝ) < 2) _
+  have hE_pos : (0 : ℝ) < E := by positivity
   have hexp_split : (2 : ℝ) ^ (e_half - (sqrtShift : ℤ)) = 2 * E := by
     rw [hE_def, show e_half - (sqrtShift : ℤ) = e_base + 1 from by omega,
         zpow_add₀ (by norm_num : (2 : ℝ) ≠ 0), zpow_one]; ring

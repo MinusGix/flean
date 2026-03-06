@@ -103,7 +103,7 @@ theorem mul_round_exponent_ge (a b : FiniteFp)
     show |exact_val| = _
     have : exact_val = intSigVal (R := R) (a.s ^^ b.s) (a.m * b.m) e_prod := hexact_prod
     rw [this, intSigVal]
-    split_ifs <;> simp [abs_mul, abs_of_pos (two_zpow_pos' (R := R) _)]
+    split_ifs <;> simp [abs_mul, abs_of_pos (by positivity : (0 : R) < (2 : R) ^ e_prod)]
   have he_prod_eq : e_prod = fmaProdE a b - prec + 1 := by
     simp [e_prod_def, fmaProdE]; ring
   -- |exact| ≥ 2^(fmaProdE+1)
@@ -115,7 +115,7 @@ theorem mul_round_exponent_ge (a b : FiniteFp)
           congr 1; rw [he_prod_eq]; have := FloatFormat.valid_prec; omega
       _ ≤ (a.m * b.m : R) * (2 : R) ^ e_prod := by
           exact mul_le_mul_of_nonneg_right (by exact_mod_cast hprod_large)
-            (le_of_lt (two_zpow_pos' _))
+            (le_of_lt (by positivity))
   -- |exact| < 2^(max_exp+1) (overflow would contradict p being finite)
   have hp_corr : (p : Fp) = ○exact_val := by
     have := fpMulFinite_correct (R := R) a b hprod_nz
@@ -173,7 +173,7 @@ theorem mul_round_exponent_ge (a b : FiniteFp)
     have : ((precNat - 1 : ℕ) : ℤ) = prec - 1 := by omega
     omega
   -- |p.toVal| ≥ 2^(fmaProdE+1) via roundDown monotonicity
-  have h2pos : (0 : R) < (2 : R) ^ (fmaProdE a b + 1) := two_zpow_pos' (R := R) _
+  have h2pos : (0 : R) < (2 : R) ^ (fmaProdE a b + 1) := by positivity
   rcases le_or_gt exact_val 0 with hneg | hpos
   · -- Negative case
     have hlt : exact_val < 0 := lt_of_le_of_ne hneg hprod_nz
@@ -253,7 +253,7 @@ theorem mul_error_representable (a b : FiniteFp)
       show |exact_val| = _
       have : exact_val = intSigVal (R := R) (a.s ^^ b.s) (a.m * b.m) e_prod := hexact_prod
       rw [this, intSigVal]
-      split_ifs <;> simp [abs_mul, abs_of_pos (two_zpow_pos' (R := R) _)]
+      split_ifs <;> simp [abs_mul, abs_of_pos (by positivity : (0 : R) < (2 : R) ^ e_prod)]
     have he_prod_eq : e_prod = fmaProdE a b - prec + 1 := by
       simp [e_prod_def, fmaProdE]; ring
     have hexact_lower : (2 : R) ^ (FloatFormat.min_exp + 1) ≤ abs_exact := by
@@ -267,7 +267,7 @@ theorem mul_error_representable (a b : FiniteFp)
             congr 1; rw [he_prod_eq]
             have := FloatFormat.valid_prec; omega
         _ ≤ (a.m * b.m : R) * (2 : R) ^ e_prod := by
-            apply mul_le_mul_of_nonneg_right _ (le_of_lt (two_zpow_pos' _))
+            apply mul_le_mul_of_nonneg_right _ (le_of_lt (by positivity))
             exact_mod_cast hprod_large
     have hp_corr : (p : Fp) = ○exact_val := by
       have := fpMulFinite_correct (R := R) a b hprod_nz
@@ -306,7 +306,7 @@ theorem mul_error_representable (a b : FiniteFp)
       rw [habs_eq]
       calc (a.m * b.m : R) * (2 : R) ^ e_prod
           < (2 : R) ^ (2 * precNat) * (2 : R) ^ e_prod := by
-            exact mul_lt_mul_of_pos_right (by exact_mod_cast hab_bound) (two_zpow_pos' _)
+            exact mul_lt_mul_of_pos_right (by exact_mod_cast hab_bound) (by positivity)
         _ = (2 : R) ^ (prec + fmaProdE a b + 1) := by
             rw [← zpow_natCast (2 : R) (2 * precNat), two_zpow_mul (R := R)]
             congr 1; rw [he_prod_eq]; have := FloatFormat.valid_prec; omega
@@ -374,7 +374,7 @@ theorem mul_error_representable (a b : FiniteFp)
     rw [show (2 : R) ^ (ebase + prec) = (2 : R) ^ prec * (2 : R) ^ ebase from by
       rw [zpow_add₀ (by norm_num : (2 : R) ≠ 0)]; ring] at hisum_R
     have hisum_R' : (isum.natAbs : R) < (2 : R) ^ prec :=
-      lt_of_mul_lt_mul_of_nonneg_right hisum_R (le_of_lt (two_zpow_pos' _))
+      lt_of_mul_lt_mul_of_nonneg_right hisum_R (le_of_lt (by positivity))
     have hprec_cast : (precNat : ℤ) = prec := by
       have := FloatFormat.valid_prec; omega
     have : (isum.natAbs : R) < (2 : R) ^ (precNat : ℕ) := by

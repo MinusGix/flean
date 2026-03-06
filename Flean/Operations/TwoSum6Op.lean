@@ -68,7 +68,7 @@ private theorem fpAddFinite_zero_of_eq_sum [RModeExec] (a b : FiniteFp)
       rw [← hexact]; exact hsum
     rcases mul_eq_zero.mp h0 with h | h
     · exact_mod_cast h
-    · exact absurd h (ne_of_gt (zpow_pos (by norm_num) _))
+    · exact absurd h (ne_of_gt (by positivity))
   let fz : FiniteFp := ⟨exactCancelSign a.s b.s, FloatFormat.min_exp, 0, IsValidFiniteVal.zero⟩
   refine ⟨fz, ?_, FiniteFp.toVal_isZero rfl⟩
   simp only [add_finite_eq_fpAddFinite]

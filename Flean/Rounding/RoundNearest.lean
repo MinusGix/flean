@@ -718,7 +718,7 @@ theorem largestFiniteFloat_lt_overflow_threshold [FloatFormat] :
     mul_comm ((2:R) - _) _]
   exact mul_lt_mul_of_pos_left
     (by linarith [zpow_pos (by norm_num : (0:R) < 2) (1 - (FloatFormat.prec : ℤ))])
-    (zpow_pos (by norm_num : (0:R) < 2) _)
+    (by positivity)
 
 theorem val_lt_thresh_of_roundUp_finite [FloatFormat]
     (val : R) (f : FiniteFp) (hval_pos : 0 < val)

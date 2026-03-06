@@ -2,6 +2,7 @@ import Flean.Rounding.Rounding
 import Flean.Rounding.RoundDown
 import Flean.Rounding.RoundUp
 import Flean.Rounding.RoundNearest
+import Flean.Linearize.Linearize
 
 /-! # Odd Interval Lemmas for Rounding
 
@@ -28,7 +29,7 @@ private theorem representable_value_even_of_large {R : Type*} [Field R] [LinearO
   set d := f.e - FloatFormat.prec + 1 - e_base with hd_def
   have hexp_eq : f.e - FloatFormat.prec + 1 = e_base + d := by omega
   rw [hexp_eq, zpow_add₀ (by norm_num : (2:R) ≠ 0)] at hfval
-  have hE_ne : (2 : R) ^ e_base ≠ 0 := ne_of_gt (zpow_pos (by norm_num : (0:R) < 2) _)
+  have hE_ne : (2 : R) ^ e_base ≠ 0 := ne_of_gt (by positivity)
   have hfm_2d_eq : (↑f.m : R) * (2 : R) ^ d = (k : R) := by
     have h := hfval -- f.m * (2^e_base * 2^d) = k * 2^e_base
     have : (↑f.m : R) * (2:R)^d * (2:R)^e_base = (k : R) * (2:R)^e_base := by linarith
@@ -218,7 +219,7 @@ theorem mid_le_of_rd_low_ru_tight {R : Type*} [Field R] [LinearOrder R]
     (hrd_le : rd_val ≤ ((n : ℤ) - 3 : R) * (2 : R) ^ e_base)
     (hru_le : ru_val ≤ ((n : ℤ) + 1 : R) * (2 : R) ^ e_base) :
     (rd_val + ru_val) / 2 ≤ ((n : ℤ) - 1 : R) * (2 : R) ^ e_base := by
-  have hE : (0 : R) < (2 : R) ^ e_base := zpow_pos (by norm_num : (0:R) < 2) _
+  have hE : (0 : R) < (2 : R) ^ e_base := by positivity
   have h : rd_val + ru_val ≤ ((n : ℤ) - 3 : R) * (2:R)^e_base + ((n : ℤ) + 1 : R) * (2:R)^e_base :=
     add_le_add hrd_le hru_le
   have h2 : ((n : ℤ) - 3 : R) * (2:R)^e_base + ((n : ℤ) + 1 : R) * (2:R)^e_base =
@@ -256,7 +257,7 @@ theorem overflow_threshold_outside_odd_interval {R : Type*} [Field R] [LinearOrd
       ((n : ℤ) + 1 : R) * (2 : R) ^ e_base) : False := by
   -- OT = 2^(max_exp+1) - 2^(max_exp-prec). Rewrite in terms of E = 2^e_base.
   set OT := FloatFormat.overflowThreshold R with hOT_def
-  have hE_pos : (0 : R) < (2 : R) ^ e_base := zpow_pos (by norm_num : (0:R) < 2) _
+  have hE_pos : (0 : R) < (2 : R) ^ e_base := by positivity
   -- OT = (2^(max_exp+1) - 2^(max_exp-prec)). Factor as (2^a - 2^b) * E where a,b ≥ 0.
   -- Actually work with: (n-1)*E < OT < (n+1)*E, divide by E: n-1 < OT/E < n+1.
   -- OT/E = 2^(max_exp+1-e_base) - 2^(max_exp-prec-e_base).
@@ -301,8 +302,8 @@ theorem overflow_threshold_outside_odd_interval {R : Type*} [Field R] [LinearOrd
     -- But n > 2^(prec+3) > 2^(prec+1). Contradiction.
     have ha_bound : a ≤ FloatFormat.prec + 1 := by omega
     have h2a_bound : (2 : R) ^ a ≤ (2 : R) ^ (FloatFormat.prec + 1) :=
-      two_zpow_mono ha_bound
-    have h2b_pos : (0 : R) < (2 : R) ^ b := zpow_pos (by norm_num) _
+      by linearize
+    have h2b_pos : (0 : R) < (2 : R) ^ b := by positivity
     -- 2^a - 2^b < 2^a ≤ 2^(prec+1)
     have hOT_E_lt : (2 : R) ^ a - (2 : R) ^ b < (2 : R) ^ (FloatFormat.prec + 1) :=
       calc (2:R) ^ a - (2:R) ^ b < (2:R) ^ a := by linarith
@@ -360,7 +361,7 @@ theorem midpoint_zero_pred_outside_odd_interval {R : Type*} [Field R] [LinearOrd
     (succ_fp.toVal : R) / 2 ≤ ((n : ℤ) - 1 : R) * (2 : R) ^ e_base ∨
     ((n : ℤ) + 1 : R) * (2 : R) ^ e_base ≤ (succ_fp.toVal : R) / 2 := by
   set d := succ_fp.e - FloatFormat.prec - e_base with hd_def
-  have hE_pos : (0 : R) < (2 : R) ^ e_base := zpow_pos (by norm_num : (0:R) < 2) _
+  have hE_pos : (0 : R) < (2 : R) ^ e_base := by positivity
   have hE_ne : (2 : R) ^ e_base ≠ 0 := ne_of_gt hE_pos
   have hsucc_toVal : (succ_fp.toVal : R) = ↑succ_fp.m * (2 : R) ^ (succ_fp.e - FloatFormat.prec + 1) := by
     unfold FiniteFp.toVal FiniteFp.sign'; rw [FloatFormat.radix_val_eq_two, hsucc_s]; simp
@@ -462,7 +463,7 @@ theorem no_representable_in_odd_interval {R : Type*} [Field R] [LinearOrder R]
   have hexp_eq : f.e - FloatFormat.prec + 1 = e_base + d := by omega
   rw [hexp_eq, zpow_add₀ (by norm_num : (2:R) ≠ 0)] at hlo hhi
   -- Divide by 2^e_base (positive) to reduce to: f.m * 2^d ∈ (n-1, n+1)
-  have hE : (0 : R) < (2 : R) ^ e_base := zpow_pos (by norm_num : (0:R) < 2) _
+  have hE : (0 : R) < (2 : R) ^ e_base := by positivity
   -- Factor out 2^e_base from both inequalities
   rw [show ↑f.m * ((2:R)^e_base * (2:R)^d) = ↑f.m * (2:R)^d * (2:R)^e_base from by ring] at hlo hhi
   have hlo' : ((n : ℤ) - 1 : R) < ↑f.m * (2 : R) ^ d := by
@@ -546,7 +547,7 @@ private theorem midpoint_outside_odd_interval {R : Type*} [Field R] [LinearOrder
     ((n : ℤ) + 1 : R) * (2 : R) ^ e_base ≤ ((pred_fp.toVal : R) + succ_fp.toVal) / 2 := by
   set E := (2 : R) ^ e_base with hE_def
   set p := FloatFormat.prec.toNat with hp_def
-  have hE_pos : (0 : R) < E := zpow_pos (by norm_num : (0:R) < 2) _
+  have hE_pos : (0 : R) < E := by positivity
   have hE_ne : E ≠ (0 : R) := ne_of_gt hE_pos
   -- Express toVals
   have hpred_toVal : (pred_fp.toVal : R) = ↑pred_fp.m * (2 : R) ^ (pred_fp.e - FloatFormat.prec + 1) := by
@@ -564,7 +565,7 @@ private theorem midpoint_outside_odd_interval {R : Type*} [Field R] [LinearOrder
       rw [hsucc_toVal, hE_def]
       have hsm_R : (0 : R) < ↑succ_fp.m := by exact_mod_cast hsm
       have hzpow : (2 : R) ^ (succ_fp.e - FloatFormat.prec + 1) < (2:R) ^ e_base :=
-        zpow_lt_zpow_right₀ (by norm_num : (1:R) < 2) hexp_lt
+        by linearize
       exact mul_lt_mul_of_pos_left hzpow hsm_R
     -- m_s < 2^p, so succ < 2^p * E
     have h_ms_cast : (↑succ_fp.m : R) < (2 : R) ^ (p : ℤ) := by
@@ -591,12 +592,12 @@ private theorem midpoint_outside_odd_interval {R : Type*} [Field R] [LinearOrder
       rw [hpred_toVal, hE_def]
       have hpm_R : (0 : R) < ↑pred_fp.m := by exact_mod_cast hpm
       have hzpow_lt : (2:R) ^ (pred_fp.e - FloatFormat.prec + 1) < (2:R) ^ e_base :=
-        zpow_lt_zpow_right₀ (by norm_num : (1:R) < 2) hexp_lt_p
+        by linearize
       have hm_le : (↑pred_fp.m : R) ≤ (2:R) ^ (p:ℤ) := by
         rw [zpow_natCast]; exact_mod_cast Nat.le_of_lt hm_p
       calc ↑pred_fp.m * (2:R) ^ (pred_fp.e - FloatFormat.prec + 1)
           < ↑pred_fp.m * (2:R) ^ e_base := mul_lt_mul_of_pos_left hzpow_lt hpm_R
-        _ ≤ (2:R) ^ (p:ℤ) * (2:R) ^ e_base := mul_le_mul_of_nonneg_right hm_le (le_of_lt (zpow_pos (by norm_num : (0:R) < 2) _))
+        _ ≤ (2:R) ^ (p:ℤ) * (2:R) ^ e_base := mul_le_mul_of_nonneg_right hm_le (le_of_lt (by positivity))
     -- Consider the power of 2 at e_base + p (between pred and succ)
     have he_valid_min : FloatFormat.min_exp ≤ e_base + (p : ℤ) := by
       have := pred_fp.valid.1; omega
@@ -709,7 +710,7 @@ private theorem midpoint_outside_odd_interval {R : Type*} [Field R] [LinearOrder
       have hkp_R : (k_p : R) < (2:R) ^ (p + 1 : ℕ) := by exact_mod_cast hkp_lt
       calc (k_p : R) * (2:R) ^ e_base
           < (2:R) ^ (p + 1 : ℕ) * (2:R) ^ e_base := by
-            exact mul_lt_mul_of_pos_right hkp_R (zpow_pos (by norm_num : (0:R) < 2) e_base)
+            exact mul_lt_mul_of_pos_right hkp_R (by positivity)
         _ = (2:R) ^ (e_base + (p : ℤ) + 1) := by
             rw [← zpow_natCast, ← zpow_add₀ (by norm_num : (2:R) ≠ 0)]; congr 1; push_cast; ring
     -- Representable value at 2^(e_base + p + 1)
@@ -738,7 +739,7 @@ private theorem midpoint_outside_odd_interval {R : Type*} [Field R] [LinearOrder
           = (2:R) ^ (p + 1 : ℕ) * (2:R) ^ e_base := by
             rw [← zpow_natCast, ← zpow_add₀ (by norm_num : (2:R) ≠ 0)]; congr 1; push_cast; ring
         _ < (k_s : R) * (2:R) ^ e_base := by
-            apply mul_lt_mul_of_pos_right _ (zpow_pos (by norm_num : (0:R) < 2) e_base)
+            apply mul_lt_mul_of_pos_right _ (by positivity)
             exact_mod_cast hks_large
     exact hgap g hgs hgm hg_gt hg_lt
   -- Now 4 | k_p and 16 | k_s
@@ -864,7 +865,7 @@ theorem roundUp_eq_of_no_representable {R : Type*} [Field R] [LinearOrder R]
       have hs_t : g.s = true := by revert hs; cases g.s <;> simp
       have : (g.toVal : R) ≤ 0 := by
         unfold FiniteFp.toVal FiniteFp.sign'; rw [FloatFormat.radix_val_eq_two, hs_t]; simp
-        exact mul_nonneg (by positivity) (zpow_pos (by norm_num : (0:R) < 2) _).le
+        exact mul_nonneg (by positivity) (by positivity)
       linarith
     rcases le_or_gt (g.toVal : R) v₂ with hg_le | hg_gt
     · -- g.toVal ≤ v₂: g is representable in (lo, hi)
@@ -982,7 +983,7 @@ private theorem roundNearest_no_crossing {R : Type*} [Field R] [LinearOrder R]
       have hs_t : succ_fp.s = true := by revert hs; cases succ_fp.s <;> simp
       have : (succ_fp.toVal : R) ≤ 0 := by
         unfold FiniteFp.toVal FiniteFp.sign'; rw [FloatFormat.radix_val_eq_two, hs_t]; simp
-        exact mul_nonneg (by positivity) (zpow_pos (by norm_num : (0:R) < 2) _).le
+        exact mul_nonneg (by positivity) (by positivity)
       linarith
     have hsucc_m : 0 < succ_fp.m := by
       by_contra h; push_neg at h; have : succ_fp.m = 0 := by omega
@@ -1154,7 +1155,7 @@ private theorem odd_interval_pos_and_noRep {R : Type*} [Field R] [LinearOrder R]
       noRepresentableIn (oddIntervalLo (R := R) n e_base) (oddIntervalHi (R := R) n e_base) := by
   have hlo_pos : 0 < oddIntervalLo (R := R) n e_base := by
     unfold oddIntervalLo
-    have hE_pos : (0 : R) < (2 : R) ^ e_base := zpow_pos (by norm_num : (0 : R) < 2) _
+    have hE_pos : (0 : R) < (2 : R) ^ e_base := by positivity
     have hn_ge : (1 : ℤ) ≤ (n : ℤ) - 1 := by
       have : 0 < 2 ^ (FloatFormat.prec.toNat + 3) := Nat.pos_of_ne_zero (by positivity)
       omega

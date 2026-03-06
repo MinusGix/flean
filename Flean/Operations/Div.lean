@@ -240,7 +240,7 @@ theorem fpDivFinite_correct {R : Type*} [Field R] [LinearOrder R]
     have hbm_pos : (0 : R) < (b.m : R) := Nat.cast_pos.mpr hb_pos
     -- abs_exact = |(a.toVal / b.toVal)| in the interval (2q·E, 2(q+1)·E)
     set E := (2 : R) ^ e_base with hE_def
-    have hE_pos : (0 : R) < E := zpow_pos (by norm_num : (0:R) < 2) _
+    have hE_pos : (0 : R) < E := by positivity
     set abs_exact := ((q : R) + (r : R) / (b.m : R)) * (2 * E) with habs_exact_def
     have he_lo : (2 * (q : R)) * E < abs_exact := by
       rw [habs_exact_def]

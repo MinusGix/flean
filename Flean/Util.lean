@@ -156,7 +156,7 @@ theorem int_log_nat_mul_zpow {R : Type*} [Field R] [LinearOrder R] [IsStrictOrde
     Int.log 2 ((mag : R) * (2 : R) ^ e_base) = (Nat.log2 mag : ℤ) + e_base := by
   have hmag_pos : (0 : R) < (mag : R) := Nat.cast_pos.mpr (Nat.pos_of_ne_zero hmag)
   have hx_pos : (0 : R) < (mag : R) * (2 : R) ^ e_base :=
-    mul_pos hmag_pos (zpow_pos (by norm_num : (0:R) < 2) _)
+    mul_pos hmag_pos (by positivity)
   -- Lower bound: 2^(Nat.log2 mag + e_base) ≤ mag * 2^e_base
   have hle : (2 : R) ^ ((Nat.log2 mag : ℤ) + e_base) ≤ (mag : R) * (2 : R) ^ e_base := by
     rw [← two_zpow_mul, zpow_natCast]
@@ -171,7 +171,7 @@ theorem int_log_nat_mul_zpow {R : Type*} [Field R] [LinearOrder R] [IsStrictOrde
       exact_mod_cast @Nat.lt_log2_self mag
     calc (mag : R) * (2 : R) ^ e_base
         < (2 : R) ^ ((Nat.log2 mag + 1 : ℕ) : ℤ) * (2 : R) ^ e_base :=
-          mul_lt_mul_of_pos_right hmag_lt_bits (zpow_pos (by norm_num) _)
+          mul_lt_mul_of_pos_right hmag_lt_bits (by positivity)
       _ = (2 : R) ^ ((Nat.log2 mag : ℤ) + e_base + 1) := by
           rw [two_zpow_mul]; congr 1; push_cast; ring
   -- Conclude from characterization of Int.log

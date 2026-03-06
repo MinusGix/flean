@@ -398,7 +398,7 @@ theorem roundNearestTiesToEven_abs_error_le_ulp_half (x : R) (hx : isNormalRange
             _ = x / (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (FloatFormat.prec - 1) := by
               simp [he_eq]
         have hstep_pos : (0 : R) < (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) :=
-          zpow_pos (by norm_num) _
+          by positivity
         have hlff_eq : (FiniteFp.largestFiniteFloat.toVal : R) =
             ((2 : R) ^ FloatFormat.prec - 1) * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
           rw [FiniteFp.largestFiniteFloat_toVal, sub_mul]
@@ -563,7 +563,7 @@ theorem roundNearestTiesAwayFromZero_abs_error_le_ulp_half (x : R) (hx : isNorma
             _ = x / (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (FloatFormat.prec - 1) := by
               simp [he_eq]
         have hstep_pos : (0 : R) < (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) :=
-          zpow_pos (by norm_num) _
+          by positivity
         have hlff_eq : (FiniteFp.largestFiniteFloat.toVal : R) =
             ((2 : R) ^ FloatFormat.prec - 1) * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
           rw [FiniteFp.largestFiniteFloat_toVal, sub_mul]

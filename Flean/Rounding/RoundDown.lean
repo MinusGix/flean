@@ -105,15 +105,14 @@ theorem roundDown_gt_lff [FloatFormat] (x : R) (hn : 0 < x)
       calc (2 : R) ^ FloatFormat.max_exp
           = (2 : R) ^ FloatFormat.max_exp * 1 := by ring
         _ ≤ (2 : R) ^ FloatFormat.max_exp * ((2 : R) - (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1)) := by
-            apply mul_le_mul_of_nonneg_left _ (le_of_lt (zpow_pos (by norm_num) _))
-            have h1 : (0 : R) < (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) := zpow_pos (by norm_num) _
+            apply mul_le_mul_of_nonneg_left _ (le_of_lt (by positivity))
+            have h1 : (0 : R) < (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) := by positivity
             have h2 : (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) ≤ 1 := by
               calc (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) ≤ (2 : R) ^ (0 : ℤ) :=
-                    two_zpow_mono (by linarith [FloatFormat.valid_prec])
+                    by linearize
                 _ = 1 := zpow_zero _
             linarith
-    have hnr : isNormalRange x := ⟨le_trans (le_trans (two_zpow_mono
-      (by linarith [FloatFormat.exp_order])) hlff_ge) (le_of_lt hgt), hge⟩
+    have hnr : isNormalRange x := ⟨le_trans (le_trans (by linearize) hlff_ge) (le_of_lt hgt), hge⟩
     unfold roundDown findPredecessor
     simp [ne_of_gt hn, hn]
     unfold findPredecessorPos
@@ -131,7 +130,7 @@ theorem roundDown_gt_lff [FloatFormat] (x : R) (hn : 0 < x)
     -- And x / 2^(max_exp - prec + 1) < 2^prec (from x < 2^(max_exp+1))
     -- Therefore floor(x / ulp) = 2^prec - 1
     have hstep_pos : (0 : R) < (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) :=
-      zpow_pos (by norm_num) _
+      by positivity
     have hlff_eq : (FiniteFp.largestFiniteFloat.toVal : R) =
         ((2 : R) ^ FloatFormat.prec - 1) * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
       -- Both sides equal 2^(max_exp+1) - 2^(max_exp - prec + 1)
@@ -250,7 +249,7 @@ private lemma isValid_roundDownNatMulZpowTarget [FloatFormat]
         exact_mod_cast Nat.log2_self_le hmag
       have hq_ge_prec : (2 : R) ^ (FloatFormat.prec - 1) ≤
           (mag : R) * (2 : R) ^ e_base / (2 : R) ^ e_ulp := by
-        rw [le_div_iff₀ (zpow_pos (by norm_num) _)]
+        rw [le_div_iff₀ (by positivity)]
         calc (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ e_ulp
             = (2 : R) ^ ((FloatFormat.prec - 1) + e_ulp) := by rw [two_zpow_mul]
           _ = (2 : R) ^ ((Nat.log2 mag : ℤ) + e_base) := by

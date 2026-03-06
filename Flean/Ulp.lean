@@ -8,6 +8,7 @@ import Mathlib.Analysis.SpecialFunctions.Log.Base
 import Flean.Basic
 import Flean.BitVecUtil
 import Flean.RelativeError
+import Flean.Linearize.Linearize
 
 namespace Fp
 
@@ -28,7 +29,7 @@ theorem ulp_har_zero [FloatFormat] : ulp_har (0 : FiniteFp) = 0 := by
 
 theorem ulp_har_pos [FloatFormat] (f : FiniteFp) (hm : 0 < f.m) : 0 < ulp_har f := by
   unfold ulp_har; simp [show f.m ≠ 0 from by omega]
-  exact zpow_pos (by norm_num : (0 : ℚ) < 2) _
+  positivity
 
 theorem ulp_har_ne_zero [FloatFormat] (f : FiniteFp) (hm : 0 < f.m) : ulp_har f ≠ 0 :=
   ne_of_gt (ulp_har_pos f hm)
@@ -238,7 +239,7 @@ theorem relativeError_ulp_upper_bound [FloatFormat] (x : R) (y : FiniteFp) (α :
     delta relativeError
     delta ulp at hdiff
     norm_num at hdiff
-    have xabspos : 0 < |x| := lt_of_le_of_lt' xge (two_zpow_pos' _)
+    have xabspos : 0 < |x| := lt_of_le_of_lt' xge (by positivity)
     have xnz : x ≠ 0 := by simp_all only [abs_pos, ne_eq, not_false_eq_true]
     have xge' : FloatFormat.min_exp ≤ Int.log 2 |x| := by
       apply (Int.zpow_le_iff_le_log _ _).mp
@@ -258,7 +259,7 @@ theorem relativeError_ulp_upper_bound [FloatFormat] (x : R) (y : FiniteFp) (α :
       rw [zero_mul]
       rw [← hdiff]
       apply abs_nonneg
-      exact two_zpow_pos' _
+      exact by positivity
       exact (Ne.symm hαz)
 
     rw [← mul_div, max_eq_left xge']
@@ -309,7 +310,7 @@ theorem abs_error_relativeError_ulp_upper_bound [FloatFormat] (x : R) (y : Finit
   delta relativeError ulp
   -- norm_num
   -- TODO: Do we have to assume that x is in normal range?
-  have xabspos : 0 < |x| := lt_of_le_of_lt' xge (two_zpow_pos' _)
+  have xabspos : 0 < |x| := lt_of_le_of_lt' xge (by positivity)
   have xnz : x ≠ 0 := by simp_all only [abs_pos, ne_eq, not_false_eq_true]
   have xge' : FloatFormat.min_exp ≤ Int.log 2 |x| := by
     apply (Int.zpow_le_iff_le_log _ _).mp
@@ -339,7 +340,7 @@ private theorem int_log_toVal_decompose [FloatFormat] (f : FiniteFp) (hs : f.s =
   have hfpos := FiniteFp.toVal_pos f hs hm (R := R)
   rw [abs_of_pos hfpos, FiniteFp.toVal_pos_eq f hs]
   have hval_pos : (0 : R) < (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) :=
-    mul_pos (by exact_mod_cast hm) (two_zpow_pos' _)
+    mul_pos (by exact_mod_cast hm) (by positivity)
   apply le_antisymm
   · -- Upper: f.m < 2^(Nat.log+1), so f.m * 2^e < 2^(Nat.log+1+e), hence log < Nat.log+1+e
     have h_lt : (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) <
@@ -348,7 +349,7 @@ private theorem int_log_toVal_decompose [FloatFormat] (f : FiniteFp) (hs : f.s =
         rw [show (↑(Nat.log 2 f.m : ℕ) : ℤ) + 1 + (f.e - FloatFormat.prec + 1) =
             ↑(Nat.log 2 f.m + 1 : ℕ) + (f.e - FloatFormat.prec + 1) from by push_cast; ring,
             ← two_zpow_mul]
-      apply mul_lt_mul_of_pos_right _ (two_zpow_pos' _)
+      apply mul_lt_mul_of_pos_right _ (by positivity)
       rw [zpow_natCast]
       exact_mod_cast (Nat.lt_pow_succ_log_self (by norm_num : 1 < (2:ℕ)) f.m)
     have : Int.log 2 ((f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1)) <
@@ -362,7 +363,7 @@ private theorem int_log_toVal_decompose [FloatFormat] (f : FiniteFp) (hs : f.s =
       rw [← two_zpow_mul]
       exact mul_le_mul_of_nonneg_right
         (by rw [zpow_natCast]; exact_mod_cast Nat.pow_log_le_self 2 (by omega))
-        (le_of_lt (two_zpow_pos' _))
+        (le_of_lt (by positivity))
     have : ↑(Nat.log 2 f.m) + (f.e - FloatFormat.prec + 1) ≤
         Int.log 2 ((f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1)) := by
       apply (Int.zpow_le_iff_le_log (show 1 < (2:ℕ) from by norm_num) hval_pos).mp

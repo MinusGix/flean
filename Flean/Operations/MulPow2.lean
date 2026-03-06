@@ -71,7 +71,7 @@ theorem fpMulFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
     have := (FiniteFp.toVal_significand_zero_iff (R := R)).mpr h
     omega
   have hp_toVal_pos : (0 : R) < (pow2Float k hk_lo hk_hi).toVal := by
-    rw [pow2Float_toVal]; exact two_zpow_pos' k
+    rw [pow2Float_toVal]; positivity
   have hprod_ne : (f.toVal : R) * (pow2Float k hk_lo hk_hi).toVal ≠ 0 :=
     mul_ne_zero hf_toVal_ne (ne_of_gt hp_toVal_pos)
   have hmul_corr : f * pow2Float k hk_lo hk_hi =
@@ -95,7 +95,7 @@ theorem fpMulFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
     have hnf_pos : (0 : R) < (-f).toVal :=
       FiniteFp.toVal_pos (-f) (by simp [hfs_true]) (by simp; exact hf_nz)
     have hg_pos : (0 : R) < g.toVal := by
-      rw [hgv]; exact mul_pos hnf_pos (two_zpow_pos' k)
+      rw [hgv]; exact mul_pos hnf_pos (by positivity)
     have hgm : 0 < g.m := ((FiniteFp.toVal_pos_iff (R := R)).mpr hg_pos).2
     have hgv_neg : g.toVal (R := R) = -(f.toVal * (2 : R) ^ k) := by
       rw [hgv, FiniteFp.toVal_neg_eq_neg]; ring

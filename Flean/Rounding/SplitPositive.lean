@@ -2,6 +2,7 @@ import Flean.Rounding.Rounding
 import Flean.Rounding.ModeClass
 import Flean.Rounding.PolicyInstances
 import Flean.Rounding.GridInstance
+import Flean.Linearize.Linearize
 import Flean.ToVal
 import Flean.Operations.AddErrorRepresentable
 import Flean.Operations.Sub
@@ -484,7 +485,7 @@ theorem split_b_sub_bv_grid
       have hbv_lt := FiniteFp.toVal_lt_zpow_succ (R := R) bv hbv_s
       -- bv < 2^(bv.e+1) ≤ 2^(b.e-1) (since bv.e+1 ≤ b.e-1)
       have h2 : (2 : R) ^ (bv.e + 1) ≤ (2 : R) ^ (b.e - 1) :=
-        two_zpow_mono (R := R) (by omega)
+        by linearize
       -- So bv < 2^(b.e-1), hence 2*bv < 2^b.e
       have hbv_small : 2 * bv.toVal (R := R) < (2 : R) ^ b.e := by
         calc 2 * bv.toVal < 2 * (2 : R) ^ (bv.e + 1) := by linarith

@@ -32,7 +32,7 @@ theorem twoSum_exact (a b : FiniteFp)
         rw [← hexact]; exact hsum_ne
       rcases mul_eq_zero.mp h0 with h | h
       · exact_mod_cast h
-      · exact absurd h (ne_of_gt (zpow_pos (by norm_num) _))
+      · exact absurd h (ne_of_gt (by positivity))
     have hcancel := fpAddFinite_exact_cancel_sign a b hisum_zero
     simp only [add_finite_eq_fpAddFinite] at hs
     rw [hcancel] at hs

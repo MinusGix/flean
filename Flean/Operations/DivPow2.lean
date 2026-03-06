@@ -70,7 +70,7 @@ theorem fpDivFinite_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOr
     have hnf_pos : (0 : R) < (-f).toVal :=
       FiniteFp.toVal_pos (-f) (by simp [hfs_true]) (by simp; exact hf_nz)
     have hg_pos : (0 : R) < g.toVal := by
-      rw [hgv]; exact mul_pos hnf_pos (two_zpow_pos' (-k))
+      rw [hgv]; exact mul_pos hnf_pos (by positivity)
     have hgm : 0 < g.m := ((FiniteFp.toVal_pos_iff (R := R)).mpr hg_pos).2
     have hgv_neg : g.toVal (R := R) = -(f.toVal / (2 : R) ^ k) := by
       rw [hgv, FiniteFp.toVal_neg_eq_neg, neg_mul, ← hdiv_eq]

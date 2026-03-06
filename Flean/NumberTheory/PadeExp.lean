@@ -1,5 +1,6 @@
 import Flean.NumberTheory.PadeExpDefs
 import Flean.Util
+import Flean.Linearize.Linearize
 
 /-! # Padé approximation to `exp(x)` — effective irrationality measure
 
@@ -923,7 +924,7 @@ lemma padeConvergenceN₀_le (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0) (s 
       _ ≤ (2 : ℝ) ^ (ab + 1) * (2 : ℝ) ^ (4 * ab) * (2 * (2 : ℝ) ^ ab) := by
           apply mul_le_mul
           · apply mul_le_mul
-            · exact pow_le_pow_right₀ (by norm_num : (1 : ℝ) ≤ 2) (by omega)
+            · exact by linearize
             · exact hexp2
             · exact (Real.exp_pos _).le
             · exact pow_nonneg (by norm_num) _

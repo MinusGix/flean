@@ -1,5 +1,6 @@
 import Flean.NumberTheory.ExpEffectiveBound
 import Flean.NumberTheory.AlternatingChooseSum
+import Flean.Linearize.Linearize
 import Mathlib.Analysis.SpecialFunctions.Exponential
 import Mathlib.Analysis.Complex.ExponentialBounds
 import Mathlib.Analysis.Normed.Ring.InfiniteSum
@@ -648,7 +649,7 @@ theorem padeP_abs_le (N : ℕ) (x : ℝ) :
           rw [h4eq]
           calc (Nat.choose (2 * N - k) N : ℝ) ≤ (2 : ℝ) ^ (2 * N - k) := by
                 exact_mod_cast Nat.choose_le_two_pow (2 * N - k) N
-            _ ≤ (2 : ℝ) ^ (2 * N) := pow_le_pow_right₀ (by norm_num) (by omega)
+            _ ≤ (2 : ℝ) ^ (2 * N) := by linearize
         -- Goal: C(2N-k,N) * |x|^k / k! ≤ 4^N * (|x|^k / k!)
         rw [mul_div_assoc]
         exact mul_le_mul_of_nonneg_right hcoeff

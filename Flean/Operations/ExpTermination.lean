@@ -541,7 +541,7 @@ theorem expBounds_width_bound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
       _ = B := by
           simp only [B, N, N_ln2]; push_cast; ring
   -- Now: (upper - lower) = (ur - lr) * 2^k ≤ B * 2^k ≤ B * 2^|k|
-  have h2k_pos : (0:ℝ) < (2:ℝ) ^ k := zpow_pos (by norm_num) k
+  have h2k_pos : (0:ℝ) < (2:ℝ) ^ k := by positivity
   have hur_lr_nn : 0 ≤ (upper_r : ℝ) - (lower_r : ℝ) := by
     have h1 : 0 ≤ ((upper_r : ℝ) - (lower_r : ℝ)) * (2:ℝ) ^ k := by
       have := hwidth_nn; rw [h_factor] at this; exact this

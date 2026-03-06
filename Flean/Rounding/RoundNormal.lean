@@ -12,6 +12,7 @@ import Flean.Ulp
 import Flean.Ufp
 import Flean.Gsplit.Gsplit
 import Flean.Util
+import Flean.Linearize.Linearize
 import Flean.Rounding.Defs
 
 section Rounding
@@ -42,7 +43,7 @@ theorem scaled_le_of_le {x y : R} (e : ℤ) (h : x ≤ y) :
     y / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1) := by
   apply mul_le_mul_of_nonneg_right
   · apply div_le_div_of_nonneg_right h
-    exact le_of_lt (zpow_pos (by norm_num : (0 : R) < 2) _)
+    exact le_of_lt (by positivity)
   · have hp := FloatFormat.prec_sub_one_pos
     exact zpow_nonneg (by norm_num : (0 : R) ≤ 2) _
 
@@ -107,7 +108,7 @@ theorem floor_isNormal_of_bounds (x : R) (hx : isNormalRange x) :
         = x / 2 ^ e * ((2 : R)^FloatFormat.prec / 2) := by rw [hpow_eq]
       _ < 2 * ((2 : R)^FloatFormat.prec / 2) := by
           apply mul_lt_mul_of_pos_right hb.right
-          apply div_pos (zpow_pos (by norm_num) _) (by norm_num)
+          apply div_pos (by positivity) (by norm_num)
       _ = (2 : R)^FloatFormat.prec := by ring
   have hm_ub_int : m < (2 : ℤ)^FloatFormat.prec.toNat := by
     have hm_ub_int' : ⌊x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1)⌋ < (2 : ℤ)^FloatFormat.prec.toNat := by
@@ -268,9 +269,7 @@ theorem roundNormalDown_ge_zpow_min_exp (y : R) (h : isNormalRange y) :
   -- Use transitivity: 2^min_exp ≤ 2^(findExponentDown y) ≤ toVal
   have hexp_ge := findExponentDown_min y
   calc (2 : R) ^ FloatFormat.min_exp
-      ≤ (2 : R) ^ findExponentDown y := by
-          apply two_zpow_mono
-          exact hexp_ge
+      ≤ (2 : R) ^ findExponentDown y := by linearize
     _ ≤ (roundNormalDown y h).toVal := roundNormalDown_ge_zpow_exp y h
 
 /-- roundNormalDown is monotone on toVal -/
@@ -315,9 +314,7 @@ theorem roundNormalDown_toVal_mono {x y : R} (hx : isNormalRange x) (hy : isNorm
         ≤ x := roundNormalDown_le x hx
       _ < (2 : R) ^ (Int.log 2 x + 1) := Int.lt_zpow_succ_log_self (by norm_num : 1 < 2) x
       _ = (2 : R) ^ (findExponentDown x + 1) := by rw [hex]
-      _ ≤ (2 : R) ^ findExponentDown y := by
-          apply two_zpow_mono
-          exact hexp_bound
+      _ ≤ (2 : R) ^ findExponentDown y := by linearize
       _ ≤ (roundNormalDown y hy).toVal := roundNormalDown_ge_zpow_exp y hy
 
 /-- Round a positive normal value up -/
@@ -464,7 +461,7 @@ lemma roundNormalUp_ge (x : R) (hnr : isNormalRange x) (f : FiniteFp)
         -- hbound says x / 2^e < 2, so x < 2^(e+1)
         have h1 : x / (2 : R) ^ e < 2 := hbound.right
         rw [zpow_add_one₀, mul_comm]
-        exact (div_lt_iff₀ (zpow_pos (by norm_num : (0 : R) < 2) e)).mp h1
+        exact (div_lt_iff₀ (by positivity)).mp h1
         norm_num
       unfold binade_base e at this
       rw [zpow_one_add₀, mul_comm]
@@ -656,8 +653,7 @@ theorem roundNormalUp_toVal_mono {x y : R} (hx : isNormalRange x) (hy : isNormal
     have hexp_bound : findExponentDown x + 1 ≤ findExponentDown y := by linarith
     calc gx.toVal (R := R)
         ≤ (2 : R) ^ (findExponentDown x + 1) := roundNormalUp_toVal_le_zpow_succ hx hgx
-      _ ≤ (2 : R) ^ findExponentDown y := by
-          apply two_zpow_mono hexp_bound
+      _ ≤ (2 : R) ^ findExponentDown y := by linearize
       _ ≤ y := by rw [hey]; exact Int.zpow_log_le_self (by norm_num) hypos
       _ ≤ gy.toVal := roundNormalUp_ge y hy gy hgy
 
@@ -699,7 +695,7 @@ theorem roundNormalDown_error_lt_ulp (x : R) (h : isNormalRange x) :
   -- Step 6: The radix cast ↑2 needs to match (2 : R)
   -- The goal has ↑⌊x / 2^(...)⌋ * ↑2^(...) but we need ↑⌊x / 2^(...)⌋ * 2^(...)
   -- After the rewrite, sub_floor_div_mul_lt gives us what we need
-  have h_step := Int.sub_floor_div_mul_lt x (two_zpow_pos' (findExponentDown x - FloatFormat.prec + 1))
+  have h_step := Int.sub_floor_div_mul_lt x (by positivity : (0 : R) < (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1))
   -- h_step : x - ↑⌊x / 2^(e-p+1)⌋ * 2^(e-p+1) < 2^(e-p+1)
   -- The FloatFormat.radix is 2, so ↑2 = (2 : R) which should unify
   push_cast at h_step ⊢
@@ -788,7 +784,7 @@ theorem roundNormalUp_error_lt_ulp (x : R) (h : isNormalRange x) (f : FiniteFp)
       rw [this, div_mul_eq_div_div, div_mul_cancel₀ _ (two_zpow_ne_zero _)]
     rw [hfactor] at hceil
     -- Multiply: x > (2^prec - 1) * 2^(e-prec+1) = 2^(e+1) - 2^(e-prec+1)
-    have hstep_pos : (0 : R) < (2 : R) ^ (e - FloatFormat.prec + 1) := two_zpow_pos' _
+    have hstep_pos : (0 : R) < (2 : R) ^ (e - FloatFormat.prec + 1) := by positivity
     have hx_lb : ((2 : R) ^ (FloatFormat.prec : ℤ) - 1) *
         (2 : R) ^ (e - FloatFormat.prec + 1) < x := by
       rwa [lt_div_iff₀ hstep_pos] at hceil
@@ -814,7 +810,7 @@ theorem roundNormalUp_error_lt_ulp (x : R) (h : isNormalRange x) (f : FiniteFp)
         (2 : R) ^ (e - FloatFormat.prec + 1) - x <
         (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1)
     rw [ceil_scaled_eq_ceil_div_ulp_step]
-    exact ceil_div_mul_sub_lt x (two_zpow_pos' _)
+    exact ceil_div_mul_sub_lt x (by positivity)
 
 /-- The gap between roundNormalUp and roundNormalDown is at most ulp(x).
 This is the key lemma for half-machine-epsilon bounds on roundNearest. -/
@@ -876,7 +872,7 @@ theorem roundNormalUp_sub_roundNormalDown_le_ulp (x : R) (h : isNormalRange x) (
     -- Now: 2^(e+1) - floor * 2^(e-prec+1) ≤ 2^(e-prec+1)
     -- iff floor * 2^(e-prec+1) ≥ 2^(e+1) - 2^(e-prec+1)
     -- iff floor ≥ 2^prec - 1 (dividing by 2^(e-prec+1))
-    have hstep_pos : (0 : R) < (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := two_zpow_pos' _
+    have hstep_pos : (0 : R) < (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by positivity
     -- floor * step ≥ (2^prec - 1) * step
     have hmul_lb : ((2 : R) ^ (FloatFormat.prec : ℤ) - 1) *
         (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) ≤
@@ -899,7 +895,7 @@ theorem roundNormalUp_sub_roundNormalDown_le_ulp (x : R) (h : isNormalRange x) (
     -- Goal: ⌈m_scaled⌉ * 2^(e-prec+1) - ⌊m_scaled⌋ * 2^(e-prec+1) ≤ 2^(e-prec+1)
     -- Suffices: ⌈m_scaled⌉ - ⌊m_scaled⌋ ≤ 1 (by Int.ceil_le_floor_add_one)
     have hgap : ⌈m_scaled⌉ - ⌊m_scaled⌋ ≤ 1 := by linarith [Int.ceil_le_floor_add_one m_scaled]
-    have hstep_pos : (0 : R) < (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := two_zpow_pos' _
+    have hstep_pos : (0 : R) < (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by positivity
     have hgap_R : (↑⌈m_scaled⌉ : R) - (↑⌊m_scaled⌋ : R) ≤ 1 := by
       have := (@Int.cast_mono R _ _ _ _) hgap
       push_cast at this ⊢
@@ -1000,7 +996,7 @@ theorem roundNormalUp_sub_roundNormalDown_eq_ulp_of_down_lt
     simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
     rw [Int.cast_natAbs_of_pos mpos]
     push_cast
-    have hstep_pos : (0 : R) < (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := two_zpow_pos' _
+    have hstep_pos : (0 : R) < (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by positivity
     have hdown_lt' :
         (⌊x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌋ : R) *
             (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) < x := by
@@ -1141,7 +1137,7 @@ theorem roundNormalUp_sub_roundNormalDown_eq_ulp_of_lt_up
     simp only [Bool.false_eq_true, ↓reduceIte, one_mul]
     rw [Int.cast_natAbs_of_pos mpos]
     push_cast
-    have hstep_pos : (0 : R) < (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := two_zpow_pos' _
+    have hstep_pos : (0 : R) < (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by positivity
     have hup_gt' :
         x < (↑⌈m_scaled⌉ : R) * (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by
       have hup_gt0 := hup_gt

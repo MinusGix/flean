@@ -1,5 +1,6 @@
 import Flean.Defs
 import Flean.ToVal
+import Flean.Linearize.Linearize
 
 namespace FiniteFp
 
@@ -24,9 +25,8 @@ theorem smallestPosSubnormal_isSubnormal : smallestPosSubnormal.isSubnormal := b
 theorem smallestPosSubnormal_lt_minExp {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] :
   smallestPosSubnormal.toVal < (2 : R) ^ FloatFormat.min_exp := by
   rw [smallestPosSubnormal_toVal]
-  apply zpow_lt_zpow_right₀ (by norm_num : (1 : R) < 2)
   have := FloatFormat.valid_prec
-  omega
+  linearize
 
 theorem smallestPosSubnormal_toVal_pos {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] : (0 : R) < smallestPosSubnormal.toVal := by
   rw [smallestPosSubnormal_toVal]
@@ -43,7 +43,7 @@ theorem smallestPosSubnormal_half_lt_zpow_min_exp {R : Type*} [Field R] [LinearO
   have hstep1 : (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) / 2 < 2 ^ (FloatFormat.min_exp - FloatFormat.prec + 1) := by
     linarith
   have hstep2 : (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) ≤ 2 ^ FloatFormat.min_exp :=
-    two_zpow_mono hexp_le
+    by linearize
   linarith
 
 def smallestPosNormal : FiniteFp := ⟨
@@ -118,7 +118,7 @@ theorem largestFiniteFloat_toVal_pos {R : Type*} [Field R] [LinearOrder R] [IsSt
   have a4 := FloatFormat.exp_order_le
   have a5 := FloatFormat.min_exp_nonpos
   apply mul_pos
-  · apply zpow_pos (by norm_num)
+  · positivity
   · norm_num
     apply lt_trans
     apply zpow_lt_one_of_neg₀ (by norm_num) (by linarith)
@@ -131,14 +131,13 @@ theorem largestFiniteFloat_lt_maxExp_succ {R : Type*} [Field R] [LinearOrder R] 
   -- We need to show: 2^max_exp * (2 - 2^(-prec+1)) < 2^(max_exp + 1) = 2 * 2^max_exp
   -- This simplifies to: 2 - 2^(-prec+1) < 2
   -- Which is equivalent to: 0 < 2^(-prec+1)
-  have h_pos : (0 : R) < (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) := by
-    apply zpow_pos (by norm_num)
+  have h_pos : (0 : R) < (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) := by positivity
   have h_lt : (2 : R) - (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) < 2 := by
     linarith
   calc (2 : R) ^ FloatFormat.max_exp * ((2 : R) - (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1))
     < (2 : R) ^ FloatFormat.max_exp * 2 := by {
       apply mul_lt_mul_of_pos_left h_lt
-      apply zpow_pos (by norm_num) }
+      positivity }
   _ = 2 * (2 : R) ^ FloatFormat.max_exp := by ring
   _ = (2 : R) ^ (FloatFormat.max_exp + 1) := by {
       rw [← zpow_one_add₀ (by norm_num : (2 : R) ≠ 0)]
@@ -151,8 +150,7 @@ theorem zpow_max_exp_le_largestFiniteFloat_toVal {R : Type*}
   rw [largestFiniteFloat_toVal]
   have : (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) ≤ 1 := by
     rw [show (1 : R) = (2 : R) ^ (0 : ℤ) from by norm_num]
-    apply zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2)
-    have := FloatFormat.valid_prec; omega
+    linearize
   nlinarith [zpow_pos (by norm_num : (0 : R) < 2) FloatFormat.max_exp]
 
 -- TODO: prove that the smallest positive normal, smallest positive subnormal, and largest finite float are all truely their namesakes
@@ -201,8 +199,7 @@ theorem finite_pos_le_largest {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
     have h_lt : f.e < FloatFormat.max_exp := lt_of_le_of_ne h_e_bound h_e
     have h_pow_le : ((2 : R) ^ (f.e - (FloatFormat.prec : ℤ) + 1) : R) ≤
                      ((2 : R) ^ (FloatFormat.max_exp - (FloatFormat.prec : ℤ) + 1) : R) := by
-      apply two_zpow_mono
-      omega
+      linearize
     have h_m_le : (f.m : R) ≤ (2 : R) ^ FloatFormat.prec - 1 := by
       have h_nat_le : f.m ≤ 2^FloatFormat.prec.toNat - 1 := Nat.le_sub_one_of_lt h_m_bound
       have h_pow_eq : (2 : R) ^ FloatFormat.prec = (2 : R) ^ FloatFormat.prec.toNat := by

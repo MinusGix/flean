@@ -51,7 +51,7 @@ private theorem stickyAbs_pos {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
     (q : ℕ) (e_base : ℤ) :
     0 < stickyAbs (R := R) q e_base := by
   unfold stickyAbs stickyMag
-  have hE_pos : (0 : R) < (2 : R) ^ e_base := zpow_pos (by norm_num : (0 : R) < 2) _
+  have hE_pos : (0 : R) < (2 : R) ^ e_base := by positivity
   have hcoeff_pos : (0 : R) < ((2 * q + 1 : ℕ) : R) := by
     exact_mod_cast (Nat.succ_pos (2 * q))
   exact mul_pos hcoeff_pos hE_pos
@@ -62,7 +62,7 @@ private theorem abs_exact_pos_of_inSticky {R : Type*} [Field R] [LinearOrder R] 
     (h_exact_in : inStickyInterval (R := R) q e_base abs_exact) :
     0 < abs_exact := by
   rcases h_exact_in with ⟨hlo, _⟩
-  have hE_pos : (0 : R) < (2 : R) ^ e_base := zpow_pos (by norm_num : (0 : R) < 2) _
+  have hE_pos : (0 : R) < (2 : R) ^ e_base := by positivity
   have hcoeff_nonneg : (0 : R) ≤ (2 * (q : R)) := by positivity
   have hlo_nonneg : (0 : R) ≤ (2 * (q : R)) * (2 : R) ^ e_base :=
     mul_nonneg hcoeff_nonneg hE_pos.le
@@ -71,7 +71,7 @@ private theorem abs_exact_pos_of_inSticky {R : Type*} [Field R] [LinearOrder R] 
 private theorem sticky_mid_in_odd {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
     (q : ℕ) (e_base : ℤ) :
     inOddInterval (R := R) (2 * q + 1) e_base (stickyAbs (R := R) q e_base) := by
-  have hE_pos : (0 : R) < (2 : R) ^ e_base := zpow_pos (by norm_num : (0 : R) < 2) _
+  have hE_pos : (0 : R) < (2 : R) ^ e_base := by positivity
   have h_mid_sticky : inStickyInterval (R := R) q e_base (stickyAbs (R := R) q e_base) := by
     unfold inStickyInterval stickyAbs stickyMag
     constructor

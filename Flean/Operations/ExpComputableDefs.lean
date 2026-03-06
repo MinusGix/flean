@@ -147,7 +147,7 @@ instance (priority := 500) : OpRefExec expTarget where
 theorem expBounds_lower_pos (x : ℚ) (k : ℤ) (iter : ℕ) :
     0 < (expBounds x k iter).1 := by
   simp only [expBounds]
-  exact mul_pos (expLowerBound_pos _ _) (zpow_pos (by norm_num) _)
+  exact mul_pos (expLowerBound_pos _ _) (by positivity)
 
 /-- When `isExact = true`, we must be in the zero branch. -/
 theorem expComputableRun_exact_is_zero (a : FiniteFp)

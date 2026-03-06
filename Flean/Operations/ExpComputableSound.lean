@@ -81,7 +81,7 @@ theorem expBounds_lower_lt_exp (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
   set r := (x : ℝ) - ↑k * Real.log 2
   -- Key facts
   have hr_lo_le : (r_lo : ℝ) ≤ r := hbracket.1
-  have h2k : (0 : ℝ) < (2 : ℝ) ^ k := zpow_pos (by norm_num) k
+  have h2k : (0 : ℝ) < (2 : ℝ) ^ k := by positivity
   have hr_ne : r ≠ 0 := by
     intro hr_zero
     have hirr := irrational_exp_rat x hx
@@ -230,7 +230,7 @@ theorem expBounds_exp_le_upper (x : ℚ) (k : ℤ) (iter : ℕ)
         push_cast; linarith)
   set r := (x : ℝ) - ↑k * Real.log 2
   have hr_hi_le : r ≤ (r_hi : ℝ) := hbracket.2
-  have h2k : (0 : ℝ) < (2 : ℝ) ^ k := zpow_pos (by norm_num) k
+  have h2k : (0 : ℝ) < (2 : ℝ) ^ k := by positivity
   rw [exp_arg_red (x : ℝ) k]
   show (2 : ℝ) ^ k * Real.exp r ≤ ↑(expUpperBound r_hi N * (2 : ℚ) ^ k)
   push_cast

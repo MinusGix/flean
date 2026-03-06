@@ -1,5 +1,6 @@
 import Flean.Operations.RoundIntSig
 import Flean.Rounding.PolicyInstances
+import Flean.Linearize.Linearize
 
 namespace RoundIntSigPolicySound
 
@@ -327,7 +328,7 @@ private theorem handleOverflow_eq_round_intSigVal
     (hmag_ge : (mag : R) * (2 : R) ^ e_base ≥ (2 : R) ^ (FloatFormat.max_exp + 1)) :
     handleOverflow mode sign = mode.round (intSigVal (R := R) sign mag e_base) := by
   have hmag_pos : (0 : R) < (mag : R) * (2 : R) ^ e_base :=
-    mul_pos (Nat.cast_pos.mpr (Nat.pos_of_ne_zero hmag)) (zpow_pos (by norm_num : (0:R) < 2) _)
+    mul_pos (Nat.cast_pos.mpr (Nat.pos_of_ne_zero hmag)) (by positivity)
   have hmag_gt_largest : (mag : R) * (2 : R) ^ e_base > (FiniteFp.largestFiniteFloat.toVal : R) :=
     lt_of_lt_of_le FiniteFp.largestFiniteFloat_lt_maxExp_succ hmag_ge
   have hthresh_le : FloatFormat.overflowThreshold R ≤
@@ -539,8 +540,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
       have hmag_val_ge : (mag : R) * (2 : R) ^ e_base ≥ (2 : R) ^ (FloatFormat.max_exp + 1) := by
         have hbits_pos : bits_nat ≥ 1 := by omega
         calc (2 : R) ^ (FloatFormat.max_exp + 1)
-            ≤ (2 : R) ^ (e_base + ↑bits_nat - 1) :=
-              two_zpow_mono hexp_bound
+            ≤ (2 : R) ^ (e_base + ↑bits_nat - 1) := by linearize
           _ = (2 : R) ^ ((bits_nat - 1 : ℕ) : ℤ) * (2 : R) ^ e_base := by
               rw [two_zpow_mul]; congr 1
               have : ((bits_nat - 1 : ℕ) : ℤ) = (bits_nat : ℤ) - 1 := by omega
@@ -592,7 +592,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
     have hmag_pos_r : (0 : R) < (mag : R) :=
       Nat.cast_pos.mpr (Nat.pos_of_ne_zero hmag)
     have hval_pos : (0 : R) < (mag : R) * (2 : R) ^ e_base :=
-      mul_pos hmag_pos_r (zpow_pos (by norm_num : (0:R) < 2) _)
+      mul_pos hmag_pos_r (by positivity)
     -- Key: shift.toNat = shift (since shift > 0)
     have hshift_nat_eq : (shift.toNat : ℤ) = shift := Int.toNat_of_nonneg (le_of_lt hshift_pos)
     set shift_nat := shift.toNat
@@ -654,8 +654,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
           omega
         have hmag_ge : (mag : R) * (2 : R) ^ e_base ≥ (2 : R) ^ (FloatFormat.max_exp + 1) := by
           calc (2 : R) ^ (FloatFormat.max_exp + 1)
-              ≤ (2 : R) ^ (e_base + ↑bits_nat - 1) :=
-                two_zpow_mono hexp_bound
+              ≤ (2 : R) ^ (e_base + ↑bits_nat - 1) := by linearize
             _ = (2 : R) ^ ((bits_nat - 1 : ℕ) : ℤ) * (2 : R) ^ e_base := by
                 rw [two_zpow_mul]; congr 1
                 have : bits_nat ≥ 1 := by omega
@@ -918,15 +917,15 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
           have hbits_eq : bits = (bits_nat : ℤ) := by simp [bits_nat, bits]
           calc (mag : R) * (2 : R) ^ e_base
               < (2 : R) ^ (bits_nat : ℕ) * (2 : R) ^ e_base := by
-                apply mul_lt_mul_of_pos_right _ (zpow_pos (by norm_num) _)
+                apply mul_lt_mul_of_pos_right _ (by positivity)
                 rw [← Nat.cast_ofNat, ← Nat.cast_pow]; exact_mod_cast hmag_lt
             _ = (2 : R) ^ ((bits_nat : ℤ) + e_base) := by
                 rw [show (2 : R) ^ (bits_nat : ℕ) = (2 : R) ^ (bits_nat : ℤ) from
                   (zpow_natCast (2 : R) bits_nat).symm, ← two_zpow_mul]
             _ ≤ (2 : R) ^ (FloatFormat.max_exp + 1) := by
-                apply two_zpow_mono
                 have : e_ulp ≥ e_ulp_normal := le_max_left _ _
-                have hp := FloatFormat.prec_pos; omega
+                have hp := FloatFormat.prec_pos
+                linearize
         -- FLOOR BRIDGE: ⌊val / 2^e_ulp⌋ = q (as ℤ)
         -- val / 2^e_ulp = mag / 2^shift_nat, and ⌊(mag:R) / 2^shift_nat⌋ = q
         have hval_div : (mag : R) * (2 : R) ^ e_base / (2 : R) ^ e_ulp =
@@ -1007,7 +1006,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
             ((r : R) - (half : R)) * (2 : R) ^ e_base := by
           rw [hmid_val_def, hval_decomp, ← hhalf_zpow]; ring
         -- val vs midpoint: one-directional helpers
-        have h2pos_e : (0 : R) < (2 : R) ^ e_base := zpow_pos (by norm_num) _
+        have h2pos_e : (0 : R) < (2 : R) ^ e_base := by positivity
         have hr_lt_mid : r < half → (mag : R) * (2:R)^e_base < mid_val := by
           intro h
           have : ((r : R) - (half : R)) * (2 : R) ^ e_base < 0 :=

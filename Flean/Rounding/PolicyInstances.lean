@@ -741,8 +741,8 @@ theorem RModeNearest_abs_error_le_ulp_half {R : Type*}
         simp only [M, p, ← zpow_add₀ (by norm_num : (2 : R) ≠ 0)]
         congr 1; ring
       rw [← hMp]
-      have hp_pos : (0 : R) < p := zpow_pos (by norm_num) _
-      have hM_pos : (0 : R) < M := zpow_pos (by norm_num) _
+      have hp_pos : (0 : R) < p := by positivity
+      have hM_pos : (0 : R) < M := by positivity
       nlinarith
     -- Step 7: Conclude
     rw [hf_lff]

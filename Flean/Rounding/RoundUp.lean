@@ -164,7 +164,7 @@ theorem toVal_normal_bounds (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m
     (2 : R) ^ f.e ≤ f.toVal ∧ f.toVal < (2 : R) ^ (f.e + 1) := by
   have hm_lb := hn.1
   have hm_ub := hn.2
-  have hstep_pos : (0 : R) < (2 : R) ^ (f.e - FloatFormat.prec + 1) := two_zpow_pos' _
+  have hstep_pos : (0 : R) < (2 : R) ^ (f.e - FloatFormat.prec + 1) := by positivity
   have htoVal : f.toVal (R := R) = (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
     unfold FiniteFp.toVal FiniteFp.sign'
     rw [FloatFormat.radix_val_eq_two]
@@ -192,7 +192,7 @@ theorem toVal_normal_bounds (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m
 theorem Int_log_of_normal_toVal (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m) :
     Int.log 2 (f.toVal (R := R)) = f.e := by
   have hbounds := toVal_normal_bounds (R := R) f hs hn
-  have hpos : (0 : R) < f.toVal := lt_of_lt_of_le (two_zpow_pos' f.e) hbounds.1
+  have hpos : (0 : R) < f.toVal := lt_of_lt_of_le (by positivity) hbounds.1
   have hlog_lb : f.e ≤ Int.log 2 (f.toVal (R := R)) :=
     (Int.zpow_le_iff_le_log (by norm_num : 1 < 2) hpos).mp hbounds.1
   have hlog_ub : Int.log 2 (f.toVal (R := R)) < f.e + 1 :=
@@ -203,15 +203,16 @@ theorem Int_log_of_normal_toVal (f : FiniteFp) (hs : f.s = false) (hn : isNormal
 theorem findExponentDown_of_normal_toVal (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m) :
     findExponentDown (f.toVal (R := R)) = f.e := by
   have hbounds := toVal_normal_bounds (R := R) f hs hn
+  have := f.valid_min_exp
+  have := f.valid_max_exp
   have hnr : isNormalRange (f.toVal (R := R)) := by
     constructor
     · calc (2 : R) ^ FloatFormat.min_exp
-          ≤ (2 : R) ^ f.e := two_zpow_mono f.valid_min_exp
+          ≤ (2 : R) ^ f.e := by linearize
         _ ≤ f.toVal := hbounds.1
     · calc f.toVal
           < (2 : R) ^ (f.e + 1) := hbounds.2
-        _ ≤ (2 : R) ^ (FloatFormat.max_exp + 1) :=
-            two_zpow_mono (by linarith [f.valid_max_exp])
+        _ ≤ (2 : R) ^ (FloatFormat.max_exp + 1) := by linearize
   rw [findExponentDown_normal _ hnr, Int_log_of_normal_toVal f hs hn]
 
 omit [FloorRing R] in
@@ -230,14 +231,15 @@ omit [FloorRing R] in
 private theorem toVal_normal_isNormalRange (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m) :
     isNormalRange (f.toVal (R := R)) := by
   have hbounds := toVal_normal_bounds (R := R) f hs hn
+  have := f.valid_min_exp
+  have := f.valid_max_exp
   constructor
   · calc (2 : R) ^ FloatFormat.min_exp
-        ≤ (2 : R) ^ f.e := two_zpow_mono f.valid_min_exp
+        ≤ (2 : R) ^ f.e := by linearize
       _ ≤ f.toVal := hbounds.1
   · calc f.toVal
         < (2 : R) ^ (f.e + 1) := hbounds.2
-      _ ≤ (2 : R) ^ (FloatFormat.max_exp + 1) :=
-          two_zpow_mono (by linarith [f.valid_max_exp])
+      _ ≤ (2 : R) ^ (FloatFormat.max_exp + 1) := by linearize
 
 /-- Rounding a normal positive float down gives back the same float. -/
 theorem roundNormalDown_of_normal_toVal (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m)
@@ -271,7 +273,7 @@ theorem toVal_subnormal_isSubnormalRange (f : FiniteFp) (hs : f.s = false)
   constructor
   · apply mul_pos
     · exact_mod_cast hm
-    · exact two_zpow_pos' _
+    · exact by positivity
   · rw [he]
     have hm_lt : (f.m : R) < (2 : R) ^ (FloatFormat.prec - 1) := by
       have hm_lt_nat : f.m < 2 ^ (FloatFormat.prec - 1).toNat := by omega
@@ -279,7 +281,7 @@ theorem toVal_subnormal_isSubnormalRange (f : FiniteFp) (hs : f.s = false)
         _ = (2 : R) ^ (FloatFormat.prec - 1) := FloatFormat.pow_prec_sub_one_nat_int
     calc (f.m : R) * (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1)
         < (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) :=
-          mul_lt_mul_of_pos_right hm_lt (two_zpow_pos' _)
+          mul_lt_mul_of_pos_right hm_lt (by positivity)
       _ = (2 : R) ^ FloatFormat.min_exp := by
           rw [two_zpow_mul]; congr 1; ring
 
@@ -504,7 +506,7 @@ private lemma isValid_roundUpNatMulZpowTarget [FloatFormat]
         push_cast at h_normal ⊢; omega
       have hq_ge_prec : (2 : R) ^ (FloatFormat.prec - 1) ≤
           (mag : R) * (2 : R) ^ e_base / (2 : R) ^ e_ulp := by
-        rw [le_div_iff₀ (zpow_pos (by norm_num) _)]
+        rw [le_div_iff₀ (by positivity)]
         calc (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ e_ulp
             = (2 : R) ^ ((FloatFormat.prec - 1) + e_ulp) := by rw [two_zpow_mul]
           _ = (2 : R) ^ ((Nat.log2 mag : ℤ) + e_base) := by congr 1; rw [he_eq]; ring
@@ -593,7 +595,7 @@ theorem roundUp_nat_mul_zpow [FloatFormat]
     have hval_div_le : (mag : R) * (2 : R) ^ e_base /
         (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) ≤
         (2 : R) ^ (FloatFormat.prec - 1) := by
-      rw [div_le_iff₀ (zpow_pos (by norm_num : (0:R) < 2) _)]
+      rw [div_le_iff₀ (by positivity)]
       have h2 : (2 : R) ^ (FloatFormat.prec - 1) *
           (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) =
           (2 : R) ^ FloatFormat.min_exp := by
@@ -729,7 +731,7 @@ theorem roundUp_nat_mul_zpow_carry [FloatFormat]
       have := Int.lt_ceil.mp (show (q : ℤ) < ⌈(mag : R) * (2 : R) ^ e_base / (2 : R) ^ e_ulp⌉ from
         by rw [hceil]; omega)
       exact_mod_cast this
-    rwa [lt_div_iff₀ (zpow_pos (by norm_num : (0:R) < 2) _)] at h_ceil_gt
+    rwa [lt_div_iff₀ (by positivity)] at h_ceil_gt
   have hval_ge_min : (2 : R) ^ FloatFormat.min_exp ≤ (mag : R) * (2 : R) ^ e_base := by
     have hq_ge_half : (2 : R) ^ (FloatFormat.prec - 1) ≤ (q : R) := by
       have hp := FloatFormat.valid_prec
@@ -747,10 +749,10 @@ theorem roundUp_nat_mul_zpow_carry [FloatFormat]
         = (2 : R) ^ ((FloatFormat.prec - 1) + (FloatFormat.min_exp - FloatFormat.prec + 1)) := by
           congr 1; ring
       _ ≤ (2 : R) ^ ((FloatFormat.prec - 1) + e_ulp) := by
-          apply two_zpow_mono; omega
+          linearize
       _ = (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ e_ulp := by rw [two_zpow_mul]
       _ ≤ (q : R) * (2 : R) ^ e_ulp := by
-          apply mul_le_mul_of_nonneg_right hq_ge_half (le_of_lt (zpow_pos (by norm_num) _))
+          apply mul_le_mul_of_nonneg_right hq_ge_half (le_of_lt (by positivity))
       _ ≤ (mag : R) * (2 : R) ^ e_base := le_of_lt hval_gt_q_ulp
   unfold roundUp findSuccessor
   simp [ne_of_gt hval_pos, hval_pos]

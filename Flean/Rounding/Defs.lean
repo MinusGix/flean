@@ -157,7 +157,7 @@ theorem findExponentDown_div_binade_subnormal {x : R} (h : isSubnormalRange x) :
   rw [findExponentDown_subnormal x h]
   split_ands
   · apply div_pos h.left
-    apply zpow_pos (by norm_num)
+    positivity
   · apply (div_lt_one ?_).mpr
     · exact h.right
     · linearize
