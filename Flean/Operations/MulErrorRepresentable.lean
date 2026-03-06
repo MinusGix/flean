@@ -1,4 +1,5 @@
 import Flean.Operations.FMA
+import Flean.Linearize.Linearize
 
 /-! # Multiplication Error Representability
 
@@ -149,8 +150,8 @@ theorem mul_round_exponent_ge (a b : FiniteFp)
   -- fmaProdE + 1 ≤ max_exp
   have hfmaProdE_le : fmaProdE a b + 1 ≤ FloatFormat.max_exp := by
     by_contra h; push_neg at h
-    linarith [hexact_upper, zpow_le_zpow_right₀ (show (1 : R) ≤ 2 by norm_num)
-      (show FloatFormat.max_exp + 1 ≤ fmaProdE a b + 1 from by omega)]
+    have : (2 : R) ^ (FloatFormat.max_exp + 1) ≤ (2 : R) ^ (fmaProdE a b + 1) := by linearize
+    linarith [hexact_upper]
   -- Construct f₀ with f₀.toVal = 2^(fmaProdE+1)
   have hprec_ge := FloatFormat.valid_prec
   set m₀ := 2 ^ (precNat - 1)
@@ -260,7 +261,7 @@ theorem mul_error_representable (a b : FiniteFp)
       have hprodE_ge : fmaProdE a b + 1 ≥ FloatFormat.min_exp + 1 := by omega
       calc (2 : R) ^ (FloatFormat.min_exp + 1)
           ≤ (2 : R) ^ (fmaProdE a b + 1) :=
-            zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2) hprodE_ge
+            by linearize
         _ = (2 : R) ^ precNat * (2 : R) ^ e_prod := by
             rw [← zpow_natCast (2 : R) precNat, two_zpow_mul (R := R)]
             congr 1; rw [he_prod_eq]
@@ -293,8 +294,7 @@ theorem mul_error_representable (a b : FiniteFp)
     have hexact_upper : abs_exact < (2 : R) ^ (FloatFormat.max_exp + 1) :=
       lt_trans hexact_lt_ot FloatFormat.overflowThreshold_lt_zpow_max_exp_succ
     have hNR : isNormalRange abs_exact :=
-      ⟨le_trans (zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2) (by omega)) hexact_lower,
-       hexact_upper⟩
+      ⟨le_trans (by linearize) hexact_lower, hexact_upper⟩
     -- |exact_val| < 2^(prec + fmaProdE + 1)
     have hab_bound : a.m * b.m < 2 ^ (2 * precNat) := by
       have ha_lt := a.valid.2.2.1; have hb_lt := b.valid.2.2.1

@@ -1,5 +1,6 @@
 import Flean.Operations.Sterbenz
 import Flean.Operations.MulPow2
+import Flean.Linearize.Linearize
 
 /-! # Addition Error Representability
 
@@ -407,7 +408,7 @@ private theorem add_error_representable_mixed (a b : FiniteFp)
   -- Step C: isNormalRange(a+b)
   have h_normal_range : (2:R) ^ FloatFormat.min_exp ≤ (a.toVal : R) + b.toVal := by
     calc (2:R) ^ FloatFormat.min_exp
-      ≤ (2:R) ^ (min a.e b.e : ℤ) := zpow_le_zpow_right₀ (by norm_num) he_valid
+      ≤ (2:R) ^ (min a.e b.e : ℤ) := by linearize
       _ ≤ _ := h_binade
   have hNR : isNormalRange ((a.toVal : R) + b.toVal) := by
     constructor
@@ -474,7 +475,7 @@ private theorem add_error_representable_mixed (a b : FiniteFp)
     by_contra h; push_neg at h
     have h1 := FiniteFp.toVal_lt_zpow_succ (R := R) s_fp hs_s
     have h2 : (2:R) ^ (s_fp.e + 1) ≤ (2:R) ^ (min a.e b.e : ℤ) :=
-      zpow_le_zpow_right₀ (by norm_num : (1:R) ≤ 2) (by omega : s_fp.e + 1 ≤ min a.e b.e)
+      by linearize
     linarith [hg_toVal]
   -- Factor s_fp.toVal as integer * 2^e₀
   set k := (s_fp.e - e_min).toNat with k_def

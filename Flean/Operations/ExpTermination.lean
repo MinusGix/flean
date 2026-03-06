@@ -3,6 +3,7 @@ import Flean.Operations.ExpTaylor
 import Flean.Operations.StickyTermination
 import Flean.NumberTheory.PadeExp
 import Flean.NumberTheory.ExpEffectiveBound
+import Flean.Linearize.Linearize
 
 /-! # Computable exp: width bounds and termination
 

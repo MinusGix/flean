@@ -2,6 +2,7 @@ import Flean.Operations.Exp
 import Flean.Operations.ExpTaylor
 import Flean.Operations.StickyTermination
 import Flean.NumberTheory.ExpEffectiveBound
+import Flean.Linearize.Linearize
 import Mathlib.Analysis.SpecialFunctions.Log.Deriv
 
 /-! # Computable exp: definitions and bracket correctness
@@ -271,8 +272,7 @@ theorem expArgRedK_bound (x : ℚ) :
   have hmid_lt_1 : (mid : ℝ) < 1 := by
     -- lo2 ≤ log2 < 7/8 and N ≥ 10 so 1/(2·2^N) ≤ 1/2048; sum < 1.
     rw [hmid_cast]
-    have h2_10_le : (2 : ℝ) ^ (10 : ℕ) ≤ (2 : ℝ) ^ N :=
-      pow_le_pow_right₀ (by norm_num : (1:ℝ) ≤ 2) (by omega : 10 ≤ N)
+    have h2_10_le : (2 : ℝ) ^ (10 : ℕ) ≤ (2 : ℝ) ^ N := by linearize
     have hfrac_small : 1 / (2 * (2:ℝ) ^ N) ≤ 1 / (2 * (2:ℝ) ^ (10:ℕ)) := by
       exact div_le_div_of_nonneg_left (by norm_num) (by positivity)
         (mul_le_mul_of_nonneg_left h2_10_le (by norm_num))

@@ -1,4 +1,5 @@
 import Flean.Operations.StickyExtract
+import Flean.Linearize.Linearize
 
 /-! # Shared termination infrastructure for sticky cell extraction
 
@@ -238,9 +239,9 @@ theorem uniform_gap_from_pointwise (T L_bound : ℕ)
     refine ⟨min δ₁ δ₂, lt_min hδ₁ hδ₂, max L₁ L₂, max_le hL₁ hL₂, ?_, fun s hs m => ?_⟩
     · rcases le_total δ₁ δ₂ with h | h
       · rw [min_eq_left h]
-        exact le_trans hL₁d (pow_le_pow_right₀ (by norm_num) (le_max_left _ _))
+        exact le_trans hL₁d (by linearize)
       · rw [min_eq_right h]
-        exact le_trans hL₂d (pow_le_pow_right₀ (by norm_num) (le_max_right _ _))
+        exact le_trans hL₂d (by linearize)
     · rcases Nat.eq_or_lt_of_le hs with rfl | hlt
       · exact le_trans (min_le_right _ _) (hδ₂g m)
       · exact le_trans (min_le_left _ _) (hδ₁g s (by omega) m)

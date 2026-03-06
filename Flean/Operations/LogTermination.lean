@@ -2,6 +2,7 @@ import Flean.Operations.LogComputableSound
 import Flean.Operations.StickyTermination
 import Flean.Operations.ExpTermination
 import Flean.NumberTheory.PadeExp
+import Flean.Linearize.Linearize
 
 /-! # Computable log: width bounds and termination
 
