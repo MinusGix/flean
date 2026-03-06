@@ -29,30 +29,38 @@ Tracked iteratively. Priorities ordered top-to-bottom within each tier.
 - [ ] **Encoding round-trip** — prove finite floats fit in bit repr, bit-level equality equivalence
 - [ ] **Common constants verification** — prove binary32/64 constants match claimed values
 
+## LogComputable — Done
+- [x] **Full pipeline sorry-free**: LogTaylor, LogComputableDefs, LogComputableSound, LogTermination, LogComputable
+- [x] **File structure** (5 files, parallel to exp):
+  - `LogTaylor.lean`: alternating series bounds for `log(1+t)`
+  - `LogComputableDefs.lean`: computation defs, `logTarget`, `logComputableRun`
+  - `LogComputableSound.lean`: bracket correctness (`logBounds_lower_lt_log`, `logBounds_log_le_upper`)
+  - `LogTermination.lean`: width bounds + MVT irrationality gap + fuel sufficiency
+  - `LogComputable.lean`: final assembly + `OpRefExecSound logTarget` instance
+- [x] **Fuel**: `600 * ab^4 * 2^ab` (exponential, not polynomial like exp). See docstring in LogComputableDefs.lean for paths to polynomial fuel via Padé for log(1+z).
+
+## Shared Infrastructure (exp + log)
+- `StickyTermination.lean`: `stickyExtractLoop_sound`, `stickyExtractLoop_pos_of_success`, `uniform_gap_from_pointwise`
+- `Util.lean`: `Rat.den_lt_num_of_one_lt`, `Real.log_abs_sub_ge_div_max`, `geom_decay_bound`, `cube_lt_two_pow`, `two_mul_sq_lt_two_pow`
+- Both exp and log use `uniform_gap_from_pointwise` to lift pointwise irrationality gaps to uniform gaps over bounded shifts
+
 ## ExpComputable Cleanup
 - [x] **File splitting** — Done. Split into 4 files:
   - `ExpTaylor.lean` (203 lines): Taylor series (taylorExpQ, taylorRemainder, bounds)
   - `ExpComputableDefs.lean` (1121 lines): computation defs + bracket correctness
-  - `ExpTermination.lean` (1559 lines): width bounds + Padé gap + fuel sufficiency
+  - `ExpTermination.lean`: width bounds + Padé gap + fuel sufficiency
   - `ExpComputable.lean` (148 lines): final assembly + ExpRefExecSound instance
 - [x] **Unify expBounds sign cases** — Extracted `expLowerBound`/`expUpperBound` to ExpTaylor.lean ✓
 - [x] **Factor `cast_eq` helper** — Extracted as `Rat.cast_eq_natAbs_div_den` in Util.lean ✓
 - [x] **Make `expShift_bound` concrete** — Direct `≤ prec + 9 + |k|` bound ✓
 - [x] **Move `padeConvergenceN₀_le` to PadeExp.lean** ✓
+- [x] **Extract `exp_effective_gap`** — Packages `pade_effective_delta` + `pade_delta_log_bound` per shift, used by `uniform_gap_from_pointwise` ✓
 
 ## Exp Code Audit Findings
-- [x] **Move general lemmas to Util.lean** — 9+ lemmas in ExpComputableDefs/ExpTermination already marked `omit [FloatFormat]`:
-  - `nat_floor_div_mul_le` (ExpComputableDefs:311) — generic floor division bound
-  - `real_lt_nat_floor_div_succ_mul` (ExpComputableDefs:318) — generic floor upper bound
-  - `two_mul_zpow_neg_succ` (ExpComputableDefs:330) — zpow simplification
-  - `exp_int_mul_log2` (ExpComputableDefs:378) — `exp(k * log 2) = 2^k`
-  - `exp_arg_red` (ExpComputableDefs:385) — `exp(x) = 2^k * exp(x - k*log 2)`
-  - `log2_gt_half` (ExpComputableDefs:475), `log2_lt_one` (483), `log2_lt_seven_eighths` (491)
-  - `rat_abs_le_natAbs` (ExpComputableDefs:498)
-  - `exp_sub_le_mul_exp` (ExpTermination:262) — general MVT-type bound
-- [x] **Extract duplicate `k.natAbs` bound** — `k.natAbs ≤ 2 * x.num.natAbs + 1` proved twice in ExpTermination (~lines 1052-1081 and 1192-1201, ~30 lines each). Should be a shared lemma.
-- [x] **Fix misleading comment** — ExpTermination:1300 says "sorry-ed helper bounds" but there are no sorries. Quick fix.
-- [x] **Trim exploratory comments** — `expBounds_lower_lt_exp` (ExpComputableDefs:869-954) has ~25 lines of exploration comments that could be condensed.
+- [x] **Move general lemmas to Util.lean** ✓
+- [x] **Extract duplicate `k.natAbs` bound** ✓
+- [x] **Fix misleading comment** ✓
+- [x] **Trim exploratory comments** ✓
 - [ ] **Missing API lemmas in ExpTaylor** — `taylorExpQ_pos` (strict positivity for n ≥ 1, y ≥ 0), `taylorRemainder_pos` (strict, for y > 0). Low priority.
 - [x] **Constants documentation + tightening** — See below.
 

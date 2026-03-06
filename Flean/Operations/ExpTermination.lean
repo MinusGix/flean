@@ -848,18 +848,37 @@ lemma pade_delta_log_bound (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0) (s : 
           le_trans (show 1 ≤ 100 * 1 by omega) (Nat.mul_le_mul hab_ge (by omega))
         nlinarith
 
+omit [FloatFormat] in
+/-- Pointwise effective irrationality gap for `exp(x) * 2^s`.
+Packages `pade_effective_delta` + `pade_delta_log_bound` into a single statement
+matching the shape expected by `uniform_gap_from_pointwise`. -/
+private theorem exp_effective_gap (x : ℚ) (hx : x ≠ 0) (s : ℕ)
+    (ab : ℕ) (hab : x.num.natAbs ^ 2 / x.den + x.num.natAbs + x.den + 100 ≤ ab)
+    (hs : s ≤ ab) :
+    ∃ δ > 0, ∃ L : ℕ, L ≤ 114 * ab * (Nat.log2 ab + 1) ∧
+    (1 : ℝ) / δ ≤ (2 : ℝ) ^ L ∧
+    ∀ m : ℤ, |Real.exp (x : ℝ) * 2 ^ s - (m : ℝ)| ≥ δ := by
+  have hnum_ne : x.num ≠ 0 := Rat.num_ne_zero.mpr hx
+  have hden_pos : 0 < x.den := x.den_pos
+  have hx_eq : (x : ℝ) = (x.num : ℝ) / (x.den : ℝ) := by
+    push_cast [Rat.cast_def]; ring
+  obtain ⟨hD, hgap⟩ := pade_effective_delta x.num x.den hden_pos hnum_ne s
+  have ⟨L, hL_le, hLD⟩ := pade_delta_log_bound x.num x.den hden_pos hnum_ne s ab hab hs
+  refine ⟨_, div_pos one_pos (mul_pos (by norm_num : (0:ℝ) < 2) hD),
+         L, hL_le, ?_, fun m => ?_⟩
+  · rw [one_div_one_div]; exact hLD
+  · rw [hx_eq]; exact hgap m
+
 /-- **Heart of the termination proof.**
 
 Shows that `stickyTryOne (expBounds x k)` succeeds at some iteration within `expFuel x` steps.
 The proof constructs a concrete iteration `iter₀` and shows:
-1. The Padé gap `δ` (from `pade_effective_delta`) satisfies `1/δ ≤ 2^L` with `L ≤ 114·ab·log₂(ab)`.
+1. The Padé gap `δ` (from `exp_effective_gap`) satisfies `1/δ ≤ 2^L` with `L ≤ 114·ab·log₂(ab)`.
 2. At `iter₀ = (L + 3|k| + prec + 20) / 10`, the bracket width `< δ`.
 3. `iter₀ < expFuel x` since `expFuel x = 15·ab·(log₂(ab)+1) + 200 > L/10`. -/
 theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
     (hk_bound : |(x : ℝ) - ↑k * Real.log 2| < 1) :
     ∃ iter, iter < expFuel x ∧ (stickyTryOne (expBounds x k) iter).isSome = true := by
-  have hnum_ne : x.num ≠ 0 := Rat.num_ne_zero.mpr hx
-  have hden_pos : 0 < x.den := x.den_pos
   -- Define ab early so the L bound can reference it in the induction.
   set ab := x.num.natAbs ^ 2 / x.den + x.num.natAbs + x.den +
     FloatFormat.prec.toNat + 100 with hab_def
@@ -895,59 +914,17 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
         omega
     simp only [hab_def]; omega
   -- Steps 1+2: Uniform positive gap with bounded 1/δ.
-  -- We induct on the shift bound T (with T ≤ ab) to produce δ and L together.
-  have hx_eq : (x : ℝ) = (x.num : ℝ) / (x.den : ℝ) := by
-    push_cast [Rat.cast_def]; ring
   have ⟨δ, hδ_pos, L, hL_bound, hL_delta, hδ_gap⟩ :
       ∃ δ > 0, ∃ L : ℕ, L ≤ 114 * ab * (Nat.log2 ab + 1) ∧
       (1 : ℝ) / δ ≤ (2 : ℝ) ^ L ∧
       ∀ iter, ∀ m : ℤ,
       |Real.exp (x : ℝ) * 2 ^ stickyShift (expBounds x k iter).1 - ↑m| ≥ δ := by
-    -- Suffices to prove for all shifts ≤ T for some T ≥ shift bound
-    suffices h_unif : ∀ T, T ≤ ab → ∃ δ > 0, ∃ L : ℕ,
-        L ≤ 114 * ab * (Nat.log2 ab + 1) ∧ (1 : ℝ) / δ ≤ (2 : ℝ) ^ L ∧
-        ∀ s, s ≤ T → ∀ m : ℤ,
-        |Real.exp (x : ℝ) * 2 ^ s - ↑m| ≥ δ by
-      obtain ⟨δ, hδ_pos, L, hL, hLd, hδ⟩ :=
-        h_unif (FloatFormat.prec.toNat + 9 + k.natAbs) hSab
-      exact ⟨δ, hδ_pos, L, hL, hLd, fun iter m => hδ _ (hS_bound iter) m⟩
-    intro T hT
-    induction T with
-    | zero =>
-      obtain ⟨hD, hgap⟩ := pade_effective_delta x.num x.den hden_pos hnum_ne 0
-      have ⟨L, hL_le, hLD⟩ := pade_delta_log_bound x.num x.den hden_pos hnum_ne 0 ab
-        (by simp only [hab_def]; omega) (by omega)
-      refine ⟨_, div_pos one_pos (mul_pos (by norm_num : (0:ℝ) < 2) hD),
-             L, hL_le, ?_, fun s hs m => ?_⟩
-      · rw [one_div_one_div]; exact hLD
-      · interval_cases s; rw [hx_eq]; exact hgap m
-    | succ n ih =>
-      obtain ⟨δ₁, hδ₁_pos, L₁, hL₁_le, hL₁_d, hδ₁⟩ := ih (by omega)
-      have ⟨hD, hgap⟩ := pade_effective_delta x.num x.den hden_pos hnum_ne (n + 1)
-      set δ₂ := 1 / (2 * max ((padeConvergenceN₀ x.num x.den (n+1)).factorial *
-        (x.den : ℝ) ^ padeConvergenceN₀ x.num x.den (n+1) *
-        |padeP (padeConvergenceN₀ x.num x.den (n+1)) ((x.num : ℝ) / x.den)|)
-        (((padeConvergenceN₀ x.num x.den (n+1) + 1).factorial *
-        (x.den : ℝ) ^ (padeConvergenceN₀ x.num x.den (n+1) + 1) *
-        |padeP (padeConvergenceN₀ x.num x.den (n+1) + 1) ((x.num : ℝ) / x.den)|)))
-      have ⟨L₂, hL₂_le, hL₂_D⟩ := pade_delta_log_bound x.num x.den hden_pos hnum_ne (n+1) ab
-        (by simp only [hab_def]; omega) (by omega)
-      refine ⟨min δ₁ δ₂, lt_min hδ₁_pos (by positivity),
-             max L₁ L₂, max_le hL₁_le hL₂_le, ?_, fun s hs m => ?_⟩
-      · -- 1/min(δ₁,δ₂) ≤ 2^(max L₁ L₂)
-        have hδ₂_pos : (0 : ℝ) < δ₂ := by positivity
-        rcases le_total δ₁ δ₂ with h | h
-        · rw [min_eq_left h]
-          calc (1 : ℝ) / δ₁ ≤ (2 : ℝ) ^ L₁ := hL₁_d
-            _ ≤ (2 : ℝ) ^ (max L₁ L₂) := pow_le_pow_right₀ (by norm_num) (le_max_left _ _)
-        · rw [min_eq_right h]
-          have h1 : (1 : ℝ) / δ₂ ≤ (2 : ℝ) ^ L₂ := by
-            simp only [δ₂]; rw [one_div_one_div]; exact hL₂_D
-          calc (1 : ℝ) / δ₂ ≤ (2 : ℝ) ^ L₂ := h1
-            _ ≤ (2 : ℝ) ^ (max L₁ L₂) := pow_le_pow_right₀ (by norm_num) (le_max_right _ _)
-      · rcases Nat.eq_or_lt_of_le hs with rfl | hlt
-        · rw [hx_eq]; exact le_trans (min_le_right _ _) (hgap m)
-        · exact le_trans (min_le_left _ _) (hδ₁ s (by omega) m)
+    have h := uniform_gap_from_pointwise ab (114 * ab * (Nat.log2 ab + 1))
+      (fun s m => |Real.exp (x : ℝ) * 2 ^ s - (m : ℝ)|)
+      (fun s hs => exp_effective_gap x hx s ab (by simp only [hab_def]; omega) hs)
+    obtain ⟨δ, hδ, L, hL, hLd, hδ_all⟩ := h
+    exact ⟨δ, hδ, L, hL, hLd, fun iter m =>
+      hδ_all _ (le_trans (hS_bound iter) hSab) m⟩
   -- Step 3: Pick concrete iteration within fuel budget.
   set S := FloatFormat.prec.toNat + 9 + k.natAbs with hS_def
   have hS : ∀ iter, stickyShift (expBounds x k iter).1 ≤ S := hS_bound
