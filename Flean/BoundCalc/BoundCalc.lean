@@ -162,8 +162,8 @@ def trySynthesizeSingleBound (lhs rhs : Expr) : MetaM (Option Expr) := do
   -- 2. Try specific lemma applications for common patterns
   let ty ← mkAppM ``LE.le #[lhs, rhs]
   for lemmaStx in #["exact Nat.one_le_two_pow", "exact Nat.one_le_pow _ _ (by omega)"] do
-    let result ← withFullBacktrack do
-      let mvar ← mkFreshExprMVarInCtx ty `synthBound
+    let result ← withNewMCtxDepth do
+      let mvar ← mkFreshExprMVarInCtx ty `_bc_tmp
       let stx ← match lemmaStx with
         | "exact Nat.one_le_two_pow" =>
           `(tactic| exact Nat.one_le_two_pow)
@@ -177,8 +177,8 @@ def trySynthesizeSingleBound (lhs rhs : Expr) : MetaM (Option Expr) := do
   --    These are safe: they either close the goal completely or fail without side effects.
   --    We skip positivity/linarith as they can log errors that leak.
   for tacName in #["omega", "norm_num", "linearize"] do
-    let result ← withFullBacktrack do
-      let mvar ← mkFreshExprMVarInCtx ty `synthBound
+    let result ← withNewMCtxDepth do
+      let mvar ← mkFreshExprMVarInCtx ty `_bc_tmp
       let stx ← match tacName with
         | "omega" => `(tactic| omega)
         | "norm_num" => `(tactic| (norm_num; done))
@@ -196,16 +196,16 @@ def trySynthesizeProductBound (lhs rhs : Array Expr) : MetaM (Option Expr) := do
   let rhsExpr ← buildProduct rhs
   let ty ← mkAppM ``LE.le #[lhsExpr, rhsExpr]
   for tacName in #["omega", "norm_num", "linarith"] do
-    let saved ← saveState
-    let mvar ← mkFreshExprMVarInCtx ty `synthBound
-    let stx ← match tacName with
-      | "omega" => `(tactic| omega)
-      | "norm_num" => `(tactic| (norm_num; done))
-      | _ => `(tactic| linarith)
-    if ← tryTacticOnGoal mvar.mvarId! stx then
-      return some mvar
-    else
-      restoreState saved
+    let result ← withNewMCtxDepth do
+      let mvar ← mkFreshExprMVarInCtx ty `_bc_tmp
+      let stx ← match tacName with
+        | "omega" => `(tactic| omega)
+        | "norm_num" => `(tactic| (norm_num; done))
+        | _ => `(tactic| linarith)
+      if ← tryTacticOnGoal mvar.mvarId! stx then
+        return some mvar
+      return none
+    if result.isSome then return result
   return none
 
 /-- Try to find a hypothesis that exactly covers the given factor lists (no synthesis).
@@ -478,21 +478,40 @@ elab "bound_calc" : tactic => do
   catch _ => pure ()
 
   -- Phase 3: Factor matching (handles regrouped products)
-  -- Save full Meta+Core state so failed synthesis attempts don't leak metavars
-  do
-    let coreState ← Core.saveState
-    let metaState ← getThe Meta.State
-    try
-      if let some remainingGoals ← BoundCalc.closeByFactorMatching goal then
-        replaceMainGoal remainingGoals
-        return
-    catch _ => pure ()
-    modifyThe Meta.State fun _ => metaState
-    coreState.restore
+  -- Save state so any metavars created during synthesis are cleaned up on failure
+  let phase3State ← saveState
+  try
+    if let some remainingGoals ← BoundCalc.closeByFactorMatching goal then
+      replaceMainGoal remainingGoals
+      return
+  catch _ => pure ()
+  restoreState phase3State
 
   -- nlinarith fallback
   try
     evalTactic (← `(tactic| nlinarith))
+    return
+  catch _ => pure ()
+
+  -- Phase 1b: gcongr decomposition + partial dispatch (P4 support)
+  -- Decomposes the goal via gcongr, auto-closes nonneg/positivity subgoals,
+  -- leaves the remaining bound subgoals for the user to fill in.
+  -- We re-focus on the original goal to work around any leaked metavars from Phase 3.
+  try
+    setGoals [goal]
+    evalTactic (← `(tactic|
+      gcongr <;> first
+        | assumption
+        | exact le_refl _
+        | positivity
+        | omega
+        | (norm_num; done)
+        | linarith
+        | (first | linearize | fail "linearize failed")
+        | exact Nat.one_le_two_pow
+        | exact Nat.one_le_pow _ _ (by omega)
+        | skip
+    ))
     return
   catch _ => pure ()
 

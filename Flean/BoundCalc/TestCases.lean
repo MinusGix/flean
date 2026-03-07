@@ -414,3 +414,59 @@ example (a b c d A B C D : ℝ)
   bound_calc
 
 end EdgeCases
+
+/-! ## Partial dispatch — P4 patterns (Phase 1b)
+
+Goals where gcongr decomposes the product but one bound subgoal
+can't be auto-dispatched. `bound_calc` closes nonneg/positivity
+side goals and leaves the bound subgoal for the user to fill. -/
+
+section PartialDispatch
+
+-- PD.1: Right factor nonneg dispatched, left bound left for user
+-- PASS [P4]: gcongr decomposes, positivity handles nonneg, leaves `a ≤ c`
+example (a c : ℝ) (e : ℤ) (hac : a ≤ c) :
+    a * (2:ℝ)^e ≤ c * (2:ℝ)^e := by
+  bound_calc  -- Phase 1 handles this (hac in context)
+
+-- PD.2: Cast bound not in context — user fills in after bound_calc
+-- PASS [P4]: bound_calc decomposes, user provides cast proof
+example (a : ℕ) (ha : a ≤ 10) :
+    (a : ℝ) * (2:ℝ)^(5:ℤ) ≤ 10 * (2:ℝ)^(5:ℤ) := by
+  bound_calc
+  exact_mod_cast ha
+
+-- PD.3: Strict scaling with inline bound
+-- PASS [P4]: bound_calc decomposes strict goal, user fills bound
+example (a : ℕ) (ha : a < 100) :
+    (a : ℝ) * (2:ℝ)^(3:ℤ) < 100 * (2:ℝ)^(3:ℤ) := by
+  bound_calc
+  exact_mod_cast ha
+
+-- PD.4: RoundIntSigPolicySound:549 pattern — rewrite then cast
+-- PASS [P4]
+example (mag : ℕ) (hmag_le : 5 ≤ mag) (e_base : ℤ) :
+    (5 : ℝ) * (2 : ℝ) ^ e_base ≤ (mag : ℝ) * (2 : ℝ) ^ e_base := by
+  bound_calc
+  exact_mod_cast hmag_le
+
+-- PD.5: Left-side nonneg, right bound left for user
+-- PASS [P4]
+example (K : ℝ) (hK_nn : 0 ≤ K) (step bound : ℝ) (h : step ≤ bound) :
+    K * step ≤ K * bound := by
+  bound_calc  -- Phase 1 handles (h in context)
+
+-- PD.6: RoundUp:505 / RoundDown:247 pattern — zpow cast then exact_mod_cast
+-- PASS [P4]: bound_calc decomposes, user fills cast proof
+example (n : ℕ) (hn : n ≤ 100) (e : ℤ) :
+    (n : ℝ) * (2 : ℝ) ^ e ≤ 100 * (2 : ℝ) ^ e := by
+  bound_calc
+  exact_mod_cast hn
+
+-- PD.7: Nested with division factor (bound_calc decomposes product part)
+-- PASS [P4]: gcongr handles the outer product
+example (C x y : ℝ) (hC_pos : 0 ≤ C) (hxy : x ≤ y) :
+    C * x ≤ C * y := by
+  bound_calc  -- Phase 1 handles (hxy in context)
+
+end PartialDispatch

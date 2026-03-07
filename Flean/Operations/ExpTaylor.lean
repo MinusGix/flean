@@ -1,4 +1,5 @@
 import Mathlib.Analysis.Complex.ExponentialBounds
+import Flean.BoundCalc.BoundCalc
 
 /-! # Taylor series for `exp` in ℚ
 
@@ -199,8 +200,7 @@ lemma taylorRemainder_le_of_le (a b : ℚ) (N : ℕ) (hN : 0 < N)
     (taylorRemainder a (N + 1) : ℝ) ≤ (taylorRemainder b (N + 1) : ℝ) := by
   rw [taylorRemainder_cast a N hN, taylorRemainder_cast b N hN]
   apply div_le_div_of_nonneg_right _ (by positivity)
-  apply mul_le_mul_of_nonneg_right _ (by positivity)
-  exact pow_le_pow_left₀ (by exact_mod_cast ha) hab _
+  bound_calc
 
 /-- Taylor remainder is nonneg for nonneg arguments. -/
 lemma taylorRemainder_nonneg (y : ℚ) (N : ℕ) (hy : 0 ≤ y) :

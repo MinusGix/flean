@@ -260,8 +260,7 @@ theorem expBounds_exp_le_upper (x : ℚ) (k : ℤ) (iter : ℕ)
               (taylorRemainder r_hi (N + 1) : ℝ) := by
             rw [taylorRemainder_cast _ N hN_pos, taylorRemainder_cast _ N hN_pos]; push_cast
             apply div_le_div_of_nonneg_right _ (by positivity)
-            apply mul_le_mul_of_nonneg_right _ (by positivity)
-            exact pow_le_pow_left₀ (by norm_num) h1R _
+            bound_calc
           calc Real.exp r ≤ Real.exp 1 := Real.exp_le_exp_of_le hr_lt_1.le
             _ ≤ (taylorExpQ (1 : ℚ) N : ℝ) + (taylorRemainder (1 : ℚ) (N + 1) : ℝ) := by
                 exact_mod_cast exp_le_taylor_upper 1 (by norm_num) (by norm_num) N hN_pos

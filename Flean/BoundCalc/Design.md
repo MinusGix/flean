@@ -169,8 +169,9 @@ bound_calc [h1, h2, h3]
 3. ✅ Hypothesis scanning: scan context for `≤`/`<` hypotheses, extract factors (~40 lines)
 4. ✅ Factor matching: recursive binary partition search (~80 lines)
 5. ✅ Proof construction: `mul_le_mul` chain + `linarith` (~70 lines)
-6. ✅ Integration: Phase 3 → Phase 1 → nlinarith fallback (~20 lines)
-7. 🔄 Test on codebase patterns, iterate
+6. ✅ Integration: Phase 1 → Phase 3 → nlinarith → Phase 1b (~25 lines)
+7. ✅ Phase 1b: `gcongr` + partial dispatch with `| skip` (P4 support, ~15 lines)
+8. 🔄 Test on codebase patterns, iterate
 
 Total: ~250 lines of metaprogramming.
 
@@ -223,17 +224,22 @@ making the tactic robust enough.
 
 ## Deployment status
 
-55 sites replaced across 13 files:
+65 sites replaced across 17 files:
 - OddInterval.lean: 14 sites
-- ExpTermination.lean: 15 sites
+- ExpTermination.lean: 17 sites (2 new: full closure via Phase 1)
 - LogTermination.lean: 12 sites
 - PadeExp.lean: 8 sites
 - RoundNormal.lean: 7 sites
-- RoundUp.lean: 4 sites
+- RoundUp.lean: 5 sites (1 new: P4 partial dispatch)
+- RoundDown.lean: 1 site (new: P4 partial dispatch)
 - ExpComputableDefs.lean: 4 sites
+- RoundIntSigPolicySound.lean: 3 sites (new: P4 partial dispatch)
 - ToVal.lean: 3 sites
 - MulErrorRepresentable.lean: 3 sites
+- Ulp.lean: 1 site (new: P4 partial dispatch)
 - GridInstance.lean: 2 sites
+- ExpComputableSound.lean: 1 site (new: full closure via Phase 1)
+- ExpTaylor.lean: 1 site (new: full closure via Phase 1)
 - CommonConstants.lean: 1 site
 - PadeExpDefs.lean: 1 site
 - StickyTermination.lean: 1 site
@@ -275,6 +281,18 @@ have : (x.m : R) < (2 : R) ^ FloatFormat.prec.toNat := by exact_mod_cast x.valid
 bound_calc
 ```
 
+**P4 partial dispatch (bound_calc decomposes, user fills one subgoal):**
+```lean
+-- Before:
+apply mul_le_mul_of_nonneg_right _ (by positivity)
+rw [zpow_natCast, ← Nat.cast_ofNat, ← Nat.cast_pow]
+exact_mod_cast hmag_le
+-- After:
+bound_calc
+rw [zpow_natCast, ← Nat.cast_ofNat, ← Nat.cast_pow]
+exact_mod_cast hmag_le
+```
+
 ### Patterns that don't work yet
 
 **P1: `0 ≤ zpow - 1` nonnegativity (CommonConstants)**
@@ -299,14 +317,12 @@ linarith [mul_le_mul_of_nonneg_right hn_cast (le_of_lt hE_pos)]
 **Fix idea:** A `bound_calc_hint` term-mode elaborator that produces a proof term
 for use inside `linarith [bound_calc_hint]` or `have h := bound_calc_hint; linarith [h]`.
 
-**P4: Inline `_` placeholder patterns**
-```lean
-apply mul_le_mul_of_nonneg_right _ (zpow_nonneg (by norm_num) _)
--- ... long inline proof for the _ placeholder follows ...
-```
-The bound proof is computed *after* the `apply`, so `bound_calc` can't see it.
-**Fix idea:** `bound_calc` could leave unsolved subgoals for unmatched factors,
-letting the user fill them in. Currently requires full coverage.
+**P4: Inline `_` placeholder patterns** ✅ DONE
+Phase 1b added: `gcongr <;> first | dispatch_chain | skip`. Decomposes the product,
+auto-closes nonneg/positivity side goals, and leaves the bound subgoal for the user.
+Key fix: Phase 3's metavar context is saved/restored so leaked `_bc_tmp` metavars
+don't contaminate Phase 1b's goal state.
+6 P4 sites deployed (RoundIntSigPolicySound ×3, RoundUp, RoundDown, Ulp).
 
 **P5: Division factors (RoundNormal, RoundDown)**
 ```lean

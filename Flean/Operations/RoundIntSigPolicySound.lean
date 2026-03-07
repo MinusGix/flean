@@ -546,7 +546,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
               have : ((bits_nat - 1 : ℕ) : ℤ) = (bits_nat : ℤ) - 1 := by omega
               omega
           _ ≤ (mag : R) * (2 : R) ^ e_base := by
-              apply mul_le_mul_of_nonneg_right _ (by positivity)
+              bound_calc
               rw [zpow_natCast, ← Nat.cast_ofNat, ← Nat.cast_pow]
               exact_mod_cast hmag_le
       exact handleOverflow_eq_round_intSigVal mode sign mag e_base hmag hmag_val_ge
@@ -660,7 +660,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 have : bits_nat ≥ 1 := by omega
                 omega
             _ ≤ (mag : R) * (2 : R) ^ e_base := by
-                apply mul_le_mul_of_nonneg_right _ (by positivity)
+                bound_calc
                 rw [zpow_natCast, ← Nat.cast_ofNat, ← Nat.cast_pow]; exact_mod_cast hmag_le
         exact handleOverflow_eq_round_intSigVal mode sign mag e_base hmag hmag_ge
       · -- Carry overflow: e_ulp + prec - 1 ≤ max_exp but e_stored > max_exp
@@ -917,7 +917,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
           have hbits_eq : bits = (bits_nat : ℤ) := by simp [bits_nat, bits]
           calc (mag : R) * (2 : R) ^ e_base
               < (2 : R) ^ (bits_nat : ℕ) * (2 : R) ^ e_base := by
-                apply mul_lt_mul_of_pos_right _ (by positivity)
+                bound_calc
                 rw [← Nat.cast_ofNat, ← Nat.cast_pow]; exact_mod_cast hmag_lt
             _ = (2 : R) ^ ((bits_nat : ℤ) + e_base) := by
                 rw [show (2 : R) ^ (bits_nat : ℕ) = (2 : R) ^ (bits_nat : ℤ) from

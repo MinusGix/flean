@@ -551,8 +551,7 @@ theorem expBounds_width_bound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
   rw [h_factor]
   calc ((upper_r : ℝ) - lower_r) * (2:ℝ) ^ k
       ≤ ((upper_r : ℝ) - lower_r) * (2:ℝ) ^ (k.natAbs : ℤ) := by
-        apply mul_le_mul_of_nonneg_left _ hur_lr_nn
-        exact by linearize
+        bound_calc
     _ ≤ B * (2:ℝ) ^ (k.natAbs : ℤ) :=
         by bound_calc
     _ = (2:ℝ) ^ k.natAbs * B := by
@@ -1080,8 +1079,7 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
         have h2Nln2 : (2:ℝ)^(L+2*k.natAbs+S+4) ≤ (2:ℝ)^N_ln2 := by linearize
         calc C * (8 * (↑k.natAbs + 1) / (2:ℝ)^N_ln2)
             ≤ C * (8 * (↑k.natAbs + 1) / (2:ℝ)^(L+2*k.natAbs+S+4)) := by
-              apply mul_le_mul_of_nonneg_left _ hC_pos.le
-              exact div_le_div_of_nonneg_left (by positivity) (by positivity) h2Nln2
+              bound_calc
           _ = 8 * (↑k.natAbs + 1) * ((2:ℝ)^(k.natAbs+S) / (2:ℝ)^(L+2*k.natAbs+S+4)) := by ring
           _ = 8 * (↑k.natAbs + 1) / ((2:ℝ)^(k.natAbs+4) * (2:ℝ)^L) := by
               rw [show L+2*k.natAbs+S+4 = (k.natAbs+S)+(k.natAbs+4+L) from by omega, pow_add,
