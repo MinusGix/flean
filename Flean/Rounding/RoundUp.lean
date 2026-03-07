@@ -13,6 +13,7 @@ import Flean.Basic
 import Flean.Ulp
 import Flean.Ufp
 import Flean.Linearize.Linearize
+import Flean.BoundCalc.BoundCalc
 import Flean.Rounding.Neighbor.Basic
 import Flean.Rounding.RoundDown
 
@@ -175,16 +176,18 @@ theorem toVal_normal_bounds (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m
         = (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
           rw [two_zpow_mul]; congr 1; ring
       _ ≤ (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
-          apply mul_le_mul_of_nonneg_right _ (le_of_lt hstep_pos)
-          calc (2 : R) ^ (FloatFormat.prec - 1)
-              = (2 : R) ^ (FloatFormat.prec - 1).toNat := FloatFormat.pow_prec_sub_one_nat_int.symm
-            _ ≤ (f.m : R) := by exact_mod_cast hm_lb
+          have : (2 : R) ^ (FloatFormat.prec - 1) ≤ (f.m : R) := by
+            calc (2 : R) ^ (FloatFormat.prec - 1)
+                = (2 : R) ^ (FloatFormat.prec - 1).toNat := FloatFormat.pow_prec_sub_one_nat_int.symm
+              _ ≤ (f.m : R) := by exact_mod_cast hm_lb
+          bound_calc
   · calc (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1)
         < (2 : R) ^ FloatFormat.prec * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
-          apply mul_lt_mul_of_pos_right _ hstep_pos
-          calc (f.m : R) < (2 : R) ^ FloatFormat.prec.toNat := by exact_mod_cast hm_ub
-            _ = (2 : R) ^ FloatFormat.prec := by
-                rw [← zpow_natCast]; congr 1; exact FloatFormat.prec_toNat_eq
+          have : (f.m : R) < (2 : R) ^ FloatFormat.prec := by
+            calc (f.m : R) < (2 : R) ^ FloatFormat.prec.toNat := by exact_mod_cast hm_ub
+              _ = (2 : R) ^ FloatFormat.prec := by
+                  rw [← zpow_natCast]; congr 1; exact FloatFormat.prec_toNat_eq
+          bound_calc
       _ = (2 : R) ^ (f.e + 1) := by
           rw [two_zpow_mul]; congr 1; ring
 
@@ -281,7 +284,7 @@ theorem toVal_subnormal_isSubnormalRange (f : FiniteFp) (hs : f.s = false)
         _ = (2 : R) ^ (FloatFormat.prec - 1) := FloatFormat.pow_prec_sub_one_nat_int
     calc (f.m : R) * (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1)
         < (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) :=
-          mul_lt_mul_of_pos_right hm_lt (by positivity)
+          by bound_calc
       _ = (2 : R) ^ FloatFormat.min_exp := by
           rw [two_zpow_mul]; congr 1; ring
 
@@ -751,8 +754,7 @@ theorem roundUp_nat_mul_zpow_carry [FloatFormat]
       _ ≤ (2 : R) ^ ((FloatFormat.prec - 1) + e_ulp) := by
           linearize
       _ = (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ e_ulp := by rw [two_zpow_mul]
-      _ ≤ (q : R) * (2 : R) ^ e_ulp := by
-          apply mul_le_mul_of_nonneg_right hq_ge_half (le_of_lt (by positivity))
+      _ ≤ (q : R) * (2 : R) ^ e_ulp := by bound_calc
       _ ≤ (mag : R) * (2 : R) ^ e_base := le_of_lt hval_gt_q_ulp
   unfold roundUp findSuccessor
   simp [ne_of_gt hval_pos, hval_pos]

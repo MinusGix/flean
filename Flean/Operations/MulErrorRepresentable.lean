@@ -1,5 +1,6 @@
 import Flean.Operations.FMA
 import Flean.Linearize.Linearize
+import Flean.BoundCalc.BoundCalc
 
 /-! # Multiplication Error Representability
 
@@ -114,8 +115,8 @@ theorem mul_round_exponent_ge (a b : FiniteFp)
           rw [← zpow_natCast (2 : R) precNat, two_zpow_mul (R := R)]
           congr 1; rw [he_prod_eq]; have := FloatFormat.valid_prec; omega
       _ ≤ (a.m * b.m : R) * (2 : R) ^ e_prod := by
-          exact mul_le_mul_of_nonneg_right (by exact_mod_cast hprod_large)
-            (le_of_lt (by positivity))
+          have : (2 : R) ^ precNat ≤ (a.m * b.m : R) := by exact_mod_cast hprod_large
+          bound_calc
   -- |exact| < 2^(max_exp+1) (overflow would contradict p being finite)
   have hp_corr : (p : Fp) = ○exact_val := by
     have := fpMulFinite_correct (R := R) a b hprod_nz
@@ -267,8 +268,8 @@ theorem mul_error_representable (a b : FiniteFp)
             congr 1; rw [he_prod_eq]
             have := FloatFormat.valid_prec; omega
         _ ≤ (a.m * b.m : R) * (2 : R) ^ e_prod := by
-            apply mul_le_mul_of_nonneg_right _ (le_of_lt (by positivity))
-            exact_mod_cast hprod_large
+            have : (2 : R) ^ precNat ≤ (a.m * b.m : R) := by exact_mod_cast hprod_large
+            bound_calc
     have hp_corr : (p : Fp) = ○exact_val := by
       have := fpMulFinite_correct (R := R) a b hprod_nz
       simp only [mul_finite_eq_fpMulFinite, mul_eq_fpMul, fpMul_coe_coe] at this hp
@@ -306,7 +307,8 @@ theorem mul_error_representable (a b : FiniteFp)
       rw [habs_eq]
       calc (a.m * b.m : R) * (2 : R) ^ e_prod
           < (2 : R) ^ (2 * precNat) * (2 : R) ^ e_prod := by
-            exact mul_lt_mul_of_pos_right (by exact_mod_cast hab_bound) (by positivity)
+            have : (a.m * b.m : R) < (2 : R) ^ (2 * precNat) := by exact_mod_cast hab_bound
+            bound_calc
         _ = (2 : R) ^ (prec + fmaProdE a b + 1) := by
             rw [← zpow_natCast (2 : R) (2 * precNat), two_zpow_mul (R := R)]
             congr 1; rw [he_prod_eq]; have := FloatFormat.valid_prec; omega
