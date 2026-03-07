@@ -13,101 +13,174 @@ Currently each such step requires manually invoking `mul_le_mul` with 4 argument
 This is the most common source of proof verbosity after power monotonicity (which
 `linearize` now handles).
 
-## What exists: `gcongr`
+## What exists
 
-Mathlib's `gcongr` tactic handles the structural decomposition well:
+### `gcongr`
+Mathlib's `gcongr` tactic decomposes monotonicity goals structurally:
+- `a * b ≤ c * d` → subgoals `a ≤ c` and `b ≤ d` (matched by unification)
+- Handles nested products, one-sided, strict, ℕ/ℝ/ℚ
+- Dispatches nonnegativity via `positivity`
+- **Limitation:** requires LHS and RHS to have the same syntactic factor structure
 
-**What it handles (tested):**
-- `a * b ≤ c * d` with hypotheses `a ≤ c`, `b ≤ d` — finds bounds by unification
-- Nested products: `a * b * c ≤ A * B * C` — recurses automatically
-- One-sided: `a * b ≤ c * b` — recognizes `b = b`, only needs `a ≤ c`
-- Strict one-sided: `a * b < c * b` — handles `<` on the varying factor
-- Natural numbers: works for `ℕ` products too
-- Dispatches nonnegativity side goals via `positivity`
+### `nlinarith`
+Nonlinear arithmetic — multiplies pairs of hypotheses to generate degree-2 terms:
+- Handles 2-factor regrouped products: `6*D*den*num ≤ 3*ab²*2^L` ✓
+- **Limitation:** degree-2 only, fails on 3+ factor products
 
-**Where it falls short:**
-- Subgoals beyond `positivity`: when side goals need `omega`, `norm_num`,
-  `linearize`, or domain-specific lemmas (e.g., `1 ≤ 2^ab`), gcongr leaves
-  them unsolved
-- Needs fully stated goal (both LHS and RHS known) — can't synthesize the RHS
-- No ring normalization — if factors are grouped differently on LHS vs RHS, fails
-- No transitivity chaining through intermediate products
+### `polyrith`
+Shut down (relied on external service). Not available.
 
-**Bottom line:** `gcongr` already covers Phase 1's structural decomposition.
-The real gap is in the subgoal dispatch and the more advanced phases.
+## Algorithm
 
-## Feature phases
+### Overview
 
-### Phase 1: `gcongr` + rich subgoal dispatch
-`bound_calc` = `gcongr` followed by a subgoal dispatch chain:
-`assumption | exact le_refl _ | positivity | omega | norm_num | linearize | linarith`
+Given a goal `LHS ≤ RHS` (or `<`) where both sides are products:
 
-This is essentially a one-line macro but covers the actual gap: gcongr
-leaves subgoals that need omega/linearize, and users currently write out
-the full `mul_le_mul h1 h2 (by positivity) (by positivity)` instead.
+1. **Fast path:** Try `gcongr` dispatch (Phase 1, already implemented)
+2. **Medium path:** Try `nlinarith` (handles 2-factor regrouping for free)
+3. **Full path:** Factor matching algorithm (described below)
 
-**Estimated coverage:** ~20 sites where `mul_le_mul` is called explicitly.
+### Step 1: Factor extraction
 
-**Implementation:** Trivial — literally `gcongr <;> ...`. Could be a macro.
+Walk each side's Expr tree, splitting on `HMul.hMul`, to get flat factor lists.
+Treat non-`*` subexpressions as atomic (including `2^L`, `ab^2`, etc.).
 
-### Phase 2: Factor matching with hypothesis search
-Given `a * b ≤ ?_` (unknown RHS), decompose the LHS into factors, search the
-context for upper bounds on each factor, and synthesize the RHS as the product
-of those bounds.
-
-```lean
--- Context has: h1 : den ≤ ab, h2 : num ≤ ab
--- Goal: den * num ≤ ?_
--- bound_calc finds h1, h2, produces: den * num ≤ ab * ab
+```
+6 * D * den * num  →  [6, D, den, num]
+3 * ab^2 * 2^L     →  [3, ab^2, 2^L]
 ```
 
-**Replaces:** Manual `calc` steps that restructure products just to apply bounds.
+Don't use `ring_nf` on the whole expression — it would expand powers and lose
+structure. Factor extraction is purely syntactic tree-walking.
 
-### Phase 3: Ring normalization + factor group matching
-Handle goals where LHS and RHS have different factor groupings:
+### Step 2: Hypothesis scanning
 
-```lean
--- Goal: 6 * D * den * num ≤ 3 * 2^L * ab^2
--- After ring normalization: (6*D) * (den*num) vs (3*2^L) * ab^2
--- Match: 6*D ≤ 3*2^L (from h6D) and den*num ≤ ab^2 (from hdp_le)
+Scan the local context for hypotheses of the form `X ≤ Y` or `X < Y`.
+For each, extract factors of both sides:
+
+```
+h6D : 6 * D ≤ 3 * 2^L   →  BoundHyp([6, D], [3, 2^L], h6D, nonstrict)
+hdp : den * num ≤ ab^2   →  BoundHyp([den, num], [ab^2], hdp, nonstrict)
 ```
 
-Requires `ring`-normalizing both sides, then matching factor groups against
-available hypotheses. Significantly harder than Phase 1-2.
+Also synthesize trivial bounds:
+- Reflexive: `x ≤ x` for any factor appearing on both sides
+- Constant: `457 ≤ 500` checkable by `norm_num`/`omega`
+- Power: `2^e1 ≤ 2^e2` checkable by `linearize`
 
-### Phase 4: Chain composition
-Compose multiple `≤` steps:
+### Step 3: Factor matching (the core algorithm)
 
-```lean
--- bound_calc [h6D, hdp_le, h3ab2]
--- Automatically chains: 6D·den·num ≤ 3·2^L·ab² ≤ 2^ab·2^L = 2^(ab+L)
+Find a way to partition LHS factors and RHS factors into matched groups,
+where each group pair is covered by a hypothesis (or trivial bound).
+
+**Formally:** Given `LHS_factors = [l₁, ..., lₘ]` and `RHS_factors = [r₁, ..., rₙ]`,
+find sets of bounds `{(L₁, R₁, h₁), ..., (Lₖ, Rₖ, hₖ)}` such that:
+- Each `Lᵢ` is a subset of LHS_factors, each `Rᵢ` is a subset of RHS_factors
+- The `Lᵢ` partition LHS_factors, the `Rᵢ` partition RHS_factors
+- Each `hᵢ` proves `∏Lᵢ ≤ ∏Rᵢ` (or is verifiable as such)
+
+**Search strategy:** Recursive binary decomposition.
+
+```
+match(lhs_factors, rhs_factors):
+  -- Base: check if a single hypothesis covers everything
+  for h in hypotheses:
+    if h.lhs_factors == lhs_factors && h.rhs_factors == rhs_factors:
+      return h
+
+  -- Recursive: split into two groups
+  for (lhs_left, lhs_right) in binary_partitions(lhs_factors):
+    for (rhs_left, rhs_right) in binary_partitions(rhs_factors):
+      if match(lhs_left, rhs_left) && match(lhs_right, rhs_right):
+        return combine(...)
 ```
 
-## Interaction with existing tactics
+With 2-4 factors per side, the number of binary partitions is tiny:
+- 2 factors: 1 way to split
+- 3 factors: 3 ways
+- 4 factors: 7 ways
 
-| Pattern | Current | With bound_calc |
-|---------|---------|-----------------|
-| `a * b ≤ c * d` (hyps available) | `mul_le_mul h1 h2 (by positivity) (by positivity)` | `by bound_calc` |
-| `a * b ≤ c * d` (needs omega) | `gcongr` then manual omega | `by bound_calc` |
-| `a * b ≤ c * b` | `mul_le_mul_of_nonneg_right h1 (by positivity)` | `by bound_calc` |
-| `a * b < c * d` | `mul_lt_mul h1 h2 (by positivity) (by positivity)` | `by bound_calc` |
-| `a / b ≤ c / d` | `div_le_div_of_nonneg_...` | Phase 3+ |
-| `a ^ n ≤ b ^ n` | `linearize` handles this | Not needed |
-| Regrouped products | Manual `calc` + `ring` | Phase 3+ |
+Factor comparison uses `isDefEq` (up to definitional equality). For factors
+that don't match definitionally but are equal by `ring`, we'd need a ring
+check — but in practice, our factors are atomic expressions that match exactly
+or not at all.
+
+### Step 4: Proof construction
+
+Once a matching is found, construct a `calc` proof:
+
+```lean
+calc LHS
+    = (∏L₁) * (∏L₂) * ... := by ring
+  _ ≤ (∏R₁) * (∏R₂) * ... := by
+      apply mul_le_mul h₁ (mul_le_mul h₂ h₃ ...) (by positivity) (by positivity)
+  _ = RHS := by ring
+```
+
+The two `ring` steps handle regrouping. The middle step chains `mul_le_mul`
+applications. Nonnegativity goals are dispatched by `positivity`.
+
+### Step 5: Nonnegativity
+
+Each `mul_le_mul` application requires showing the RHS of one bound and
+the LHS of the other are nonneg. Dispatch chain:
+`positivity | assumption | linarith | omega | norm_num`
+
+## Execution order
+
+`bound_calc` tries approaches in order of increasing cost:
+
+1. **`gcongr` dispatch** (Phase 1) — microseconds, handles aligned products
+2. **`nlinarith`** — milliseconds, handles 2-factor regrouping
+3. **Factor matching** (Phase 3) — milliseconds, handles arbitrary regrouping
+
+If all fail, leave the goal for the user.
+
+## Syntax
+
+```lean
+-- Basic: try all approaches automatically
+bound_calc
+
+-- With hint hypotheses (Phase 3 can prioritize these in matching)
+bound_calc [h1, h2, h3]
+```
+
+## Scope decisions
+
+**In scope:**
+- `a * b ≤ c * d` and variants with ≤, <, nested products
+- Factor regrouping via `ring`
+- Nonnegativity dispatch via `positivity` / `linarith`
+- Integration with `linearize` for power factor subgoals
+- ℝ, ℚ, ℕ, ℤ domains
+
+**Out of scope (for now):**
+- Division: `a/b ≤ c/d` (anti-monotone in denominator, different lemmas)
+  Could add later by rewriting `a/b` as `a * b⁻¹` and handling `inv_le_inv`
+- Chain composition (Phase 4): multi-step `calc` chains through intermediate products
+  The user writes the `calc` structure; `bound_calc` closes each step
+- Sum bounds: `a + b ≤ c + d` (already handled by `linarith` / `gcongr`)
 
 ## Implementation plan
 
-1. Phase 1 as macro: `gcongr <;> first | assumption | ...` — test on codebase
-2. If Phase 1 covers most sites, evaluate whether Phase 2+ is worth the complexity
-3. Phase 2 requires metaprogramming (factor decomposition, context search)
-4. Phase 3+ is research-level
+1. ✅ Phase 1: `gcongr` + dispatch chain (done, ~15 lines)
+2. Factor extraction: walk Expr tree, split on `*` (~30 lines)
+3. Hypothesis scanning: scan context for `≤`/`<` hypotheses, extract factors (~40 lines)
+4. Factor matching: recursive binary partition search (~80 lines)
+5. Proof construction: build `calc` with `ring` + `mul_le_mul` chain (~60 lines)
+6. Integration: try Phase 1 → nlinarith → full matching (~20 lines)
+7. Test on all codebase sites, iterate
+
+Estimated total: ~250 lines of metaprogramming (excluding Phase 1).
 
 ## Open questions
 
-- Name: `bound_calc` vs `mono` vs `bound` vs `product_bound`?
-  - `mono` is intuitive but might conflict with Mathlib's `@[mono]` attribute
-  - `bound_calc` suggests calculation, Phase 1 is more structural
-  - `gcongr!` as an enhanced version? Precedent with `linearize!`
-- Should it be a standalone tactic or extension to `linearize`/`gcongr`?
-- Should `div_le_div` patterns be in scope? (many in LogTermination)
-- How to handle mixed `*` and `^` in the same expression?
+- **Name:** `bound_calc` is fine for now. Could rename later.
+- **Hint syntax:** `bound_calc [h1, h2]` to guide matching, or just auto-search?
+- **Timeout:** Factor matching is exponential in theory but tiny in practice (≤4 factors).
+  Add a factor count limit (e.g., 8) as a safety valve.
+- **Multiset matching:** Should `[a, b]` match `[b, a]`? Yes — factor lists are
+  unordered (products are commutative). Use multiset comparison.
+- **Partial coverage:** If matching covers only some factors, should we leave
+  subgoals for the remaining ones? Or require full coverage? Full coverage is simpler.
