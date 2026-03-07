@@ -429,26 +429,23 @@ example (a c : ℝ) (e : ℤ) (hac : a ≤ c) :
     a * (2:ℝ)^e ≤ c * (2:ℝ)^e := by
   bound_calc  -- Phase 1 handles this (hac in context)
 
--- PD.2: Cast bound not in context — user fills in after bound_calc
--- PASS [P4]: bound_calc decomposes, user provides cast proof
+-- PD.2: Cast bound — now fully closed by assumption_mod_cast (E1)
+-- PASS [E1]: assumption_mod_cast finds `ha : a ≤ 10` and casts
 example (a : ℕ) (ha : a ≤ 10) :
     (a : ℝ) * (2:ℝ)^(5:ℤ) ≤ 10 * (2:ℝ)^(5:ℤ) := by
   bound_calc
-  exact_mod_cast ha
 
--- PD.3: Strict scaling with inline bound
--- PASS [P4]: bound_calc decomposes strict goal, user fills bound
+-- PD.3: Strict scaling with cast bound — now fully closed (E1)
+-- PASS [E1]
 example (a : ℕ) (ha : a < 100) :
     (a : ℝ) * (2:ℝ)^(3:ℤ) < 100 * (2:ℝ)^(3:ℤ) := by
   bound_calc
-  exact_mod_cast ha
 
--- PD.4: RoundIntSigPolicySound:549 pattern — rewrite then cast
--- PASS [P4]
+-- PD.4: RoundIntSigPolicySound:549 pattern — now fully closed (E1)
+-- PASS [E1]
 example (mag : ℕ) (hmag_le : 5 ≤ mag) (e_base : ℤ) :
     (5 : ℝ) * (2 : ℝ) ^ e_base ≤ (mag : ℝ) * (2 : ℝ) ^ e_base := by
   bound_calc
-  exact_mod_cast hmag_le
 
 -- PD.5: Left-side nonneg, right bound left for user
 -- PASS [P4]
@@ -456,12 +453,11 @@ example (K : ℝ) (hK_nn : 0 ≤ K) (step bound : ℝ) (h : step ≤ bound) :
     K * step ≤ K * bound := by
   bound_calc  -- Phase 1 handles (h in context)
 
--- PD.6: RoundUp:505 / RoundDown:247 pattern — zpow cast then exact_mod_cast
--- PASS [P4]: bound_calc decomposes, user fills cast proof
+-- PD.6: RoundUp:505 / RoundDown:247 pattern — now fully closed (E1)
+-- PASS [E1]
 example (n : ℕ) (hn : n ≤ 100) (e : ℤ) :
     (n : ℝ) * (2 : ℝ) ^ e ≤ 100 * (2 : ℝ) ^ e := by
   bound_calc
-  exact_mod_cast hn
 
 -- PD.7: Nested with division factor (bound_calc decomposes product part)
 -- PASS [P4]: gcongr handles the outer product
@@ -470,3 +466,48 @@ example (C x y : ℝ) (hC_pos : 0 ≤ C) (hxy : x ≤ y) :
   bound_calc  -- Phase 1 handles (hxy in context)
 
 end PartialDispatch
+
+/-! ### E1: assumption_mod_cast dispatch
+
+Goals where the bound hypothesis is in ℕ/ℤ but the goal is in ℝ/ℚ.
+`assumption_mod_cast` bridges the cast gap automatically. -/
+
+section CastDispatch
+
+-- CD.1: ℕ → ℝ cast, bound_calc fully closes
+-- PASS [E1]: assumption_mod_cast finds `ha : a ≤ 10` and casts it
+example (a : ℕ) (ha : a ≤ 10) :
+    (a : ℝ) * (2:ℝ)^(5:ℤ) ≤ 10 * (2:ℝ)^(5:ℤ) := by
+  bound_calc
+
+-- CD.2: ℕ → ℝ strict inequality
+-- PASS [E1]: assumption_mod_cast finds `ha : a < 100`
+example (a : ℕ) (ha : a < 100) :
+    (a : ℝ) * (2:ℝ)^(3:ℤ) < 100 * (2:ℝ)^(3:ℤ) := by
+  bound_calc
+
+-- CD.3: ℤ → ℝ cast
+-- PASS [E1]
+example (k : ℤ) (hk : 1 ≤ k) :
+    (1 : ℝ) * (2:ℝ)^(3:ℤ) ≤ (k : ℝ) * (2:ℝ)^(3:ℤ) := by
+  bound_calc
+
+-- CD.4: Idempotence pattern — `1 ≤ f.m` in ℕ, goal in ℝ with zpow
+-- PASS [E1]: assumption_mod_cast closes `1 ≤ (f.m : ℝ)`, linearize closes zpow bound
+example (m : ℕ) (hm : 1 ≤ m) (e1 e2 : ℤ) (he : e1 ≤ e2) :
+    1 * (2:ℝ)^e1 ≤ (m : ℝ) * (2:ℝ)^e2 := by
+  bound_calc
+
+-- CD.5: ℕ → ℚ cast
+-- PASS [E1]
+example (k : ℕ) (hk : 0 < k) (x : ℚ) (hx : 1 / 2 ≤ x) :
+    1 * (1 / 2) ≤ (k : ℚ) * x := by
+  bound_calc
+
+-- CD.6: Two cast bounds, both dispatched
+-- PASS [E1]: both `ha` and `hb` found via assumption_mod_cast
+example (a b : ℕ) (c d : ℕ) (ha : a ≤ c) (hb : b ≤ d) :
+    (a : ℝ) * (b : ℝ) ≤ (c : ℝ) * (d : ℝ) := by
+  bound_calc
+
+end CastDispatch

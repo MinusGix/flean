@@ -545,10 +545,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
               rw [two_zpow_mul]; congr 1
               have : ((bits_nat - 1 : ℕ) : ℤ) = (bits_nat : ℤ) - 1 := by omega
               omega
-          _ ≤ (mag : R) * (2 : R) ^ e_base := by
-              bound_calc
-              rw [zpow_natCast, ← Nat.cast_ofNat, ← Nat.cast_pow]
-              exact_mod_cast hmag_le
+          _ ≤ (mag : R) * (2 : R) ^ e_base := by bound_calc
       exact handleOverflow_eq_round_intSigVal mode sign mag e_base hmag hmag_val_ge
     · -- Exact non-overflow: the result is exactly representable
       set f : FiniteFp := ⟨sign, e_ulp + ↑FloatFormat.prec - 1,
@@ -659,9 +656,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 rw [two_zpow_mul]; congr 1
                 have : bits_nat ≥ 1 := by omega
                 omega
-            _ ≤ (mag : R) * (2 : R) ^ e_base := by
-                bound_calc
-                rw [zpow_natCast, ← Nat.cast_ofNat, ← Nat.cast_pow]; exact_mod_cast hmag_le
+            _ ≤ (mag : R) * (2 : R) ^ e_base := by bound_calc
         exact handleOverflow_eq_round_intSigVal mode sign mag e_base hmag hmag_ge
       · -- Carry overflow: e_ulp + prec - 1 ≤ max_exp but e_stored > max_exp
         push_neg at hnocarry_overflow
@@ -916,9 +911,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
               by split_ifs <;> omega]
           have hbits_eq : bits = (bits_nat : ℤ) := by simp [bits_nat, bits]
           calc (mag : R) * (2 : R) ^ e_base
-              < (2 : R) ^ (bits_nat : ℕ) * (2 : R) ^ e_base := by
-                bound_calc
-                rw [← Nat.cast_ofNat, ← Nat.cast_pow]; exact_mod_cast hmag_lt
+              < (2 : R) ^ (bits_nat : ℕ) * (2 : R) ^ e_base := by bound_calc
             _ = (2 : R) ^ ((bits_nat : ℤ) + e_base) := by
                 rw [show (2 : R) ^ (bits_nat : ℕ) = (2 : R) ^ (bits_nat : ℤ) from
                   (zpow_natCast (2 : R) bits_nat).symm, ← two_zpow_mul]

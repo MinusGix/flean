@@ -283,7 +283,6 @@ private theorem roundSubnormalUp_toVal_le_min_exp (x : R) (hx : isSubnormalRange
             (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1)
         < (2 ^ (FloatFormat.prec - 1).toNat : R) * (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1) := by
           bound_calc
-          exact_mod_cast hnatabs_bound
       _ = (2 : R) ^ FloatFormat.min_exp := by
           rw [← zpow_natCast (2 : R), FloatFormat.prec_sub_one_toNat_eq, two_zpow_mul]; congr 1; ring
 

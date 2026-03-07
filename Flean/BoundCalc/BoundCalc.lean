@@ -466,6 +466,7 @@ elab "bound_calc" : tactic => do
       gcongr <;> first
         | assumption
         | exact le_refl _
+        | assumption_mod_cast
         | positivity
         | omega
         | (norm_num; done)
@@ -509,6 +510,7 @@ elab "bound_calc" : tactic => do
       gcongr <;> first
         | assumption
         | exact le_refl _
+        | assumption_mod_cast
         | positivity
         | omega
         | (norm_num; done)

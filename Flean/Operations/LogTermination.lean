@@ -154,9 +154,7 @@ private theorem logBounds_lower_ge (y : ℚ) (hy : 1 ≤ y) (hy1 : 1 < y) (iter 
     -- lower ≥ k * ln2_lo + logLowerBound ≥ 1 * (1/2) + 0 = 1/2
     have hlower_half : (1 : ℚ) / 2 ≤ ↑k * ln2SeriesSum N_ln2 + logLowerBound t N := by
       calc (1 : ℚ) / 2 ≤ 1 * (1 / 2) := by norm_num
-        _ ≤ ↑k * ln2SeriesSum N_ln2 := by
-            bound_calc
-            exact_mod_cast hk_pos
+        _ ≤ ↑k * ln2SeriesSum N_ln2 := by bound_calc
         _ ≤ ↑k * ln2SeriesSum N_ln2 + logLowerBound t N := le_add_of_nonneg_right hLB_nonneg
     -- 1/(4p) ≤ 1/2 since p ≥ 1
     calc (1 : ℚ) / (4 * ↑y.num.natAbs)
