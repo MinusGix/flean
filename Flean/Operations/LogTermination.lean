@@ -155,8 +155,8 @@ private theorem logBounds_lower_ge (y : ℚ) (hy : 1 ≤ y) (hy1 : 1 < y) (iter 
     have hlower_half : (1 : ℚ) / 2 ≤ ↑k * ln2SeriesSum N_ln2 + logLowerBound t N := by
       calc (1 : ℚ) / 2 ≤ 1 * (1 / 2) := by norm_num
         _ ≤ ↑k * ln2SeriesSum N_ln2 := by
-            apply mul_le_mul (by exact_mod_cast hk_pos) hln2_half
-              (by norm_num) (by exact_mod_cast Nat.zero_le k)
+            bound_calc
+            exact_mod_cast hk_pos
         _ ≤ ↑k * ln2SeriesSum N_ln2 + logLowerBound t N := le_add_of_nonneg_right hLB_nonneg
     -- 1/(4p) ≤ 1/2 since p ≥ 1
     calc (1 : ℚ) / (4 * ↑y.num.natAbs)
@@ -834,9 +834,7 @@ private theorem logWidth_lt_delta (y : ℚ) (hy : 1 ≤ y) (hy1 : 1 < y)
   have hab_le_2ab : (ab : ℝ) ≤ (2 : ℝ) ^ ab := by exact_mod_cast Nat.lt_two_pow_self.le
   have ht1 : (k : ℝ) * 2 ^ S / 2 ^ N_ln2 ≤ 1 / (4 * (2 : ℝ) ^ L) := by
     have h2Nln2 : (2 : ℝ) ^ (L + 2 * ab + 2) ≤ (2 : ℝ) ^ N_ln2 := by linearize
-    have hkS : (k : ℝ) * 2 ^ S ≤ (ab : ℝ) * 2 ^ ab := by
-      apply mul_le_mul (by exact_mod_cast hk_le)
-        (by linearize) (by positivity) (by positivity)
+    have hkS : (k : ℝ) * 2 ^ S ≤ (ab : ℝ) * 2 ^ ab := by bound_calc
     calc (k : ℝ) * 2 ^ S / 2 ^ N_ln2
         ≤ (k : ℝ) * 2 ^ S / 2 ^ (L + 2 * ab + 2) :=
           div_le_div_of_nonneg_left (by positivity) (by positivity) h2Nln2

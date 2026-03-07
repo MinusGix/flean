@@ -813,8 +813,7 @@ lemma pade_delta_log_bound (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0) (s : 
       calc (N.factorial : ℝ) * (b : ℝ) ^ N * |padeP N x|
           ≤ N.factorial * ((4 : ℝ) * b) ^ N * Real.exp |x| := h1
         _ ≤ (ab : ℝ) ^ (56 * ab) * (ab : ℝ) ^ (56 * ab) * (ab : ℝ) ^ ab := by
-            apply mul_le_mul (mul_le_mul h_fac h_4b (by positivity) (by positivity))
-              h_exp (by positivity) (by positivity)
+            bound_calc
         _ = (ab : ℝ) ^ (113 * ab) := by
             rw [← pow_add, ← pow_add]; ring_nf
     exact max_le (hterm_le N₀ (by omega)) (hterm_le N₁ le_rfl)

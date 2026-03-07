@@ -42,11 +42,7 @@ omit [FloorRing R] in
 theorem scaled_le_of_le {x y : R} (e : ℤ) (h : x ≤ y) :
     x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1) ≤
     y / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1) := by
-  apply mul_le_mul_of_nonneg_right
-  · apply div_le_div_of_nonneg_right h
-    exact le_of_lt (by positivity)
-  · have hp := FloatFormat.prec_sub_one_pos
-    exact zpow_nonneg (by norm_num : (0 : R) ≤ 2) _
+  bound_calc
 
 /-! ## Int/Nat power bounds for omega
 
@@ -292,12 +288,7 @@ theorem roundNormalDown_toVal_mono {x y : R} (hx : isNormalRange x) (hy : isNorm
     -- Use Nat.cast_natAbs and abs_of_nonneg to simplify
     simp only [Nat.cast_natAbs, abs_of_nonneg (le_of_lt hfloor_x_pos),
                abs_of_nonneg (le_of_lt hfloor_y_pos)]
-    apply mul_le_mul_of_nonneg_right
-    · -- ⌊scaled_x⌋ ≤ ⌊scaled_y⌋
-      apply Int.cast_le.mpr
-      exact Int.floor_le_floor hscaled_le
-    · -- 2^(e - prec + 1) ≥ 0
-      linearize
+    bound_calc
   · -- Different binades: x is in a lower binade than y
     have hxpos := isNormalRange_pos x hx
     have hmono : findExponentDown x ≤ findExponentDown y := by

@@ -155,9 +155,7 @@ theorem mag_le_significand_le {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
     unfold is_mag_le at h
     split_ifs at h with h1 h2
     · rw [h1]
-      apply mul_le_mul_of_nonneg_right
-      exact_mod_cast h
-      linearize
+      bound_calc
     · rw [mul_comm]
       apply mul_le_mul_of_mul_div_le
       rw [← zpow_sub₀]

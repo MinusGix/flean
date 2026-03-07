@@ -186,7 +186,6 @@ theorem finite_pos_le_largest {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
     apply mul_le_mul_of_nonneg_right
     · -- f.m ≤ 2^prec - 1, we have f.m < 2^prec.toNat
       have h_nat_le : f.m ≤ 2^FloatFormat.prec.toNat - 1 := Nat.le_sub_one_of_lt h_m_bound
-      -- Goal: ↑f.m ≤ (2 : R) ^ prec.toNat - 1 (already has toNat from the definition)
       have h4 := FloatFormat.nat_four_le_two_pow_prec
       have h_sub : (2 : R) ^ FloatFormat.prec.toNat - 1 = ((2 ^ FloatFormat.prec.toNat - 1 : ℕ) : R) := by
         rw [Nat.cast_sub (by omega : 1 ≤ 2 ^ FloatFormat.prec.toNat)]

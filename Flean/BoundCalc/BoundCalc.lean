@@ -478,7 +478,13 @@ elab "bound_calc" : tactic => do
   catch _ => pure ()
 
   -- Phase 3: Factor matching (handles regrouped products)
-  -- Save state so any metavars created during synthesis are cleaned up on failure
+  -- IMPORTANT: Save/restore tactic state around Phase 3 to prevent metavar leaks.
+  -- Phase 3's `trySynthesizeSingleBound`/`trySynthesizeProductBound` create temporary
+  -- metavars (`_bc_tmp`) via `mkFreshExprMVarInCtx`. Even though individual synthesis
+  -- attempts use `withNewMCtxDepth`, that only isolates *assignments*, not *creation*.
+  -- If Phase 3 ultimately fails, these orphaned metavars survive in the metavar context
+  -- and get picked up as spurious subgoals by Phase 1b's `gcongr`. The saveState/
+  -- restoreState here ensures complete rollback of all metavar context changes.
   let phase3State ← saveState
   try
     if let some remainingGoals ← BoundCalc.closeByFactorMatching goal then

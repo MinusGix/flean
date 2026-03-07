@@ -224,25 +224,30 @@ making the tactic robust enough.
 
 ## Deployment status
 
-65 sites replaced across 17 files:
+80 sites replaced across 22 files:
 - OddInterval.lean: 14 sites
-- ExpTermination.lean: 17 sites (2 new: full closure via Phase 1)
-- LogTermination.lean: 12 sites
+- ExpTermination.lean: 18 sites
+- LogTermination.lean: 14 sites
 - PadeExp.lean: 8 sites
-- RoundNormal.lean: 7 sites
-- RoundUp.lean: 5 sites (1 new: P4 partial dispatch)
-- RoundDown.lean: 1 site (new: P4 partial dispatch)
+- RoundNormal.lean: 9 sites
+- RoundUp.lean: 5 sites
+- RoundDown.lean: 1 site
 - ExpComputableDefs.lean: 4 sites
-- RoundIntSigPolicySound.lean: 3 sites (new: P4 partial dispatch)
+- RoundIntSigPolicySound.lean: 3 sites
 - ToVal.lean: 3 sites
 - MulErrorRepresentable.lean: 3 sites
-- Ulp.lean: 1 site (new: P4 partial dispatch)
+- Ulp.lean: 1 site
 - GridInstance.lean: 2 sites
-- ExpComputableSound.lean: 1 site (new: full closure via Phase 1)
-- ExpTaylor.lean: 1 site (new: full closure via Phase 1)
+- ExpComputableSound.lean: 1 site
+- ExpTaylor.lean: 1 site
 - CommonConstants.lean: 1 site
 - PadeExpDefs.lean: 1 site
 - StickyTermination.lean: 1 site
+- Idempotence.lean: 2 sites
+- RoundSubnormal.lean: 2 sites
+- Neighbor/Basic.lean: 2 sites
+- PolicySoundInstances.lean: 2 sites
+- Order.lean: 1 site
 
 ### Patterns that work well
 

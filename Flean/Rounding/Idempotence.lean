@@ -78,11 +78,8 @@ theorem toVal_abs_ge_smallest (f : FiniteFp) (hm : 0 < f.m) :
     calc (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1)
         = 1 * (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) := by ring
       _ ≤ (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
-          apply mul_le_mul
-          · exact_mod_cast hm
-          · exact by linearize
-          · exact le_of_lt (by positivity)
-          · exact Nat.cast_nonneg _
+          bound_calc
+          exact_mod_cast hm
   · have hs_true : f.s = true := by revert hs; cases f.s <;> simp
     have hnf_pos : (0 : R) < (-f).toVal :=
       FiniteFp.toVal_pos (-f) (by rw [FiniteFp.neg_def]; simp [hs_true]) hm
@@ -102,11 +99,8 @@ theorem toVal_abs_ge_smallest (f : FiniteFp) (hm : 0 < f.m) :
     calc (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1)
         = 1 * (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) := by ring
       _ ≤ (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
-          apply mul_le_mul
-          · exact_mod_cast hm
-          · exact by linearize
-          · exact le_of_lt (by positivity)
-          · exact Nat.cast_nonneg _
+          bound_calc
+          exact_mod_cast hm
 
 omit [FloorRing R] in
 /-- Helper: toVal of any finite float has |toVal| < overflow threshold -/

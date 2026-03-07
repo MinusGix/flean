@@ -282,7 +282,8 @@ private theorem roundSubnormalUp_toVal_le_min_exp (x : R) (hx : isSubnormalRange
     calc ((⌈x / (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1)⌉).natAbs : R) *
             (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1)
         < (2 ^ (FloatFormat.prec - 1).toNat : R) * (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1) := by
-          apply mul_lt_mul_of_pos_right (by exact_mod_cast hnatabs_bound) hulp_pos
+          bound_calc
+          exact_mod_cast hnatabs_bound
       _ = (2 : R) ^ FloatFormat.min_exp := by
           rw [← zpow_natCast (2 : R), FloatFormat.prec_sub_one_toNat_eq, two_zpow_mul]; congr 1; ring
 
@@ -338,7 +339,7 @@ private theorem roundNormalUp_inf_imp_gt_lff (x : R) (hx : isNormalRange x) (b :
     have hle2 : x * (2 : R) ^ (FloatFormat.prec - 1) ≤
         (((2 : ℤ) ^ FloatFormat.prec.toNat - 1 : ℤ) : R) * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) *
         (2 : R) ^ (FloatFormat.prec - 1) := by
-      apply mul_le_mul_of_nonneg_right (by linarith [hlff_eq]) (le_of_lt hprec_pos)
+      bound_calc
     have hcollapse : (((2 : ℤ) ^ FloatFormat.prec.toNat - 1 : ℤ) : R) * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) *
         (2 : R) ^ (FloatFormat.prec - 1) =
         (((2 : ℤ) ^ FloatFormat.prec.toNat - 1 : ℤ) : R) * (2 : R) ^ FloatFormat.max_exp := by

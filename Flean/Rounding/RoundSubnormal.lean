@@ -357,7 +357,7 @@ theorem roundSubnormalUp_toVal_mono {x y : R} (hx : isSubnormalRange x) (hy : is
       calc ((⌈x / (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1)⌉).natAbs : R) *
               (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1)
           < (2 ^ (FloatFormat.prec - 1).toNat : R) * (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1) := by
-            apply mul_lt_mul_of_pos_right h_cast_bound (by linearize)
+            bound_calc
         _ = (2 : R) ^ FloatFormat.min_exp := by
             rw [← zpow_natCast (2 : R), FloatFormat.prec_sub_one_toNat_eq,
               two_zpow_mul]; congr 1; ring

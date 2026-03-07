@@ -77,13 +77,13 @@ private theorem sticky_mid_in_odd {R : Type*} [Field R] [LinearOrder R] [IsStric
     constructor
     · have hcoeff : (2 * (q : R)) < ((2 * q + 1 : ℕ) : R) := by
         exact_mod_cast (Nat.lt_succ_self (2 * q))
-      exact mul_lt_mul_of_pos_right hcoeff hE_pos
+      bound_calc
     · have hcoeff : (((2 * q + 1 : ℕ) : R)) < 2 * ((q : R) + 1) := by
         have hcoeff_nat : 2 * q + 1 < 2 * (q + 1) := by omega
         have hcoeff' : (((2 * q + 1 : ℕ) : R)) < ((2 * (q + 1) : ℕ) : R) := by
           exact_mod_cast hcoeff_nat
         simpa [Nat.cast_mul, Nat.cast_add, Nat.cast_ofNat] using hcoeff'
-      exact mul_lt_mul_of_pos_right hcoeff hE_pos
+      bound_calc
   exact sticky_interval_to_odd (R := R) h_mid_sticky
 
 section StickyInstances
