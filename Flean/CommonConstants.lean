@@ -1,6 +1,7 @@
 import Flean.Defs
 import Flean.ToVal
 import Flean.Linearize.Linearize
+import Flean.BoundCalc.BoundCalc
 
 namespace FiniteFp
 
@@ -135,9 +136,7 @@ theorem largestFiniteFloat_lt_maxExp_succ {R : Type*} [Field R] [LinearOrder R] 
   have h_lt : (2 : R) - (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) < 2 := by
     linarith
   calc (2 : R) ^ FloatFormat.max_exp * ((2 : R) - (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1))
-    < (2 : R) ^ FloatFormat.max_exp * 2 := by {
-      apply mul_lt_mul_of_pos_left h_lt
-      positivity }
+    < (2 : R) ^ FloatFormat.max_exp * 2 := by bound_calc
   _ = 2 * (2 : R) ^ FloatFormat.max_exp := by ring
   _ = (2 : R) ^ (FloatFormat.max_exp + 1) := by {
       rw [← zpow_one_add₀ (by norm_num : (2 : R) ≠ 0)]

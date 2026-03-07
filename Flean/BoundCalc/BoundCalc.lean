@@ -83,7 +83,7 @@ def scanBoundHyps (ctx : LocalContext) : Array BoundHyp := Id.run do
         lhsFactors := extractMulFactors a
         rhsFactors := extractMulFactors b
         proof := decl.toExpr
-        isStrict := false  -- treat < as ≤ for matching purposes
+        isStrict := true
       }
   return hyps
 
@@ -118,10 +118,10 @@ def buildProduct (factors : Array Expr) : MetaM Expr := do
   return result
 
 /-- Result of a successful factor matching: a list of hypothesis applications
-    that together prove `∏ lhsFactors ≤ ∏ rhsFactors`. -/
+    that together prove `∏ lhsFactors ≤ ∏ rhsFactors` (or `<` if strict). -/
 structure MatchResult where
-  /-- Ordered list of (lhsFactorGroup, rhsFactorGroup, proof) -/
-  groups : Array (Array Expr × Array Expr × Expr)
+  /-- Ordered list of (lhsFactorGroup, rhsFactorGroup, proof, isStrict) -/
+  groups : Array (Array Expr × Array Expr × Expr × Bool)
 
 /-- Try to close a goal using a tactic. Returns true only if the goal is fully assigned.
     Suppresses error messages and catches all exceptions. -/
@@ -208,30 +208,32 @@ def trySynthesizeProductBound (lhs rhs : Array Expr) : MetaM (Option Expr) := do
       restoreState saved
   return none
 
-/-- Try to find a hypothesis that exactly covers the given factor lists (no synthesis). -/
+/-- Try to find a hypothesis that exactly covers the given factor lists (no synthesis).
+    Returns `(proof, isStrict)`. -/
 def findHypMatch (lhs rhs : Array Expr) (hyps : Array BoundHyp) :
-    MetaM (Option Expr) := do
+    MetaM (Option (Expr × Bool)) := do
   for h in hyps do
     if h.lhsFactors.size != lhs.size then continue
     if h.rhsFactors.size != rhs.size then continue
     match ← multisetRemoveAll lhs h.lhsFactors with
     | some #[] =>
       match ← multisetRemoveAll rhs h.rhsFactors with
-      | some #[] => return some h.proof
+      | some #[] => return some (h.proof, h.isStrict)
       | _ => continue
     | _ => continue
   return none
 
-/-- Try to find a hypothesis or synthesized bound that covers the given factor lists. -/
+/-- Try to find a hypothesis or synthesized bound that covers the given factor lists.
+    Returns `(proof, isStrict)`. -/
 def findSingleMatch (lhs rhs : Array Expr) (hyps : Array BoundHyp)
-    (allowSynthesis : Bool) : MetaM (Option Expr) := do
+    (allowSynthesis : Bool) : MetaM (Option (Expr × Bool)) := do
   -- 1. Check context hypotheses
-  if let some proof ← findHypMatch lhs rhs hyps then
-    return some proof
-  -- 2. For single factors, try synthesizing a bound
+  if let some result ← findHypMatch lhs rhs hyps then
+    return some result
+  -- 2. For single factors, try synthesizing a bound (always non-strict)
   if allowSynthesis && lhs.size == 1 && rhs.size == 1 then
     if let some proof ← trySynthesizeSingleBound lhs[0]! rhs[0]! then
-      return some proof
+      return some (proof, false)
   return none
 
 /-- Generate all ways to split an array into two non-empty parts.
@@ -267,8 +269,8 @@ partial def findMatching (lhsFactors rhsFactors : Array Expr)
   if depth == 0 then return none
 
   -- Base case: try a single hypothesis (+ optional synthesis)
-  if let some proof ← findSingleMatch lhsFactors rhsFactors hyps allowSynthesis then
-    return some { groups := #[(lhsFactors, rhsFactors, proof)] }
+  if let some (proof, isStrict) ← findSingleMatch lhsFactors rhsFactors hyps allowSynthesis then
+    return some { groups := #[(lhsFactors, rhsFactors, proof, isStrict)] }
 
   -- Recursive case: try all binary partitions of LHS
   let lhsParts := binaryPartitions lhsFactors
@@ -293,15 +295,62 @@ def dispatchSideGoalSyntax : TSyntax `tactic :=
       | (norm_num; done)
   )
 
+/-- Wrap a proof expression syntax with `le_of_lt` if it's strict and we need `≤`. -/
+def weakenIfStrict (proofStx : TSyntax `term) (isStrict : Bool) :
+    CoreM (TSyntax `term) := do
+  if isStrict then
+    `(le_of_lt $proofStx)
+  else
+    return proofStx
+
+/-- Build a `have` statement for one step of the mul chain.
+    `goalStrict`: whether we need the result to be `<`.
+    `leftStrict`/`rightStrict`: whether the left/right proofs are `<`.
+    For a `<` result, we need at least one strict input.
+    `mul_lt_mul : a < b → c ≤ d → 0 < c → 0 ≤ b → a * c < b * d`
+    `mul_lt_mul' : a ≤ b → c < d → 0 ≤ c → 0 < b → a * c < b * d`
+    `mul_le_mul : a ≤ b → c ≤ d → 0 ≤ c → 0 ≤ b → a * c ≤ b * d` -/
+def mkMulChainStep (name : Name) (leftProof rightProof : TSyntax `term)
+    (leftStrict rightStrict goalStrict : Bool) :
+    CoreM (TSyntax `tactic) := do
+  let dispatch := dispatchSideGoalSyntax
+  if goalStrict then
+    if leftStrict then
+      -- mul_lt_mul : a < b → c ≤ d → 0 < c → 0 ≤ b → a * c < b * d
+      let rp ← weakenIfStrict rightProof rightStrict
+      `(tactic|
+        have $(mkIdent name) := mul_lt_mul $leftProof $rp
+          (by $(⟨dispatch.raw⟩)) (by $(⟨dispatch.raw⟩)))
+    else if rightStrict then
+      -- mul_lt_mul' : a ≤ b → c < d → 0 ≤ c → 0 < b → a * c < b * d
+      `(tactic|
+        have $(mkIdent name) := mul_lt_mul' $leftProof $rightProof
+          (by $(⟨dispatch.raw⟩)) (by $(⟨dispatch.raw⟩)))
+    else
+      -- Both non-strict but goal is strict — shouldn't happen (caller ensures at least one strict)
+      -- Fall back to mul_le_mul (will fail at linarith step)
+      `(tactic|
+        have $(mkIdent name) := mul_le_mul $leftProof $rightProof
+          (by $(⟨dispatch.raw⟩)) (by $(⟨dispatch.raw⟩)))
+  else
+    -- Goal is ≤: weaken any strict proofs
+    let lp ← weakenIfStrict leftProof leftStrict
+    let rp ← weakenIfStrict rightProof rightStrict
+    `(tactic|
+      have $(mkIdent name) := mul_le_mul $lp $rp
+        (by $(⟨dispatch.raw⟩)) (by $(⟨dispatch.raw⟩)))
+
 /-- Try to close the main goal using the factor matching algorithm.
-    The goal should be of the form `LHS ≤ RHS` where both sides are products. -/
+    The goal should be of the form `LHS ≤ RHS` or `LHS < RHS` where both sides are products. -/
 def closeByFactorMatching (goal : MVarId) : TacticM (Option (List MVarId)) := do
   goal.withContext do
     let target ← goal.getType
-    -- Extract LHS and RHS from ≤ goal
-    let (lhs, rhs) ← match matchLE? target with
-      | some (a, b) => pure (a, b)
-      | none => return none
+    -- Extract LHS and RHS from ≤ or < goal
+    let (lhs, rhs, goalStrict) ← match matchLE? target with
+      | some (a, b) => pure (a, b, false)
+      | none => match matchLT? target with
+        | some (a, b) => pure (a, b, true)
+        | none => return none
 
     let lhsFactors := extractMulFactors lhs
     let rhsFactors := extractMulFactors rhs
@@ -320,75 +369,79 @@ def closeByFactorMatching (goal : MVarId) : TacticM (Option (List MVarId)) := do
       findMatching lhsFactors rhsFactors hyps true
         : TacticM (Option MatchResult)) | return none
 
+    -- For strict goals, verify at least one group is strict
+    let hasStrict := matching.groups.any fun (_, _, _, s) => s
+    if goalStrict && !hasStrict then return none
+
     -- Build the proof using `have` chain + `linarith`
-    -- For each group, we have a proof that ∏L_i ≤ ∏R_i.
-    -- We combine them with `mul_le_mul` and close with `linarith`.
     if matching.groups.size == 0 then return none
 
     if matching.groups.size == 1 then
       -- Single group: the hypothesis directly proves the goal (up to ring rewriting)
-      let (_, _, proof) := matching.groups[0]!
+      let (_, _, proof, isStrict) := matching.groups[0]!
+      -- For ≤ goal with strict proof, weaken first
+      let effectiveProof ← if !goalStrict && isStrict then
+        try mkAppM ``le_of_lt #[proof] catch _ => pure proof
+      else pure proof
       -- Try: the proof might directly close the goal
       try
-        goal.assign proof
+        goal.assign effectiveProof
         return some []
       catch _ => pure ()
       -- Try linarith with the proof as a hint
       try
-        let stx ← `(tactic| linarith [$(← Term.exprToSyntax proof)])
+        let stx ← `(tactic| linarith [$(← Term.exprToSyntax effectiveProof)])
         let goals ← evalTacticAt stx goal
         return some goals
       catch _ => return none
 
-    -- Multiple groups: build mul_le_mul chain
-    -- We'll build a chain: h₁ → (h₁ * h₂) → ... → (h₁ * ... * hₙ)
-    -- using mul_le_mul at each step, then close with linarith.
+    -- Multiple groups: build mul chain
+    -- Decide which step gets the strict lemma (for < goals)
+    -- Strategy: use strict at the first step that has a strict input
     try
       let mut currentGoal := goal
-      let mut hintProofs : Array Expr := #[]
 
-      -- For each pair of consecutive groups, introduce a `have` via mul_le_mul
-      -- First, introduce all individual group proofs as hints
-      for (_, _, proof) in matching.groups do
-        hintProofs := hintProofs.push proof
+      -- Build proof syntax array with strictness info
+      let mut proofExprs : Array (TSyntax `term × Bool) := #[]
+      for (_, _, proof, isStrict) in matching.groups do
+        proofExprs := proofExprs.push (← Term.exprToSyntax proof, isStrict)
 
-      -- Build `have` statements for each mul_le_mul step
-      let mut proofExprs : Array (TSyntax `term) := #[]
-      for (_, _, proof) in matching.groups do
-        proofExprs := proofExprs.push (← Term.exprToSyntax proof)
+      -- For < goals, find which step will use the strict lemma
+      -- We "spend" strictness at the first opportunity
+      let mut strictSpent := !goalStrict  -- if goal is ≤, consider strict already "spent"
 
-      -- Build the chain of mul_le_mul applications as tactic syntax
-      -- have h_chain_1 := mul_le_mul p0 p1 (by positivity) (by positivity)
-      -- have h_chain_2 := mul_le_mul h_chain_1 p2 (by positivity) (by positivity)
-      -- ...
-      -- linarith
+      let (firstProof, firstStrict) := proofExprs[0]!
+      let (secondProof, secondStrict) := proofExprs[1]!
 
-      let mut prevName := `h_bc_0
-      let firstProof := proofExprs[0]!
-      let secondProof := proofExprs[1]!
       let haveName := Name.mkSimple s!"h_bc_1"
+      -- Determine if this step should produce a strict result
+      let stepStrict := !strictSpent && (firstStrict || secondStrict)
+      let haveStx ← mkMulChainStep haveName firstProof secondProof
+        firstStrict secondStrict stepStrict
+      if stepStrict then strictSpent := true
 
-      let haveStx ← `(tactic|
-        have $(mkIdent haveName) := mul_le_mul $firstProof $secondProof
-          (by $(⟨dispatchSideGoalSyntax.raw⟩)) (by $(⟨dispatchSideGoalSyntax.raw⟩)))
       let goals ← evalTacticAt haveStx currentGoal
       if goals.isEmpty then return some []
       currentGoal := List.head! goals
-      prevName := haveName
+      let mut prevName := haveName
+      let mut prevStrict := stepStrict
 
       -- Chain remaining groups
       for i in [2:matching.groups.size] do
-        let nextProof := proofExprs[i]!
+        let (nextProof, nextStrict) := proofExprs[i]!
         let chainName := Name.mkSimple s!"h_bc_{i}"
         let prevIdent := mkIdent prevName
 
-        let haveStx ← `(tactic|
-          have $(mkIdent chainName) := mul_le_mul $prevIdent $nextProof
-            (by $(⟨dispatchSideGoalSyntax.raw⟩)) (by $(⟨dispatchSideGoalSyntax.raw⟩)))
+        let stepStrict := !strictSpent && (prevStrict || nextStrict)
+        let haveStx ← mkMulChainStep chainName (⟨prevIdent.raw⟩) nextProof
+          prevStrict nextStrict stepStrict
+        if stepStrict then strictSpent := true
+
         let goals ← evalTacticAt haveStx currentGoal
         if goals.isEmpty then return some []
         currentGoal := List.head! goals
         prevName := chainName
+        prevStrict := stepStrict
 
       -- Now close with linarith, providing the chain result as hint
       let finalIdent := mkIdent prevName

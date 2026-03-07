@@ -13,6 +13,7 @@ import Flean.Ufp
 import Flean.Gsplit.Gsplit
 import Flean.Util
 import Flean.Linearize.Linearize
+import Flean.BoundCalc.BoundCalc
 import Flean.Rounding.Defs
 
 section Rounding
@@ -89,9 +90,7 @@ theorem floor_isNormal_of_bounds (x : R) (hx : isNormalRange x) :
   have hm_lb_R : (2 : R)^(FloatFormat.prec - 1) ≤ x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1) := by
     calc (2 : R)^(FloatFormat.prec - 1)
         = 1 * (2 : R)^(FloatFormat.prec - 1) := by rw [one_mul]
-      _ ≤ (x / 2 ^ e) * (2 : R)^(FloatFormat.prec - 1) := by
-          apply mul_le_mul_of_nonneg_right hb.left
-          exact zpow_nonneg (by norm_num) _
+      _ ≤ (x / 2 ^ e) * (2 : R)^(FloatFormat.prec - 1) := by bound_calc
   have hm_lb_int : (2 : ℤ)^(FloatFormat.prec - 1).toNat ≤ m := by
     have hm_lb_int' : (2 : ℤ)^(FloatFormat.prec - 1).toNat ≤ ⌊x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1)⌋ := by
       apply Int.le_floor.mpr
@@ -107,8 +106,8 @@ theorem floor_isNormal_of_bounds (x : R) (hx : isNormalRange x) :
     calc x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1)
         = x / 2 ^ e * ((2 : R)^FloatFormat.prec / 2) := by rw [hpow_eq]
       _ < 2 * ((2 : R)^FloatFormat.prec / 2) := by
-          apply mul_lt_mul_of_pos_right hb.right
-          apply div_pos (by positivity) (by norm_num)
+          have : 0 < (2 : R) ^ FloatFormat.prec / 2 := div_pos (by positivity) (by norm_num)
+          bound_calc
       _ = (2 : R)^FloatFormat.prec := by ring
   have hm_ub_int : m < (2 : ℤ)^FloatFormat.prec.toNat := by
     have hm_ub_int' : ⌊x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1)⌋ < (2 : ℤ)^FloatFormat.prec.toNat := by
@@ -212,9 +211,7 @@ theorem roundNormalDown_ge_zpow_exp (y : R) (h : isNormalRange y) :
   have hscaled_ge : (2 : R) ^ (FloatFormat.prec - 1) ≤ y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1) := by
     calc (2 : R) ^ (FloatFormat.prec - 1)
         = 1 * (2 : R) ^ (FloatFormat.prec - 1) := by ring
-      _ ≤ y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1) := by
-          apply mul_le_mul_of_nonneg_right hb.left
-          positivity
+      _ ≤ y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1) := by bound_calc
   have hfloor_pos : 0 < ⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ := by
     apply Int.floor_pos.mpr
     calc (1 : R) ≤ (2 : R) ^ (FloatFormat.prec - 1) := one_le_zpow₀ (by norm_num : (1 : R) ≤ 2) (by omega)
@@ -256,8 +253,7 @@ theorem roundNormalDown_ge_zpow_exp (y : R) (h : isNormalRange y) :
         = (2 : R) ^ (FloatFormat.prec - 1 : ℤ) * (2 : R) ^ (findExponentDown y - (FloatFormat.prec - 1 : ℤ)) := hpow_split
       _ ≤ ↑⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ *
           (2 : R) ^ (findExponentDown y - (FloatFormat.prec - 1 : ℤ)) := by
-            apply mul_le_mul_of_nonneg_right hfloor_lb
-            positivity
+            bound_calc
       _ = ↑⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ *
           (2 : R) ^ (findExponentDown y - ↑FloatFormat.prec + 1) := by
             rw [hexp_eq2]
@@ -576,7 +572,7 @@ theorem roundNormalUp_toVal_le_zpow_succ {x : R} (hx : isNormalRange x) {f : Fin
     calc (⌈x / (2 : R) ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌉.natAbs : R) *
             (2 : R) ^ (findExponentDown x - ↑FloatFormat.prec + 1)
         ≤ (2 : R) ^ FloatFormat.prec * (2 : R) ^ (findExponentDown x - ↑FloatFormat.prec + 1) := by
-          apply mul_le_mul_of_nonneg_right hnatabs_le (by linearize)
+          bound_calc
       _ = (2 : R) ^ (findExponentDown x + 1) := by
           rw [two_zpow_mul]; congr 1; ring
 
@@ -722,7 +718,7 @@ private theorem ceil_div_mul_sub_lt (a : R) {b : R} (hb : 0 < b) :
   have hb_ne : b ≠ 0 := ne_of_gt hb
   have h := Int.ceil_lt_add_one (a / b)
   have : (↑⌈a / b⌉ : R) * b < (a / b + 1) * b :=
-    mul_lt_mul_of_pos_right h hb
+    by bound_calc
   rw [add_mul, div_mul_cancel₀ _ hb_ne, one_mul] at this
   linarith
 
@@ -878,7 +874,7 @@ theorem roundNormalUp_sub_roundNormalDown_le_ulp (x : R) (h : isNormalRange x) (
         (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) ≤
         (⌊x / 2 ^ findExponentDown x * (2 : R) ^ (FloatFormat.prec - 1)⌋ : R) *
         (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) := by
-      apply mul_le_mul_of_nonneg_right hfloor_lb_R (le_of_lt hstep_pos)
+      bound_calc
     -- (2^prec - 1) * step = 2^(e+1) - step
     have hprod : ((2 : R) ^ (FloatFormat.prec : ℤ) - 1) *
         (2 : R) ^ (findExponentDown x - FloatFormat.prec + 1) =

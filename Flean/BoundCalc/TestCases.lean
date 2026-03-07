@@ -54,10 +54,10 @@ example (ab : ℕ) (hab : 1 ≤ ab ^ 2) :
   bound_calc
 
 -- P1.7: Mixed strict/nonstrict product
--- FAIL [R3]: gcongr decomposes differently than mul_lt_mul
+-- PASS [R3]: factor matching uses mul_lt_mul
 example (a b A B : ℝ) (h1 : a < A) (h2 : b ≤ B) (hb : 0 < b) (hA : 0 ≤ A) :
     a * b < A * B := by
-  exact mul_lt_mul h1 h2 hb hA
+  bound_calc
 
 -- P1.8: Power monotonicity subgoal (linearize in dispatch)
 -- PASS
@@ -200,22 +200,41 @@ example (a b : ℝ) (ha : 0 < a) (hb : b < 10) :
   bound_calc
 
 -- SI.3: Strict with regrouping
--- FAIL [R3]: factor matching only handles ≤ goals
+-- PASS [R3]: factor matching weakens h1 with le_of_lt, then mul_le_mul
 example (a b c : ℝ) (h1 : a * b < 10) (h2 : c ≤ 5)
-    (h1_nn : 0 ≤ a * b) (h2_nn : 0 ≤ (5:ℝ)) :
+    (h1_nn : 0 ≤ a * b) (hc_nn : 0 ≤ c) :
     a * b * c ≤ 10 * 5 := by
-  sorry -- TARGET: bound_calc (factor match with strict h1, weaken < to ≤)
+  bound_calc
 
 -- SI.4: Mixed strict/nonstrict, 4-arg mul_lt_mul
--- FAIL [R3]: gcongr decomposes differently
+-- PASS [R3]: factor matching uses mul_lt_mul for strict goal
 example (a b A B : ℝ) (h1 : a < A) (h2 : b ≤ B) (hb : 0 < b) (hA : 0 ≤ A) :
     a * b < A * B := by
-  exact mul_lt_mul h1 h2 hb hA
+  bound_calc
 
 -- SI.5: Strict in calc context (RoundNormal:110 pattern)
 -- PASS: gcongr handles this
 example (x : ℝ) (e : ℤ) (hx : x < 2) (he : 0 < (2:ℝ)^e) :
     x * (2:ℝ)^e < 2 * (2:ℝ)^e := by
+  bound_calc
+
+-- SI.6: Strict with right-side strict (mul_lt_mul' pattern)
+-- PASS [R3]: factor matching uses mul_lt_mul'
+example (a b A B : ℝ) (h1 : a ≤ A) (h2 : b < B) (hb : 0 ≤ b) (hA : 0 < A) :
+    a * b < A * B := by
+  bound_calc
+
+-- SI.7: Both strict
+-- PASS [R3]
+example (a b A B : ℝ) (h1 : a < A) (h2 : b < B) (hb : 0 < b) (hA : 0 ≤ A) :
+    a * b < A * B := by
+  bound_calc
+
+-- SI.8: Strict regrouping with < goal
+-- PASS [R3]: factor matching finds strict bound, uses mul_lt_mul
+example (a b c : ℝ) (h1 : a * b < 10) (h2 : c ≤ 5)
+    (h1_pos : 0 < a * b) (hc_pos : 0 < c) :
+    a * b * c < 10 * 5 := by
   bound_calc
 
 end StrictInequalities

@@ -3,6 +3,7 @@ import Flean.Rounding.RoundDown
 import Flean.Rounding.RoundUp
 import Flean.Rounding.RoundNearest
 import Flean.Linearize.Linearize
+import Flean.BoundCalc.BoundCalc
 
 /-! # Odd Interval Lemmas for Rounding
 
@@ -77,8 +78,8 @@ theorem representable_value_div_16 {R : Type*} [Field R] [LinearOrder R]
     have hd_le3 : 2 ^ d ≤ 2 ^ 3 := Nat.pow_le_pow_right (by omega) (by omega)
     have : k ≤ (2 ^ p - 1) * 2 ^ 3 := by
       calc k = f.m * 2 ^ d := hd_eq.symm
-        _ ≤ f.m * 2 ^ 3 := Nat.mul_le_mul_left _ hd_le3
-        _ ≤ (2 ^ p - 1) * 2 ^ 3 := Nat.mul_le_mul_right _ (by omega)
+        _ ≤ f.m * 2 ^ 3 := by bound_calc
+        _ ≤ (2 ^ p - 1) * 2 ^ 3 := by bound_calc
     omega
   rw [← hd_eq]; exact dvd_mul_of_dvd_right (Nat.pow_dvd_pow 2 hd_ge) _
 
@@ -138,8 +139,8 @@ theorem not_both_boundary_representable {R : Type*} [Field R] [LinearOrder R]
     have hd₁_le3 : 2 ^ d₁ ≤ 2 ^ 3 := Nat.pow_le_pow_right (by omega) (by omega)
     have : n - 1 ≤ (2 ^ p - 1) * 2 ^ 3 := by
       calc n - 1 = f.m * 2 ^ d₁ := hd₁_eq.symm
-        _ ≤ f.m * 2 ^ 3 := Nat.mul_le_mul_left _ hd₁_le3
-        _ ≤ (2 ^ p - 1) * 2 ^ 3 := Nat.mul_le_mul_right _ (by omega)
+        _ ≤ f.m * 2 ^ 3 := by bound_calc
+        _ ≤ (2 ^ p - 1) * 2 ^ 3 := by bound_calc
     have hpow : 2 ^ (p + 3) = 2 ^ p * 2 ^ 3 := by rw [Nat.pow_add]
     omega
   have hd₂_ge : 4 ≤ d₂ := by
@@ -147,8 +148,8 @@ theorem not_both_boundary_representable {R : Type*} [Field R] [LinearOrder R]
     have hd₂_le3 : 2 ^ d₂ ≤ 2 ^ 3 := Nat.pow_le_pow_right (by omega) (by omega)
     have : n + 1 ≤ (2 ^ p - 1) * 2 ^ 3 := by
       calc n + 1 = g.m * 2 ^ d₂ := hd₂_eq.symm
-        _ ≤ g.m * 2 ^ 3 := Nat.mul_le_mul_left _ hd₂_le3
-        _ ≤ (2 ^ p - 1) * 2 ^ 3 := Nat.mul_le_mul_right _ (by omega)
+        _ ≤ g.m * 2 ^ 3 := by bound_calc
+        _ ≤ (2 ^ p - 1) * 2 ^ 3 := by bound_calc
     have hpow : 2 ^ (p + 3) = 2 ^ p * 2 ^ 3 := by rw [Nat.pow_add]
     omega
   -- 2^4 ∣ (n-1) and 2^4 ∣ (n+1)
@@ -196,15 +197,15 @@ theorem not_both_representable_close {R : Type*} [Field R] [LinearOrder R]
     by_contra h; push_neg at h
     have : a ≤ (2 ^ p - 1) * 2 ^ 3 := by
       calc a = f.m * 2 ^ d₁ := hd₁_eq.symm
-        _ ≤ f.m * 2 ^ 3 := Nat.mul_le_mul_left _ (Nat.pow_le_pow_right (by omega) (by omega))
-        _ ≤ (2 ^ p - 1) * 2 ^ 3 := Nat.mul_le_mul_right _ (by omega)
+        _ ≤ f.m * 2 ^ 3 := by bound_calc
+        _ ≤ (2 ^ p - 1) * 2 ^ 3 := by bound_calc
     omega
   have hd₂_ge : 4 ≤ d₂ := by
     by_contra h; push_neg at h
     have : b ≤ (2 ^ p - 1) * 2 ^ 3 := by
       calc b = g.m * 2 ^ d₂ := hd₂_eq.symm
-        _ ≤ g.m * 2 ^ 3 := Nat.mul_le_mul_left _ (Nat.pow_le_pow_right (by omega) (by omega))
-        _ ≤ (2 ^ p - 1) * 2 ^ 3 := Nat.mul_le_mul_right _ (by omega)
+        _ ≤ g.m * 2 ^ 3 := by bound_calc
+        _ ≤ (2 ^ p - 1) * 2 ^ 3 := by bound_calc
     omega
   have h16_a : 16 ∣ a := by rw [← hd₁_eq]; exact dvd_mul_of_dvd_right (Nat.pow_dvd_pow 2 hd₁_ge) _
   have h16_b : 16 ∣ b := by rw [← hd₂_eq]; exact dvd_mul_of_dvd_right (Nat.pow_dvd_pow 2 hd₂_ge) _
@@ -566,13 +567,13 @@ private theorem midpoint_outside_odd_interval {R : Type*} [Field R] [LinearOrder
       have hsm_R : (0 : R) < ↑succ_fp.m := by exact_mod_cast hsm
       have hzpow : (2 : R) ^ (succ_fp.e - FloatFormat.prec + 1) < (2:R) ^ e_base :=
         by linearize
-      exact mul_lt_mul_of_pos_left hzpow hsm_R
+      bound_calc
     -- m_s < 2^p, so succ < 2^p * E
     have h_ms_cast : (↑succ_fp.m : R) < (2 : R) ^ (p : ℤ) := by
       rw [zpow_natCast]; exact_mod_cast hm_s
     have h_succ_lt2 : (succ_fp.toVal : R) < (2 : R) ^ (p : ℤ) * E := by
       calc (succ_fp.toVal : R) < ↑succ_fp.m * E := h_succ_lt
-        _ < (2:R) ^ (p : ℤ) * E := by exact mul_lt_mul_of_pos_right h_ms_cast hE_pos
+        _ < (2:R) ^ (p : ℤ) * E := by bound_calc
     -- But (n+1)*E ≤ succ and 2^p ≤ n+1
     have hp_le_n : 2 ^ p ≤ n := by
       have : 2 ^ p ≤ 2 ^ (p + 3) := Nat.pow_le_pow_right (by omega) (by omega)
@@ -596,8 +597,8 @@ private theorem midpoint_outside_odd_interval {R : Type*} [Field R] [LinearOrder
       have hm_le : (↑pred_fp.m : R) ≤ (2:R) ^ (p:ℤ) := by
         rw [zpow_natCast]; exact_mod_cast Nat.le_of_lt hm_p
       calc ↑pred_fp.m * (2:R) ^ (pred_fp.e - FloatFormat.prec + 1)
-          < ↑pred_fp.m * (2:R) ^ e_base := mul_lt_mul_of_pos_left hzpow_lt hpm_R
-        _ ≤ (2:R) ^ (p:ℤ) * (2:R) ^ e_base := mul_le_mul_of_nonneg_right hm_le (le_of_lt (by positivity))
+          < ↑pred_fp.m * (2:R) ^ e_base := by bound_calc
+        _ ≤ (2:R) ^ (p:ℤ) * (2:R) ^ e_base := by bound_calc
     -- Consider the power of 2 at e_base + p (between pred and succ)
     have he_valid_min : FloatFormat.min_exp ≤ e_base + (p : ℤ) := by
       have := pred_fp.valid.1; omega
@@ -700,17 +701,15 @@ private theorem midpoint_outside_odd_interval {R : Type*} [Field R] [LinearOrder
     have hkp_lt : k_p < 2 ^ (p + 1) := by
       rw [hk_p_def]
       calc pred_fp.m * 2 ^ d_p.toNat
-          < 2 ^ p * 2 ^ d_p.toNat := by
-            exact (Nat.mul_lt_mul_right (by positivity)).mpr hm_p
-        _ ≤ 2 ^ p * 2 ^ 1 := by
-            exact Nat.mul_le_mul_left _ (Nat.pow_le_pow_right (by omega) (by omega))
+          < 2 ^ p * 2 ^ d_p.toNat := by bound_calc
+        _ ≤ 2 ^ p * 2 ^ 1 := by bound_calc
         _ = 2 ^ (p + 1) := by rw [← Nat.pow_add]
     have hpred_lt : (pred_fp.toVal : R) < (2:R) ^ (e_base + (p : ℤ) + 1) := by
       rw [hpred_eq, hE_def]
       have hkp_R : (k_p : R) < (2:R) ^ (p + 1 : ℕ) := by exact_mod_cast hkp_lt
       calc (k_p : R) * (2:R) ^ e_base
           < (2:R) ^ (p + 1 : ℕ) * (2:R) ^ e_base := by
-            exact mul_lt_mul_of_pos_right hkp_R (by positivity)
+            bound_calc
         _ = (2:R) ^ (e_base + (p : ℤ) + 1) := by
             rw [← zpow_natCast, ← zpow_add₀ (by norm_num : (2:R) ≠ 0)]; congr 1; push_cast; ring
     -- Representable value at 2^(e_base + p + 1)
@@ -739,8 +738,8 @@ private theorem midpoint_outside_odd_interval {R : Type*} [Field R] [LinearOrder
           = (2:R) ^ (p + 1 : ℕ) * (2:R) ^ e_base := by
             rw [← zpow_natCast, ← zpow_add₀ (by norm_num : (2:R) ≠ 0)]; congr 1; push_cast; ring
         _ < (k_s : R) * (2:R) ^ e_base := by
-            apply mul_lt_mul_of_pos_right _ (by positivity)
-            exact_mod_cast hks_large
+            have : (2:R) ^ (p + 1 : ℕ) < (k_s : R) := by exact_mod_cast hks_large
+            bound_calc
     exact hgap g hgs hgm hg_gt hg_lt
   -- Now 4 | k_p and 16 | k_s
   have h4_kp : 4 ∣ k_p := by

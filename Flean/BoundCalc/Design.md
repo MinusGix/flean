@@ -198,14 +198,15 @@ Unblocked P1.6 and NP.6 test cases.
 
 Long-term: `@[bound_calc_dispatch]` attribute for external lemma registration.
 
-### R3: Strict inequality support in factor matching (MEDIUM)
-Factor matching currently only handles `≤` goals. Extending to `<`:
-- Parse `<` goals in `closeByFactorMatching`
-- Use `mul_lt_mul` when at least one matched group is strict
-- Track `isStrict` through the matching algorithm
+### R3: Strict inequality support in factor matching (MEDIUM) ✅ DONE
+Factor matching now handles both `≤` and `<` goals:
+- `<` hypotheses tracked with `isStrict = true` through matching
+- For `≤` goals with `<` hypotheses: wraps with `le_of_lt`
+- For `<` goals: uses `mul_lt_mul` (left-strict) or `mul_lt_mul'` (right-strict)
+- Strictness "spent" at first opportunity in multi-group chains
 
-**Codebase motivation:** ~20 `mul_lt_mul_of_pos_right/left` sites across
-LogTermination, ExpTermination, ToVal, RoundNormal, etc.
+**Note:** `mul_lt_mul` needs `0 < c` (not just `0 ≤ c`) for the second factor.
+Unblocked SI.3, SI.4, P1.7, plus new SI.6/SI.7/SI.8 tests.
 
 ### R4: Division support (LOW)
 Rewrite `a / b` as `a * b⁻¹` and handle `inv_le_inv` for the inverted factor.
