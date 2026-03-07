@@ -1,6 +1,7 @@
 import Flean.NumberTheory.ExpEffectiveBound
 import Flean.NumberTheory.AlternatingChooseSum
 import Flean.Linearize.Linearize
+import Flean.BoundCalc.BoundCalc
 import Mathlib.Analysis.SpecialFunctions.Exponential
 import Mathlib.Analysis.Complex.ExponentialBounds
 import Mathlib.Analysis.Normed.Ring.InfiniteSum
@@ -652,9 +653,7 @@ theorem padeP_abs_le (N : ℕ) (x : ℝ) :
             _ ≤ (2 : ℝ) ^ (2 * N) := by linearize
         -- Goal: C(2N-k,N) * |x|^k / k! ≤ 4^N * (|x|^k / k!)
         rw [mul_div_assoc]
-        exact mul_le_mul_of_nonneg_right hcoeff
-          (div_nonneg (pow_nonneg (abs_nonneg x) k)
-            (Nat.cast_pos.mpr (Nat.factorial_pos k)).le)
+        exact by bound_calc
     _ = (4 : ℝ) ^ N * ∑ k ∈ Finset.range (N + 1), |x| ^ k / k.factorial := by
         rw [← Finset.mul_sum]
     _ ≤ (4 : ℝ) ^ N * Real.exp |x| := by

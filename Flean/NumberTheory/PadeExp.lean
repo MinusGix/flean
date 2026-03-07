@@ -1,6 +1,7 @@
 import Flean.NumberTheory.PadeExpDefs
 import Flean.Util
 import Flean.Linearize.Linearize
+import Flean.BoundCalc.BoundCalc
 
 /-! # Padé approximation to `exp(x)` — effective irrationality measure
 
@@ -63,10 +64,10 @@ private theorem pade_scaled_bound_by_K_d (N : ℕ) (hN : 0 < N)
       ≤ ↑N.factorial * ↑b ^ N * 2 ^ s *
         ((2 * |x|) ^ (2 * N + 1) * (2 * exp (2 * |x|)) /
           (↑(2 * N + 1 : ℕ) * (↑N.factorial ^ 2))) :=
-        mul_le_mul_of_nonneg_left hRB hprod_nn
+        by bound_calc
     _ ≤ ↑N.factorial * ↑b ^ N * 2 ^ s *
         ((2 * |x|) ^ (2 * N + 1) * (2 * exp (2 * |x|)) / (↑N.factorial ^ 2)) := by
-        apply mul_le_mul_of_nonneg_left _ hprod_nn
+        apply mul_le_mul_of_nonneg_left _ hprod_nn -- div_le_div inline, not a bound_calc pattern
         exact div_le_div_of_nonneg_left
           (mul_nonneg (pow_nonneg (mul_nonneg (by norm_num) (abs_nonneg _)) _)
             (mul_nonneg (by norm_num) (exp_pos _).le))
@@ -122,10 +123,10 @@ theorem pade_scaled_remainder_small (a : ℤ) (b : ℕ) (hb : 0 < b) (s : ℕ) :
         ≤ ↑N.factorial * ↑b ^ N * 2 ^ s *
           ((2 * |x|) ^ (2 * N + 1) * (2 * exp (2 * |x|)) /
             (↑(2 * N + 1 : ℕ) * (↑N.factorial ^ 2))) :=
-          mul_le_mul_of_nonneg_left hRB hprod_nn
+          by bound_calc
       _ ≤ ↑N.factorial * ↑b ^ N * 2 ^ s *
           ((2 * |x|) ^ (2 * N + 1) * (2 * exp (2 * |x|)) / (↑N.factorial ^ 2)) := by
-          apply mul_le_mul_of_nonneg_left _ hprod_nn
+          apply mul_le_mul_of_nonneg_left _ hprod_nn -- div_le_div inline
           exact div_le_div_of_nonneg_left
             (mul_nonneg (pow_nonneg (mul_nonneg (by norm_num) (abs_nonneg _)) _)
               (mul_nonneg (by norm_num) (exp_pos _).le))
@@ -153,7 +154,7 @@ theorem pade_scaled_remainder_small (a : ℤ) (b : ℕ) (hb : 0 < b) (s : ℕ) :
     calc ↑N.factorial * ↑b ^ N * 2 ^ s * |padeR N x|
         ≤ K * d ^ N / ↑N.factorial := hbound
       _ = K * (d ^ N / ↑N.factorial) := by rw [mul_div_assoc]
-      _ < K * (1 / (2 * (K + 1))) := mul_lt_mul_of_pos_left hsmall hK_pos'
+      _ < K * (1 / (2 * (K + 1))) := by bound_calc
       _ = K / (K + 1) / 2 := by
             have : K + 1 ≠ 0 := by linarith
             field_simp
@@ -599,11 +600,11 @@ theorem pade_scaled_remainder_effective (a : ℤ) (b : ℕ) (hb : 0 < b) (s : �
     pow_le_pow_of_le_one (by norm_num) (by norm_num) hM₀_le
   -- Combine: d^N / N! ≤ C * (1/2)^M₀
   have hstep_dN : d ^ N / (N.factorial : ℝ) ≤ C * (1 / 2) ^ M₀ :=
-    hstep2.trans (mul_le_mul_of_nonneg_left hstep3 hC_nn)
+    hstep2.trans (by bound_calc)
   -- K * d^N / N! ≤ KC * (1/2)^M₀
   have hstep_KdN : K * d ^ N / (N.factorial : ℝ) ≤ K * C * (1 / 2) ^ M₀ := by
     calc K * d ^ N / (N.factorial : ℝ) = K * (d ^ N / (N.factorial : ℝ)) := mul_div_assoc K _ _
-      _ ≤ K * (C * (1 / 2) ^ M₀) := mul_le_mul_of_nonneg_left hstep_dN hK_nn
+      _ ≤ K * (C * (1 / 2) ^ M₀) := by bound_calc
       _ = K * C * (1 / 2) ^ M₀ := (mul_assoc K C _).symm
   -- KC * (1/2)^M₀ < 1/2
   have hfinal : K * C * (1 / 2 : ℝ) ^ M₀ < 1 / 2 := by
@@ -946,8 +947,7 @@ lemma padeConvergenceN₀_le (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0) (s 
   have hprod : 2 * (K + 1) * (C + 1) ≤ (2 : ℝ) ^ (16 * ab + 5) := by
     calc 2 * (K + 1) * (C + 1)
         ≤ 2 * (2 : ℝ) ^ (6 * ab + 3) * (2 : ℝ) ^ (10 * ab + 1) := by
-          apply mul_le_mul (mul_le_mul_of_nonneg_left hK1 (by norm_num))
-            hC1 (by positivity) (by positivity)
+          bound_calc
       _ = (2 : ℝ) ^ (16 * ab + 5) := by
           rw [mul_assoc, ← pow_add,
             show 16 * ab + 5 = (6 * ab + 3 + (10 * ab + 1)).succ from by omega, pow_succ]
@@ -1092,18 +1092,14 @@ theorem pade_effective_delta_nat (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0)
       |padeR N₀ x| < 1 / 2 := by
     calc (N₀.factorial : ℝ) * (b : ℝ) ^ N₀ * (c : ℝ) * |padeR N₀ x|
         ≤ (N₀.factorial : ℝ) * (b : ℝ) ^ N₀ * (2 : ℝ) ^ t * |padeR N₀ x| := by
-          apply mul_le_mul_of_nonneg_right
-          · exact mul_le_mul_of_nonneg_left hc_le_2t (by positivity)
-          · exact abs_nonneg _
+          bound_calc
       _ < 1 / 2 := hR₀_2t
   have hR₁ : ((N₀ + 1).factorial : ℝ) * (b : ℝ) ^ (N₀ + 1) * (c : ℝ) *
       |padeR (N₀ + 1) x| < 1 / 2 := by
     calc ((N₀ + 1).factorial : ℝ) * (b : ℝ) ^ (N₀ + 1) * (c : ℝ) * |padeR (N₀ + 1) x|
         ≤ ((N₀ + 1).factorial : ℝ) * (b : ℝ) ^ (N₀ + 1) * (2 : ℝ) ^ t *
           |padeR (N₀ + 1) x| := by
-          apply mul_le_mul_of_nonneg_right
-          · exact mul_le_mul_of_nonneg_left hc_le_2t (by positivity)
-          · exact abs_nonneg _
+          bound_calc
       _ < 1 / 2 := hR₁_2t
   have hK₀_ne := pade_K_ne_zero_nat a b hb ha c hc N₀ hN₀_pos hR₀
   have hK₁_ne := pade_K_ne_zero_nat a b hb ha c hc (N₀ + 1) (by omega) hR₁

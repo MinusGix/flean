@@ -3,6 +3,7 @@ import Flean.Operations.ExpTaylor
 import Flean.Operations.StickyTermination
 import Flean.NumberTheory.ExpEffectiveBound
 import Flean.Linearize.Linearize
+import Flean.BoundCalc.BoundCalc
 import Mathlib.Analysis.SpecialFunctions.Log.Deriv
 
 /-! # Computable exp: definitions and bracket correctness
@@ -310,7 +311,7 @@ theorem expArgRedK_bound (x : ℚ) :
         (mid : ℝ) * ((x : ℝ) / (mid : ℝ) - (k : ℝ)) from by field_simp,
         abs_mul, abs_of_pos hmid_pos]
     calc (mid : ℝ) * |(x : ℝ) / (mid : ℝ) - (k : ℝ)|
-        ≤ (mid : ℝ) * (1 / 2) := mul_le_mul_of_nonneg_left hround hmid_pos.le
+        ≤ (mid : ℝ) * (1 / 2) := by bound_calc
       _ = (mid : ℝ) / 2 := by ring
   -- |k| ≤ |x|/mid + 1/2
   have hk_le : |(k : ℝ)| ≤ |(x : ℝ)| / (mid : ℝ) + 1 / 2 := by
@@ -344,7 +345,7 @@ theorem expArgRedK_bound (x : ℚ) :
     -- 2*(a+1) ≤ 2^(log2(a+1)+2) ≤ 2^N
     have h2a_le : 2 * (x.num.natAbs + 1) ≤ 2 ^ N := by
       calc 2 * (x.num.natAbs + 1)
-          ≤ 2 * 2 ^ (Nat.log2 (x.num.natAbs + 1) + 1) := Nat.mul_le_mul_left 2 hpow_ge
+          ≤ 2 * 2 ^ (Nat.log2 (x.num.natAbs + 1) + 1) := by bound_calc
         _ = 2 ^ (Nat.log2 (x.num.natAbs + 1) + 1 + 1) := by rw [pow_succ]; ring
         _ ≤ 2 ^ N := Nat.pow_le_pow_right (by omega) hN_ge
     calc |(k : ℝ)| < 2 * ((x.num.natAbs : ℝ) + 1) := hk_lt
@@ -356,11 +357,11 @@ theorem expArgRedK_bound (x : ℚ) :
         abs_add_le _ _
     _ ≤ (mid : ℝ) / 2 + |(k : ℝ)| * (1 / (2 * (2:ℝ) ^ N)) := by
         rw [abs_mul]; exact add_le_add hx_kmid
-          (mul_le_mul_of_nonneg_left hmid_err (abs_nonneg _))
+          (by bound_calc)
     _ < 1 := by
         -- |k| * (1/(2*2^N)) < 2^N * (1/(2*2^N)) = 1/2
         have h1 : |(k : ℝ)| * (1 / (2 * (2:ℝ) ^ N)) < (2:ℝ) ^ N * (1 / (2 * (2:ℝ) ^ N)) :=
-          mul_lt_mul_of_pos_right hk_lt_pow (by positivity)
+          by bound_calc
         have h2 : (2:ℝ) ^ N * (1 / (2 * (2:ℝ) ^ N)) = 1 / 2 := by field_simp
         linarith
 

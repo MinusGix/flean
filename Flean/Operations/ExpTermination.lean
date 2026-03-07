@@ -4,6 +4,7 @@ import Flean.Operations.StickyTermination
 import Flean.NumberTheory.PadeExp
 import Flean.NumberTheory.ExpEffectiveBound
 import Flean.Linearize.Linearize
+import Flean.BoundCalc.BoundCalc
 
 /-! # Computable exp: width bounds and termination
 
@@ -110,7 +111,7 @@ theorem expBounds_int_log_ge (x : ℚ) (k : ℤ) (iter : ℕ)
     calc (2:ℚ) ^ (k - 5) = (2:ℚ) ^ (-5 : ℤ) * (2:ℚ) ^ k := by
             rw [show (k : ℤ) - 5 = -5 + k from by ring, zpow_add₀ (by norm_num : (2:ℚ) ≠ 0)]
       _ ≤ _ * (2:ℚ) ^ k := by
-            exact mul_le_mul_of_nonneg_right h_lr (zpow_nonneg (by norm_num) _)
+            bound_calc
   -- Goal: (2:ℚ)^(-5) ≤ lower_r
   split
   · -- Case r_lo ≥ 0: lower_r = taylorExpQ r_lo N ≥ 1 ≥ 1/32
@@ -182,12 +183,12 @@ theorem expBounds_int_log_ge (x : ℚ) (k : ℤ) (iter : ℕ)
           rw [div_le_iff₀ (mul_pos h_fac_pos h_np1_pos)]
           calc y ^ (N + 1) * ((↑(N + 1 : ℕ) : ℝ) + 1)
               ≤ y ^ (N + 1) * (2 * (↑(N + 1 : ℕ) : ℝ)) :=
-                mul_le_mul_of_nonneg_left h_ratio (pow_nonneg hy_nonneg _)
+                by bound_calc
             _ = (y ^ (N + 1) / ((N + 1).factorial : ℝ)) *
                 (2 * ((N + 1).factorial : ℝ) * (↑(N + 1 : ℕ) : ℝ)) := by
                 field_simp
             _ ≤ Real.exp y * (2 * ((N + 1).factorial : ℝ) * (↑(N + 1 : ℕ) : ℝ)) :=
-                mul_le_mul_of_nonneg_right h_term (by positivity)
+                by bound_calc
             _ = 2 * Real.exp y * ((N + 1).factorial * (↑(N + 1 : ℕ) : ℝ)) := by ring
         -- Combine: denom ≤ 3*exp(y) < 24 ≤ 32
         calc (denom : ℝ) = (taylorExpQ (-r_lo) N : ℝ) +
@@ -300,7 +301,7 @@ lemma expBounds_r_width_le (r_lo r_hi : ℚ) (N : ℕ) (hN : 0 < N)
     calc Real.exp (r_hi : ℝ) - Real.exp (r_lo : ℝ)
         ≤ Real.exp (r_hi : ℝ) * ((r_hi : ℝ) - (r_lo : ℝ)) := hexp_sub
       _ ≤ 8 * ((r_hi : ℝ) - (r_lo : ℝ)) :=
-          mul_le_mul_of_nonneg_right (le_of_lt hexp_hi_lt8) hDr_nn
+          by bound_calc
   -- Helper: for y ≥ 0, the reciprocal bound exp(−y) − 1/(S+R(y)) ≤ R(2)
   -- i.e., 1/(S_N(y) + R(y)) ≥ 1/exp(y) − R(2)
   have recip_bound : ∀ (y : ℚ), 0 ≤ y → (y : ℝ) < 2 →
@@ -464,7 +465,7 @@ theorem expBounds_width_bound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
     have h2s_nn := h2s_pos.le
     calc ((upper : ℝ) - lower) * 2 ^ stickyShift lower
         ≤ (2:ℝ) ^ k.natAbs * B * 2 ^ stickyShift lower :=
-          mul_le_mul_of_nonneg_right h h2s_nn
+          by bound_calc
       _ = 2 ^ (k.natAbs + stickyShift lower) * B := by rw [pow_add]; ring
   -- Set up the r-level variables from expBounds definition
   set N_ln2 := Nat.log2 k.natAbs + 52 + iter * 50 with hN_ln2_def
@@ -529,7 +530,7 @@ theorem expBounds_width_bound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
     have h2 : ((r_hi : ℝ) - (r_lo : ℝ)) ≤ (↑k.natAbs + 1) / 2 ^ N_ln2 :=
       le_trans hinterval_width (div_le_div_of_nonneg_right h1 h2N_pos.le)
     calc 8 * ((r_hi : ℝ) - (r_lo : ℝ))
-        ≤ 8 * ((↑k.natAbs + 1) / 2 ^ N_ln2) := mul_le_mul_of_nonneg_left h2 (by norm_num)
+        ≤ 8 * ((↑k.natAbs + 1) / 2 ^ N_ln2) := by bound_calc
       _ = 8 * (↑k.natAbs + 1) / 2 ^ N_ln2 := by ring
   -- So upper_r - lower_r ≤ B
   have hur_lr_le_B : (upper_r : ℝ) - (lower_r : ℝ) ≤ B := by
@@ -553,7 +554,7 @@ theorem expBounds_width_bound (x : ℚ) (hx : x ≠ 0) (k : ℤ) (iter : ℕ)
         apply mul_le_mul_of_nonneg_left _ hur_lr_nn
         exact by linearize
     _ ≤ B * (2:ℝ) ^ (k.natAbs : ℤ) :=
-        mul_le_mul_of_nonneg_right hur_lr_le_B (by positivity)
+        by bound_calc
     _ = (2:ℝ) ^ k.natAbs * B := by
         rw [show (2:ℝ) ^ (k.natAbs : ℤ) = (2:ℝ) ^ k.natAbs from zpow_natCast 2 k.natAbs]; ring
 
@@ -622,7 +623,7 @@ theorem expBounds_width_tendsto_zero (x : ℚ) (hx : x ≠ 0) (k : ℤ)
           show 4 * (2:ℝ)^N * (↑N+2) / (↑(N+1).factorial * (↑N+1)) =
             4 * (2:ℝ)^N * ((↑N+2) / (↑(N+1).factorial * (↑N+1))) from by ring,
           show 4 * (2:ℝ)^N / ↑N.factorial = 4 * (2:ℝ)^N * (1 / ↑N.factorial) from by ring]
-      exact mul_le_mul_of_nonneg_left h1' (by positivity)
+      exact by bound_calc
     have hfac_bound : (2:ℝ) ^ N / ↑N.factorial < eps / (8 * C) := hM₁ N hN
     have hlt1 : (2 : ℝ) ^ (N + 2) * (↑N + 2) / (↑(N + 1).factorial * (↑N + 1)) <
         eps / (2 * C) := by
@@ -636,7 +637,7 @@ theorem expBounds_width_tendsto_zero (x : ℚ) (hx : x ≠ 0) (k : ℤ)
       rw [show A / 2 ^ N_ln2 = A * (1 / 2) ^ N_ln2 from by
         rw [one_div, inv_pow, div_eq_mul_inv]]
       calc A * (1 / 2) ^ N_ln2
-          < A * (eps / (2 * C * A)) := mul_lt_mul_of_pos_left hgeom_bound hA_pos
+          < A * (eps / (2 * C * A)) := by bound_calc
         _ = eps / (2 * C) := by field_simp
     -- Combine: C * (term1 + term2) < eps
     rw [lt_div_iff₀ (by positivity : (0:ℝ) < 2 * C)] at hlt1 h2
@@ -675,7 +676,7 @@ theorem expBounds_width_tendsto_zero (x : ℚ) (hx : x ≠ 0) (k : ℤ)
       2 ^ (Nat.log2 k.natAbs + 52 + iter * 50) := by positivity
   calc ((upper : ℝ) - lower) * 2 ^ stickyShift lower
       ≤ (2 : ℝ) ^ (k.natAbs + stickyShift lower) * _ := hbound'
-    _ ≤ C * _ := mul_le_mul_of_nonneg_right h2s_le herr_nn
+    _ ≤ C * _ := by bound_calc
     _ < eps := herr
 
 /-- **Key lemma**: When the bracket width · 2^s is less than the distance from
@@ -904,8 +905,7 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
       · -- natAbs > den, so natAbs^2/den ≥ natAbs
         have : x.num.natAbs ≤ x.num.natAbs ^ 2 / x.den := by
           rw [Nat.le_div_iff_mul_le x.den_pos]
-          calc x.num.natAbs * x.den ≤ x.num.natAbs * x.num.natAbs :=
-                Nat.mul_le_mul_left _ h.le
+          calc x.num.natAbs * x.den ≤ x.num.natAbs * x.num.natAbs := by bound_calc
             _ = x.num.natAbs ^ 2 := (sq x.num.natAbs).symm
         omega
     simp only [hab_def]; omega
@@ -947,7 +947,7 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
           have hsq : x.num.natAbs ≤ x.num.natAbs ^ 2 / x.den := by
             rw [Nat.le_div_iff_mul_le x.den_pos]
             calc x.num.natAbs * x.den
-                ≤ x.num.natAbs * x.num.natAbs := Nat.mul_le_mul_left _ hdn
+                ≤ x.num.natAbs * x.num.natAbs := by bound_calc
               _ = x.num.natAbs ^ 2 := (sq x.num.natAbs).symm
           omega
         · -- den > natAbs > 100: ab ≥ natAbs + den + 100 > 2*natAbs + 100
@@ -978,8 +978,7 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
             have : 6 ≤ Nat.log2 ab :=
               (Nat.le_log2 (by omega : ab ≠ 0)).mpr (by omega : 2 ^ 6 ≤ ab)
             omega
-          have habX_ge : 100 * 7 ≤ ab * X :=
-            Nat.mul_le_mul hab_ge hX
+          have habX_ge : 100 * 7 ≤ ab * X := by bound_calc
           have h_num_le : 114 * ab * X + 4 * ab + 20 ≤ 120 * (ab * X) := by
             have h114 : 114 * ab * X = 114 * (ab * X) := by ring
             have : 4 * ab + 20 ≤ 6 * (ab * X) := by
@@ -1068,11 +1067,8 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
       have ht1 : C * ((2:ℝ)^(N+2) * (N+2:ℝ) / ((N+1).factorial * (N+1:ℝ))) ≤
           1 / (3 * (2:ℝ)^L) := by
         calc C * ((2:ℝ)^(N+2) * (N+2:ℝ) / ((N+1).factorial * (N+1:ℝ)))
-            ≤ C * ((8/3:ℝ) * (1/2:ℝ)^(N-4)) :=
-              mul_le_mul_of_nonneg_left herr1 hC_pos.le
-          _ ≤ C * ((8/3:ℝ) * (1/2:ℝ)^(L+k.natAbs+S+3)) :=
-              mul_le_mul_of_nonneg_left
-                (mul_le_mul_of_nonneg_left hhalf (by norm_num)) hC_pos.le
+            ≤ C * ((8/3:ℝ) * (1/2:ℝ)^(N-4)) := by bound_calc
+          _ ≤ C * ((8/3:ℝ) * (1/2:ℝ)^(L+k.natAbs+S+3)) := by bound_calc
           _ = (8/3:ℝ) * ((2:ℝ)^(k.natAbs+S) * (1/2:ℝ)^(k.natAbs+S+(L+3))) := by
               rw [show L+k.natAbs+S+3 = k.natAbs+S+(L+3) from by omega]; ring
           _ = (8/3:ℝ) * (1/2:ℝ)^(L+3) := by rw [two_pow_mul_half_pow]
@@ -1111,7 +1107,7 @@ theorem expFuel_sufficient (x : ℚ) (hx : x ≠ 0) (k : ℤ)
           8 * (↑k.natAbs + 1) / (2:ℝ)^N_ln2) := hbound'
       _ ≤ C * ((2:ℝ)^(N+2) * (N+2:ℝ) / ((N+1).factorial * (N+1:ℝ)) +
           8 * (↑k.natAbs + 1) / (2:ℝ)^N_ln2) :=
-          mul_le_mul_of_nonneg_right h2s_le (by positivity)
+          by bound_calc
       _ < δ := h_total
   -- Step 5: At iter, the bracket is tight and the gap holds.
   have hsuccess : (stickyTryOne (expBounds x k) iter).isSome = true :=

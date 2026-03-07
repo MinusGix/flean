@@ -3,6 +3,7 @@ import Flean.Operations.StickyTermination
 import Flean.Operations.ExpTermination
 import Flean.NumberTheory.PadeExp
 import Flean.Linearize.Linearize
+import Flean.BoundCalc.BoundCalc
 
 /-! # Computable log: width bounds and termination
 
@@ -413,8 +414,7 @@ private theorem log_gap_m_pos_close (y : ℚ) (hy1 : 1 < y) (s : ℕ) (m : ℤ)
   rw [ge_iff_le]
   calc (2 : ℝ) ^ s / (6 * D * ↑y.den * ↑y.num.natAbs)
       = 1 / (6 * D * ↑y.den * ↑y.num.natAbs) * 2 ^ s := by ring
-    _ ≤ |Real.log (y : ℝ) - x| * 2 ^ s :=
-        mul_le_mul_of_nonneg_right hlogx h2s_pos.le
+    _ ≤ |Real.log (y : ℝ) - x| * 2 ^ s := by bound_calc
     _ = |Real.log (y : ℝ) * 2 ^ s - ↑m| := by
         have heq : Real.log (y : ℝ) * 2 ^ s - ↑m = (Real.log (y : ℝ) - x) * 2 ^ s := by
           rw [hx_def]; field_simp
@@ -458,7 +458,7 @@ private theorem log_ab_pade_bound (y : ℚ) (hy1 : 1 < y) (s : ℕ) (m : ℤ)
           rw [mul_pow, show (ab + 1) ^ 2 * (2 ^ s) ^ 2 =
             ((ab + 1) ^ 2 * 2 ^ s) * 2 ^ s from by ring]
           exact Nat.mul_div_cancel _ h2s_pos
-      _ ≤ (ab + 1) ^ 2 * 2 ^ ab := Nat.mul_le_mul_left _ h2s
+      _ ≤ (ab + 1) ^ 2 * 2 ^ ab := by bound_calc
   -- Total ≤ (ab+1)^2·2^ab + (ab+1)·2^ab + 2^ab + 100
   --       = ((ab+1)^2 + ab + 2)·2^ab + 100
   -- (ab+1)^2 + ab + 2 = ab^2 + 3ab + 3 ≤ 2ab^2 - 1 for ab ≥ 100
@@ -635,19 +635,18 @@ private theorem log_effective_gap (y : ℚ) (hy1 : 1 < y) (s : ℕ)
                 apply Nat.add_le_add_right
                 calc ab = ab * 1 * 1 := by ring
                   _ ≤ ab * ab ^ 2 * 2 ^ ab :=
-                      Nat.mul_le_mul (Nat.mul_le_mul_left _ hab2_pos) (Nat.one_le_two_pow)
+                      by bound_calc
                   _ = ab ^ 3 * 2 ^ ab := by ring
             _ = 457 * ab ^ 3 * 2 ^ ab := by ring
             _ ≤ 500 * ab ^ 3 * 2 ^ ab := by
-                apply Nat.mul_le_mul_right; apply Nat.mul_le_mul_right; omega
+                bound_calc
         have h_inv_le : 6 * D * (y.den : ℝ) * (y.num.natAbs : ℝ) ≤ (2 : ℝ) ^ L := by
           calc 6 * D * (y.den : ℝ) * (y.num.natAbs : ℝ)
               = (6 * D) * ((y.den : ℝ) * (y.num.natAbs : ℝ)) := by ring
             _ ≤ (3 * (2 : ℝ) ^ L_pade) * (ab : ℝ) ^ 2 :=
                 mul_le_mul h6D hdp_le (by positivity) (by positivity)
             _ = 3 * (ab : ℝ) ^ 2 * (2 : ℝ) ^ L_pade := by ring
-            _ ≤ (2 : ℝ) ^ ab * (2 : ℝ) ^ L_pade :=
-                mul_le_mul_of_nonneg_right h3ab2 (by positivity)
+            _ ≤ (2 : ℝ) ^ ab * (2 : ℝ) ^ L_pade := by bound_calc
             _ = (2 : ℝ) ^ (ab + L_pade) := by rw [← pow_add]
             _ ≤ (2 : ℝ) ^ L := by linearize
         -- 1/2^L ≤ 2^s/(6Ddp) ≤ gap
@@ -687,7 +686,7 @@ private theorem logReducedArg_one_sub_ge (y : ℚ) (hy : 1 ≤ y) (hy1 : 1 < y) 
   have hd2k_le : d * 2 ^ k ≤ p := by
     have h := logArgRedK_pow_le y hy  -- (2:ℚ)^k ≤ y
     have h₁ : (2 : ℚ) ^ k * y.den ≤ y.num := by
-      calc (2 : ℚ) ^ k * y.den ≤ y * y.den := mul_le_mul_of_nonneg_right h (by positivity)
+      calc (2 : ℚ) ^ k * y.den ≤ y * y.den := by bound_calc
         _ = y.num := Rat.mul_den_eq_num y
     -- Cast: in ℤ, (d * 2^k) ≤ y.num.natAbs
     have hp_eq : (y.num.natAbs : ℤ) = y.num := Int.natAbs_of_nonneg (by omega)
@@ -702,7 +701,7 @@ private theorem logReducedArg_one_sub_ge (y : ℚ) (hy : 1 ≤ y) (hy1 : 1 < y) 
     have h := logArgRedK_lt_pow y hy  -- y < (2:ℚ)^(k+1)
     have h₁ : (y.num : ℚ) < (2 : ℚ) ^ (k + 1) * y.den := by
       calc (y.num : ℚ) = y * y.den := (Rat.mul_den_eq_num y).symm
-        _ < (2 : ℚ) ^ (k + 1) * y.den := mul_lt_mul_of_pos_right h hd_pos_q
+        _ < (2 : ℚ) ^ (k + 1) * y.den := by bound_calc
     have hp_eq : (y.num.natAbs : ℤ) = y.num := Int.natAbs_of_nonneg (by omega)
     suffices hs : (p : ℚ) < ((2 ^ (k + 1) * d : ℕ) : ℚ) by exact_mod_cast hs
     have hp_cast : (p : ℚ) = (y.num : ℚ) := by
@@ -749,7 +748,7 @@ private theorem logFuel_iter_lt_fuel (ab L : ℕ) (hab_ge : 100 ≤ ab)
   -- = 500*ab⁴*2^ab + ab² + ab ≤ 500*ab⁴*2^ab + 2*ab² ≤ 502*ab⁴*2^ab < 600*ab⁴*2^ab + 200
   have hab2 : 1 ≤ 2 ^ ab := Nat.one_le_two_pow
   have h1 : ab * (L + ab + 1) ≤ ab * (500 * ab ^ 3 * 2 ^ ab + ab + 1) := by
-    apply Nat.mul_le_mul_left; omega
+    bound_calc
   have h2 : ab * (500 * ab ^ 3 * 2 ^ ab + ab + 1) =
       500 * ab ^ 4 * 2 ^ ab + ab ^ 2 + ab := by ring
   -- ab² + ab ≤ 2*ab⁴*2^ab (since ab² ≤ ab⁴ and ab ≤ ab⁴ for ab ≥ 1, and 2^ab ≥ 1)
@@ -808,7 +807,7 @@ private theorem logWidth_lt_delta (y : ℚ) (hy : 1 ≤ y) (hy1 : 1 < y)
     have h50ab : 2 * ab ≤ 50 * ab * (ab + 1) := by
       calc 2 * ab ≤ 50 * ab := by omega
         _ = 50 * ab * 1 := (Nat.mul_one _).symm
-        _ ≤ 50 * ab * (ab + 1) := Nat.mul_le_mul_left _ (by omega)
+        _ ≤ 50 * ab * (ab + 1) := by bound_calc
     have hkey : L + 2 * ab ≤ ab * (L + ab + 1) * 50 := by
       have : L + 2 * ab ≤ 50 * ab * L + 50 * ab * (ab + 1) := by omega
       have : 50 * ab * L + 50 * ab * (ab + 1) = ab * (L + ab + 1) * 50 := by ring
@@ -816,11 +815,9 @@ private theorem logWidth_lt_delta (y : ℚ) (hy : 1 ≤ y) (hy1 : 1 < y)
     omega
   -- 2*N+1 ≥ ab*(L+S+2)
   have h2N1_ge : ab * (L + S + 2) ≤ 2 * N + 1 := by
-    have h1 : ab * (L + S + 2) ≤ ab * (L + ab + 2) :=
-      Nat.mul_le_mul_left _ (by omega)
+    have h1 : ab * (L + S + 2) ≤ ab * (L + ab + 2) := by bound_calc
     have h2 : L + ab + 2 ≤ 20 * (L + ab + 1) := by omega
-    have h3 : ab * (L + ab + 2) ≤ ab * (20 * (L + ab + 1)) :=
-      Nat.mul_le_mul_left _ h2
+    have h3 : ab * (L + ab + 2) ≤ ab * (20 * (L + ab + 1)) := by bound_calc
     have h4 : ab * (20 * (L + ab + 1)) = 20 * (ab * (L + ab + 1)) := by ring
     simp only [N, iter, logNumTerms]
     -- Goal: ab * (L + S + 2) ≤ 2 * (pn + 10 + ab * (L + ab + 1) * 10) + 1
@@ -851,10 +848,7 @@ private theorem logWidth_lt_delta (y : ℚ) (hy : 1 ≤ y) (hy1 : 1 < y)
           rw [one_mul]
           -- Goal: ab * 2^ab * (4 * 2^L) ≤ 2^(L+2*ab+2)
           calc (ab : ℝ) * 2 ^ ab * (4 * 2 ^ L)
-              ≤ 2 ^ ab * 2 ^ ab * (4 * 2 ^ L) :=
-                mul_le_mul_of_nonneg_right
-                  (mul_le_mul_of_nonneg_right hab_le_2ab (by positivity))
-                  (by positivity)
+              ≤ 2 ^ ab * 2 ^ ab * (4 * 2 ^ L) := by bound_calc
             _ = (2 : ℝ) ^ (L + 2 * ab + 2) := by
                 rw [show L + 2 * ab + 2 = 2 + L + ab + ab from by omega]
                 simp only [pow_add]; norm_num; ring
@@ -884,7 +878,7 @@ private theorem logWidth_lt_delta (y : ℚ) (hy : 1 ≤ y) (hy1 : 1 < y)
       calc (t : ℝ) ^ (2 * N + 1) * 2 ^ S / ((2 * N : ℝ) + 1)
           ≤ (1 / 2 : ℝ) ^ (L + S + 2) * 2 ^ S / ((2 * N : ℝ) + 1) := by
             apply div_le_div_of_nonneg_right _ hN_pos.le
-            exact mul_le_mul_of_nonneg_right h_decay (by positivity)
+            bound_calc
         _ ≤ (1 / 2 : ℝ) ^ (L + S + 2) * 2 ^ S := by
             apply div_le_self (by positivity) (by linarith)
         _ = 1 / (4 * (2 : ℝ) ^ L) := by
@@ -897,8 +891,8 @@ private theorem logWidth_lt_delta (y : ℚ) (hy : 1 ≤ y) (hy1 : 1 < y)
       (k : ℝ) * 2 ^ S / 2 ^ N_ln2 +
       (t : ℝ) ^ (2 * N + 1) * 2 ^ S / ((2 * N : ℝ) + 1) := by
     calc ((bounds.2 : ℝ) - (bounds.1 : ℝ)) * 2 ^ S
-        ≤ ((k : ℝ) / 2 ^ N_ln2 + (t : ℝ) ^ (2 * N + 1) / ((2 * N : ℝ) + 1)) * 2 ^ S :=
-          mul_le_mul_of_nonneg_right hbound (by positivity)
+        ≤ ((k : ℝ) / 2 ^ N_ln2 + (t : ℝ) ^ (2 * N + 1) / ((2 * N : ℝ) + 1)) * 2 ^ S := by
+          bound_calc
       _ = (k : ℝ) * 2 ^ S / 2 ^ N_ln2 +
           (t : ℝ) ^ (2 * N + 1) * 2 ^ S / ((2 * N : ℝ) + 1) := by ring
   calc ((bounds.2 : ℝ) - (bounds.1 : ℝ)) * 2 ^ S

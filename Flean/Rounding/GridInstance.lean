@@ -2,6 +2,7 @@ import Flean.Rounding.Rounding
 import Flean.Rounding.ModeClass
 import Flean.Rounding.PolicyInstances
 import Flean.Linearize.Linearize
+import Flean.BoundCalc.BoundCalc
 import Flean.ToVal
 
 /-! # RModeGrid Instance
@@ -80,7 +81,7 @@ private theorem grid_exact_representable
     calc (n : R) = (n : R) * (2 : R) ^ g * ((2 : R) ^ g)⁻¹ := by
           rw [mul_inv_cancel_right₀ (ne_of_gt h2g_pos)]
       _ < (2 : R) ^ (e + 1) * ((2 : R) ^ g)⁻¹ :=
-          mul_lt_mul_of_pos_right hx_lt_binade (inv_pos.mpr h2g_pos)
+          by bound_calc
       _ = (2 : R) ^ (e + 1 - g) := by
           rw [← div_eq_mul_inv, ← zpow_sub₀ (by norm_num : (2 : R) ≠ 0)]
   -- coeff = n * 2^(g - e_ulp), fits in prec bits
@@ -94,7 +95,7 @@ private theorem grid_exact_representable
       Int.toNat_of_nonneg (by omega)]
     calc (n : R) * (2 : R) ^ (g - e_ulp)
         < (2 : R) ^ (e + 1 - g) * (2 : R) ^ (g - e_ulp) :=
-          mul_lt_mul_of_pos_right hn_lt (by positivity)
+          by bound_calc
       _ = (2 : R) ^ (e + 1 - g + (g - e_ulp)) := by rw [← two_zpow_mul]
       _ = (2 : R) ^ prec := by congr 1; simp only [e_ulp]; ring
   have hcoeff_bound := int_natAbs_lt_of_cast_lt_zpow (R := R) coeff hcoeff_pos hcoeff_lt_R

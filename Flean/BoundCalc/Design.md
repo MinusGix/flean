@@ -221,6 +221,103 @@ individual calc steps? It already can — the user writes the calc structure,
 `bound_calc` closes each `_ ≤ _` step. No special support needed beyond
 making the tactic robust enough.
 
+## Deployment status
+
+55 sites replaced across 13 files:
+- OddInterval.lean: 14 sites
+- ExpTermination.lean: 15 sites
+- LogTermination.lean: 12 sites
+- PadeExp.lean: 8 sites
+- RoundNormal.lean: 7 sites
+- RoundUp.lean: 4 sites
+- ExpComputableDefs.lean: 4 sites
+- ToVal.lean: 3 sites
+- MulErrorRepresentable.lean: 3 sites
+- GridInstance.lean: 2 sites
+- CommonConstants.lean: 1 site
+- PadeExpDefs.lean: 1 site
+- StickyTermination.lean: 1 site
+
+### Patterns that work well
+
+**One-sided scaling (most common, ~60% of sites):**
+```lean
+-- Before:
+apply mul_le_mul_of_nonneg_right h (le_of_lt (by positivity))
+-- After:
+bound_calc
+```
+
+**Strict scaling:**
+```lean
+-- Before:
+exact mul_lt_mul_of_pos_right h (by positivity)
+-- After:
+bound_calc
+```
+
+**Nat multiplication (calc steps):**
+```lean
+-- Before:
+_ ≤ f.m * 2 ^ 3 := Nat.mul_le_mul_left _ hd_le3
+_ ≤ (2 ^ p - 1) * 2 ^ 3 := Nat.mul_le_mul_right _ (by omega)
+-- After:
+_ ≤ f.m * 2 ^ 3 := by bound_calc
+_ ≤ (2 ^ p - 1) * 2 ^ 3 := by bound_calc
+```
+
+**Cast bounds (need `have` to bridge cast gap):**
+```lean
+-- Before:
+exact mul_lt_mul_of_pos_right (by exact_mod_cast x.valid.2.2.1) (by positivity)
+-- After:
+have : (x.m : R) < (2 : R) ^ FloatFormat.prec.toNat := by exact_mod_cast x.valid.2.2.1
+bound_calc
+```
+
+### Patterns that don't work yet
+
+**P1: `0 ≤ zpow - 1` nonnegativity (CommonConstants)**
+`positivity` can't prove `0 ≤ (2:R)^prec - 1` because it doesn't know `prec ≥ 2`.
+The original proof uses `le_trans (1:R) ≤ 4` + `FloatFormat.prec_pow_le`.
+**Fix idea:** Add domain-specific nonnegativity lemmas to dispatch chain, or
+teach `trySynthesizeSingleBound` to try `linarith` with `positivity`-produced hints.
+
+**P2: zpow/npow cast mismatch (Ulp)**
+After `rw [← two_zpow_mul]`, the goal has `(2:R) ^ (↑n : ℤ)` (zpow) but the
+hypothesis from `Nat.lt_pow_succ_log_self` has `(2:ℕ) ^ n` (npow). The bound needs
+`zpow_natCast` rewriting before `bound_calc` can match it.
+**Fix idea:** Auto-try `zpow_natCast`/`zpow_natCast` rewrites during factor comparison,
+or add a normalization pass that converts npow to zpow (or vice versa) before matching.
+
+**P3: `linarith [mul_le_mul_of_nonneg_right ...]` hint patterns**
+Some sites use `mul_le_mul` as a *hint* inside `linarith`, not as a standalone goal:
+```lean
+linarith [mul_le_mul_of_nonneg_right hn_cast (le_of_lt hE_pos)]
+```
+`bound_calc` only closes goals, it can't produce hint terms for `linarith`.
+**Fix idea:** A `bound_calc_hint` term-mode elaborator that produces a proof term
+for use inside `linarith [bound_calc_hint]` or `have h := bound_calc_hint; linarith [h]`.
+
+**P4: Inline `_` placeholder patterns**
+```lean
+apply mul_le_mul_of_nonneg_right _ (zpow_nonneg (by norm_num) _)
+-- ... long inline proof for the _ placeholder follows ...
+```
+The bound proof is computed *after* the `apply`, so `bound_calc` can't see it.
+**Fix idea:** `bound_calc` could leave unsolved subgoals for unmatched factors,
+letting the user fill them in. Currently requires full coverage.
+
+**P5: Division factors (RoundNormal, RoundDown)**
+```lean
+apply mul_le_mul_of_nonneg_right
+· apply div_le_div_of_nonneg_right h ...
+· exact zpow_nonneg ...
+```
+Division appears as a factor but `bound_calc` doesn't decompose `a / b`.
+**Fix idea:** R4 (division support) — rewrite `a / b` as `a * b⁻¹`, or recognize
+`div_le_div` patterns directly.
+
 ## Open questions
 
 - **Hint syntax:** `bound_calc [h1, h2]` to guide matching, or just auto-search?

@@ -1,5 +1,6 @@
 import Flean.Operations.StickyExtract
 import Flean.Linearize.Linearize
+import Flean.BoundCalc.BoundCalc
 
 /-! # Shared termination infrastructure for sticky cell extraction
 
@@ -127,7 +128,7 @@ lemma err1_factorial_bound (N : ℕ) (hN : 4 ≤ N) :
     nlinarith
   have h4_fac : 4 * (2:ℝ)^N / ↑N.factorial ≤ (8/3:ℝ) * (1/2:ℝ)^(N-4) := by
     have : 4 * ((2:ℝ)^N / ↑N.factorial) ≤ 4 * ((2:ℝ)^4 / ↑(4:ℕ).factorial * (1/2:ℝ)^(N-4)) :=
-      mul_le_mul_of_nonneg_left h_fac (by norm_num)
+      by bound_calc
     calc 4 * (2:ℝ)^N / ↑N.factorial
         = 4 * ((2:ℝ)^N / ↑N.factorial) := by ring
       _ ≤ 4 * ((2:ℝ)^4 / ↑(4:ℕ).factorial * (1/2:ℝ)^(N-4)) := this
