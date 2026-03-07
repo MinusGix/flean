@@ -162,25 +162,68 @@ bound_calc [h1, h2, h3]
   The user writes the `calc` structure; `bound_calc` closes each step
 - Sum bounds: `a + b ≤ c + d` (already handled by `linarith` / `gcongr`)
 
-## Implementation plan
+## Implementation status
 
 1. ✅ Phase 1: `gcongr` + dispatch chain (done, ~15 lines)
-2. Factor extraction: walk Expr tree, split on `*` (~30 lines)
-3. Hypothesis scanning: scan context for `≤`/`<` hypotheses, extract factors (~40 lines)
-4. Factor matching: recursive binary partition search (~80 lines)
-5. Proof construction: build `calc` with `ring` + `mul_le_mul` chain (~60 lines)
-6. Integration: try Phase 1 → nlinarith → full matching (~20 lines)
-7. Test on all codebase sites, iterate
+2. ✅ Factor extraction: walk Expr tree, split on `*` (~30 lines)
+3. ✅ Hypothesis scanning: scan context for `≤`/`<` hypotheses, extract factors (~40 lines)
+4. ✅ Factor matching: recursive binary partition search (~80 lines)
+5. ✅ Proof construction: `mul_le_mul` chain + `linarith` (~70 lines)
+6. ✅ Integration: Phase 3 → Phase 1 → nlinarith fallback (~20 lines)
+7. 🔄 Test on codebase patterns, iterate
 
-Estimated total: ~250 lines of metaprogramming (excluding Phase 1).
+Total: ~250 lines of metaprogramming.
+
+## Roadmap (next improvements)
+
+### R1: Synthesized trivial bounds (HIGH)
+Factor matching currently only uses context hypotheses. Add synthesis of:
+- **Reflexive:** `x ≤ x` for any factor appearing on both sides
+- **Constant:** `457 ≤ 500` checkable by `norm_num`/`omega`
+- **Power:** `2^e₁ ≤ 2^e₂` checkable by `linearize`
+
+This removes the need for users to explicitly state obvious factor bounds.
+
+**Codebase motivation:** OddInterval.lean has `Nat.mul_le_mul_left _ hd_le` where
+one factor is bounded by hypothesis and the other factor is identical on both sides.
+LogTermination.lean has `457 * ab^3 * 2^ab ≤ 500 * ab^3 * 2^ab`.
+
+### R2: Extensible dispatch chain (MEDIUM) ✅ DONE
+Added lemma-based dispatch for power bounds:
+- `Nat.one_le_two_pow` → handles `1 ≤ 2^n`
+- `Nat.one_le_pow _ _ (by omega)` → handles `1 ≤ m^n` for concrete `m ≥ 1`
+
+Added to both Phase 1 gcongr dispatch and Phase 3 synthesis.
+Unblocked P1.6 and NP.6 test cases.
+
+Long-term: `@[bound_calc_dispatch]` attribute for external lemma registration.
+
+### R3: Strict inequality support in factor matching (MEDIUM)
+Factor matching currently only handles `≤` goals. Extending to `<`:
+- Parse `<` goals in `closeByFactorMatching`
+- Use `mul_lt_mul` when at least one matched group is strict
+- Track `isStrict` through the matching algorithm
+
+**Codebase motivation:** ~20 `mul_lt_mul_of_pos_right/left` sites across
+LogTermination, ExpTermination, ToVal, RoundNormal, etc.
+
+### R4: Division support (LOW)
+Rewrite `a / b` as `a * b⁻¹` and handle `inv_le_inv` for the inverted factor.
+Or recognize `div_le_div_of_nonneg_right` patterns directly.
+
+**Codebase motivation:** RoundNormal.lean has `div_le_div_of_nonneg_right` inside
+`mul_le_mul_of_nonneg_right` patterns.
+
+### R5: Calc step integration (LOW)
+Most `mul_le_mul` calls live inside `calc` blocks. Could `bound_calc` close
+individual calc steps? It already can — the user writes the calc structure,
+`bound_calc` closes each `_ ≤ _` step. No special support needed beyond
+making the tactic robust enough.
 
 ## Open questions
 
-- **Name:** `bound_calc` is fine for now. Could rename later.
 - **Hint syntax:** `bound_calc [h1, h2]` to guide matching, or just auto-search?
 - **Timeout:** Factor matching is exponential in theory but tiny in practice (≤4 factors).
-  Add a factor count limit (e.g., 8) as a safety valve.
-- **Multiset matching:** Should `[a, b]` match `[b, a]`? Yes — factor lists are
-  unordered (products are commutative). Use multiset comparison.
+  Depth limit of 8 is the current safety valve.
 - **Partial coverage:** If matching covers only some factors, should we leave
   subgoals for the remaining ones? Or require full coverage? Full coverage is simpler.
