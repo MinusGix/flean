@@ -33,16 +33,14 @@ def toBits [FloatFormat] (f : Fp) : FpQuotient :=
       <;> omega
     )⟧
 
-@[reducible]
 def FloatBits.FpExponent [FloatFormat] (b : FloatBits) : ℤ := if b.toBitsTriple.exponent = 0 then FloatFormat.min_exp else (b.toBitsTriple.exponent.toNat : ℤ) - FloatFormat.exponentBias
 
-def FloatBits.FpExponent_def [FloatFormat] (b : FloatBits) : b.FpExponent = if b.toBitsTriple.exponent = 0 then FloatFormat.min_exp else (b.toBitsTriple.exponent.toNat : ℤ) - FloatFormat.exponentBias := rfl
+theorem FloatBits.FpExponent_def [FloatFormat] (b : FloatBits) : b.FpExponent = if b.toBitsTriple.exponent = 0 then FloatFormat.min_exp else (b.toBitsTriple.exponent.toNat : ℤ) - FloatFormat.exponentBias := rfl
 
 /-- The Integral Significand. Attach the leading 1 to normal numbers; This is technically only valid for the standard emax/emin range. -/
-@[reducible]
 def FloatBits.FpSignificand [FloatFormat] (b : FloatBits) : ℕ := if b.toBitsTriple.exponent = 0 then b.toBitsTriple.significand.toNat else ((BitVec.ofBool true) ++ b.toBitsTriple.significand).toNat
 
-def FloatBits.FpSignificand_def [FloatFormat] (b : FloatBits) : b.FpSignificand = if b.toBitsTriple.exponent = 0 then b.toBitsTriple.significand.toNat else ((BitVec.ofBool true) ++ b.toBitsTriple.significand).toNat := rfl
+theorem FloatBits.FpSignificand_def [FloatFormat] (b : FloatBits) : b.FpSignificand = if b.toBitsTriple.exponent = 0 then b.toBitsTriple.significand.toNat else ((BitVec.ofBool true) ++ b.toBitsTriple.significand).toNat := rfl
 
 theorem FloatBits.isFinite_validFloatVal [StdFloatFormat] {b : FloatBits} (hf : b.isFinite) : IsValidFiniteVal b.FpExponent b.FpSignificand := by
   let exponent := b.toBitsTriple.exponent
@@ -517,8 +515,7 @@ private theorem append_one_mod [FloatFormat] (T : BitVec FloatFormat.significand
 private theorem FpSignificand_ge_of_normal [FloatFormat] {b : FloatBits}
     (he : b.toBitsTriple.exponent ≠ 0) :
     2 ^ FloatFormat.significandBits ≤ b.FpSignificand := by
-  show _ ≤ (if b.toBitsTriple.exponent = 0 then _ else _)
-  rw [if_neg he]
+  rw [FloatBits.FpSignificand_def, if_neg he]
   have hmsb : ((BitVec.ofBool true) ++ b.toBitsTriple.significand).msb = true := by
     unfold BitVec.msb BitVec.getMsbD
     simp [BitVec.ofBool_true, BitVec.getLsbD_append]
@@ -550,9 +547,9 @@ private theorem finite_roundtrip [StdFloatFormat] {b : FloatBits}
   if he : b.toBitsTriple.exponent = 0 then
     -- === Subnormal case ===
     have he_exp : b.FpExponent = FloatFormat.min_exp := by
-      show (if b.toBitsTriple.exponent = 0 then _ else _) = _; rw [if_pos he]
+      rw [FloatBits.FpExponent_def, if_pos he]
     have hm_sig : b.FpSignificand = b.toBitsTriple.significand.toNat := by
-      show (if b.toBitsTriple.exponent = 0 then _ else _) = _; rw [if_pos he]
+      rw [FloatBits.FpSignificand_def, if_pos he]
     have hsub : _root_.isSubnormal b.FpExponent b.FpSignificand := by
       refine ⟨he_exp, ?_⟩
       rw [hm_sig]
@@ -571,9 +568,9 @@ private theorem finite_roundtrip [StdFloatFormat] {b : FloatBits}
   else
     -- === Normal case ===
     have he_exp : b.FpExponent = (b.toBitsTriple.exponent.toNat : ℤ) - FloatFormat.exponentBias := by
-      show (if b.toBitsTriple.exponent = 0 then _ else _) = _; rw [if_neg he]
+      rw [FloatBits.FpExponent_def, if_neg he]
     have hm_sig : b.FpSignificand = ((BitVec.ofBool true) ++ b.toBitsTriple.significand).toNat := by
-      show (if b.toBitsTriple.exponent = 0 then _ else _) = _; rw [if_neg he]
+      rw [FloatBits.FpSignificand_def, if_neg he]
     have hm_ge := FpSignificand_ge_of_normal he
     have hnsub : ¬_root_.isSubnormal b.FpExponent b.FpSignificand := by
       intro ⟨_, hm⟩

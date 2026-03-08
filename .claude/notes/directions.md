@@ -26,8 +26,23 @@ Tracked iteratively. Priorities ordered top-to-bottom within each tier.
 - [ ] **Close remaining sorries** (1 remaining, pre-existing/unrelated)
   - `Linearize/FinalTest.lean:78` — multiplicative linearize test case
   - ~~`Ulp.lean:21` — Harrison's ULP~~ ✓ defined + linked to standard ULP
-- [ ] **Encoding round-trip** — prove finite floats fit in bit repr, bit-level equality equivalence
+- [x] **Encoding round-trip** — `toBits_ofBits` + `ofBits_toBits` both sorry-free ✓
 - [ ] **Common constants verification** — prove binary32/64 constants match claimed values
+
+## Encoding Cleanup
+- [ ] **Remove `@[reducible]` from `FpExponent`/`FpSignificand`** — causes unpredictable unfolding,
+  forces `show (if ... then ... else ...); rw [if_pos/neg]` pattern everywhere. Change to plain `def`
+  and use `FpExponent_def`/`FpSignificand_def` explicitly. Ripples through `isFinite_validFloatVal`,
+  `lift_repr_toBitsTriple_*`, `finite_roundtrip`, `FpSignificand_ge_of_normal`.
+- [ ] **Add `significandBits_eq` simp lemma** — `significandBits = (prec - 1).toNat` is `rfl` but
+  omega can't see through it. Add `@[simp]` lemma in BitSize.lean to normalize everywhere.
+- [ ] **Extract standalone `finite_exponent_toNat` / `finite_significand_toNat`** — currently bundled
+  inside `finite_roundtrip`. Standalone versions would be reusable (e.g. for constants verification).
+- [ ] **Simplify `lift_repr_toBitsTriple_significand`** — 75-line testBit marathon. A helper like
+  `toNat_ofBool_append : m < 2^n → (1#1 ++ ofNat n m).toNat = 2^n + m` would cut it significantly.
+- [ ] **Encoding uniqueness for ±0** — TODO at Conversion.lean:323. Two bit patterns → same Fp value.
+- [ ] **Clean up `toBits` NaN branch** — inline proof for `1 ≠ 0` could be a standalone lemma.
+- [ ] **Remove commented-out `#eval` block** at bottom of Conversion.lean (or move to test file).
 
 ## LogComputable — Done
 - [x] **Full pipeline sorry-free**: LogTaylor, LogComputableDefs, LogComputableSound, LogTermination, LogComputable
@@ -96,30 +111,35 @@ would be a moderate refactor of `pade_delta_log_bound`.
 - [x] **Reciprocal recognition** ✓ — `c/base^m ≤ c/base^n` via `div_le_div_of_nonneg_left` with recursive side goal solving
 - [x] **`unfold_let` preprocessing** ✓ — `unfoldLetFVars` + `instantiateMVars` sees through `set` aliases
 - [x] **Side goal `norm_cast` pass** ✓ — Already resolved by exact_mod_cast + asInt fixes
-- [ ] **Multiplicative monotonicity** — Separate `bound_calc` tactic for `*`, `/`, `^` chains
+- [x] **Multiplicative monotonicity** — `bound_calc` tactic ✓ (see below)
 
 Known limitations documented in memory/linearize-issues.md. Tests in FinalTest.lean.
 
-## Tactic Ideas
+## bound_calc Tactic — DONE
+- [x] **Phase 1**: gcongr + rich subgoal dispatch ✓
+- [x] **Synthesized bounds** (R1+R2): auto-bound `f.m`, `precNat`, etc. from context ✓
+- [x] **Partial dispatch** (P4): close subgoals that can be solved, leave rest ✓
+- [x] **Hint syntax**: `bound_calc [expr₁, expr₂]` for manual witnesses ✓
+- [x] **`@[bound_calc]` attribute**: extensible registered lemma dispatch ✓
+- [x] **`assumption_mod_cast`** in dispatch chain ✓
+- Deployed to ~144 sites across 26 files
+- Design doc: `Flean/BoundCalc/Design.md`; tests: `Flean/BoundCalc/TestCases.lean`
 
-### A. `zpow_norm` — Power expression normalizer (~170 sites)
-Normalize zpow/npow expressions: collapse products (`2^a * 2^b → 2^(a+b)`),
-bridge ℕ↔ℤ casts (`(2:R)^n.toNat → (2:R)^n` via `zpow_natCast` + `prec_toNat_eq`),
-and prove exponent equalities via `ring`/`omega`.
+## zpow_norm Tactic — DONE
+- [x] **Core**: Normalize zpow products, collapse `2^a * 2^b → 2^(a+b)`, bridge ℕ↔ℤ casts ✓
+- [x] **Division**: `2^a / 2^b → 2^(a-b)` ✓
+- [x] **Exponent solving**: delegates to `ring`/`omega` ✓
+- [x] **Hypothesis mode**: `zpow_norm at h` ✓
+- Deployed to 46 sites across 16 files
+- Design doc: `Flean/ZpowNorm/Design.md`; tests: `Flean/ZpowNorm/TestCases.lean`
 
-Common patterns it would replace:
-- `rw [← zpow_natCast]; congr 1; exact FloatFormat.prec_toNat_eq`
-- `rw [two_zpow_mul]; congr 1; ring`
-- `rw [← zpow_natCast, prec_sub_one_toNat_eq]`
+## Remaining Tactic Ideas
 
-**Open question:** Does this belong in `linearize` (which already handles zpow monotonicity)
-or as a separate normalization tactic? See investigation notes below.
-
-### B. `cast_bound` — ℕ↔ℤ↔ℝ inequality bridge (~110 sites)
+### A. `cast_bound` — ℕ↔ℤ↔ℝ inequality bridge (~110 sites)
 Auto-bridge cast gaps for inequalities: `(f.m : R) < (2:R)^prec.toNat` → `(2:R)^prec`.
-Chains `exact_mod_cast`, `zify`, `zpow_natCast`, `omega`. Overlaps heavily with A.
+Chains `exact_mod_cast`, `zify`, `zpow_natCast`, `omega`. Partially subsumed by `zpow_norm` + `bound_calc`.
 
-### C. Rounding case splitter (~95 sites)
+### B. Rounding case splitter (~95 sites)
 Domain-specific: unfold rounding function → simp reduceDIte → three-way case split
 (subnormal/normal/overflow) → unfold appropriate subroutine. Very repetitive in
 Rounding/ files but narrow applicability.
