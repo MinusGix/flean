@@ -23,11 +23,12 @@ Tracked iteratively. Priorities ordered top-to-bottom within each tier.
 - [x] **Factor sticky-bit scaffolding** — `sticky_roundIntSig_eq_round` shared by Div/Sqrt ✓
 
 ## Near-Term
-- [ ] **Close remaining sorries** (1 remaining, pre-existing/unrelated)
-  - `Linearize/FinalTest.lean:78` — multiplicative linearize test case
+- [x] **Close remaining sorries** — all removed ✓
+  - ~~`Linearize/FinalTest.lean:78`~~ — deleted (test for old limitation)
+  - ~~`AlternatingChooseSum.lean:73`~~ — deleted (unused `leading_pade_coeff_sum`)
   - ~~`Ulp.lean:21` — Harrison's ULP~~ ✓ defined + linked to standard ULP
 - [x] **Encoding round-trip** — `toBits_ofBits` + `ofBits_toBits` both sorry-free ✓
-- [ ] **Common constants verification** — prove binary32/64 constants match claimed values
+- [x] **Common constants verification** — proved in BitSize.lean without native_decide ✓
 
 ## Encoding Cleanup — Done
 - [x] **Remove `@[reducible]` from `FpExponent`/`FpSignificand`** ✓

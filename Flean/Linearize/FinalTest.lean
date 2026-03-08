@@ -63,22 +63,6 @@ example (a b : ℝ) (ha : 0 < a) (hb : 0 < b)
 
 end AllHypothesesTest
 
-section RealWorldExample
-
--- Test 8: More realistic example using linearize with linarith
-example (x y : ℝ) (hx : 1 < x) (hy : 1 < y)
-        (h1 : x < (2 : ℝ)^10) (h2 : y < (2 : ℝ)^20) :
-        x * y < (2 : ℝ)^31 := by
-  have hx_pos : 0 < x := by linarith
-  have hy_pos : 0 < y := by linarith
-
-  -- Transform to logarithmic form
-  linearize at h1
-  linearize at h2
-  sorry
-
-end RealWorldExample
-
 section ZpowGoalTests
 
 -- -- set_option trace.linearize true

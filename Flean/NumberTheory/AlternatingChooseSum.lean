@@ -62,16 +62,6 @@ theorem alternating_choose_sum (M n j : ℕ) (hjn : j ≤ n) (hnM : n ≤ M) :
       from by rw [Polynomial.C_mul]; ring]
   rw [hpow, Polynomial.coeff_C_mul, Polynomial.coeff_X_add_one_pow]
 
-/-- The cross-product leading coefficient identity:
-`Σ_{k=0}^{N} (-1)^k C(2N+1,k) C(2N-k,N) = (-1)^N`.
-
-This gives the nonzero leading coefficient of the Padé cross product
-`Q_N·P_{N+1} - Q_{N+1}·P_N`, needed to show it's a nonzero monomial `c·x^{2N+1}`. -/
-theorem leading_pade_coeff_sum (N : ℕ) :
-    ∑ k ∈ range (N + 1), (-1 : ℤ) ^ k * ((2 * N + 1).choose k : ℤ) *
-      ((2 * N - k).choose N : ℤ) = (-1 : ℤ) ^ N := by
-  sorry
-
 /-- Coefficient of `X^j * p` below degree `j` is 0. -/
 private lemma coeff_X_pow_mul_of_lt {R : Type*} [CommSemiring R] (j : ℕ) (p : Polynomial R)
     (n : ℕ) (hn : n < j) : Polynomial.coeff (X ^ j * p) n = 0 := by
