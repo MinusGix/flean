@@ -14,4 +14,5 @@ import «Flean».ZpowNorm.ZpowNorm
 import «Flean».Gsplit.Gsplit
 import «Flean».ENNRat
 import «Flean».ERat
+import «Flean».MinMax
 import «Flean».Operations
