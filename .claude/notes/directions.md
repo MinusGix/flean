@@ -34,10 +34,9 @@ Tracked iteratively. Priorities ordered top-to-bottom within each tier.
   forces `show (if ... then ... else ...); rw [if_pos/neg]` pattern everywhere. Change to plain `def`
   and use `FpExponent_def`/`FpSignificand_def` explicitly. Ripples through `isFinite_validFloatVal`,
   `lift_repr_toBitsTriple_*`, `finite_roundtrip`, `FpSignificand_ge_of_normal`.
-- [ ] **Add `significandBits_eq` simp lemma** — `significandBits = (prec - 1).toNat` is `rfl` but
-  omega can't see through it. Add `@[simp]` lemma in BitSize.lean to normalize everywhere.
-- [ ] **Extract standalone `finite_exponent_toNat` / `finite_significand_toNat`** — currently bundled
-  inside `finite_roundtrip`. Standalone versions would be reusable (e.g. for constants verification).
+- [x] **Add `significandBits_eq` simp lemma** ✓ — `@[simp] significandBits_eq` in BitSize.lean
+- [x] **Extract standalone `finite_FpExponent` / `finite_FpSignificand`** ✓ — plus helpers
+  `finite_exponent_zero_of_subnormal`, `finite_exponent_ne_zero_of_normal`, `append_one_toNat`
 - [ ] **Simplify `lift_repr_toBitsTriple_significand`** — 75-line testBit marathon. A helper like
   `toNat_ofBool_append : m < 2^n → (1#1 ++ ofNat n m).toNat = 2^n + m` would cut it significantly.
 - [ ] **Encoding uniqueness for ±0** — TODO at Conversion.lean:323. Two bit patterns → same Fp value.
