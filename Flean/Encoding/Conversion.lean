@@ -511,17 +511,139 @@ private theorem append_one_mod [FloatFormat] (T : BitVec FloatFormat.significand
     (@BitVec.extractAppend_first₂ 1 FloatFormat.significandBits (BitVec.ofBool true) T)
   rwa [BitVec.extractLsb'_toNat, Nat.shiftRight_zero] at h
 
+/-- Prepending a 1-bit to a trailing significand recovers the full value. -/
+private theorem append_one_toNat [FloatFormat] (T : BitVec FloatFormat.significandBits) :
+    (BitVec.ofBool true ++ T).toNat = 2 ^ FloatFormat.significandBits + T.toNat := by
+  have hmod := append_one_mod T
+  have hge : 2 ^ FloatFormat.significandBits ≤ (BitVec.ofBool true ++ T).toNat := by
+    have hmsb : ((BitVec.ofBool true) ++ T).msb = true := by
+      unfold BitVec.msb BitVec.getMsbD
+      simp [BitVec.ofBool_true, BitVec.getLsbD_append]
+    have h := BitVec.toNat_ge_of_msb_true hmsb
+    rw [show 1 + FloatFormat.significandBits - 1 = FloatFormat.significandBits from by omega] at h
+    exact h
+  -- v = 2^n * (v / 2^n) + v % 2^n, where v / 2^n = 1 from bounds
+  set v := (BitVec.ofBool true ++ T).toNat
+  have hlt : v < 2 ^ FloatFormat.significandBits + 2 ^ FloatFormat.significandBits := by
+    have h := (BitVec.ofBool true ++ T).isLt
+    have : (2 : ℕ) ^ (1 + FloatFormat.significandBits) =
+        2 ^ FloatFormat.significandBits + 2 ^ FloatFormat.significandBits := by
+      rw [show 1 + FloatFormat.significandBits = FloatFormat.significandBits + 1 from by omega,
+          pow_succ]; ring
+    omega
+  have hdiv : v / 2 ^ FloatFormat.significandBits = 1 :=
+    Nat.div_eq_of_lt_le (by omega) (by omega)
+  have hdm := Nat.div_add_mod v (2 ^ FloatFormat.significandBits)
+  rw [hdiv, Nat.mul_one, hmod] at hdm
+  omega
+
 /-- For a finite FloatBits with nonzero exponent, the decoded significand has a leading 1. -/
 private theorem FpSignificand_ge_of_normal [FloatFormat] {b : FloatBits}
     (he : b.toBitsTriple.exponent ≠ 0) :
     2 ^ FloatFormat.significandBits ≤ b.FpSignificand := by
-  rw [FloatBits.FpSignificand_def, if_neg he]
-  have hmsb : ((BitVec.ofBool true) ++ b.toBitsTriple.significand).msb = true := by
-    unfold BitVec.msb BitVec.getMsbD
-    simp [BitVec.ofBool_true, BitVec.getLsbD_append]
-  have h := BitVec.toNat_ge_of_msb_true hmsb
-  rw [show 1 + FloatFormat.significandBits - 1 = FloatFormat.significandBits from by omega] at h
-  exact h
+  rw [FloatBits.FpSignificand_def, if_neg he, append_one_toNat]
+  omega
+
+/-- For subnormal inputs, the stored exponent bitvec is zero. -/
+private theorem finite_exponent_zero_of_subnormal [FloatFormat] {s : Bool} {e : ℤ} {m : ℕ}
+    (vf : IsValidFiniteVal e m) (hs : _root_.isSubnormal e m) :
+    (FloatBits.finite s e m vf).toBitsTriple.exponent = 0 := by
+  unfold FloatBits.finite
+  lift_lets; extract_lets E E' _ sign significand exponent
+  rw [FloatBits.construct_exponent_eq_BitsTriple]
+  unfold exponent E' E; rw [if_pos hs]; simp
+
+/-- For normal inputs, the stored exponent bitvec is nonzero. -/
+private theorem finite_exponent_ne_zero_of_normal [StdFloatFormat] {s : Bool} {e : ℤ} {m : ℕ}
+    (vf : IsValidFiniteVal e m) (hs : ¬_root_.isSubnormal e m) :
+    (FloatBits.finite s e m vf).toBitsTriple.exponent ≠ 0 := by
+  unfold FloatBits.finite
+  lift_lets; extract_lets E E' _ sign significand exponent
+  rw [FloatBits.construct_exponent_eq_BitsTriple]
+  unfold exponent E' E; rw [if_neg hs]
+  intro h
+  have hlt := StdFloatFormat.exponentBias_add_toNat_lt_exponentBits e (by
+    have := vf.1; have := vf.2.1; omega)
+  -- Stored exponent is (e+bias) % 2^expBits = 0, but e+bias ≥ 1
+  have he_bias_pos : e + FloatFormat.exponentBias ≥ 1 := by
+    have := StdFloatFormat.st; unfold FloatFormat.isStandardExpRange at this
+    unfold FloatFormat.exponentBias; linarith [vf.1]
+  have hteq : (e + FloatFormat.exponentBias).toNat % 2 ^ FloatFormat.exponentBits = 0 := by
+    have := BitVec.toNat_eq.mp h
+    simp only [BitVec.toNat_ofNat] at this
+    simpa using this
+  rw [Nat.mod_eq_of_lt hlt] at hteq
+  omega
+
+/-- Encoding e into `FloatBits.finite` and decoding via `FpExponent` recovers e. -/
+theorem FloatBits.finite_FpExponent [StdFloatFormat] {s : Bool} {e : ℤ} {m : ℕ}
+    (vf : IsValidFiniteVal e m) :
+    (FloatBits.finite s e m vf).FpExponent = e := by
+  rw [FpExponent_def]
+  if hs : _root_.isSubnormal e m then
+    rw [if_pos (finite_exponent_zero_of_subnormal vf hs)]
+    exact hs.1.symm
+  else
+    rw [if_neg (finite_exponent_ne_zero_of_normal vf hs)]
+    unfold FloatBits.finite
+    lift_lets; extract_lets E E' _ sign significand exponent
+    rw [FloatBits.construct_exponent_eq_BitsTriple]
+    unfold exponent E' E; rw [if_neg hs]
+    have hlt := StdFloatFormat.exponentBias_add_toNat_lt_exponentBits e (by
+      have := vf.1; have := vf.2.1; omega)
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hlt,
+        FloatFormat.exponentBias_add_standard_toNat e (by have := vf.1; have := vf.2.1; omega)
+          StdFloatFormat.st]
+    omega
+
+/-- Encoding m into `FloatBits.finite` and decoding via `FpSignificand` recovers m. -/
+theorem FloatBits.finite_FpSignificand [StdFloatFormat] {s : Bool} {e : ℤ} {m : ℕ}
+    (vf : IsValidFiniteVal e m) :
+    (FloatBits.finite s e m vf).FpSignificand = m := by
+  rw [FpSignificand_def]
+  if hs : _root_.isSubnormal e m then
+    rw [if_pos (finite_exponent_zero_of_subnormal vf hs)]
+    -- Subnormal: significand stored via sigToTrailing, read back directly
+    unfold FloatBits.finite
+    lift_lets; extract_lets E E' T sign significand exponent
+    rw [FloatBits.construct_significand_eq_BitsTriple]
+    unfold significand T; rw [if_pos hs]
+    unfold FloatBits.sigToTrailing
+    rw [BitVec.toNat_ofNat, Nat.and_two_pow_sub_one_eq_mod]
+    have hm_lt : m < 2 ^ FloatFormat.significandBits := by
+      rw [FloatFormat.significandBits_eq]
+      have := hs.2
+      have : 0 < 2 ^ (FloatFormat.prec - 1).toNat := Nat.pos_of_ne_zero (by positivity)
+      omega
+    rw [Nat.mod_eq_of_lt hm_lt, Nat.mod_eq_of_lt hm_lt]
+  else
+    rw [if_neg (finite_exponent_ne_zero_of_normal vf hs)]
+    -- Normal: significand stored as m, read back with leading 1
+    unfold FloatBits.finite
+    lift_lets; extract_lets E E' T sign significand exponent
+    rw [FloatBits.construct_significand_eq_BitsTriple]
+    unfold significand T; rw [if_neg hs, append_one_toNat, BitVec.toNat_ofNat]
+    -- 2^sigBits + m % 2^sigBits = m for normal m
+    have hvf := vf; unfold IsValidFiniteVal at hvf
+    have hn := hvf.2.2.2.resolve_right hs
+    unfold _root_.isNormal at hn
+    rw [FloatFormat.significandBits_eq]
+    -- Use div_add_mod: m = 2^n * (m / 2^n) + m % 2^n, where m / 2^n = 1
+    set n := (FloatFormat.prec - 1).toNat
+    have hlt_2n : m < 2 ^ n + 2 ^ n := by
+      have hp := FloatFormat.valid_prec
+      have : (2 : ℕ) ^ n + 2 ^ n = 2 ^ FloatFormat.prec.toNat := by
+        have := FloatFormat.valid_prec
+        conv_rhs =>
+          rw [show FloatFormat.prec.toNat = n + 1 from by
+            rw [show n = FloatFormat.prec.toNat - 1 from
+              FloatFormat.prec_sub_one_toNat_eq_toNat_sub]; omega]
+        rw [pow_succ]; ring
+      linarith [hn.2]
+    have hdiv : m / 2 ^ n = 1 := Nat.div_eq_of_lt_le (by omega) (by omega)
+    have hdm := Nat.div_add_mod m (2 ^ n)
+    rw [hdiv, Nat.mul_one] at hdm
+    omega
 
 /-- For a finite FloatBits, re-encoding the decoded values yields the same bit pattern. -/
 private theorem finite_roundtrip [StdFloatFormat] {b : FloatBits}
@@ -542,8 +664,6 @@ private theorem finite_roundtrip [StdFloatFormat] {b : FloatBits}
       | inr h => simp [h]
     rw [this]; exact BitVec.ofBool_beq_one_n _
   have hT_lt := b.toBitsTriple.significand.isLt
-  -- significandBits and (prec-1).toNat are definitionally equal but omega can't see through it
-  have hsb_eq : FloatFormat.significandBits = (FloatFormat.prec - 1).toNat := rfl
   if he : b.toBitsTriple.exponent = 0 then
     -- === Subnormal case ===
     have he_exp : b.FpExponent = FloatFormat.min_exp := by
@@ -553,8 +673,7 @@ private theorem finite_roundtrip [StdFloatFormat] {b : FloatBits}
     have hsub : _root_.isSubnormal b.FpExponent b.FpSignificand := by
       refine ⟨he_exp, ?_⟩
       rw [hm_sig]
-      have : b.toBitsTriple.significand.toNat < 2 ^ (FloatFormat.prec - 1).toNat :=
-        hsb_eq ▸ hT_lt
+      simp only [FloatFormat.significandBits_eq] at hT_lt
       omega
     rw [if_pos hsub, if_pos hsub]
     refine ⟨hsign, ?_, ?_⟩
@@ -574,7 +693,8 @@ private theorem finite_roundtrip [StdFloatFormat] {b : FloatBits}
     have hm_ge := FpSignificand_ge_of_normal he
     have hnsub : ¬_root_.isSubnormal b.FpExponent b.FpSignificand := by
       intro ⟨_, hm⟩
-      have hm_ge' : 2 ^ (FloatFormat.prec - 1).toNat ≤ b.FpSignificand := hsb_eq ▸ hm_ge
+      have hm_ge' : 2 ^ (FloatFormat.prec - 1).toNat ≤ b.FpSignificand := by
+        rwa [FloatFormat.significandBits_eq] at hm_ge
       omega
     rw [if_neg hnsub, if_neg hnsub]
     refine ⟨hsign, ?_, ?_⟩

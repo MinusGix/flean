@@ -32,6 +32,10 @@ theorem FloatFormat.significandBits_pos [FloatFormat] :
   have := FloatFormat.significandBits_ge_one
   omega
 
+@[simp]
+theorem FloatFormat.significandBits_eq [FloatFormat] :
+  FloatFormat.significandBits = (FloatFormat.prec - 1).toNat := rfl
+
 @[reducible]
 def FloatFormat.exponentRange [FloatFormat] : ℤ :=
   FloatFormat.max_exp - FloatFormat.min_exp + 1
