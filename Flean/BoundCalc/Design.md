@@ -188,7 +188,7 @@ The recursive matching algorithm decomposes multi-factor products into single-fa
 pairs, so these syntheses apply transitively (e.g., `a*b*c ≤ d*b*c` decomposes
 to `a≤d` + `b≤b` + `c≤c`).
 
-Deployed via 91 sites across 24 files.
+Deployed via 116 sites across 27 files.
 
 ### R2: Extensible dispatch chain (MEDIUM) ✅ DONE
 Added lemma-based dispatch for power bounds:
@@ -225,7 +225,7 @@ making the tactic robust enough.
 
 ## Deployment status
 
-91 sites replaced across 24 files:
+116 sites across 27 files:
 - OddInterval.lean: 14 sites
 - ExpTermination.lean: 18 sites (+2 new with have + bound_calc)
 - LogTermination.lean: 14 sites (+1 new with have + bound_calc)
@@ -350,9 +350,18 @@ Bridges ℕ/ℤ → ℝ/ℚ cast gaps automatically. Upgraded 7 P4 sites to full
 Deployed to CommonConstants (nonneg hint). Note: `show` types with `Nat.log2`/`Nat.log`
 in exponents hit zpow/npow coercion issues — use `have` + `bound_calc` for those.
 
-### E3: `@[bound_calc_dispatch]` attribute (MEDIUM)
-Register domain-specific lemmas into the dispatch chain without modifying BoundCalc.lean.
-Would help with `Int.le_ceil`, `FloatFormat.prec_pow_le`, etc.
+### E3: `@[bound_calc]` attribute ✅ DONE
+`SimpleScopedEnvExtension` + `registerBuiltinAttribute` for extensible dispatch.
+Registered lemmas are tried via `tryRegisteredLemmas` in both gcongr dispatch and
+as a standalone fallback phase (for non-product goals).
+
+Registered in `Flean/BoundCalc/Lemmas.lean`:
+- `Int.le_ceil` — ceiling: `x ≤ ⌈x⌉`
+- `FloatFormat.nat_four_le_two_pow_prec` — `4 ≤ 2^prec` (ℕ)
+- `FloatFormat.prec_pow_le` — `(4:R) ≤ (2:R)^prec.toNat`
+- `Nat.one_le_two_pow` — `1 ≤ 2^n`
+
+Sites that import `Flean.BoundCalc.Lemmas` get automatic dispatch for these.
 
 ### E4: Term-mode `bound_calc_hint` (LOW)
 Some sites use `linarith [mul_le_mul_of_nonneg_right ...]` — the multiplication bound
@@ -365,23 +374,21 @@ when the `show` type contains `Nat.log2`/`Nat.log` in exponents. The `elab` hand
 elaborates the type in a context where `(2:R)^(n:ℕ)` coerces to zpow. Understanding
 and fixing would make the hint syntax more universal.
 
-## Remaining deployment opportunities (~20-30 sites)
+## Remaining deployment opportunities (~5-10 sites)
 
-High-priority files (clean patterns, likely just `bound_calc`):
-- Ulp.lean: 3 more (lines 211, 228, 365)
-- RoundDown.lean: 1 more (line 108)
-- CommonConstants.lean: 1 more (line 186)
-- GridInstance.lean: 1 (line 152)
-- LogTermination/ExpTermination: 3-5 more
-- StickyExtract/StickyTermination: 2-3 (Nat domain)
+The high-value sites are deployed. Remaining opportunities are:
 
-Medium-priority (need cast hints or division support):
-- RoundNormal.lean: 2-3 (lines 482, 619, 894 — some need R4)
-- PadeExp/PadeExpDefs: ~10 (factorial/polynomial bounds, specialized)
-- ExpComputableDefs: 5 (division patterns, need R4)
+Medium-priority (need division support or cast work):
+- RoundNormal.lean: 2-3 (lines 482, 619 — div_le_div + mul_le_mul patterns, need R4)
+- RoundDown.lean: 1 (line 108 — mul_le_mul_of_nonneg_left with sub-bound)
+- PadeExp/PadeExpDefs: complex polynomial/factorial bounds, specialized patterns
+
+Low-priority (simple one-liners where `positivity` is fine):
+- ~25 files have standalone `positivity` calls that are already clean one-liners
 
 Cannot import BoundCalc:
 - Util.lean: 2 sites (too foundational)
+- Defs.lean, FloatFormat.lean: don't import BoundCalc, have `have` + `omega` patterns
 
 ## Open questions
 
