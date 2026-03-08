@@ -100,6 +100,30 @@ would be a moderate refactor of `pade_delta_log_bound`.
 
 Known limitations documented in memory/linearize-issues.md. Tests in FinalTest.lean.
 
+## Tactic Ideas
+
+### A. `zpow_norm` — Power expression normalizer (~170 sites)
+Normalize zpow/npow expressions: collapse products (`2^a * 2^b → 2^(a+b)`),
+bridge ℕ↔ℤ casts (`(2:R)^n.toNat → (2:R)^n` via `zpow_natCast` + `prec_toNat_eq`),
+and prove exponent equalities via `ring`/`omega`.
+
+Common patterns it would replace:
+- `rw [← zpow_natCast]; congr 1; exact FloatFormat.prec_toNat_eq`
+- `rw [two_zpow_mul]; congr 1; ring`
+- `rw [← zpow_natCast, prec_sub_one_toNat_eq]`
+
+**Open question:** Does this belong in `linearize` (which already handles zpow monotonicity)
+or as a separate normalization tactic? See investigation notes below.
+
+### B. `cast_bound` — ℕ↔ℤ↔ℝ inequality bridge (~110 sites)
+Auto-bridge cast gaps for inequalities: `(f.m : R) < (2:R)^prec.toNat` → `(2:R)^prec`.
+Chains `exact_mod_cast`, `zify`, `zpow_natCast`, `omega`. Overlaps heavily with A.
+
+### C. Rounding case splitter (~95 sites)
+Domain-specific: unfold rounding function → simp reduceDIte → three-way case split
+(subnormal/normal/overflow) → unfold appropriate subroutine. Very repetitive in
+Rounding/ files but narrow applicability.
+
 ## Long-Term
 - [ ] Error-minimizing tactic (reorder FP computations)
 - [ ] Verified computation examples (e.g. count of floats between 0 and 1)
