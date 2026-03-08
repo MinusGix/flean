@@ -187,30 +187,75 @@ theorem StdFloatFormat.exponentBias_def [StdFloatFormat] :
   unfold FloatFormat.exponentBias
   rw [StdFloatFormat.max_exp_def]
 
--- TODO: RFL can solve these, but the speed is very slow.
+/-! ### Concrete format constants
+
+Verification that our format definitions match IEEE 754 tables.
+Uses `decide` on concrete `StdFloatFormat` values — no `native_decide`. -/
+
+private theorem exponentBias_of_std (fmt : StdFloatFormat) :
+    @FloatFormat.exponentBias fmt.toFloatFormat = fmt.max_exp :=  rfl
+
+private theorem significandBits_of_std (fmt : StdFloatFormat) :
+    @FloatFormat.significandBits fmt.toFloatFormat = (fmt.prec - 1).toNat := rfl
+
+private theorem exponentBits_of_std (fmt : StdFloatFormat) :
+    @FloatFormat.exponentBits fmt.toFloatFormat = fmt.exp_pow + 1 := by
+  exact @StdFloatFormat.exponentBits_def fmt
+
+-- Binary16: prec=11, exp_pow=4, min_exp=-14, max_exp=15
+example : @FloatFormat.exponentBias FloatFormat.Binary16.toFloatFormat = 15 := by decide
+example : @FloatFormat.significandBits FloatFormat.Binary16.toFloatFormat = 10 := by decide
+example : @FloatFormat.exponentBits FloatFormat.Binary16.toFloatFormat = 5 := by exact exponentBits_of_std FloatFormat.Binary16
+
+-- Binary32: prec=24, exp_pow=7, min_exp=-126, max_exp=127
+example : @FloatFormat.exponentBias FloatFormat.Binary32.toFloatFormat = 127 := by decide
+example : @FloatFormat.significandBits FloatFormat.Binary32.toFloatFormat = 23 := by decide
+example : @FloatFormat.exponentBits FloatFormat.Binary32.toFloatFormat = 8 := by exact exponentBits_of_std FloatFormat.Binary32
+
+-- Binary64: prec=53, exp_pow=10, min_exp=-1022, max_exp=1023
+example : @FloatFormat.exponentBias FloatFormat.Binary64.toFloatFormat = 1023 := by decide
+example : @FloatFormat.significandBits FloatFormat.Binary64.toFloatFormat = 52 := by decide
+example : @FloatFormat.exponentBits FloatFormat.Binary64.toFloatFormat = 11 := by exact exponentBits_of_std FloatFormat.Binary64
+
+-- Binary128: prec=113, exp_pow=14, min_exp=-16382, max_exp=16383
+example : @FloatFormat.exponentBias FloatFormat.Binary128.toFloatFormat = 16383 := by decide
+example : @FloatFormat.significandBits FloatFormat.Binary128.toFloatFormat = 112 := by decide
+example : @FloatFormat.exponentBits FloatFormat.Binary128.toFloatFormat = 15 := by exact exponentBits_of_std FloatFormat.Binary128
+
+/-- For StdFloatFormat instances, bitSize reduces to a simple arithmetic expression. -/
+theorem StdFloatFormat.bitSize_eq [StdFloatFormat] :
+    FloatFormat.bitSize = 1 + (StdFloatFormat.exp_pow + 1) + (FloatFormat.prec - 1).toNat := by
+  unfold FloatFormat.bitSize FloatFormat.signBits
+  rw [StdFloatFormat.exponentBits_def, FloatFormat.significandBits_eq]
+
+private theorem bitSize_of_std (fmt : StdFloatFormat) :
+    @FloatFormat.bitSize fmt.toFloatFormat =
+      1 + (fmt.exp_pow + 1) + (fmt.prec - 1).toNat := by
+  rw [@StdFloatFormat.bitSize_eq fmt]
+
 theorem FloatFormat.Binary16.bitSize_eq :
   @FloatFormat.bitSize FloatFormat.Binary16.toFloatFormat = 16 := by
-  native_decide
+  exact bitSize_of_std FloatFormat.Binary16
 
 theorem FloatFormat.Binary32.bitSize_eq :
   @FloatFormat.bitSize FloatFormat.Binary32.toFloatFormat = 32 := by
-  native_decide
+  exact bitSize_of_std FloatFormat.Binary32
 
 theorem FloatFormat.Binary64.bitSize_eq :
   @FloatFormat.bitSize FloatFormat.Binary64.toFloatFormat = 64 := by
-  native_decide
+  exact bitSize_of_std FloatFormat.Binary64
 
 theorem FloatFormat.Binary128.bitSize_eq :
   @FloatFormat.bitSize FloatFormat.Binary128.toFloatFormat = 128 := by
-  native_decide
+  exact bitSize_of_std FloatFormat.Binary128
 
 theorem FloatFormat.BF16.bitSize_eq :
   @FloatFormat.bitSize FloatFormat.BF16.toFloatFormat = 16 := by
-  native_decide
+  exact bitSize_of_std FloatFormat.BF16
 
 theorem FloatFormat.TF32.bitSize_eq :
   @FloatFormat.bitSize FloatFormat.TF32.toFloatFormat = 19 := by
-  native_decide
+  exact bitSize_of_std FloatFormat.TF32
 
 end BitSize
 
