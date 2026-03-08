@@ -83,6 +83,13 @@ theorem mul_two_zpow_div_two_zpow (x : R) (a b : ℤ) :
     x * (2 : R) ^ a / (2 : R) ^ b = x * (2 : R) ^ (a - b) := by
   rw [mul_div_assoc, two_zpow_div]
 
+-- Bare 2 as zpow factor (for zpow_norm)
+theorem two_mul_two_zpow (n : ℤ) : (2 : R) * (2 : R) ^ n = (2 : R) ^ (1 + n) :=
+  (zpow_one_add₀ (by norm_num : (2 : R) ≠ 0) n).symm
+
+theorem two_zpow_mul_two (n : ℤ) : (2 : R) ^ n * (2 : R) = (2 : R) ^ (n + 1) :=
+  (zpow_add_one₀ (by norm_num : (2 : R) ≠ 0) n).symm
+
 theorem two_zpow_ne_zero (n : ℤ) : (2 : R) ^ n ≠ 0 :=
   zpow_ne_zero n (by norm_num : (2 : R) ≠ 0)
 
