@@ -29,3 +29,6 @@ attribute [bound_calc] FloatFormat.nat_four_le_two_pow_prec
 
 -- FloatFormat: (4 : R) ≤ (2 : R)^prec.toNat (generic version)
 attribute [bound_calc] FloatFormat.prec_pow_le
+
+-- Powers of 2: 1 ≤ 2^n (for any n : ℕ)
+attribute [bound_calc] Nat.one_le_two_pow

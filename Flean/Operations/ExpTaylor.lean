@@ -199,7 +199,6 @@ lemma taylorRemainder_le_of_le (a b : ℚ) (N : ℕ) (hN : 0 < N)
     (ha : 0 ≤ a) (hab : (a : ℝ) ≤ (b : ℝ)) :
     (taylorRemainder a (N + 1) : ℝ) ≤ (taylorRemainder b (N + 1) : ℝ) := by
   rw [taylorRemainder_cast a N hN, taylorRemainder_cast b N hN]
-  apply div_le_div_of_nonneg_right _ (by positivity)
   bound_calc
 
 /-- Taylor remainder is nonneg for nonneg arguments. -/
