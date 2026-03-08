@@ -504,6 +504,124 @@ theorem toBits_ofBits [StdFloatFormat] (f : Fp) : ofBits (toBits f).representati
 
 
 
+/-! ## Reverse round-trip: bits → Fp → bits -/
+
+/-- The lower sigBits bits of (1#1 ++ T) are T. -/
+private theorem append_one_mod [FloatFormat] (T : BitVec FloatFormat.significandBits) :
+    (BitVec.ofBool true ++ T).toNat % 2 ^ FloatFormat.significandBits = T.toNat := by
+  have h := congr_arg BitVec.toNat
+    (@BitVec.extractAppend_first₂ 1 FloatFormat.significandBits (BitVec.ofBool true) T)
+  rwa [BitVec.extractLsb'_toNat, Nat.shiftRight_zero] at h
+
+/-- For a finite FloatBits with nonzero exponent, the decoded significand has a leading 1. -/
+private theorem FpSignificand_ge_of_normal [FloatFormat] {b : FloatBits}
+    (he : b.toBitsTriple.exponent ≠ 0) :
+    2 ^ FloatFormat.significandBits ≤ b.FpSignificand := by
+  show _ ≤ (if b.toBitsTriple.exponent = 0 then _ else _)
+  rw [if_neg he]
+  have hmsb : ((BitVec.ofBool true) ++ b.toBitsTriple.significand).msb = true := by
+    unfold BitVec.msb BitVec.getMsbD
+    simp [BitVec.ofBool_true, BitVec.getLsbD_append]
+  have h := BitVec.toNat_ge_of_msb_true hmsb
+  rw [show 1 + FloatFormat.significandBits - 1 = FloatFormat.significandBits from by omega] at h
+  exact h
+
+/-- For a finite FloatBits, re-encoding the decoded values yields the same bit pattern. -/
+private theorem finite_roundtrip [StdFloatFormat] {b : FloatBits}
+    (hf : b.isFinite) :
+    FloatBits.finite (b.toBitsTriple.sign.toNat == 1)
+      b.FpExponent b.FpSignificand (FloatBits.isFinite_validFloatVal hf) = b := by
+  -- Unfold finite to expose mk'
+  unfold FloatBits.finite
+  -- Reduce to component equality
+  apply (FloatBits.ext_triple' _ _).mpr
+  simp only [FloatBits.construct_sign_eq_BitsTriple, FloatBits.construct_exponent_eq_BitsTriple,
+    FloatBits.construct_significand_eq_BitsTriple]
+  -- Helper: 1-bit sign round-trips
+  have hsign : BitVec.ofBool (b.toBitsTriple.sign.toNat == 1) = b.toBitsTriple.sign := by
+    have : (b.toBitsTriple.sign.toNat == 1) = (b.toBitsTriple.sign == 1) := by
+      cases BitVec.one_or b.toBitsTriple.sign with
+      | inl h => simp [h]
+      | inr h => simp [h]
+    rw [this]; exact BitVec.ofBool_beq_one_n _
+  have hT_lt := b.toBitsTriple.significand.isLt
+  -- significandBits and (prec-1).toNat are definitionally equal but omega can't see through it
+  have hsb_eq : FloatFormat.significandBits = (FloatFormat.prec - 1).toNat := rfl
+  if he : b.toBitsTriple.exponent = 0 then
+    -- === Subnormal case ===
+    have he_exp : b.FpExponent = FloatFormat.min_exp := by
+      show (if b.toBitsTriple.exponent = 0 then _ else _) = _; rw [if_pos he]
+    have hm_sig : b.FpSignificand = b.toBitsTriple.significand.toNat := by
+      show (if b.toBitsTriple.exponent = 0 then _ else _) = _; rw [if_pos he]
+    have hsub : _root_.isSubnormal b.FpExponent b.FpSignificand := by
+      refine ⟨he_exp, ?_⟩
+      rw [hm_sig]
+      have : b.toBitsTriple.significand.toNat < 2 ^ (FloatFormat.prec - 1).toNat :=
+        hsb_eq ▸ hT_lt
+      omega
+    rw [if_pos hsub, if_pos hsub]
+    refine ⟨hsign, ?_, ?_⟩
+    · -- Exponent: 0.toNat = E.toNat when E = 0
+      apply BitVec.eq_of_toNat_eq; simp [he]
+    · -- Significand: sigToTrailing (T.toNat) = T
+      unfold FloatBits.sigToTrailing
+      rw [hm_sig, Nat.and_two_pow_sub_one_eq_mod, Nat.mod_eq_of_lt hT_lt]
+      apply BitVec.eq_of_toNat_eq
+      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hT_lt]
+  else
+    -- === Normal case ===
+    have he_exp : b.FpExponent = (b.toBitsTriple.exponent.toNat : ℤ) - FloatFormat.exponentBias := by
+      show (if b.toBitsTriple.exponent = 0 then _ else _) = _; rw [if_neg he]
+    have hm_sig : b.FpSignificand = ((BitVec.ofBool true) ++ b.toBitsTriple.significand).toNat := by
+      show (if b.toBitsTriple.exponent = 0 then _ else _) = _; rw [if_neg he]
+    have hm_ge := FpSignificand_ge_of_normal he
+    have hnsub : ¬_root_.isSubnormal b.FpExponent b.FpSignificand := by
+      intro ⟨_, hm⟩
+      have hm_ge' : 2 ^ (FloatFormat.prec - 1).toNat ≤ b.FpSignificand := hsb_eq ▸ hm_ge
+      omega
+    rw [if_neg hnsub, if_neg hnsub]
+    refine ⟨hsign, ?_, ?_⟩
+    · -- Exponent: (E.toNat - bias + bias).toNat = E.toNat
+      apply BitVec.eq_of_toNat_eq
+      simp only [BitVec.toNat_ofNat]
+      rw [he_exp]
+      have hE_pos : 0 < b.toBitsTriple.exponent.toNat :=
+        Nat.pos_of_ne_zero (by intro h; exact he (BitVec.eq_of_toNat_eq h))
+      rw [show ((b.toBitsTriple.exponent.toNat : ℤ) - FloatFormat.exponentBias +
+          FloatFormat.exponentBias).toNat = b.toBitsTriple.exponent.toNat from by omega]
+      exact Nat.mod_eq_of_lt b.toBitsTriple.exponent.isLt
+    · -- Significand: ofNat sigBits ((1#1 ++ T).toNat) = T
+      rw [hm_sig]
+      apply BitVec.eq_of_toNat_eq
+      rw [BitVec.toNat_ofNat, append_one_mod]
+
+/-- Converting from Bits to Fp and back yields the same quotient class. -/
+theorem ofBits_toBits [StdFloatFormat] (b : FloatBits) : toBits (ofBits b) = ⟦b⟧ := by
+  unfold ofBits
+  split_ifs with hn hi
+  · -- NaN case: both sides are NaN, so equal in quotient
+    unfold toBits
+    apply Quotient.eq'.mpr
+    show FpEquiv _ _
+    right
+    exact ⟨FloatBits.NaN_isNaN _ _ _, hn⟩
+  · -- Infinite case
+    unfold toBits
+    apply Quotient.eq'.mpr
+    show FpEquiv _ _
+    left
+    -- b is infinite, so b = infinite true or b = infinite false
+    cases (FloatBits.isInfinite_val b).mp hi with
+    | inl h => rw [h]; simp [FloatBits.infinite_sign]
+    | inr h => rw [h]; simp [FloatBits.infinite_sign]
+  · -- Finite case
+    have hf := FloatBits.notNaN_notInfinite b hn hi
+    unfold toBits
+    apply Quotient.eq'.mpr
+    show FpEquiv _ _
+    left
+    exact finite_roundtrip hf
+
 end Fp
 
 -- def l := @FiniteFp.largestFiniteFloat FloatFormat.Binary32.toFloatFormat
