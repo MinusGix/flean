@@ -162,10 +162,10 @@ end LogComputable
 -- logComputableRun: log(1) = 0 (exact case)
 #eval
   letI : FloatFormat := FloatFormat.Binary16.toFloatFormat
-  logComputableRun ⟨false, 0, 1024, by native_decide⟩
+  logComputableRun ⟨false, 0, 1024, by decide⟩
 
 -- logComputableRun: log(2) for binary16
 -- value 2 = m · 2^(e - prec + 1) = 1024 · 2^(1 - 10) = 1024 · 2^(-9) = 2
 #eval
   letI : FloatFormat := FloatFormat.Binary16.toFloatFormat
-  logComputableRun ⟨false, 1, 1024, by native_decide⟩
+  logComputableRun ⟨false, 1, 1024, by decide⟩

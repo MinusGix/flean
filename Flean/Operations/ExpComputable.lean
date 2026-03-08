@@ -146,4 +146,4 @@ end ExpComputable
 -- exp(1) for binary16 (s=false, e=0, m=2^10=1024)
 #eval
   letI : FloatFormat := FloatFormat.Binary16.toFloatFormat
-  expComputableRun ⟨false, 0, 1024, by native_decide⟩
+  expComputableRun ⟨false, 0, 1024, by decide⟩
