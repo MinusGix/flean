@@ -7,11 +7,11 @@ variable [FloatFormat]
 
 section Boundary
 
-private theorem neighborStep_pos : (0 : ℚ) < neighborStep := by
+theorem neighborStep_pos : (0 : ℚ) < neighborStep := by
   unfold neighborStep
   linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := ℚ)]
 
-private theorem neighborStep_lt_smallestPosSubnormal :
+theorem neighborStep_lt_smallestPosSubnormal :
     neighborStep < (FiniteFp.smallestPosSubnormal.toVal : ℚ) := by
   unfold neighborStep
   linarith [FiniteFp.smallestPosSubnormal_toVal_pos (R := ℚ)]
