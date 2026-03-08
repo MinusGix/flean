@@ -1,4 +1,5 @@
 import Flean.Operations.RoundIntSig
+import Flean.ZpowNorm.ZpowNorm
 
 /-! # Floating-Point Addition
 
@@ -170,8 +171,7 @@ theorem signed_int_mul_zpow_eq_toVal {R : Type*} [Field R] [LinearOrder R] [IsSt
   -- Now combine: 2^(x.e - e_min) * 2^(e_min - prec + 1) = 2^(x.e - prec + 1)
   -- Key: 2^(x.e - e_min) * 2^(e_min - prec + 1) = 2^(x.e - prec + 1)
   have hexp : (2 : R) ^ (x.e - e_min) * (2 : R) ^ (e_min - prec + 1) =
-      (2 : R) ^ (x.e - prec + 1) := by
-    rw [two_zpow_mul]; congr 1; omega
+      (2 : R) ^ (x.e - prec + 1) := by zpow_norm
   split_ifs with hs
   · rw [mul_assoc, hexp]
     simp [mul_comm]

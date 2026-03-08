@@ -8,6 +8,7 @@ import Mathlib.Analysis.SpecialFunctions.Log.Base
 import Flean.Rounding.RoundDown
 import Flean.Rounding.RoundUp
 import Flean.Rounding.RoundTowardZero
+import Flean.ZpowNorm.ZpowNorm
 import Flean.Rounding.RoundNearest
 
 /-! # Relative Error Bounds for Rounding
@@ -405,12 +406,10 @@ theorem roundNearestTiesToEven_abs_error_le_ulp_half (x : R) (hx : isNormalRange
           rw [mul_sub]
           have h1 : (2 : R) ^ FloatFormat.max_exp * 2 =
               (2 : R) ^ FloatFormat.prec * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
-            rw [mul_comm, show (2 : R) * (2 : R) ^ FloatFormat.max_exp = (2 : R) ^ (FloatFormat.max_exp + 1) from by
-              rw [show FloatFormat.max_exp + 1 = 1 + FloatFormat.max_exp from by ring, ← two_zpow_mul, zpow_one]]
-            rw [two_zpow_mul]; congr 1; ring
+            zpow_norm
           have h2 : (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) =
               1 * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
-            rw [one_mul, two_zpow_mul]; congr 1; ring
+            zpow_norm
           rw [h1, h2]
         have hdiv_lb : (2 : R) ^ FloatFormat.prec - 1 <
             x / (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
@@ -419,7 +418,7 @@ theorem roundNearestTiesToEven_abs_error_le_ulp_half (x : R) (hx : isNormalRange
               x / (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
             have : (2 : R) ^ FloatFormat.max_exp =
                 (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) * (2 : R) ^ (FloatFormat.prec - 1) := by
-              rw [two_zpow_mul]; congr 1; ring
+              zpow_norm
             rw [this, div_mul_eq_div_div, div_mul_cancel₀ _ (two_zpow_ne_zero _)]
           simpa [hrhs] using hm_scaled'
         have hgt_lff : (FiniteFp.largestFiniteFloat.toVal : R) < x := by
@@ -570,12 +569,10 @@ theorem roundNearestTiesAwayFromZero_abs_error_le_ulp_half (x : R) (hx : isNorma
           rw [mul_sub]
           have h1 : (2 : R) ^ FloatFormat.max_exp * 2 =
               (2 : R) ^ FloatFormat.prec * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
-            rw [mul_comm, show (2 : R) * (2 : R) ^ FloatFormat.max_exp = (2 : R) ^ (FloatFormat.max_exp + 1) from by
-              rw [show FloatFormat.max_exp + 1 = 1 + FloatFormat.max_exp from by ring, ← two_zpow_mul, zpow_one]]
-            rw [two_zpow_mul]; congr 1; ring
+            zpow_norm
           have h2 : (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) =
               1 * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
-            rw [one_mul, two_zpow_mul]; congr 1; ring
+            zpow_norm
           rw [h1, h2]
         have hdiv_lb : (2 : R) ^ FloatFormat.prec - 1 <
             x / (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
@@ -584,7 +581,7 @@ theorem roundNearestTiesAwayFromZero_abs_error_le_ulp_half (x : R) (hx : isNorma
               x / (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
             have : (2 : R) ^ FloatFormat.max_exp =
                 (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) * (2 : R) ^ (FloatFormat.prec - 1) := by
-              rw [two_zpow_mul]; congr 1; ring
+              zpow_norm
             rw [this, div_mul_eq_div_div, div_mul_cancel₀ _ (two_zpow_ne_zero _)]
           simpa [hrhs] using hm_scaled'
         have hgt_lff : (FiniteFp.largestFiniteFloat.toVal : R) < x := by

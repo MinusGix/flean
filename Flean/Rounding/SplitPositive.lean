@@ -6,6 +6,7 @@ import Flean.Linearize.Linearize
 import Flean.ToVal
 import Flean.Operations.AddErrorRepresentable
 import Flean.Operations.Sub
+import Flean.ZpowNorm.ZpowNorm
 
 /-! # RModeSplit — Positive-case split proofs
 
@@ -170,8 +171,7 @@ theorem round_sum_ge_two_a
           FloatFormat.overflowThreshold R
             < (2 : R) ^ (FloatFormat.max_exp + 1) :=
               FloatFormat.overflowThreshold_lt_zpow_max_exp_succ
-          _ = 2 * (2 : R) ^ FloatFormat.max_exp := by
-              rw [zpow_add_one₀ (by norm_num : (2 : R) ≠ 0)]; ring
+          _ = 2 * (2 : R) ^ FloatFormat.max_exp := by zpow_norm
           _ ≤ 2 * a.toVal := by linarith
           _ ≤ a.toVal + b.toVal := hab_ge)
       rw [RModeNearest.overflow_pos_inf (R := R) _ hab_overflow] at hs; simp at hs
@@ -237,8 +237,7 @@ theorem bv_ge_half_s
       rw [hs_e] at hs_lt
       have : (2 : R) ^ (FloatFormat.min_exp + 1) ≤ s.toVal := calc
         (2 : R) ^ (FloatFormat.min_exp + 1)
-          = 2 * (2 : R) ^ FloatFormat.min_exp := by
-            rw [zpow_add_one₀ (by norm_num : (2 : R) ≠ 0)]; ring
+          = 2 * (2 : R) ^ FloatFormat.min_exp := by zpow_norm
         _ ≤ 2 * a.toVal := by
             linarith [two_zpow_mono (R := R) (show FloatFormat.min_exp ≤ a.e from a.valid.1)]
         _ ≤ s.toVal := hs_ge_2a
@@ -378,8 +377,7 @@ theorem split_s_sub_bv_grid
     have hprec_eq : (bv.e + 1 : ℤ) = ↑precNat + g := by
       rw [g_def]; have := FloatFormat.valid_prec; omega
     rw [hprec_eq] at h1
-    have h2 : (2 : R) ^ (↑precNat + g) = (2 : R) ^ precNat * (2 : R) ^ g := by
-      rw [zpow_add₀ (by norm_num : (2 : R) ≠ 0), zpow_natCast]
+    have h2 : (2 : R) ^ (↑precNat + g) = (2 : R) ^ precNat * (2 : R) ^ g := by zpow_norm
     rw [h2] at h1
     have h3 : ((ns - nbv : ℤ) : R) < (2 : R) ^ precNat := by
       nlinarith [hg_pos.le]
@@ -490,8 +488,7 @@ theorem split_b_sub_bv_grid
       have hbv_small : 2 * bv.toVal (R := R) < (2 : R) ^ b.e := by
         calc 2 * bv.toVal < 2 * (2 : R) ^ (bv.e + 1) := by linarith
           _ ≤ 2 * (2 : R) ^ (b.e - 1) := by linarith [two_zpow_mono (R := R) (show bv.e + 1 ≤ b.e - 1 from by omega)]
-          _ = (2 : R) ^ b.e := by rw [show b.e = b.e - 1 + 1 from by omega,
-              zpow_add_one₀ (by norm_num : (2 : R) ≠ 0)]; ring
+          _ = (2 : R) ^ b.e := by zpow_norm
       -- But b ≤ 2*bv (from hbv_ge_half_b) and b.toVal > 0
       -- Need b > 2^b.e or b ≥ 2^b.e... not directly available.
       -- Actually: b ≤ 2*bv < 2^b.e. But also b > 0. No contradiction yet.
@@ -543,8 +540,7 @@ theorem split_b_sub_bv_grid
     have hprec_eq : min b.e bv.e + 1 = ↑precNat + g := by
       simp [g_def]; have := FloatFormat.valid_prec; omega
     rw [hprec_eq] at h_diff_lt
-    have h2 : (2 : R) ^ (↑precNat + g) = (2 : R) ^ precNat * (2 : R) ^ g := by
-      rw [zpow_add₀ (by norm_num : (2 : R) ≠ 0), zpow_natCast]
+    have h2 : (2 : R) ^ (↑precNat + g) = (2 : R) ^ precNat * (2 : R) ^ g := by zpow_norm
     rw [h2] at h_diff_lt
     rw [hdiff_eq, abs_mul, abs_of_pos hg_pos] at h_diff_lt
     have h_abs_lt : |((nb - nbv : ℤ) : R)| < (2 : R) ^ precNat := by

@@ -1,4 +1,5 @@
 import Flean.Operations.Sub
+import Flean.ZpowNorm.ZpowNorm
 
 /-! # Sterbenz Lemma
 
@@ -26,8 +27,7 @@ theorem sterbenz_exp_proximity (a b : FiniteFp) (ha : a.s = false) (hb : b.s = f
   have hb_pos : (0 : R) < ⌞b⌟ := FiniteFp.toVal_pos b hb hb_nz
   have h2ne : (2 : R) ≠ 0 := by norm_num
   have h2gt : (1 : R) < 2 := by norm_num
-  have two_mul_zpow (n : ℤ) : (2 : R) * (2 : R) ^ n = (2 : R) ^ (n + 1) := by
-    rw [mul_comm, ← zpow_add_one₀ h2ne]
+  have two_mul_zpow (n : ℤ) : (2 : R) * (2 : R) ^ n = (2 : R) ^ (n + 1) := by zpow_norm
   constructor
   · -- a.e - 1 ≤ b.e
     by_cases ha_normal : _root_.isNormal a.m
@@ -42,8 +42,7 @@ theorem sterbenz_exp_proximity (a b : FiniteFp) (ha : a.s = false) (hb : b.s = f
   · -- b.e - 1 ≤ a.e
     by_cases hb_normal : _root_.isNormal b.m
     · have hb_div2 : (2 : R) ^ (b.e - 1) ≤ ⌞b⌟ / 2 := by
-        have : (2 : R) ^ (b.e - 1) * 2 = (2 : R) ^ b.e := by
-          rw [← zpow_add_one₀ h2ne]; congr 1; ring
+        have : (2 : R) ^ (b.e - 1) * 2 = (2 : R) ^ b.e := by zpow_norm
         rw [le_div_iff₀ (by norm_num : (0 : R) < 2)]
         linarith [FiniteFp.toVal_normal_lower (R := R) b hb hb_normal]
       have : (2 : R) ^ (b.e - 1) < (2 : R) ^ (a.e + 1) :=

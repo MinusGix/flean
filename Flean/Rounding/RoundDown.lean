@@ -14,6 +14,7 @@ import Flean.Ulp
 import Flean.Ufp
 import Flean.Linearize.Linearize
 import Flean.Rounding.Neighbor.Basic
+import Flean.ZpowNorm.ZpowNorm
 
 section Rounding
 section RoundDown
@@ -140,12 +141,10 @@ theorem roundDown_gt_lff [FloatFormat] (x : R) (hn : 0 < x)
       -- Need: 2^max_exp * 2 = 2^prec * 2^(max_exp - prec + 1)
       -- and: 2^max_exp * 2^(-prec+1) = 1 * 2^(max_exp - prec + 1)
       have h1 : (2 : R) ^ FloatFormat.max_exp * 2 = (2 : R) ^ FloatFormat.prec * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
-        rw [mul_comm, show (2 : R) * (2 : R) ^ FloatFormat.max_exp = (2 : R) ^ (FloatFormat.max_exp + 1) from by
-          rw [show FloatFormat.max_exp + 1 = 1 + FloatFormat.max_exp from by ring, ← two_zpow_mul, zpow_one]]
-        rw [two_zpow_mul]; congr 1; ring
+        zpow_norm
       have h2 : (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) =
           1 * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
-        rw [one_mul, two_zpow_mul]; congr 1; ring
+        zpow_norm
       rw [h1, h2]
     have hdiv_lb : (2 : R) ^ FloatFormat.prec - 1 < x / (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
       rw [lt_div_iff₀ hstep_pos]; linarith [hlff_eq]

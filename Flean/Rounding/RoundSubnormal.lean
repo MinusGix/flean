@@ -14,6 +14,7 @@ import Flean.Gsplit.Gsplit
 import Flean.Util
 import Flean.Rounding.Defs
 import Flean.CommonConstants
+import Flean.ZpowNorm.ZpowNorm
 
 section Rounding
 
@@ -358,9 +359,7 @@ theorem roundSubnormalUp_toVal_mono {x y : R} (hx : isSubnormalRange x) (hy : is
               (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1)
           < (2 ^ (FloatFormat.prec - 1).toNat : R) * (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1) := by
             bound_calc
-        _ = (2 : R) ^ FloatFormat.min_exp := by
-            rw [← zpow_natCast (2 : R), FloatFormat.prec_sub_one_toNat_eq,
-              two_zpow_mul]; congr 1; ring
+        _ = (2 : R) ^ FloatFormat.min_exp := by zpow_norm
     · -- Both stay subnormal
       push_neg at hky_ge
       -- Both return ⟨false, min_exp, k.natAbs, _⟩: reduce to natAbs monotonicity

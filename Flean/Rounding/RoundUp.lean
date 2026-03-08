@@ -16,6 +16,7 @@ import Flean.Linearize.Linearize
 import Flean.BoundCalc.BoundCalc
 import Flean.Rounding.Neighbor.Basic
 import Flean.Rounding.RoundDown
+import Flean.ZpowNorm.ZpowNorm
 
 section Rounding
 section RoundUp
@@ -174,7 +175,7 @@ theorem toVal_normal_bounds (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m
   constructor
   · calc (2 : R) ^ f.e
         = (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
-          rw [two_zpow_mul]; congr 1; ring
+          zpow_norm
       _ ≤ (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
           have : (2 : R) ^ (FloatFormat.prec - 1) ≤ (f.m : R) := by
             calc (2 : R) ^ (FloatFormat.prec - 1)
@@ -185,11 +186,9 @@ theorem toVal_normal_bounds (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m
         < (2 : R) ^ FloatFormat.prec * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
           have : (f.m : R) < (2 : R) ^ FloatFormat.prec := by
             calc (f.m : R) < (2 : R) ^ FloatFormat.prec.toNat := by exact_mod_cast hm_ub
-              _ = (2 : R) ^ FloatFormat.prec := by
-                  rw [← zpow_natCast]; congr 1; exact FloatFormat.prec_toNat_eq
+              _ = (2 : R) ^ FloatFormat.prec := by zpow_norm
           bound_calc
-      _ = (2 : R) ^ (f.e + 1) := by
-          rw [two_zpow_mul]; congr 1; ring
+      _ = (2 : R) ^ (f.e + 1) := by zpow_norm
 
 /-- For a positive normal float, Int.log 2 of its toVal equals its exponent. -/
 theorem Int_log_of_normal_toVal (f : FiniteFp) (hs : f.s = false) (hn : isNormal f.m) :
@@ -285,8 +284,7 @@ theorem toVal_subnormal_isSubnormalRange (f : FiniteFp) (hs : f.s = false)
     calc (f.m : R) * (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1)
         < (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) :=
           by bound_calc
-      _ = (2 : R) ^ FloatFormat.min_exp := by
-          rw [two_zpow_mul]; congr 1; ring
+      _ = (2 : R) ^ FloatFormat.min_exp := by zpow_norm
 
 omit [FloorRing R] in
 /-- f.toVal / 2^(min_exp - prec + 1) = f.m for a subnormal float. -/
@@ -601,8 +599,7 @@ theorem roundUp_nat_mul_zpow [FloatFormat]
       rw [div_le_iff₀ (by positivity)]
       have h2 : (2 : R) ^ (FloatFormat.prec - 1) *
           (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) =
-          (2 : R) ^ FloatFormat.min_exp := by
-        rw [two_zpow_mul]; congr 1; ring
+          (2 : R) ^ FloatFormat.min_exp := by zpow_norm
       rw [h2]; linarith [h_sub]
     have hq1_le_half : (q : ℤ) + 1 ≤ (2 : ℤ) ^ (FloatFormat.prec - 1).toNat := by
       rw [← hceil_sub]

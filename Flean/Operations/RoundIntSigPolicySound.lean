@@ -1,6 +1,7 @@
 import Flean.Operations.RoundIntSig
 import Flean.Rounding.PolicyInstances
 import Flean.Linearize.Linearize
+import Flean.ZpowNorm.ZpowNorm
 
 namespace RoundIntSigPolicySound
 
@@ -413,14 +414,12 @@ private theorem mid_val_eq_overflow_threshold (q : ℕ) (e_ulp : ℤ)
       (2 : R) ^ (FloatFormat.max_exp + 1) := by
     rw [← zpow_natCast (2 : R) FloatFormat.prec.toNat, two_zpow_mul]
     congr 1; rw [FloatFormat.prec_toNat_eq]; omega
-  have h_zpow2 : (2 : R) ^ e_ulp = 2 * (2 : R) ^ (e_ulp - 1) := by
-    rw [show e_ulp = e_ulp - 1 + 1 from by omega, zpow_add₀ h2ne, zpow_one]; ring_nf
+  have h_zpow2 : (2 : R) ^ e_ulp = 2 * (2 : R) ^ (e_ulp - 1) := by zpow_norm
   have h_zpow3 : (2 : R) ^ (1 - (FloatFormat.prec : ℤ)) *
       (2 : R) ^ FloatFormat.max_exp = (2 : R) ^ e_ulp := by
     rw [two_zpow_mul]; congr 1; omega
   have h_zpow4 : 2 * (2 : R) ^ FloatFormat.max_exp =
-      (2 : R) ^ (FloatFormat.max_exp + 1) := by
-    rw [zpow_add₀ h2ne, zpow_one]; ring
+      (2 : R) ^ (FloatFormat.max_exp + 1) := by zpow_norm
   have h_prod : (q : R) * (2 : R) ^ e_ulp + (2 : R) ^ e_ulp =
       (2 : R) ^ (FloatFormat.max_exp + 1) := by
     have hq1 : (q : R) + 1 = (2 : R) ^ FloatFormat.prec.toNat := by
@@ -563,8 +562,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
             Int.toNat_of_nonneg (show 0 ≤ -shift by omega)]
         have he : e_ulp + ↑FloatFormat.prec - 1 - ↑FloatFormat.prec + 1 = e_ulp := by omega
         rw [he]
-        have hexp : (2 : R) ^ (-shift) * (2 : R) ^ e_ulp = (2 : R) ^ e_base := by
-          rw [two_zpow_mul]; congr 1; omega
+        have hexp : (2 : R) ^ (-shift) * (2 : R) ^ e_ulp = (2 : R) ^ e_base := by zpow_norm
         split_ifs with hs
         · have : (↑mag : R) * (2:R) ^ (-shift) * (2:R) ^ e_ulp = ↑mag * (2:R) ^ e_base := by
             rw [mul_assoc, hexp]
@@ -719,12 +717,10 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 = ((2 : R) ^ FloatFormat.prec - 1) * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
                   rw [FiniteFp.largestFiniteFloat_toVal, sub_mul]
                   have h1 : (2 : R) ^ FloatFormat.max_exp * 2 = (2 : R) ^ FloatFormat.prec * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
-                    rw [mul_comm, show (2 : R) * (2 : R) ^ FloatFormat.max_exp = (2 : R) ^ (FloatFormat.max_exp + 1) from by
-                      rw [show FloatFormat.max_exp + 1 = 1 + FloatFormat.max_exp from by ring, ← two_zpow_mul, zpow_one]]
-                    rw [two_zpow_mul]; congr 1; ring
+                    zpow_norm
                   have h2 : (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) =
                       1 * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) := by
-                    rw [one_mul, two_zpow_mul]; congr 1; ring
+                    zpow_norm
                   linarith
               _ = (q : R) * (2 : R) ^ e_ulp := by
                   congr 1

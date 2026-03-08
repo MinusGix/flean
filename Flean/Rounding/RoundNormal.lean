@@ -15,6 +15,7 @@ import Flean.Util
 import Flean.Linearize.Linearize
 import Flean.BoundCalc.BoundCalc
 import Flean.Rounding.Defs
+import Flean.ZpowNorm.ZpowNorm
 
 section Rounding
 
@@ -230,7 +231,7 @@ theorem roundNormalDown_ge_zpow_exp (y : R) (h : isNormalRange y) :
   -- 2^e = 2^(prec-1) * 2^(e - prec + 1) ≤ floor(...) * 2^(e - prec + 1)
   have hpow_split : (2 : R) ^ findExponentDown y =
       (2 : R) ^ (FloatFormat.prec - 1 : ℤ) * (2 : R) ^ (findExponentDown y - (FloatFormat.prec - 1 : ℤ)) := by
-    rw [two_zpow_mul]; congr 1; ring
+    zpow_norm
   have hexp_eq2 : findExponentDown y - (FloatFormat.prec - 1 : ℤ) = findExponentDown y - ↑FloatFormat.prec + 1 := by ring
   -- Convert the integer floor bound to R using zpow
   have hfloor_lb : (2 : R) ^ (FloatFormat.prec - 1 : ℤ) ≤ ⌊y / 2 ^ findExponentDown y * (2 : R) ^ (FloatFormat.prec - 1)⌋ := by
@@ -564,8 +565,7 @@ theorem roundNormalUp_toVal_le_zpow_succ {x : R} (hx : isNormalRange x) {f : Fin
             (2 : R) ^ (findExponentDown x - ↑FloatFormat.prec + 1)
         ≤ (2 : R) ^ FloatFormat.prec * (2 : R) ^ (findExponentDown x - ↑FloatFormat.prec + 1) := by
           bound_calc
-      _ = (2 : R) ^ (findExponentDown x + 1) := by
-          rw [two_zpow_mul]; congr 1; ring
+      _ = (2 : R) ^ (findExponentDown x + 1) := by zpow_norm
 
 /-- roundNormalUp is monotone on toVal for finite results -/
 theorem roundNormalUp_toVal_mono {x y : R} (hx : isNormalRange x) (hy : isNormalRange y)
@@ -604,9 +604,7 @@ theorem roundNormalUp_toVal_mono {x y : R} (hx : isNormalRange x) (hy : isNormal
         have hgy_toVal : gy.toVal (R := R) = (2 : R) ^ (findExponentDown y + 1) := by
           rw [← hgy]; simp only [FiniteFp.toVal, FiniteFp.sign', Bool.false_eq_true, ↓reduceIte,
                                   one_mul, FloatFormat.radix_val_eq_two]
-          push_cast
-          rw [← zpow_natCast (2 : R), FloatFormat.prec_sub_one_toNat_eq, two_zpow_mul]
-          congr 1; ring
+          push_cast; zpow_norm
         rw [hgy_toVal]
         calc gx.toVal (R := R) ≤ (2 : R) ^ (findExponentDown x + 1) := hgx_le
           _ = (2 : R) ^ (findExponentDown y + 1) := by rw [hexp]
@@ -650,7 +648,7 @@ theorem floor_scaled_eq_floor_div_ulp_step (x : R) (e : ℤ) :
     ⌊x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1)⌋ = ⌊x / (2 : R) ^ (e - FloatFormat.prec + 1)⌋ := by
   congr 1
   have : (2 : R) ^ e = (2 : R) ^ (e - FloatFormat.prec + 1) * (2 : R) ^ (FloatFormat.prec - 1) := by
-    rw [two_zpow_mul]; congr 1; ring
+    zpow_norm
   rw [this, div_mul_eq_div_div, div_mul_cancel₀ _ (two_zpow_ne_zero _)]
 
 /-- The absolute error of rounding a normal value down is strictly less than ulp(x).
@@ -699,7 +697,7 @@ theorem ceil_scaled_eq_ceil_div_ulp_step (x : R) (e : ℤ) :
     ⌈x / 2 ^ e * (2 : R) ^ (FloatFormat.prec - 1)⌉ = ⌈x / (2 : R) ^ (e - FloatFormat.prec + 1)⌉ := by
   congr 1
   have : (2 : R) ^ e = (2 : R) ^ (e - FloatFormat.prec + 1) * (2 : R) ^ (FloatFormat.prec - 1) := by
-    rw [two_zpow_mul]; congr 1; ring
+    zpow_norm
   rw [this, div_mul_eq_div_div, div_mul_cancel₀ _ (two_zpow_ne_zero _)]
 
 omit [FloatFormat] in
@@ -767,7 +765,7 @@ theorem roundNormalUp_error_lt_ulp (x : R) (h : isNormalRange x) (f : FiniteFp)
           x / (2 : R) ^ (e - FloatFormat.prec + 1)
       have : (2 : R) ^ e =
           (2 : R) ^ (e - FloatFormat.prec + 1) * (2 : R) ^ (FloatFormat.prec - 1) := by
-        rw [two_zpow_mul]; congr 1; ring
+        zpow_norm
       rw [this, div_mul_eq_div_div, div_mul_cancel₀ _ (two_zpow_ne_zero _)]
     rw [hfactor] at hceil
     -- Multiply: x > (2^prec - 1) * 2^(e-prec+1) = 2^(e+1) - 2^(e-prec+1)
@@ -777,7 +775,7 @@ theorem roundNormalUp_error_lt_ulp (x : R) (h : isNormalRange x) (f : FiniteFp)
       rwa [lt_div_iff₀ hstep_pos] at hceil
     have hpow_prod : (2 : R) ^ (FloatFormat.prec : ℤ) *
         (2 : R) ^ (e - FloatFormat.prec + 1) = (2 : R) ^ (e + 1) := by
-      rw [two_zpow_mul]; congr 1; ring
+      zpow_norm
     linarith
   · -- Normal case: f = ⟨false, e, m.natAbs, vf⟩
     rw [Fp.finite.injEq] at hf

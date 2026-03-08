@@ -1,6 +1,7 @@
 import Flean.Operations.Sterbenz
 import Flean.Operations.MulPow2
 import Flean.Linearize.Linearize
+import Flean.ZpowNorm.ZpowNorm
 
 /-! # Addition Error Representability
 
@@ -82,8 +83,8 @@ theorem round_sum_le_double (a b : FiniteFp)
     · -- a is normal at max_exp: 2a ≥ 2^(max_exp+1)
       have ha_lower := FiniteFp.toVal_normal_lower (R := R) a ha ha_normal
       have : (2 : R) ^ FloatFormat.max_exp ≤ a.toVal := by rwa [ha_e_eq] at ha_lower
-      have : 2 * (2 : R) ^ FloatFormat.max_exp = (2 : R) ^ (FloatFormat.max_exp + 1) :=
-        by rw [mul_comm, ← zpow_add_one₀ (by norm_num : (2 : R) ≠ 0)]
+      have : 2 * (2 : R) ^ FloatFormat.max_exp = (2 : R) ^ (FloatFormat.max_exp + 1) := by
+        zpow_norm
       linarith
     · -- a is subnormal: min_exp = max_exp, 2*a.m < 2^prec, so 2a representable
       have hsub := a.isNormal_or_isSubnormal.resolve_left ha_normal

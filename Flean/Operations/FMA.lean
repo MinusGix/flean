@@ -1,5 +1,6 @@
 import Flean.Operations.Add
 import Flean.Operations.Mul
+import Flean.ZpowNorm.ZpowNorm
 
 /-! # Floating-Point Fused Multiply-Add (FMA)
 
@@ -139,8 +140,7 @@ theorem signed_product_mul_zpow_eq_product {R : Type*} [Field R] [LinearOrder R]
       Int.toNat_of_nonneg hnn]
   have hexp : (2 : R) ^ (a.e + b.e - prec + 1 - e_min) *
       (2 : R) ^ (e_min - prec + 1) =
-      (2 : R) ^ (a.e + b.e - 2 * prec + 2) := by
-    rw [two_zpow_mul]; congr 1; omega
+      (2 : R) ^ (a.e + b.e - 2 * prec + 2) := by zpow_norm
   split_ifs with hs
   · rw [mul_assoc, hexp]
     simp [mul_assoc, mul_comm]

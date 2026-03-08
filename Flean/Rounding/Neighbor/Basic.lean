@@ -8,6 +8,7 @@ import Mathlib.Analysis.SpecialFunctions.Pow.Real
 import Mathlib.NumberTheory.Real.Irrational
 
 import Flean.Basic
+import Flean.ZpowNorm.ZpowNorm
 import Flean.Ulp
 import Flean.Ufp
 import Flean.Gsplit.Gsplit
@@ -283,8 +284,7 @@ private theorem roundSubnormalUp_toVal_le_min_exp (x : R) (hx : isSubnormalRange
             (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1)
         < (2 ^ (FloatFormat.prec - 1).toNat : R) * (2 : R) ^ (FloatFormat.min_exp - ↑FloatFormat.prec + 1) := by
           bound_calc
-      _ = (2 : R) ^ FloatFormat.min_exp := by
-          rw [← zpow_natCast (2 : R), FloatFormat.prec_sub_one_toNat_eq, two_zpow_mul]; congr 1; ring
+      _ = (2 : R) ^ FloatFormat.min_exp := by zpow_norm
 
 /-- Helper: if roundNormalUp x = +∞ for normal x, then x > largestFiniteFloat.toVal -/
 private theorem roundNormalUp_inf_imp_gt_lff (x : R) (hx : isNormalRange x) (b : Bool)
@@ -324,10 +324,10 @@ private theorem roundNormalUp_inf_imp_gt_lff (x : R) (hx : isNormalRange x) (b :
       -- RHS = (2^prec - 1) * 2^(max_exp - prec + 1) = 2^prec * 2^(max_exp-prec+1) - 2^(max_exp-prec+1)
       --     = 2^(max_exp+1) - 2^(max_exp-prec+1)
       rw [mul_sub, show (2 : R) ^ FloatFormat.max_exp * 2 = (2 : R) ^ (FloatFormat.max_exp + 1) from by
-        rw [← zpow_add_one₀ (show (2:R) ≠ 0 by norm_num)],
+        zpow_norm,
         show (2 : R) ^ FloatFormat.max_exp * (2 : R) ^ (-(FloatFormat.prec : ℤ) + 1) =
              (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) from by
-        rw [two_zpow_mul]; congr 1; ring]
+        zpow_norm]
       push_cast [sub_mul]
       rw [← zpow_natCast (2 : R) FloatFormat.prec.toNat, FloatFormat.prec_toNat_eq, two_zpow_mul]
       simp only [one_mul]
@@ -342,7 +342,7 @@ private theorem roundNormalUp_inf_imp_gt_lff (x : R) (hx : isNormalRange x) (b :
     have hcollapse : (((2 : ℤ) ^ FloatFormat.prec.toNat - 1 : ℤ) : R) * (2 : R) ^ (FloatFormat.max_exp - FloatFormat.prec + 1) *
         (2 : R) ^ (FloatFormat.prec - 1) =
         (((2 : ℤ) ^ FloatFormat.prec.toNat - 1 : ℤ) : R) * (2 : R) ^ FloatFormat.max_exp := by
-      rw [mul_assoc, two_zpow_mul]; congr 1; ring_nf
+      zpow_norm
     linarith [hcollapse, hms_rearr]
   -- All other branches return Fp.finite, contradicting h : ... = Fp.infinite b
 

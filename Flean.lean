@@ -10,6 +10,7 @@ import «Flean».Rounding.PolicyInstances
 import «Flean».Rounding.GridInstance
 import «Flean».Ulp
 import «Flean».Linearize.Linearize
+import «Flean».ZpowNorm.ZpowNorm
 import «Flean».Gsplit.Gsplit
 import «Flean».ENNRat
 import «Flean».ERat

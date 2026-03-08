@@ -3,6 +3,7 @@ import Flean.Rounding.ModeClass
 import Flean.Rounding.PolicyInstances
 import Flean.Linearize.Linearize
 import Flean.BoundCalc.BoundCalc
+import Flean.ZpowNorm.ZpowNorm
 import Flean.ToVal
 
 /-! # RModeGrid Instance
@@ -185,8 +186,7 @@ private theorem roundDown_preserves_grid_pos
           (by omega)
         -- fp_pow.toVal = 2^(f.e + 1)
         have hfp_val_eq : fp_pow.toVal (R := R) = (2 : R) ^ (f.e + 1) := by
-          rw [hfp_val]; push_cast; rw [← zpow_natCast (2 : R) (prec - 1).toNat, two_zpow_mul]
-          congr 1; rw [FloatFormat.prec_sub_one_toNat_eq]; ring
+          rw [hfp_val]; push_cast; zpow_norm
         -- By idempotence, roundDown(2^(f.e+1)) = Fp.finite fp_pow
         have hfp_idem := roundDown_idempotent (R := R) fp_pow hfp_cond
         have hfp_pos : (0 : R) < fp_pow.toVal := by

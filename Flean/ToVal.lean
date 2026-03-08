@@ -1,6 +1,7 @@
 import Flean.Defs
 import Flean.BoundedSymm
 import Flean.BoundCalc.BoundCalc
+import Flean.ZpowNorm.ZpowNorm
 
 namespace FiniteFp
 
@@ -392,9 +393,7 @@ theorem toVal_lt_zpow_succ [Field R] [LinearOrder R] [IsStrictOrderedRing R]
       < (2 : R) ^ FloatFormat.prec.toNat * (2 : R) ^ (x.e - FloatFormat.prec + 1) := by
         have : (x.m : R) < (2 : R) ^ FloatFormat.prec.toNat := by exact_mod_cast x.valid.2.2.1
         bound_calc
-    _ = (2 : R) ^ (x.e + 1) := by
-        rw [← zpow_natCast (2 : R) FloatFormat.prec.toNat, two_zpow_mul]
-        congr 1; rw [FloatFormat.prec_toNat_eq]; ring
+    _ = (2 : R) ^ (x.e + 1) := by zpow_norm
 
 /-- A normal positive float satisfies `2^e ≤ toVal`. -/
 theorem toVal_normal_lower [Field R] [LinearOrder R] [IsStrictOrderedRing R]
@@ -403,7 +402,7 @@ theorem toVal_normal_lower [Field R] [LinearOrder R] [IsStrictOrderedRing R]
   rw [toVal_pos_eq x hs]
   calc (2 : R) ^ x.e
       = (2 : R) ^ (FloatFormat.prec - 1) * (2 : R) ^ (x.e - FloatFormat.prec + 1) := by
-        rw [two_zpow_mul]; congr 1; ring
+        zpow_norm
     _ ≤ (x.m : R) * (2 : R) ^ (x.e - FloatFormat.prec + 1) := by
         have : (2 : R) ^ (FloatFormat.prec - 1) ≤ (x.m : R) := by
           calc (2 : R) ^ (FloatFormat.prec - 1)
