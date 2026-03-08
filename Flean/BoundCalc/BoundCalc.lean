@@ -493,12 +493,13 @@ def tryRegisteredLemmas (goal : MVarId) : TacticM Bool := do
       for g in goals do
         if ← g.isAssigned then continue
         let closed ← g.withContext do
-          for tacStr in #["assumption", "positivity", "omega", "linarith",
-                          "assumption_mod_cast"] do
+          for tacStr in #["assumption", "positivity", "omega", "norm_num",
+                          "linarith", "assumption_mod_cast"] do
             let stx ← match tacStr with
               | "assumption" => `(tactic| assumption)
               | "positivity" => `(tactic| positivity)
               | "omega" => `(tactic| omega)
+              | "norm_num" => `(tactic| (norm_num; done))
               | "assumption_mod_cast" => `(tactic| assumption_mod_cast)
               | _ => `(tactic| linarith)
             if ← tryTacticOnGoal g stx then return true
@@ -608,6 +609,14 @@ elab "bound_calc" hints:((" [" term,* "]")?) : tactic => do
         | skip
     ))
     return
+  catch _ => pure ()
+
+  -- Registered lemmas as standalone fallback (for non-product goals)
+  try
+    let goal ← getMainGoal
+    if ← BoundCalc.tryRegisteredLemmas goal then
+      replaceMainGoal []
+      return
   catch _ => pure ()
 
   throwError "bound_calc: could not close the goal"
