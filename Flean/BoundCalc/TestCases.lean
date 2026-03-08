@@ -539,3 +539,39 @@ example (a c : ℝ) (e : ℤ) (hac : a ≤ c) :
   bound_calc []
 
 end HintTerms
+
+/-! ## Registered dispatch lemmas (E3)
+
+`@[bound_calc]` attribute registers lemmas for the dispatch chain. -/
+
+section RegisteredLemmas
+
+-- Register a test lemma: for any n ≥ 2, 1 ≤ 2^n - 1
+@[bound_calc] theorem test_one_le_two_pow_sub_one (n : ℕ) (hn : 2 ≤ n) :
+    1 ≤ 2 ^ n - 1 := by
+  have : 1 < 2 ^ n := Nat.one_lt_two_pow_iff.mpr (by omega)
+  omega
+
+-- RL.1: The registered lemma closes a subgoal that positivity/omega can't
+-- Without @[bound_calc], bound_calc would fail because positivity can't prove 1 ≤ 2^n - 1
+-- when n is a variable (not concrete)
+example (n : ℕ) (hn : 2 ≤ n) (m : ℕ) (hm : m ≤ 5) :
+    m * 1 ≤ 5 * (2 ^ n - 1) := by
+  bound_calc
+
+-- Register another: Int.le_ceil for ℝ
+@[bound_calc] theorem test_le_ceil (x : ℝ) : x ≤ ↑⌈x⌉ := Int.le_ceil x
+
+-- RL.2: bound_calc uses the registered Int.le_ceil
+example (x : ℝ) (e : ℤ) :
+    x * (2:ℝ)^e ≤ ↑⌈x⌉ * (2:ℝ)^e := by
+  bound_calc
+
+-- RL.3: Registered lemma with no args — just a constant fact
+@[bound_calc] theorem test_seven_le_ten : (7 : ℝ) ≤ 10 := by norm_num
+
+example (x : ℝ) (hx : 0 ≤ x) :
+    7 * x ≤ 10 * x := by
+  bound_calc
+
+end RegisteredLemmas

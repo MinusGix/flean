@@ -28,6 +28,36 @@ See `BoundCalc/Design.md` for the full design and `BoundCalc/TestCases.lean` for
 
 open Lean Elab Meta Tactic
 
+/-! ### `@[bound_calc]` attribute for registering dispatch lemmas
+
+Lemmas tagged with `@[bound_calc]` are automatically tried during subgoal dispatch.
+This allows domain-specific lemmas (e.g., `Int.le_ceil`, `FloatFormat.prec_pow_le`)
+to be used without modifying the tactic source.
+
+Usage: `@[bound_calc] theorem my_useful_bound : ...`
+-/
+
+/-- A registered `bound_calc` dispatch lemma. -/
+structure BoundCalcLemma where
+  declName : Name
+  deriving Inhabited
+
+/-- Environment extension storing `@[bound_calc]` lemmas. -/
+initialize boundCalcExt : SimpleScopedEnvExtension BoundCalcLemma (Array BoundCalcLemma) ←
+  registerSimpleScopedEnvExtension {
+    addEntry := fun lemmas entry => lemmas.push entry
+    initial := #[]
+  }
+
+/-- Register the `@[bound_calc]` attribute. -/
+initialize registerBuiltinAttribute {
+  name := `bound_calc
+  descr := "register a lemma for use in the bound_calc dispatch chain"
+  applicationTime := .afterCompilation
+  add := fun declName _stx _kind => do
+    boundCalcExt.add { declName }
+}
+
 namespace BoundCalc
 
 /-! ### Factor extraction -/
@@ -450,7 +480,45 @@ def closeByFactorMatching (goal : MVarId) : TacticM (Option (List MVarId)) := do
       return some goals
     catch _ => return none
 
+/-- Try to close a goal using `@[bound_calc]`-registered lemmas.
+    For each registered lemma, tries `apply <lemma>` and dispatches any
+    remaining subgoals with `assumption | positivity | omega | linarith`. -/
+def tryRegisteredLemmas (goal : MVarId) : TacticM Bool := do
+  let lemmas := boundCalcExt.getState (← getEnv)
+  for entry in lemmas do
+    let state ← saveState
+    try
+      let goals ← goal.apply (← mkConstWithFreshMVarLevels entry.declName)
+      let mut allClosed := true
+      for g in goals do
+        if ← g.isAssigned then continue
+        let closed ← g.withContext do
+          for tacStr in #["assumption", "positivity", "omega", "linarith",
+                          "assumption_mod_cast"] do
+            let stx ← match tacStr with
+              | "assumption" => `(tactic| assumption)
+              | "positivity" => `(tactic| positivity)
+              | "omega" => `(tactic| omega)
+              | "assumption_mod_cast" => `(tactic| assumption_mod_cast)
+              | _ => `(tactic| linarith)
+            if ← tryTacticOnGoal g stx then return true
+          return false
+        if !closed then allClosed := false; break
+      if allClosed then return true
+      restoreState state
+    catch _ =>
+      restoreState state
+  return false
+
 end BoundCalc
+
+/-- Try `@[bound_calc]`-registered lemmas on the current goal. -/
+elab "bound_calc_registered" : tactic => do
+  let goal ← getMainGoal
+  if ← BoundCalc.tryRegisteredLemmas goal then
+    replaceMainGoal []
+  else
+    throwError "bound_calc_registered: no registered lemma closed the goal"
 
 /-- `bound_calc` automates monotonicity reasoning for products.
 
@@ -488,6 +556,7 @@ elab "bound_calc" hints:((" [" term,* "]")?) : tactic => do
         | omega
         | (norm_num; done)
         | linarith
+        | bound_calc_registered
         | (first | linearize | fail "linearize failed")
         | exact Nat.one_le_two_pow
         | exact Nat.one_le_pow _ _ (by omega)
@@ -532,6 +601,7 @@ elab "bound_calc" hints:((" [" term,* "]")?) : tactic => do
         | omega
         | (norm_num; done)
         | linarith
+        | bound_calc_registered
         | (first | linearize | fail "linearize failed")
         | exact Nat.one_le_two_pow
         | exact Nat.one_le_pow _ _ (by omega)
