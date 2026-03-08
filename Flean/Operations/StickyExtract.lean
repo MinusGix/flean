@@ -224,7 +224,7 @@ theorem initial_q_ge_minQ (p d : ℕ) (hp : 0 < p) (hd : 0 < d) :
         _ ≤ p * 2 ^ s := by rw [hs_eq]; exact Nat.mul_le_mul_right _ hlp
     exact le_of_lt (calc 2 ^ prec2 * d
         < 2 ^ prec2 * 2 ^ (ld + 1) :=
-          Nat.mul_lt_mul_of_pos_left hdlt (by positivity)
+          by { bound_calc }
       _ = 2 ^ (prec2 + 1 + ld) := by rw [← Nat.pow_add]; congr 1; omega
       _ ≤ p * 2 ^ s := key)
   · push_neg at hs
@@ -232,7 +232,7 @@ theorem initial_q_ge_minQ (p d : ℕ) (hp : 0 < p) (hd : 0 < d) :
     rw [hs_eq, Nat.pow_zero, Nat.mul_one]
     have step1 : 2 ^ prec2 * d < 2 ^ (prec2 + ld + 1) := by
       calc 2 ^ prec2 * d < 2 ^ prec2 * 2 ^ (ld + 1) :=
-            Nat.mul_lt_mul_of_pos_left hdlt (by positivity)
+            by { bound_calc }
         _ = 2 ^ (prec2 + (ld + 1)) := by rw [← Nat.pow_add]
         _ = 2 ^ (prec2 + ld + 1) := by ring_nf
     have step2 : prec2 + ld + 1 ≤ lp := by omega

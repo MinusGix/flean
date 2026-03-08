@@ -225,9 +225,9 @@ theorem relativeError_ulp_upper_bound_le [FloatFormat] (x : R) (y : FiniteFp) (�
   calc |x - ⌞y⌟| ≤ α * ulp x := hdiff
     _ = α * (ulp x / |x| * |x|) := by rw [div_mul_cancel₀ _ (ne_of_gt xabspos)]
     _ ≤ α * (ε * |x|) := by
-        apply mul_le_mul_of_nonneg_left _ hα
-        apply mul_le_mul_of_nonneg_right (ulp_div_abs_le x xge)
-        exact le_of_lt xabspos
+        have := ulp_div_abs_le x xge
+        have := le_of_lt xabspos
+        bound_calc
     _ = α * ε * |x| := by ring
 
 /-- Given a floating point number `y` and a real number `x` in the normal range (≥ 2^min_exp),
@@ -362,9 +362,9 @@ private theorem int_log_toVal_decompose [FloatFormat] (f : FiniteFp) (hs : f.s =
     have h_le : (2 : R) ^ (↑(Nat.log 2 f.m) + (f.e - FloatFormat.prec + 1)) ≤
         (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) := by
       rw [← two_zpow_mul]
-      exact mul_le_mul_of_nonneg_right
-        (by rw [zpow_natCast]; exact_mod_cast Nat.pow_log_le_self 2 (by omega))
-        (le_of_lt (by positivity))
+      have : (2 : R) ^ (Nat.log 2 f.m : ℕ) ≤ (f.m : R) := by
+        rw [← Nat.cast_ofNat, ← Nat.cast_pow]; exact_mod_cast Nat.pow_log_le_self 2 (by omega)
+      bound_calc
     have : ↑(Nat.log 2 f.m) + (f.e - FloatFormat.prec + 1) ≤
         Int.log 2 ((f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1)) := by
       apply (Int.zpow_le_iff_le_log (show 1 < (2:ℕ) from by norm_num) hval_pos).mp

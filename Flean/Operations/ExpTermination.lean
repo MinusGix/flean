@@ -229,7 +229,7 @@ theorem expArgRedK_natAbs_bound (x : ℚ) (k : ℤ)
     calc (k.natAbs : ℝ) * Real.log 2
         ≥ (2 * ↑x.num.natAbs + 2) * Real.log 2 := by nlinarith
       _ ≥ (2 * ↑x.num.natAbs + 2) * (1 / 2) :=
-          mul_le_mul_of_nonneg_left hlog2_gt.le (by positivity)
+          by have := hlog2_gt.le; bound_calc
       _ = ↑x.num.natAbs + 1 := by ring
   have : (k.natAbs : ℝ) * Real.log 2 < ↑x.num.natAbs + 1 := by
     have h1 : (k.natAbs : ℝ) * Real.log 2 = |↑k * Real.log 2| := by
@@ -766,7 +766,7 @@ lemma pade_delta_log_bound (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0) (s : 
           N.factorial * ((4 : ℝ) * b) ^ N * Real.exp |x| := by
         calc (N.factorial : ℝ) * (b : ℝ) ^ N * |padeP N x|
             ≤ N.factorial * (b : ℝ) ^ N * ((4 : ℝ) ^ N * Real.exp |x|) :=
-              mul_le_mul_of_nonneg_left (padeP_abs_le N x) (by positivity)
+              by have := padeP_abs_le N x; bound_calc
           _ = N.factorial * ((4 : ℝ) * b) ^ N * Real.exp |x| := by
               rw [mul_pow]; ring
       -- Step B: N! ≤ (28*ab)^(28*ab)

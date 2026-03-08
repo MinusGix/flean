@@ -177,17 +177,18 @@ Total: ~250 lines of metaprogramming.
 
 ## Roadmap (next improvements)
 
-### R1: Synthesized trivial bounds (HIGH)
-Factor matching currently only uses context hypotheses. Add synthesis of:
-- **Reflexive:** `x ≤ x` for any factor appearing on both sides
-- **Constant:** `457 ≤ 500` checkable by `norm_num`/`omega`
-- **Power:** `2^e₁ ≤ 2^e₂` checkable by `linearize`
+### R1: Synthesized trivial bounds (HIGH) ✅ DONE
+Factor matching synthesizes bounds for single-factor pairs via `trySynthesizeSingleBound`:
+- **Reflexive:** `x ≤ x` via `isDefEq` + `le_refl`
+- **Constant:** `457 ≤ 500` via `norm_num`/`omega`
+- **Power:** `2^e₁ ≤ 2^e₂` via `linearize`
+- **Nat powers:** `1 ≤ 2^n` via `Nat.one_le_two_pow`, `1 ≤ m^n` via `Nat.one_le_pow`
 
-This removes the need for users to explicitly state obvious factor bounds.
+The recursive matching algorithm decomposes multi-factor products into single-factor
+pairs, so these syntheses apply transitively (e.g., `a*b*c ≤ d*b*c` decomposes
+to `a≤d` + `b≤b` + `c≤c`).
 
-**Codebase motivation:** OddInterval.lean has `Nat.mul_le_mul_left _ hd_le` where
-one factor is bounded by hypothesis and the other factor is identical on both sides.
-LogTermination.lean has `457 * ab^3 * 2^ab ≤ 500 * ab^3 * 2^ab`.
+Deployed via 91 sites across 24 files.
 
 ### R2: Extensible dispatch chain (MEDIUM) ✅ DONE
 Added lemma-based dispatch for power bounds:
@@ -224,23 +225,23 @@ making the tactic robust enough.
 
 ## Deployment status
 
-80 sites replaced across 22 files:
+91 sites replaced across 24 files:
 - OddInterval.lean: 14 sites
-- ExpTermination.lean: 18 sites
-- LogTermination.lean: 14 sites
+- ExpTermination.lean: 18 sites (+2 new with have + bound_calc)
+- LogTermination.lean: 14 sites (+1 new with have + bound_calc)
 - PadeExp.lean: 8 sites
 - RoundNormal.lean: 9 sites
-- RoundUp.lean: 5 sites
-- RoundDown.lean: 1 site
+- RoundUp.lean: 5 sites (+1 with have + bound_calc)
+- RoundDown.lean: 1 site (+1 with have + bound_calc)
 - ExpComputableDefs.lean: 4 sites
 - RoundIntSigPolicySound.lean: 3 sites
 - ToVal.lean: 3 sites
 - MulErrorRepresentable.lean: 3 sites
-- Ulp.lean: 1 site
-- GridInstance.lean: 2 sites
+- Ulp.lean: 1 site (+1 with have + bound_calc, +2 new with have + bound_calc)
+- GridInstance.lean: 2 sites (+1 new with have + bound_calc)
 - ExpComputableSound.lean: 1 site
 - ExpTaylor.lean: 1 site
-- CommonConstants.lean: 1 site
+- CommonConstants.lean: 3 sites (1 plain, 1 with hint, 1 with have + bound_calc)
 - PadeExpDefs.lean: 1 site
 - StickyTermination.lean: 1 site
 - Idempotence.lean: 2 sites
@@ -248,6 +249,7 @@ making the tactic robust enough.
 - Neighbor/Basic.lean: 2 sites
 - PolicySoundInstances.lean: 2 sites
 - Order.lean: 1 site
+- StickyExtract.lean: 2 sites (new)
 
 ### Patterns that work well
 
@@ -339,9 +341,50 @@ Division appears as a factor but `bound_calc` doesn't decompose `a / b`.
 **Fix idea:** R4 (division support) — rewrite `a / b` as `a * b⁻¹`, or recognize
 `div_le_div` patterns directly.
 
+### E1: `assumption_mod_cast` in dispatch chain ✅ DONE
+Added `assumption_mod_cast` to both Phase 1 and Phase 1b dispatch chains.
+Bridges ℕ/ℤ → ℝ/ℚ cast gaps automatically. Upgraded 7 P4 sites to full closures.
+
+### E2: Hint term syntax `bound_calc [...]` ✅ DONE
+`bound_calc [hint1, hint2, ...]` introduces terms as `have` hypotheses before dispatch.
+Deployed to CommonConstants (nonneg hint). Note: `show` types with `Nat.log2`/`Nat.log`
+in exponents hit zpow/npow coercion issues — use `have` + `bound_calc` for those.
+
+### E3: `@[bound_calc_dispatch]` attribute (MEDIUM)
+Register domain-specific lemmas into the dispatch chain without modifying BoundCalc.lean.
+Would help with `Int.le_ceil`, `FloatFormat.prec_pow_le`, etc.
+
+### E4: Term-mode `bound_calc_hint` (LOW)
+Some sites use `linarith [mul_le_mul_of_nonneg_right ...]` — the multiplication bound
+is a *hint* to linarith, not a standalone goal. A term elaborator producing proof terms
+would cover these.
+
+### E5: Hint elaboration zpow/npow fix (LOW)
+The `bound_calc [show ... from by ...]` hint syntax has a zpow/npow coercion issue
+when the `show` type contains `Nat.log2`/`Nat.log` in exponents. The `elab` handler
+elaborates the type in a context where `(2:R)^(n:ℕ)` coerces to zpow. Understanding
+and fixing would make the hint syntax more universal.
+
+## Remaining deployment opportunities (~20-30 sites)
+
+High-priority files (clean patterns, likely just `bound_calc`):
+- Ulp.lean: 3 more (lines 211, 228, 365)
+- RoundDown.lean: 1 more (line 108)
+- CommonConstants.lean: 1 more (line 186)
+- GridInstance.lean: 1 (line 152)
+- LogTermination/ExpTermination: 3-5 more
+- StickyExtract/StickyTermination: 2-3 (Nat domain)
+
+Medium-priority (need cast hints or division support):
+- RoundNormal.lean: 2-3 (lines 482, 619, 894 — some need R4)
+- PadeExp/PadeExpDefs: ~10 (factorial/polynomial bounds, specialized)
+- ExpComputableDefs: 5 (division patterns, need R4)
+
+Cannot import BoundCalc:
+- Util.lean: 2 sites (too foundational)
+
 ## Open questions
 
-- **Hint syntax:** `bound_calc [h1, h2]` to guide matching, or just auto-search?
 - **Timeout:** Factor matching is exponential in theory but tiny in practice (≤4 factors).
   Depth limit of 8 is the current safety valve.
 - **Partial coverage:** If matching covers only some factors, should we leave

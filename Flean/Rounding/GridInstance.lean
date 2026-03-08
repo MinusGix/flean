@@ -149,7 +149,9 @@ private theorem roundDown_preserves_grid_pos
         calc (2 : R) ^ (FloatFormat.min_exp - prec + 1) ≤ (2 : R) ^ g := by linearize
           _ = 1 * (2 : R) ^ g := (one_mul _).symm
           _ ≤ (n : R) * (2 : R) ^ g :=
-            mul_le_mul_of_nonneg_right (by exact_mod_cast hn_pos) (le_of_lt (by positivity))
+            by
+              have : (1 : R) ≤ (n : R) := by exact_mod_cast hn_pos
+              bound_calc
       have hsps_idem := roundDown_idempotent_nonneg (R := R)
         FiniteFp.smallestPosSubnormal (by rfl) (by norm_num [FiniteFp.smallestPosSubnormal])
       have hsps_pred : findPredecessorPos (FiniteFp.smallestPosSubnormal.toVal (R := R)) hsps_pos

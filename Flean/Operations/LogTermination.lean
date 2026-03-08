@@ -487,7 +487,8 @@ private theorem log2_ab_pade_bound (ab : ℕ) (hab : 100 ≤ ab) :
   rw [Nat.log2_eq_log_two]
   have h_lt : 2 * ab ^ 2 * 2 ^ ab < 2 ^ (2 * ab) := by
     rw [show 2 ^ (2 * ab) = 2 ^ ab * 2 ^ ab from by rw [two_mul]; exact pow_add 2 ab ab]
-    exact Nat.mul_lt_mul_of_pos_right (two_mul_sq_lt_two_pow ab hab) (Nat.two_pow_pos ab)
+    have := two_mul_sq_lt_two_pow ab hab
+    bound_calc
   -- Nat.log 2 x < k when x < 2^k
   have h_log : Nat.log 2 (2 * ab ^ 2 * 2 ^ ab) < 2 * ab :=
     Nat.log_lt_of_lt_pow' (by omega) h_lt
