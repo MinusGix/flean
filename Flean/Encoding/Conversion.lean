@@ -11,27 +11,23 @@ namespace Fp
 
 -- TODO: We should hopefully be able to use the bitvec representation with the solver integrated into lean, but I need to look into that more.
 -- TODO: do we really need to require standard exp range? I think we do for the usual bit saving optimization for finite floats. This isn't major, anyway, since I believe all practical floating point formats are standard.
+private theorem one_significandBits_ne_zero [FloatFormat] :
+    (BitVec.ofNat FloatFormat.significandBits 1 : BitVec FloatFormat.significandBits) ≠ 0 := by
+  have := FloatFormat.significandBits_pos
+  intro h
+  have h := BitVec.toNat_eq.mp h
+  simp [BitVec.toNat_ofNat, Nat.one_mod_two_pow, Nat.zero_mod] at h
+
 def toBits [FloatFormat] (f : Fp) : FpQuotient :=
   match f with
   | .finite f =>
-    -- We don't need the valid proof to construct the bit pattern, though for reasoning we will need to know it is valid
     let ⟨s, e, m, valid⟩ := f
     let b := FloatBits.finite s e m valid
     ⟦b⟧
   | .infinite b =>
     ⟦FloatBits.infinite b⟧
   | .NaN =>
-    ⟦FloatBits.NaN false (BitVec.ofNat FloatFormat.significandBits 1) (by
-      have := FloatFormat.valid_prec
-      unfold FloatFormat.significandBits
-
-      intro h
-      rw [BitVec.ofNat_eq_ofNat] at h
-      have h := BitVec.toNat_eq.mp h
-      repeat rw [BitVec.toNat_ofNat] at h
-      rw [Nat.zero_mod, Nat.one_mod_two_pow] at h
-      <;> omega
-    )⟧
+    ⟦FloatBits.NaN false (BitVec.ofNat FloatFormat.significandBits 1) one_significandBits_ne_zero⟧
 
 def FloatBits.FpExponent [FloatFormat] (b : FloatBits) : ℤ := if b.toBitsTriple.exponent = 0 then FloatFormat.min_exp else (b.toBitsTriple.exponent.toNat : ℤ) - FloatFormat.exponentBias
 
@@ -318,7 +314,9 @@ theorem ofBits_zero [StdFloatFormat] : @ofBits _ 0 = 0 := by
     simp_rw [Fp.zero_def, FloatBits.zero_def', FloatBits.construct_sign_eq_BitsTriple, FloatBits.construct_significand_eq_BitsTriple, FloatBits.construct_exponent_eq_BitsTriple]
     simp_all only [BitVec.ofNat_eq_ofNat, BitVec.toNat_ofNat, pow_one, Nat.zero_mod, Nat.reduceBEq, ↓reduceIte]
 
--- TODO: uniqueness of ±0
+-- Note: ±0 encode to distinct bit patterns (sign bit differs) but have the same toVal.
+-- This is expected IEEE 754 behavior and does not affect round-trip correctness:
+-- ofBits_toBits and toBits_ofBits handle both signs correctly.
 
 theorem lift_repr_toBitsTriple_sign [StdFloatFormat] {f : Fp} : f.toBits.representative.toBitsTriple.sign = BitVec.ofBool f.sign := by
   unfold Fp.toBits
@@ -649,32 +647,3 @@ theorem ofBits_toBits [StdFloatFormat] (b : FloatBits) : toBits (ofBits b) = ⟦
     exact finite_roundtrip hf
 
 end Fp
-
--- def l := @FiniteFp.largestFiniteFloat FloatFormat.Binary32.toFloatFormat
--- def sn := @FiniteFp.smallestPosNormal FloatFormat.Binary32.toFloatFormat
--- def ss := @FiniteFp.smallestPosSubnormal FloatFormat.Binary32.toFloatFormat
--- def o := (@FiniteFp.instOne FloatFormat.Binary32.toFloatFormat).one
--- def z := (@FiniteFp.instZero FloatFormat.Binary32.toFloatFormat).zero
-
--- def ftr := λ f => @FiniteFp.toVal FloatFormat.Binary32.toFloatFormat ℚ _ f
--- def tr := λ f => @Fp.toRat? FloatFormat.Binary32.toFloatFormat f
--- def off := λ f => @Fp.finite FloatFormat.Binary32.toFloatFormat f
--- def toB := λ f => @Fp.toBits FloatFormat.Binary32.toFloatFormat f
--- def ofB := λ b => @Fp.ofBits FloatFormat.Binary32 b
--- def toOfB := λ f => ofB (@Fp.FpQuotient.representative FloatFormat.Binary32.toFloatFormat (toB f))
-
--- #eval! (ftr l)
--- #eval! (tr (toOfB (off l)))
-
--- #eval! (ftr sn) -- (1 : Rat)/85070591730234615865843651857942052864 correct
--- #eval! (tr (toOfB (off sn))) -- 0??
--- #eval! (@Fp.FpQuotient.representative FloatFormat.Binary32.toFloatFormat (toB (off sn))) -- 0??
-
--- #eval! (ftr ss)
--- #eval! (tr (toOfB (off ss)))
-
--- #eval! (ftr o)
--- #eval! (tr (toOfB (off o)))
-
--- #eval! (ftr z)
--- #eval! (tr (toOfB (off z)))
