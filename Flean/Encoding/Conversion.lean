@@ -343,166 +343,7 @@ theorem lift_repr_toBitsTriple_sign [StdFloatFormat] {f : Fp} : f.toBits.represe
     unfold FloatBits.NaN Fp.sign
     rw [FloatBits.construct_sign_eq_BitsTriple]
 
-theorem lift_repr_toBitsTriple_exponent [StdFloatFormat] {f : FiniteFp} : (Fp.finite f).toBits.representative.FpExponent = f.e := by
-  unfold FloatBits.FpExponent
-  unfold Fp.toBits
-  simp only [BitVec.ofNat_eq_ofNat, StdFloatFormat.std_exp_range_def, StdFloatFormat.max_exp_def]
-  rw [FpQuotient.representative_mk_isFinite_eq (FloatBits.finite_isFinite f.s f.e f.m StdFloatFormat.st f.valid)]
-  unfold FloatBits.finite
-  lift_lets
-  extract_lets E E' _ sign significand exponent
-  rw [FloatBits.construct_exponent_eq_BitsTriple]
-  unfold exponent E' E
-  have vf := f.valid
-  unfold IsValidFiniteVal isSubnormal at vf
-
-  split_ifs with hs he hl
-  · simp_all only [Int.toNat_zero, StdFloatFormat.std_exp_range_def, StdFloatFormat.max_exp_def]
-  · simp_all only [Int.toNat_zero, not_true_eq_false]
-  · cases' (BitVec.ofNat_le_eq_zero_iff (StdFloatFormat.exponentBias_add_toNat_lt_exponentBits _ (by omega))).mp hl with h1
-    · zify at h1
-      rw [FloatFormat.exponentBias_add_standard_toNat _ (by omega) StdFloatFormat.st] at h1
-      simp_all only [not_and, not_le, StdFloatFormat.max_exp_def,
-        StdFloatFormat.std_exp_range_def, ge_iff_le, tsub_le_iff_right, Int.reduceLE, false_and]
-    · have := FloatFormat.exponentBits_pos
-      contradiction
-  · have := FloatFormat.exponentBits_pos
-    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (StdFloatFormat.exponentBias_add_toNat_lt_exponentBits _ (by omega)), FloatFormat.exponentBias_add_standard_toNat _ (by omega) StdFloatFormat.st, StdFloatFormat.exponentBias_def]
-    omega
-
-theorem lift_repr_toBitsTriple_significand [StdFloatFormat] {f : FiniteFp} : (Fp.finite f).toBits.representative.FpSignificand = f.m := by
-  unfold FloatBits.FpSignificand
-  unfold Fp.toBits
-  norm_num
-  rw [FpQuotient.representative_mk_isFinite_eq (FloatBits.finite_isFinite f.s f.e f.m StdFloatFormat.st f.valid)]
-  unfold FloatBits.finite
-  lift_lets
-  extract_lets E E' T sign significand exponent
-  rw [FloatBits.construct_significand_eq_BitsTriple, FloatBits.construct_exponent_eq_BitsTriple]
-  unfold exponent E' E significand T
-  unfold FloatBits.sigToTrailing
-
-  have vf := f.valid
-  unfold IsValidFiniteVal isNormal isSubnormal at vf
-
-  split_ifs with hs h2 h3
-  · rw [BitVec.toNat_ofNat]
-    unfold FloatFormat.significandBits
-    rw [Nat.and_two_pow_sub_one_eq_mod, Nat.mod_mod_of_dvd _ (by aesop), Nat.mod_eq_of_lt]
-    apply Nat.lt_of_le_pred
-    apply pow_pos (by norm_num)
-    exact hs.right
-  · simp_all only [StdFloatFormat.std_exp_range_def, StdFloatFormat.max_exp_def, ge_iff_le, le_refl, tsub_le_iff_right,
-    and_self, or_true, and_true, true_and, Int.toNat_zero, BitVec.ofNat_eq_ofNat, not_true_eq_false]
-  · have hlt := StdFloatFormat.exponentBias_add_toNat_lt_exponentBits f.e (by omega)
-    cases' (BitVec.ofNat_le_eq_zero_iff hlt).mp h3 with hb
-    · rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt]
-      unfold FloatFormat.significandBits
-      unfold isSubnormal at hs
-      have h2 := vf.right.right.right.resolve_right hs
-      zify at hb; rw [Int.toNat_of_nonneg (FloatFormat.exponentBias_add_standard_pos f.e (by omega) StdFloatFormat.st).le] at hb
-      simp_all only [StdFloatFormat.std_exp_range_def, StdFloatFormat.max_exp_def, ge_iff_le, tsub_le_iff_right,
-        and_self, true_or, and_true, not_and, not_le, BitVec.ofNat_eq_ofNat, gt_iff_lt, Int.reduceLE, false_and]
-    · simp_all only [StdFloatFormat.std_exp_range_def, StdFloatFormat.max_exp_def, ge_iff_le, tsub_le_iff_right,
-      not_and, not_le, BitVec.ofNat_eq_ofNat, pow_zero, Nat.lt_one_iff, Int.toNat_eq_zero,
-      AddLeftCancelMonoid.add_eq_zero, Int.pred_toNat, one_ne_zero, and_false]
-  · norm_num
-    rw [show BitVec.toNat 1 = 1 by simp]
-    have hs' := vf.right.right.right.resolve_right hs
-    -- Rewrite prec.toNat - 1 to (prec - 1).toNat for consistency
-    rw [← FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
-    -- Goal now has (prec - 1).toNat form
-    have hprecm1 : (FloatFormat.prec - 1).toNat = FloatFormat.prec.toNat - 1 :=
-      FloatFormat.prec_sub_one_toNat_eq_toNat_sub
-    apply Nat.eq_of_testBit_eq
-    intro i
-    rw [Nat.testBit_or, Nat.testBit_shiftLeft, Nat.testBit_mod_two_pow]
-    by_cases ilt : i < (FloatFormat.prec - 1).toNat
-    · rw [decide_eq_false_iff_not.mpr (by omega), Bool.false_and, Bool.false_or, decide_eq_true ilt, Bool.true_and]
-    · rw [decide_eq_true (by omega), decide_eq_false (by omega), Bool.true_and, Bool.false_and, Bool.or_false]
-      by_cases ieq : i = (FloatFormat.prec - 1).toNat
-      · rw [ieq]
-        simp only [tsub_self, Nat.testBit_zero, Nat.mod_succ, decide_true, Bool.true_eq]
-        by_cases hbit : f.m.testBit (FloatFormat.prec - 1).toNat = true
-        · trivial
-        · rw [Bool.not_eq_true] at hbit
-          have p : ∀ j, j ≥ (FloatFormat.prec - 1).toNat → f.m.testBit j = false := by
-            intro j jge
-            by_cases jeq : j = (FloatFormat.prec - 1).toNat
-            · rw [jeq]
-              exact hbit
-            · have hp := FloatFormat.valid_prec
-              rw [hprecm1] at jge jeq
-              exact Nat.testBit_lt_two_pow'.mp hs'.right j (by omega)
-          have := Nat.lt_pow_two_of_testBit f.m p
-          simp only [hprecm1] at *
-          omega
-      · have hp := FloatFormat.valid_prec
-        rw [hprecm1] at ieq ilt
-        rw [Nat.testBit_lt_two_pow'.mp hs'.right i (by omega)]
-        have := (not_congr Nat.testBit_one_eq_true_iff_self_eq_zero).mpr (by omega : ¬i - (FloatFormat.prec.toNat - 1) = 0)
-        norm_num at this
-        rw [hprecm1]
-        rw [this]
-
-/-- Converting from Fp to Bits and back yields the same value. -/
-theorem toBits_ofBits [StdFloatFormat] (f : Fp) : ofBits (toBits f).representative = f := by
-  if hn : f.isNaN then
-    have hn' := lift_isNaN hn
-    rw [FpQuotient.representative_isNaN_eq _ hn']
-    unfold ofBits
-    have hrn := FloatBits.NaN_isNaN false (BitVec.allOnes FloatFormat.significandBits) (BitVec.allOnes_ne_zero FloatFormat.significandBits_pos.ne.symm)
-    have := FloatBits.isNaN_notInfinite _ hrn
-    have := FloatBits.isNaN_notFinite _ hrn
-    split_ifs
-    unfold Fp.isNaN at hn
-    exact hn.symm
-  else if hi : f.isInfinite then
-    have hi' := lift_isInfinite hi
-    have hir' := FpQuotient.representative_isInfinite _ hi'
-    unfold ofBits
-    split_ifs with hz
-    · have := FpQuotient.representative_NaN_imp_NaN _ hz
-      have := FpQuotient.isInfinite_notNaN _ hi'
-      contradiction
-    · have := FpQuotient.representative_isInfinite_eq _ hi'
-      rw [this]
-      unfold FloatBits.infinite
-      lift_lets
-      extract_lets sign significand exponent
-      unfold FloatBits.sign
-      rw [FloatBits.construct_sign_eq_BitsTriple]
-      unfold sign
-      rw [BitVec.ofBool_beq_one]
-      rw [lift_sign StdFloatFormat.st]
-      unfold Fp.isInfinite at hi
-      unfold Fp.sign
-      cases hi
-      <;> simp_all only
-  else
-    have hf := Fp.notNaN_notInfinite hn hi
-    have hrf := Fp.lift_isFinite StdFloatFormat.st hf
-    have hrn := FpQuotient.isFinite_notNaN _ hrf
-    have hri := FpQuotient.isFinite_notInfinite _ hrf
-    unfold ofBits
-    split_ifs with hz hz
-    · have := FpQuotient.representative_NaN_imp_NaN _ hz
-      contradiction
-    · have := (FpQuotient.representative_isInfinite_iff f.toBits).mpr hz
-      contradiction
-    · norm_num
-      unfold Fp.isFinite at hf
-      cases' f with vf
-      · simp_rw [lift_repr_toBitsTriple_sign, lift_repr_toBitsTriple_exponent, lift_repr_toBitsTriple_significand, Fp.sign, FiniteFp.sign]
-        congr
-        norm_num
-      · simp_all only [Bool.false_eq_true]
-      · simp_all only [Bool.false_eq_true]
-
-
-
-
-/-! ## Reverse round-trip: bits → Fp → bits -/
+/-! ## Helper lemmas for round-trip proofs -/
 
 /-- The lower sigBits bits of (1#1 ++ T) are T. -/
 private theorem append_one_mod [FloatFormat] (T : BitVec FloatFormat.significandBits) :
@@ -644,6 +485,74 @@ theorem FloatBits.finite_FpSignificand [StdFloatFormat] {s : Bool} {e : ℤ} {m 
     have hdm := Nat.div_add_mod m (2 ^ n)
     rw [hdiv, Nat.mul_one] at hdm
     omega
+
+theorem lift_repr_toBitsTriple_exponent [StdFloatFormat] {f : FiniteFp} : (Fp.finite f).toBits.representative.FpExponent = f.e := by
+  unfold Fp.toBits
+  rw [FpQuotient.representative_mk_isFinite_eq (FloatBits.finite_isFinite f.s f.e f.m StdFloatFormat.st f.valid)]
+  exact FloatBits.finite_FpExponent f.valid
+
+theorem lift_repr_toBitsTriple_significand [StdFloatFormat] {f : FiniteFp} : (Fp.finite f).toBits.representative.FpSignificand = f.m := by
+  unfold Fp.toBits
+  norm_num
+  rw [FpQuotient.representative_mk_isFinite_eq (FloatBits.finite_isFinite f.s f.e f.m StdFloatFormat.st f.valid)]
+  exact FloatBits.finite_FpSignificand f.valid
+
+/-- Converting from Fp to Bits and back yields the same value. -/
+theorem toBits_ofBits [StdFloatFormat] (f : Fp) : ofBits (toBits f).representative = f := by
+  if hn : f.isNaN then
+    have hn' := lift_isNaN hn
+    rw [FpQuotient.representative_isNaN_eq _ hn']
+    unfold ofBits
+    have hrn := FloatBits.NaN_isNaN false (BitVec.allOnes FloatFormat.significandBits) (BitVec.allOnes_ne_zero FloatFormat.significandBits_pos.ne.symm)
+    have := FloatBits.isNaN_notInfinite _ hrn
+    have := FloatBits.isNaN_notFinite _ hrn
+    split_ifs
+    unfold Fp.isNaN at hn
+    exact hn.symm
+  else if hi : f.isInfinite then
+    have hi' := lift_isInfinite hi
+    have hir' := FpQuotient.representative_isInfinite _ hi'
+    unfold ofBits
+    split_ifs with hz
+    · have := FpQuotient.representative_NaN_imp_NaN _ hz
+      have := FpQuotient.isInfinite_notNaN _ hi'
+      contradiction
+    · have := FpQuotient.representative_isInfinite_eq _ hi'
+      rw [this]
+      unfold FloatBits.infinite
+      lift_lets
+      extract_lets sign significand exponent
+      unfold FloatBits.sign
+      rw [FloatBits.construct_sign_eq_BitsTriple]
+      unfold sign
+      rw [BitVec.ofBool_beq_one]
+      rw [lift_sign StdFloatFormat.st]
+      unfold Fp.isInfinite at hi
+      unfold Fp.sign
+      cases hi
+      <;> simp_all only
+  else
+    have hf := Fp.notNaN_notInfinite hn hi
+    have hrf := Fp.lift_isFinite StdFloatFormat.st hf
+    have hrn := FpQuotient.isFinite_notNaN _ hrf
+    have hri := FpQuotient.isFinite_notInfinite _ hrf
+    unfold ofBits
+    split_ifs with hz hz
+    · have := FpQuotient.representative_NaN_imp_NaN _ hz
+      contradiction
+    · have := (FpQuotient.representative_isInfinite_iff f.toBits).mpr hz
+      contradiction
+    · norm_num
+      unfold Fp.isFinite at hf
+      cases' f with vf
+      · simp_rw [lift_repr_toBitsTriple_sign, lift_repr_toBitsTriple_exponent, lift_repr_toBitsTriple_significand, Fp.sign, FiniteFp.sign]
+        congr
+        norm_num
+      · simp_all only [Bool.false_eq_true]
+      · simp_all only [Bool.false_eq_true]
+
+
+
 
 /-- For a finite FloatBits, re-encoding the decoded values yields the same bit pattern. -/
 private theorem finite_roundtrip [StdFloatFormat] {b : FloatBits}
