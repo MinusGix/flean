@@ -432,6 +432,25 @@ def toRat (x : FiniteFp) : ℚ := x.toVal
 noncomputable
 def toReal (x : FiniteFp) : ℝ := x.toVal
 
+/-- A float with `e ≥ prec - 1` has an integer value: `toVal` is an integer. -/
+theorem toVal_isInt {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (f : FiniteFp) (he : f.e ≥ FloatFormat.prec - 1) :
+    ∃ n : ℤ, (f.toVal : R) = (n : R) := by
+  have hexp : f.e - FloatFormat.prec + 1 ≥ 0 := by omega
+  rcases Bool.eq_false_or_eq_true f.s with hs | hs
+  · -- s = true (negative)
+    have : (f.toVal : R) = -((f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1)) := by
+      simp only [FiniteFp.toVal, FiniteFp.sign', hs, FloatFormat.radix_val_eq_two,
+        Bool.true_eq, ↓reduceIte]
+      ring
+    rw [this]
+    exact ⟨-(f.m * 2 ^ (f.e - FloatFormat.prec + 1).toNat), by
+      push_cast; rw [← zpow_natCast (2 : R), Int.toNat_of_nonneg hexp]⟩
+  · -- s = false (positive)
+    rw [FiniteFp.toVal_pos_eq f hs]
+    exact ⟨f.m * 2 ^ (f.e - FloatFormat.prec + 1).toNat, by
+      push_cast; rw [← zpow_natCast (2 : R), Int.toNat_of_nonneg hexp]⟩
+
 end toVal
 
 /-- Bracket notation for the field value of a finite float. -/
