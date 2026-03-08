@@ -244,9 +244,9 @@ private lemma isValid_roundDownNatMulZpowTarget [FloatFormat]
       have hval_ge_binade : (2 : R) ^ ((Nat.log2 mag : ℤ) + e_base) ≤
           (mag : R) * (2 : R) ^ e_base := by
         rw [← two_zpow_mul, zpow_natCast]
+        have : (2 : R) ^ (Nat.log2 mag : ℕ) ≤ (mag : R) := by
+          rw [← Nat.cast_ofNat, ← Nat.cast_pow]; exact_mod_cast Nat.log2_self_le hmag
         bound_calc
-        rw [← Nat.cast_ofNat, ← Nat.cast_pow]
-        exact_mod_cast Nat.log2_self_le hmag
       have hq_ge_prec : (2 : R) ^ (FloatFormat.prec - 1) ≤
           (mag : R) * (2 : R) ^ e_base / (2 : R) ^ e_ulp := by
         rw [le_div_iff₀ (by positivity)]

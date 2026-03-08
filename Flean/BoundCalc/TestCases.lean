@@ -511,3 +511,31 @@ example (a b : ℕ) (c d : ℕ) (ha : a ≤ c) (hb : b ≤ d) :
   bound_calc
 
 end CastDispatch
+
+/-! ### Hint terms: `bound_calc [...]`
+
+Supplies extra lemmas as hypotheses for the dispatch chain to use. -/
+
+section HintTerms
+
+-- HT.1: Hint provides a derived bound — `a ≤ c` from transitivity
+example (a b c : ℝ) (hab : a ≤ b) (hbc : b ≤ c) (e : ℤ) :
+    a * (2:ℝ)^e ≤ c * (2:ℝ)^e := by
+  bound_calc [show a ≤ c from le_trans hab hbc]
+
+-- HT.2: Hint provides le from lt
+example (a b : ℝ) (e : ℤ) (ha : a < b) :
+    a * (2:ℝ)^e ≤ b * (2:ℝ)^e := by
+  bound_calc [show a ≤ b from le_of_lt ha]
+
+-- HT.3: Multiple hints — both needed for cast bridging
+example (a b : ℕ) (c d : ℕ) (hac : a < c + 1) (hbd : b < d + 1) :
+    (a : ℝ) * (b : ℝ) ≤ (c : ℝ) * (d : ℝ) := by
+  bound_calc [show a ≤ c from by omega, show b ≤ d from by omega]
+
+-- HT.4: Empty hints — same as plain bound_calc
+example (a c : ℝ) (e : ℤ) (hac : a ≤ c) :
+    a * (2:ℝ)^e ≤ c * (2:ℝ)^e := by
+  bound_calc []
+
+end HintTerms

@@ -349,9 +349,10 @@ private theorem int_log_toVal_decompose [FloatFormat] (f : FiniteFp) (hs : f.s =
         rw [show (↑(Nat.log 2 f.m : ℕ) : ℤ) + 1 + (f.e - FloatFormat.prec + 1) =
             ↑(Nat.log 2 f.m + 1 : ℕ) + (f.e - FloatFormat.prec + 1) from by push_cast; ring,
             ← two_zpow_mul]
+      have : (f.m : R) < (2 : R) ^ (Nat.log 2 f.m + 1 : ℕ) := by
+        rw [← Nat.cast_ofNat, ← Nat.cast_pow]
+        exact_mod_cast Nat.lt_pow_succ_log_self (by norm_num : 1 < (2:ℕ)) f.m
       bound_calc
-      rw [zpow_natCast]
-      exact_mod_cast (Nat.lt_pow_succ_log_self (by norm_num : 1 < (2:ℕ)) f.m)
     have : Int.log 2 ((f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1)) <
         ↑(Nat.log 2 f.m) + 1 + (f.e - FloatFormat.prec + 1) := by
       apply (Int.lt_zpow_iff_log_lt (show 1 < (2:ℕ) from by norm_num) hval_pos).mp

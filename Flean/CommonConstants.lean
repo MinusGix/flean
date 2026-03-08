@@ -216,16 +216,14 @@ theorem finite_pos_le_largest {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
       rw [← zpow_natCast]; congr 1; exact FloatFormat.prec_toNat_eq.symm
     calc (f.m : R) * ((2 : R) ^ (f.e - (FloatFormat.prec : ℤ) + 1) : R)
        ≤ ((2 : R) ^ FloatFormat.prec - 1) * ((2 : R) ^ (f.e - (FloatFormat.prec : ℤ) + 1) : R) := by {
-         apply mul_le_mul_of_nonneg_right h_m_le
-         exact zpow_nonneg (by norm_num) _ }
+         bound_calc }
      _ ≤ ((2 : R) ^ FloatFormat.prec - 1) * ((2 : R) ^ (FloatFormat.max_exp - (FloatFormat.prec : ℤ) + 1) : R) := by {
-         apply mul_le_mul_of_nonneg_left h_pow_le
-         simp only [sub_nonneg]
-         apply le_trans (by norm_num : (1 : R) ≤ 4)
-         have h_prec_zpow : (2 : R) ^ FloatFormat.prec = (2 : R) ^ FloatFormat.prec.toNat := by
-           rw [← zpow_natCast]; congr 1; exact FloatFormat.prec_toNat_eq.symm
-         rw [h_prec_zpow]
-         exact FloatFormat.prec_pow_le (R := R) }
+         bound_calc [show (0 : R) ≤ (2 : R) ^ FloatFormat.prec - 1 from by
+           simp only [sub_nonneg]
+           calc (1 : R) ≤ 4 := by norm_num
+             _ ≤ (2 : R) ^ FloatFormat.prec.toNat := FloatFormat.prec_pow_le (R := R)
+             _ = (2 : R) ^ FloatFormat.prec := by
+               rw [← zpow_natCast]; congr 1; exact FloatFormat.prec_toNat_eq.symm] }
      _ = ((2 : R) ^ FloatFormat.prec.toNat - 1) * ((2 : R) ^ (FloatFormat.max_exp - (FloatFormat.prec : ℤ) + 1) : R) := by {
          rw [h_prec_eq] }
 

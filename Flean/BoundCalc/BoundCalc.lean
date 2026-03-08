@@ -456,9 +456,26 @@ end BoundCalc
 
 **Phase 1:** Decomposes via `gcongr`, dispatches subgoals with standard tactics.
 **Phase 3:** For regrouped products, uses factor matching to find hypothesis
-combinations and constructs `mul_le_mul` chains. -/
-elab "bound_calc" : tactic => do
+combinations and constructs `mul_le_mul` chains.
+
+Supports optional hint terms: `bound_calc [h1, h2, ...]` adds the terms as
+hypotheses before dispatching, so `assumption`/`assumption_mod_cast` can find them. -/
+elab "bound_calc" hints:((" [" term,* "]")?) : tactic => do
   let goal ← getMainGoal
+
+  -- If hints are provided, introduce them as `have` hypotheses
+  let hintTerms : Array (TSyntax `term) := match hints.raw with
+    | Syntax.node _ _ #[_, args, _] =>
+      match args with
+      | Syntax.node _ _ elems => elems.filterMap fun e =>
+          if e.isOfKind `term then some ⟨e⟩ else none
+      | _ => #[]
+    | _ => #[]
+  if hintTerms.size > 0 then
+    for h : i in [:hintTerms.size] do
+      let hint := hintTerms[i]
+      let name := Name.mkSimple s!"_bc_hint_{i}"
+      evalTactic (← `(tactic| have $(mkIdent name) := $hint))
 
   -- Phase 1: gcongr + dispatch chain (fast, no metavar creation)
   try
