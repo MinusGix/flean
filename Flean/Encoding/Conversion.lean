@@ -38,147 +38,79 @@ def FloatBits.FpSignificand [FloatFormat] (b : FloatBits) : ℕ := if b.toBitsTr
 
 theorem FloatBits.FpSignificand_def [FloatFormat] (b : FloatBits) : b.FpSignificand = if b.toBitsTriple.exponent = 0 then b.toBitsTriple.significand.toNat else ((BitVec.ofBool true) ++ b.toBitsTriple.significand).toNat := rfl
 
-theorem FloatBits.isFinite_validFloatVal [StdFloatFormat] {b : FloatBits} (hf : b.isFinite) : IsValidFiniteVal b.FpExponent b.FpSignificand := by
-  let exponent := b.toBitsTriple.exponent
-  let significand := b.toBitsTriple.significand
+/-! ### Component validity lemmas for decoding -/
 
-  let is_subnormal := exponent = 0
-  let e := b.FpExponent
-  let m := b.FpSignificand
-  have st := StdFloatFormat.st
-  unfold FloatFormat.isStandardExpRange at st
-  unfold IsValidFiniteVal
-  have := FloatFormat.exp_order_le
-
-  -- == EXPONENT ==
-  have e_ne_allOnes: exponent ≠ BitVec.allOnes _ := FloatBits.isFinite_exponent_not_allOnes b hf
-
-  have exLt := exponent.isLt
-  unfold FloatFormat.exponentBits at exLt
-  have exLe : ¬is_subnormal → exponent.toNat ≤ 2 ^ (Nat.clog 2 (FloatFormat.max_exp.toNat + 1)) * 2 - 2 := by
-    intro _
-    have : exponent.toNat < 2 ^ (Nat.clog 2 (FloatFormat.max_exp.toNat + 1)) * 2 - 1 := BitVec.ne_allOnes_lt _ e_ne_allOnes
-    omega
-
-  -- For some reason after adding these, rather than using an `e = if ...` definition, split_ifs stopped automatically getting rid of contradicting paths
-  unfold FloatBits.FpExponent FloatBits.FpSignificand
-  refold_let exponent
-  refold_let significand
-
-  split_ands
-
-
-  if is_subnormal then
-    simp_all only [tsub_le_iff_right, BitVec.ofNat_eq_ofNat, ↓reduceIte, le_refl, is_subnormal]
+private theorem FpExponent_ge_min_exp [StdFloatFormat] {b : FloatBits} :
+    FloatFormat.min_exp ≤ b.FpExponent := by
+  rw [FloatBits.FpExponent_def]
+  if he : b.toBitsTriple.exponent = 0 then
+    rw [if_pos he]
   else
-    simp_all only [tsub_le_iff_right, BitVec.ofNat_eq_ofNat, ↓reduceIte, sub_add_cancel,
-      is_subnormal]
-    rename_i h
-    have h1 : exponent.toNat ≠ 0 := by
-      apply (@BitVec.toNat_ne _ _ 0).mp
-      apply h
-    omega
+    rw [if_neg he]
+    have : b.toBitsTriple.exponent.toNat ≠ 0 := by
+      intro h; exact he (BitVec.eq_of_toNat_eq h)
+    have := StdFloatFormat.st; unfold FloatFormat.isStandardExpRange at this
+    unfold FloatFormat.exponentBias; omega
 
-  if hs : is_subnormal then
-    simp_all only [tsub_le_iff_right, BitVec.ofNat_eq_ofNat, ↓reduceIte, is_subnormal]
+private theorem FpExponent_le_max_exp [StdFloatFormat] {b : FloatBits} (hf : b.isFinite) :
+    b.FpExponent ≤ FloatFormat.max_exp := by
+  rw [FloatBits.FpExponent_def]
+  if he : b.toBitsTriple.exponent = 0 then
+    rw [if_pos he]; exact FloatFormat.exp_order_le
   else
-    split_ifs; contradiction
-    rw [tsub_le_iff_right]
+    rw [if_neg he]
     unfold FloatFormat.exponentBias
-    specialize exLe (by trivial)
-    have := (Nat.clog_le_iff_le_pow ?_).mpr exLt.le
-    have a0 : FloatFormat.max_exp.toNat + 1 ≤ 2^FloatFormat.exponentBits2 := Nat.le_pow_clog (by norm_num) _
-    have a2 : exponent.toNat + 1 < 2^FloatFormat.exponentBits := by
-      unfold FloatFormat.exponentBits
-      omega
-    have a5 : 2 * FloatFormat.max_exp.toNat + 2 ≤ 2 * 2^FloatFormat.exponentBits2 := by omega
-    simp_rw [StdFloatFormat.exponentBits_def] at a2
-    have a7 : 2 * FloatFormat.max_exp + 2 ≤ 2^FloatFormat.exponentBits := by
-      unfold FloatFormat.exponentBits
-      unfold FloatFormat.exponentBits2 at a5
-      conv at a5 => rhs; rw [mul_comm]; rhs; rw [← pow_one 2]
-      rw [← pow_add] at a5
-      zify at a5
-      rw [Int.toNat_of_nonneg (by omega)] at a5
-      exact a5
-    simp_rw [StdFloatFormat.exponentBits_def] at a7
+    have h1 := BitVec.ne_allOnes_lt _ (FloatBits.isFinite_exponent_not_allOnes b hf)
+    have h2 : 2 ^ FloatFormat.exponentBits - 1 = 2 * 2 ^ StdFloatFormat.exp_pow - 1 := by
+      rw [StdFloatFormat.exponentBits_def, pow_succ]; omega
     rw [StdFloatFormat.max_exp_def]
-    rw [show (2 : ℤ) ^ StdFloatFormat.exp_pow - 1 + (2 ^ StdFloatFormat.exp_pow - 1) = 2 ^ (StdFloatFormat.exp_pow + 1) - 2 by omega]
-    have : (exponent.toNat : ℤ) < 2 ^ (StdFloatFormat.exp_pow + 1) - 1 := by linarith
+    have := StdFloatFormat.exp_pow_pos
+    have : (↑(2 ^ StdFloatFormat.exp_pow : ℕ) : ℤ) = (2 : ℤ) ^ StdFloatFormat.exp_pow := by
+      push_cast; ring
     omega
-    norm_num
 
-  have mLt := ((BitVec.ofBool true) ++ significand).isLt
-  if is_subnormal then
-    simp_all only [BitVec.ofNat_eq_ofNat, ne_eq, ↓reduceIte,
-      not_true_eq_false, false_implies, is_subnormal, exponent,
-      significand]
-    have mLt := significand.isLt
+private theorem FpSignificand_lt_two_pow_prec [FloatFormat] {b : FloatBits} :
+    b.FpSignificand < 2 ^ FloatFormat.prec.toNat := by
+  rw [FloatBits.FpSignificand_def]
+  if he : b.toBitsTriple.exponent = 0 then
+    rw [if_pos he]
+    have hlt := b.toBitsTriple.significand.isLt
+    simp only [FloatFormat.significandBits_eq] at hlt
     have hprec := FloatFormat.valid_prec
-    unfold FloatFormat.significandBits at mLt
-    have : (2 : ℕ) ^ (FloatFormat.prec - 1).toNat ≤ 2 ^ FloatFormat.prec.toNat := by
-      apply Nat.pow_le_pow_right
-      omega
-      have : (FloatFormat.prec - 1).toNat ≤ FloatFormat.prec.toNat := by
-        rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
-        omega
-      exact this
-    have : (2 : ℕ) ^ (FloatFormat.prec - 1).toNat ≤ 2 ^ FloatFormat.prec.toNat - 1 := by
-      have hprec_nat : FloatFormat.prec.toNat ≥ 2 := by
-        have hp := FloatFormat.valid_prec
-        have : (2 : ℤ) ≤ FloatFormat.prec := hp
-        exact (Int.le_toNat (by omega)).mpr this
-      rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
-      qify
-      rw [Nat.cast_sub, Nat.cast_one, Nat.cast_pow, Nat.cast_two]
-      exact (two_pow_pred_lt_two_pow_sub_one hprec_nat).le
-      exact Nat.one_le_two_pow
-    linarith
+    calc b.toBitsTriple.significand.toNat
+        < 2 ^ (FloatFormat.prec - 1).toNat := hlt
+      _ ≤ 2 ^ FloatFormat.prec.toNat := Nat.pow_le_pow_right (by omega)
+          (by rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]; omega)
   else
-    simp_all only [tsub_le_iff_right, BitVec.ofNat_eq_ofNat, ne_eq, ↓reduceIte,
-      is_subnormal, exponent]
-    unfold FloatFormat.significandBits at mLt
-    have hprec := FloatFormat.valid_prec
-    have h_add : 1 + (FloatFormat.prec - 1).toNat = FloatFormat.prec.toNat := by
-      rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
-      omega
-    simp_rw [h_add] at mLt
-    omega
+    rw [if_neg he]
+    have := ((BitVec.ofBool true) ++ b.toBitsTriple.significand).isLt
+    simp only [FloatFormat.one_plus_significandBits] at this; exact this
 
-  if is_subnormal then
+private theorem FpSignificand_normal_or_subnormal [StdFloatFormat] {b : FloatBits} :
+    _root_.isNormal b.FpSignificand ∨ _root_.isSubnormal b.FpExponent b.FpSignificand := by
+  if he : b.toBitsTriple.exponent = 0 then
     right
-    split_ands
-    · split_ifs
-      <;> rfl
-    · split_ifs
-      have mLt := significand.isLt
-      unfold FloatFormat.significandBits at mLt
-      omega
-      contradiction
+    exact ⟨by rw [FloatBits.FpExponent_def, if_pos he],
+           by rw [FloatBits.FpSignificand_def, if_pos he]
+              simp only [FloatFormat.significandBits_eq] at *; omega⟩
   else
     left
-    split_ands
-    · split_ifs; contradiction
-      have k : ((BitVec.ofBool true) ++ significand).msb = true := by
-        unfold BitVec.msb BitVec.getMsbD
-        simp only [add_pos_iff, zero_lt_one, true_or, decide_true,
-          BitVec.ofBool_true, BitVec.ofNat_eq_ofNat, add_tsub_cancel_left, tsub_zero,
-          lt_add_iff_pos_left, BitVec.getLsbD_eq_getElem, Bool.true_and, BitVec.getLsbD_append,
-          lt_self_iff_false, ↓reduceIte, tsub_self, BitVec.getLsbD_one, Bool.and_self,
-          BitVec.getElem_of_getLsbD_eq_true]
-      have j := BitVec.toNat_ge_of_msb_true k
-      simp_all only [tsub_le_iff_right, BitVec.ofNat_eq_ofNat, ne_eq, BitVec.ofBool_true, BitVec.toNat_append,
-        BitVec.toNat_ofNat, pow_one, Nat.mod_succ, add_tsub_cancel_left,
-        significand]
-    · split_ifs; contradiction
-      have hprec := FloatFormat.valid_prec
-      have mLt := ((BitVec.ofBool true) ++ significand).isLt
-      unfold FloatFormat.significandBits at mLt
-      have h_add : 1 + (FloatFormat.prec - 1).toNat = FloatFormat.prec.toNat := by
-        rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
-        omega
-      simp_rw [h_add] at mLt
-      omega
+    constructor
+    · -- 2^(prec-1).toNat ≤ m: normal significand has msb = true
+      rw [FloatBits.FpSignificand_def, if_neg he]
+      have hmsb : ((BitVec.ofBool true) ++ b.toBitsTriple.significand).msb = true := by
+        simp [BitVec.msb, BitVec.getMsbD, BitVec.ofBool_true, BitVec.getLsbD_append]
+      have hge := BitVec.toNat_ge_of_msb_true hmsb
+      rw [show 1 + FloatFormat.significandBits - 1 = FloatFormat.significandBits from by omega] at hge
+      exact hge
+    · exact FpSignificand_lt_two_pow_prec
+
+theorem FloatBits.isFinite_validFloatVal [StdFloatFormat] {b : FloatBits} (hf : b.isFinite) :
+    IsValidFiniteVal b.FpExponent b.FpSignificand :=
+  ⟨FpExponent_ge_min_exp,
+   FpExponent_le_max_exp hf,
+   FpSignificand_lt_two_pow_prec,
+   FpSignificand_normal_or_subnormal⟩
 
 /-! Convert Bits back into a float.-/
 def ofBits [StdFloatFormat] (b : FloatBits) : Fp :=

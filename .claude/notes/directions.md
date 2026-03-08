@@ -29,19 +29,15 @@ Tracked iteratively. Priorities ordered top-to-bottom within each tier.
 - [x] **Encoding round-trip** — `toBits_ofBits` + `ofBits_toBits` both sorry-free ✓
 - [ ] **Common constants verification** — prove binary32/64 constants match claimed values
 
-## Encoding Cleanup
-- [ ] **Remove `@[reducible]` from `FpExponent`/`FpSignificand`** — causes unpredictable unfolding,
-  forces `show (if ... then ... else ...); rw [if_pos/neg]` pattern everywhere. Change to plain `def`
-  and use `FpExponent_def`/`FpSignificand_def` explicitly. Ripples through `isFinite_validFloatVal`,
-  `lift_repr_toBitsTriple_*`, `finite_roundtrip`, `FpSignificand_ge_of_normal`.
+## Encoding Cleanup — Done
+- [x] **Remove `@[reducible]` from `FpExponent`/`FpSignificand`** ✓
 - [x] **Add `significandBits_eq` simp lemma** ✓ — `@[simp] significandBits_eq` in BitSize.lean
 - [x] **Extract standalone `finite_FpExponent` / `finite_FpSignificand`** ✓ — plus helpers
   `finite_exponent_zero_of_subnormal`, `finite_exponent_ne_zero_of_normal`, `append_one_toNat`
-- [ ] **Simplify `lift_repr_toBitsTriple_significand`** — 75-line testBit marathon. A helper like
-  `toNat_ofBool_append : m < 2^n → (1#1 ++ ofNat n m).toNat = 2^n + m` would cut it significantly.
-- [ ] **Encoding uniqueness for ±0** — TODO at Conversion.lean:323. Two bit patterns → same Fp value.
-- [ ] **Clean up `toBits` NaN branch** — inline proof for `1 ≠ 0` could be a standalone lemma.
-- [ ] **Remove commented-out `#eval` block** at bottom of Conversion.lean (or move to test file).
+- [x] **Simplify `lift_repr_toBitsTriple_significand`** ✓ — 75→4 lines (exponent: 27→3 lines)
+- [x] **Encoding ±0 documented** ✓ — expected IEEE 754 behavior, not a bug
+- [x] **Clean up `toBits` NaN branch** ✓ — extracted `one_significandBits_ne_zero`
+- [x] **Remove commented-out `#eval` block** ✓
 
 ## LogComputable — Done
 - [x] **Full pipeline sorry-free**: LogTaylor, LogComputableDefs, LogComputableSound, LogTermination, LogComputable
