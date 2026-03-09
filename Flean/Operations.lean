@@ -31,3 +31,4 @@ import Flean.Operations.TwoProduct
 import Flean.Operations.TwoSum6Op
 import Flean.Operations.LogBScaleB
 import Flean.Operations.RoundToIntegral
+import Flean.Operations.VeltkampSplit

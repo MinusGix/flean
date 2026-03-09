@@ -21,6 +21,7 @@ Tracked iteratively. Priorities ordered top-to-bottom within each tier.
 - [x] **fpFMA** — `fpFMAFinite_correct`, `fpFMA_comm_ab`, `fpFMA_neg_mul_neg`, reduction to Add/Mul ✓
 - [x] **Generalize RoundNearest/roundIntSig_correct** — removed `hval_ge_ssps` precondition ✓
 - [x] **Factor sticky-bit scaffolding** — `sticky_roundIntSig_eq_round` shared by Div/Sqrt ✓
+- [x] **Veltkamp splitting** (issue #32) — `veltkampSplit_exact`: `a_hi.toVal + a_lo.toVal = a.toVal` via grid coefficient error bounds ✓
 
 ## Near-Term
 - [x] **Close remaining sorries** — all removed ✓
