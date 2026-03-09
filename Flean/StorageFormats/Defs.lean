@@ -157,6 +157,14 @@ def toVal (v : StorageFp f) {R : Type*} [Field R] : R :=
 def toValMag (v : StorageFp f) {R : Type*} [Field R] : R :=
   (v.effectiveSignificand : R) * (2 : R) ^ (v.unbiasedExp - (f.manBits : ℤ))
 
+/-! ### Range bounds -/
+
+theorem exp_lt (v : StorageFp f) : v.exp < 2 ^ f.expBits :=
+  Nat.mod_lt _ (Nat.pos_of_ne_zero (by positivity))
+
+theorem man_lt (v : StorageFp f) : v.man < 2 ^ f.manBits :=
+  Nat.mod_lt _ (Nat.pos_of_ne_zero (by positivity))
+
 end StorageFp
 
 namespace StorageFormat
