@@ -16,3 +16,4 @@ import «Flean».ENNRat
 import «Flean».ERat
 import «Flean».MinMax
 import «Flean».Operations
+import «Flean».StorageFormats
