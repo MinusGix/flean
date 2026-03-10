@@ -42,6 +42,10 @@ structure StorageFormat where
   expBits_pos : 0 < expBits
   /-- Format must have at least 2 bits total -/
   total_ge_two : (if hasSigned then 1 else 0) + expBits + manBits ≥ 2
+  /-- When infinity is present, the all-ones exponent must be fully reserved:
+      all nonzero mantissa patterns at all-ones exponent are NaN (IEEE style).
+      This requires hasNaN=true with nanCount > 1 so that `man ≠ 0` triggers NaN. -/
+  inf_implies_nan : hasInf = true → hasNaN = true ∧ 1 < nanCount
 deriving Repr, DecidableEq
 
 namespace StorageFormat
@@ -218,6 +222,7 @@ def E4M3 : StorageFormat where
   hasInf := false
   expBits_pos := by norm_num
   total_ge_two := by norm_num
+  inf_implies_nan := by simp
 
 /-- FP8 E5M2: 5-bit exponent, 2-bit mantissa, full IEEE 754 special values.
     Used for gradients in ML training. -/
@@ -231,6 +236,7 @@ def E5M2 : StorageFormat where
   hasInf := true
   expBits_pos := by norm_num
   total_ge_two := by norm_num
+  inf_implies_nan := by decide
 
 /-- FP6 E3M2: 3-bit exponent, 2-bit mantissa, no infinity, no NaN.
     Part of MXFP6. -/
@@ -244,6 +250,7 @@ def E3M2 : StorageFormat where
   hasInf := false
   expBits_pos := by norm_num
   total_ge_two := by norm_num
+  inf_implies_nan := by simp
 
 /-- FP6 E2M3: 2-bit exponent, 3-bit mantissa, no infinity, no NaN.
     Part of MXFP6. -/
@@ -257,6 +264,7 @@ def E2M3 : StorageFormat where
   hasInf := false
   expBits_pos := by norm_num
   total_ge_two := by norm_num
+  inf_implies_nan := by simp
 
 /-- FP4 E2M1: 2-bit exponent, 1-bit mantissa, no infinity, no NaN.
     Part of MXFP4. -/
@@ -270,6 +278,7 @@ def E2M1 : StorageFormat where
   hasInf := false
   expBits_pos := by norm_num
   total_ge_two := by norm_num
+  inf_implies_nan := by simp
 
 /-- E8M0: 8-bit exponent, 0-bit mantissa, unsigned, single NaN pattern.
     Used as the shared scale factor in MX-compliant formats.
@@ -284,6 +293,7 @@ def E8M0 : StorageFormat where
   hasInf := false
   expBits_pos := by norm_num
   total_ge_two := by norm_num
+  inf_implies_nan := by simp
 
 /-!
 ## Basic Properties
