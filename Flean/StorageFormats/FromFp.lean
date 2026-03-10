@@ -111,65 +111,53 @@ def fromFp [inst : FloatFormat] (f : StorageFormat)
     if f.hasInf then infEncoding f sign
     else applyOverflow f policy sign
   | .finite fp =>
-    -- The source value is: (-1)^s * m * 2^(e - prec + 1)
-    -- where prec = FloatFormat.prec (source format precision)
+    -- Source value = (-1)^s * m * 2^(e - prec + 1)
     if fp.m = 0 then
       -- Zero (preserve sign)
       if fp.s then negZero f else zero f
     else
-      -- Nonzero finite value
-      -- Source ULP exponent: e - (src_prec - 1)
-      -- Target ULP exponent for normal: target_e - manBits
-      -- Target ULP exponent for subnormal: (1 - bias) - manBits
-      let target_prec : ℕ := f.manBits + 1  -- including implicit bit
+      -- Nonzero finite value.
+      -- Use Nat.log to find the true MSB position of the significand.
+      -- This correctly handles both normal (m ∈ [2^(prec-1), 2^prec))
+      -- and subnormal (m < 2^(prec-1)) source values.
+      let src_ulp_exp : ℤ := fp.e - inst.prec + 1
+      let msb_pos := Nat.log 2 fp.m  -- position of leading 1 bit
+      -- The true binade exponent of the value
+      let target_e : ℤ := src_ulp_exp + msb_pos
+      -- How many bits to shift: msb_pos - manBits
+      -- Positive → discard low bits; negative → pad with zeros
+      let shift : ℤ := (msb_pos : ℤ) - (f.manBits : ℤ)
       let target_max_exp : ℤ := (f.maxExpField : ℤ) - (f.bias : ℤ)
-      -- Compute the significand at the target's ULP scale
-      -- We need: m_target * 2^(target_ulp_exp) = m * 2^(src_ulp_exp)
-      -- First, find what exponent the source value would have in the target format
-      -- The source significand m is in [2^(prec-1), 2^prec) for normal values
-      -- We need to express it at the target precision
-      let shift : ℤ := inst.prec - 1 - (f.manBits : ℤ)
-        -- How many bits to discard from the source significand
-        -- (positive when source has more precision than target)
-      -- Compute target exponent: the binade exponent
-      -- Source: m ∈ [2^(prec-1), 2^prec), exponent e
-      -- Target: m_t ∈ [2^manBits, 2^(manBits+1)), exponent e_t
-      -- We want e_t = e (same binade) when shift ≥ 0
-      let target_e : ℤ := fp.e
-      -- Round the significand
+      -- Round the significand to target precision
       let rounded_m : ℕ :=
         if shift ≥ 0 then roundRNE fp.m shift.toNat
-        else fp.m * 2 ^ (-shift).toNat  -- target has MORE precision; shift left
-      -- Check if rounding caused a carry (rounded_m = 2^target_prec)
+        else fp.m * 2 ^ (-shift).toNat
+      -- Check if rounding caused a carry (rounded_m ≥ 2^(manBits+1))
       let (final_m, final_e) : ℕ × ℤ :=
-        if rounded_m ≥ 2 ^ target_prec then
+        if rounded_m ≥ 2 ^ (f.manBits + 1) then
           (rounded_m / 2, target_e + 1)
         else
           (rounded_m, target_e)
-      -- Now check overflow/underflow
+      -- Overflow check
       if final_e > target_max_exp then
-        -- Overflow
         applyOverflow f policy fp.s
+      -- Subnormal check
       else if final_e < 1 - (f.bias : ℤ) then
-        -- Below minimum normal exponent — try subnormal
         let subnorm_shift : ℤ := (1 - (f.bias : ℤ)) - final_e
-        if subnorm_shift ≥ target_prec then
-          -- Complete underflow: flush to zero
+        if subnorm_shift ≥ (f.manBits + 1 : ℤ) then
+          -- Complete underflow
           if fp.s then negZero f else zero f
         else
-          -- Subnormal: shift significand right
           let sub_m := roundRNE final_m subnorm_shift.toNat
           if sub_m = 0 then
             if fp.s then negZero f else zero f
           else
-            -- Subnormal encoding: exp field = 0, man field = sub_m
             ofFields f fp.s 0 sub_m
       else
         -- Normal encoding
         let exp_field : ℕ := (final_e + (f.bias : ℤ)).toNat
-        let man_field : ℕ := final_m - 2 ^ f.manBits  -- strip implicit bit
-        -- Check if this is at maxExpField with mantissa exceeding maxManFieldAtMaxExp
-        -- (for E4M3 style where some patterns at max exp are NaN)
+        let man_field : ℕ := final_m - 2 ^ f.manBits
+        -- E4M3-style NaN exclusion at max exponent
         if exp_field = f.maxExpField && man_field > f.maxManFieldAtMaxExp then
           applyOverflow f policy fp.s
         else
@@ -179,6 +167,11 @@ def fromFp [inst : FloatFormat] (f : StorageFormat)
 ## Basic Properties
 -/
 
+/-- Convenience wrapper for converting a finite value. -/
+def fromFiniteFp [FloatFormat] (f : StorageFormat) (policy : StorageOverflowPolicy)
+    (fp : FiniteFp) : StorageFp f :=
+  fromFp f policy (Fp.finite fp)
+
 theorem fromFp_nan [FloatFormat] (f : StorageFormat) (policy : StorageOverflowPolicy) :
     fromFp f policy (@Fp.NaN _) = canonicalNaN f := rfl
 
@@ -187,14 +180,15 @@ theorem fromFp_inf [FloatFormat] (f : StorageFormat) (policy : StorageOverflowPo
       if f.hasInf then infEncoding f sign else applyOverflow f policy sign := rfl
 
 /-!
-## Concrete Verification (E4M3)
+## Concrete Verification
 
 Verify the conversion produces correct encodings for known values.
+Uses the matching FloatFormat as the source (identity precision conversion),
+which exercises every code path: NaN, infinity, overflow, normal, subnormal, zero.
 -/
 
 section E4M3_verification
 
--- Use E4M3's matching FloatFormat as the source
 private local instance : FloatFormat := FloatFormat.ofE4M3
 
 -- NaN → canonical NaN
@@ -213,6 +207,34 @@ theorem fromFp_posInf_overflow_E4M3 :
 theorem fromFp_zero_E4M3 :
     fromFp E4M3 .saturate (Fp.finite ⟨false, -6, 0, by decide⟩) = zero E4M3 := by decide
 
+-- Negative zero → negative zero
+theorem fromFp_negZero_E4M3 :
+    fromFp E4M3 .saturate (Fp.finite ⟨true, -6, 0, by decide⟩) = negZero E4M3 := by decide
+
+-- 1.0 (normal: e=0, m=8) → one E4M3
+theorem fromFp_one_E4M3 :
+    fromFiniteFp E4M3 .saturate ⟨false, 0, 8, by decide⟩ = one E4M3 := by decide
+
+-- 448.0 (max finite: e=8, m=14) → maxFinite
+theorem fromFp_maxFinite_E4M3 :
+    fromFiniteFp E4M3 .saturate ⟨false, 8, 14, by decide⟩ = maxFinite E4M3 := by decide
+
+-- Overflow: e=8, m=15 (would be 480, exceeds 448) → saturate to maxFinite
+-- m=15 at exp 8: 15 * 2^(8 - 3) = 15 * 32 = 480 > 448
+-- But m=15 at E4M3 max exp with man_field=7 hits NaN exclusion
+theorem fromFp_overflow_E4M3 :
+    fromFiniteFp E4M3 .saturate ⟨false, 8, 15, by decide⟩ =
+      signedMaxFinite E4M3 false := by decide
+
+-- Smallest subnormal: e=-6, m=1 → minPos
+theorem fromFp_minPos_E4M3 :
+    fromFiniteFp E4M3 .saturate ⟨false, -6, 1, by decide⟩ = minPos E4M3 := by decide
+
+-- Negative value: -1.0
+theorem fromFp_negOne_E4M3 :
+    fromFiniteFp E4M3 .saturate ⟨true, 0, 8, by decide⟩ =
+      ofFields E4M3 true 7 0 := by decide
+
 end E4M3_verification
 
 section E5M2_verification
@@ -230,6 +252,14 @@ theorem fromFp_posInf_E5M2 :
 -- Zero → zero
 theorem fromFp_zero_E5M2 :
     fromFp E5M2 .saturate (Fp.finite ⟨false, -14, 0, by decide⟩) = zero E5M2 := by decide
+
+-- 1.0 (normal: e=0, m=4) → one E5M2
+theorem fromFp_one_E5M2 :
+    fromFiniteFp E5M2 .saturate ⟨false, 0, 4, by decide⟩ = one E5M2 := by decide
+
+-- Smallest subnormal
+theorem fromFp_minPos_E5M2 :
+    fromFiniteFp E5M2 .saturate ⟨false, -14, 1, by decide⟩ = minPos E5M2 := by decide
 
 end E5M2_verification
 
