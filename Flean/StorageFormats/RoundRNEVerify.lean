@@ -92,4 +92,34 @@ theorem policyShouldRoundUp_nearestEven_sign_indep (s₁ s₂ : Bool) (q r shift
 theorem roundRNE_zero_shift (mag : ℕ) : roundRNE mag 0 = mag := by
   unfold roundRNE; simp
 
+theorem roundRNE_le (mag shift : ℕ) : roundRNE mag shift ≤ mag / 2 ^ shift + 1 := by
+  by_cases hshift : 0 < shift
+  · rw [roundRNE_eq_arith mag shift hshift]
+    simp only
+    split_ifs <;> omega
+  · simp only [not_lt, Nat.le_zero] at hshift
+    subst hshift
+    simp [roundRNE_zero_shift]
+
+theorem roundRNE_ge (mag shift : ℕ) : roundRNE mag shift ≥ mag / 2 ^ shift := by
+  by_cases hshift : 0 < shift
+  · rw [roundRNE_eq_arith mag shift hshift]
+    simp only
+    split_ifs <;> omega
+  · simp only [not_lt, Nat.le_zero] at hshift
+    subst hshift
+    simp [roundRNE_zero_shift]
+
+/-- Rounding an exact multiple of `2^shift` returns the original value.
+    This is critical for the round-trip property: values already at the
+    target precision are not modified by `roundRNE`. -/
+@[simp]
+theorem roundRNE_exact_mul (m shift : ℕ) : roundRNE (m * 2 ^ shift) shift = m := by
+  by_cases hshift : 0 < shift
+  · rw [roundRNE_eq_arith _ _ hshift]
+    simp only [Nat.mul_div_cancel _ (Nat.two_pow_pos shift), Nat.mul_mod_left]
+    rw [if_neg (not_lt.mpr (Nat.zero_le _)), if_pos (Nat.two_pow_pos _)]
+  · simp only [not_lt, Nat.le_zero] at hshift
+    subst hshift; simp
+
 end StorageFp

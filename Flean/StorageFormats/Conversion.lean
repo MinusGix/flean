@@ -52,6 +52,9 @@ def FloatFormat.ofE3M2 : FloatFormat :=
 def FloatFormat.ofE2M3 : FloatFormat :=
   StorageFormat.toFloatFormat _root_.E2M3 (by decide) (by decide) (by decide)
 
+def FloatFormat.ofE2M1 : FloatFormat :=
+  StorageFormat.toFloatFormat _root_.E2M1 (by decide) (by decide) (by decide)
+
 theorem FloatFormat.ofE4M3_prec : FloatFormat.ofE4M3.prec = 4 := by decide
 theorem FloatFormat.ofE4M3_min_exp : FloatFormat.ofE4M3.min_exp = -6 := by decide
 theorem FloatFormat.ofE4M3_max_exp : FloatFormat.ofE4M3.max_exp = 8 := by decide
@@ -67,6 +70,10 @@ theorem FloatFormat.ofE3M2_max_exp : FloatFormat.ofE3M2.max_exp = 4 := by decide
 theorem FloatFormat.ofE2M3_prec : FloatFormat.ofE2M3.prec = 4 := by decide
 theorem FloatFormat.ofE2M3_min_exp : FloatFormat.ofE2M3.min_exp = 0 := by decide
 theorem FloatFormat.ofE2M3_max_exp : FloatFormat.ofE2M3.max_exp = 2 := by decide
+
+theorem FloatFormat.ofE2M1_prec : FloatFormat.ofE2M1.prec = 2 := by decide
+theorem FloatFormat.ofE2M1_min_exp : FloatFormat.ofE2M1.min_exp = 0 := by decide
+theorem FloatFormat.ofE2M1_max_exp : FloatFormat.ofE2M1.max_exp = 2 := by decide
 
 -- FitsIn instances
 theorem E4M3_fitsIn_Binary16 : E4M3.FitsIn FloatFormat.Binary16.toFloatFormat :=
@@ -267,6 +274,51 @@ theorem zero_toVal (f : StorageFormat) {R : Type*} [Field R] :
 @[simp] theorem minPos_man_E5M2 : (minPos E5M2).man = 1 := by decide
 @[simp] theorem minPos_sign_E5M2 : (minPos E5M2).sign = false := by decide
 
+-- one (E3M2): exp=3 (bias), man=0, sign=false
+@[simp] theorem one_sign_E3M2 : (one E3M2).sign = false := by decide
+@[simp] theorem one_exp_E3M2 : (one E3M2).exp = 3 := by decide
+@[simp] theorem one_man_E3M2 : (one E3M2).man = 0 := by decide
+
+-- maxFinite (E3M2): exp=7, man=3, sign=false
+@[simp] theorem maxFinite_sign_E3M2 : (maxFinite E3M2).sign = false := by decide
+@[simp] theorem maxFinite_exp_E3M2 : (maxFinite E3M2).exp = 7 := by decide
+@[simp] theorem maxFinite_man_E3M2 : (maxFinite E3M2).man = 3 := by decide
+
+-- minPos (E3M2): exp=0, man=1, sign=false
+@[simp] theorem minPos_sign_E3M2 : (minPos E3M2).sign = false := by decide
+@[simp] theorem minPos_exp_E3M2 : (minPos E3M2).exp = 0 := by decide
+@[simp] theorem minPos_man_E3M2 : (minPos E3M2).man = 1 := by decide
+
+-- one (E2M3): exp=1 (bias), man=0, sign=false
+@[simp] theorem one_sign_E2M3 : (one E2M3).sign = false := by decide
+@[simp] theorem one_exp_E2M3 : (one E2M3).exp = 1 := by decide
+@[simp] theorem one_man_E2M3 : (one E2M3).man = 0 := by decide
+
+-- maxFinite (E2M3): exp=3, man=7, sign=false
+@[simp] theorem maxFinite_sign_E2M3 : (maxFinite E2M3).sign = false := by decide
+@[simp] theorem maxFinite_exp_E2M3 : (maxFinite E2M3).exp = 3 := by decide
+@[simp] theorem maxFinite_man_E2M3 : (maxFinite E2M3).man = 7 := by decide
+
+-- minPos (E2M3): exp=0, man=1, sign=false
+@[simp] theorem minPos_sign_E2M3 : (minPos E2M3).sign = false := by decide
+@[simp] theorem minPos_exp_E2M3 : (minPos E2M3).exp = 0 := by decide
+@[simp] theorem minPos_man_E2M3 : (minPos E2M3).man = 1 := by decide
+
+-- one (E2M1): exp=1 (bias), man=0, sign=false
+@[simp] theorem one_sign_E2M1 : (one E2M1).sign = false := by decide
+@[simp] theorem one_exp_E2M1 : (one E2M1).exp = 1 := by decide
+@[simp] theorem one_man_E2M1 : (one E2M1).man = 0 := by decide
+
+-- maxFinite (E2M1): exp=3, man=1, sign=false
+@[simp] theorem maxFinite_sign_E2M1 : (maxFinite E2M1).sign = false := by decide
+@[simp] theorem maxFinite_exp_E2M1 : (maxFinite E2M1).exp = 3 := by decide
+@[simp] theorem maxFinite_man_E2M1 : (maxFinite E2M1).man = 1 := by decide
+
+-- minPos (E2M1): exp=0, man=1, sign=false
+@[simp] theorem minPos_sign_E2M1 : (minPos E2M1).sign = false := by decide
+@[simp] theorem minPos_exp_E2M1 : (minPos E2M1).exp = 0 := by decide
+@[simp] theorem minPos_man_E2M1 : (minPos E2M1).man = 1 := by decide
+
 /-!
 ### Finiteness of concrete values
 -/
@@ -277,6 +329,15 @@ theorem maxFinite_isFinite_E4M3 : (maxFinite E4M3).isFinite := by decide
 theorem maxFinite_isFinite_E5M2 : (maxFinite E5M2).isFinite := by decide
 theorem minPos_isFinite_E4M3 : (minPos E4M3).isFinite := by decide
 theorem minPos_isFinite_E5M2 : (minPos E5M2).isFinite := by decide
+theorem one_isFinite_E3M2 : (one E3M2).isFinite := by decide
+theorem maxFinite_isFinite_E3M2 : (maxFinite E3M2).isFinite := by decide
+theorem minPos_isFinite_E3M2 : (minPos E3M2).isFinite := by decide
+theorem one_isFinite_E2M3 : (one E2M3).isFinite := by decide
+theorem maxFinite_isFinite_E2M3 : (maxFinite E2M3).isFinite := by decide
+theorem minPos_isFinite_E2M3 : (minPos E2M3).isFinite := by decide
+theorem one_isFinite_E2M1 : (one E2M1).isFinite := by decide
+theorem maxFinite_isFinite_E2M1 : (maxFinite E2M1).isFinite := by decide
+theorem minPos_isFinite_E2M1 : (minPos E2M1).isFinite := by decide
 
 /-!
 ### toVal for concrete values

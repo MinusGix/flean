@@ -263,4 +263,70 @@ theorem fromFp_minPos_E5M2 :
 
 end E5M2_verification
 
+section E3M2_verification
+
+private local instance : FloatFormat := FloatFormat.ofE3M2
+
+-- Zero → zero
+theorem fromFp_zero_E3M2 :
+    fromFp E3M2 .saturate (Fp.finite ⟨false, -2, 0, by decide⟩) = zero E3M2 := by decide
+
+-- 1.0 (normal: e=0, m=4) → one E3M2
+theorem fromFp_one_E3M2 :
+    fromFiniteFp E3M2 .saturate ⟨false, 0, 4, by decide⟩ = one E3M2 := by decide
+
+-- maxFinite (e=4, m=7) → maxFinite E3M2
+theorem fromFp_maxFinite_E3M2 :
+    fromFiniteFp E3M2 .saturate ⟨false, 4, 7, by decide⟩ = maxFinite E3M2 := by decide
+
+-- Smallest subnormal: e=-2, m=1 → minPos E3M2
+theorem fromFp_minPos_E3M2 :
+    fromFiniteFp E3M2 .saturate ⟨false, -2, 1, by decide⟩ = minPos E3M2 := by decide
+
+end E3M2_verification
+
+section E2M3_verification
+
+private local instance : FloatFormat := FloatFormat.ofE2M3
+
+-- Zero → zero
+theorem fromFp_zero_E2M3 :
+    fromFp E2M3 .saturate (Fp.finite ⟨false, 0, 0, by decide⟩) = zero E2M3 := by decide
+
+-- 1.0 (normal: e=0, m=8) → one E2M3
+theorem fromFp_one_E2M3 :
+    fromFiniteFp E2M3 .saturate ⟨false, 0, 8, by decide⟩ = one E2M3 := by decide
+
+-- maxFinite (e=2, m=15) → maxFinite E2M3
+theorem fromFp_maxFinite_E2M3 :
+    fromFiniteFp E2M3 .saturate ⟨false, 2, 15, by decide⟩ = maxFinite E2M3 := by decide
+
+-- Smallest subnormal: e=0, m=1 → minPos E2M3
+theorem fromFp_minPos_E2M3 :
+    fromFiniteFp E2M3 .saturate ⟨false, 0, 1, by decide⟩ = minPos E2M3 := by decide
+
+end E2M3_verification
+
+section E2M1_verification
+
+private local instance : FloatFormat := FloatFormat.ofE2M1
+
+-- Zero → zero
+theorem fromFp_zero_E2M1 :
+    fromFp E2M1 .saturate (Fp.finite ⟨false, 0, 0, by decide⟩) = zero E2M1 := by decide
+
+-- 1.0 (normal: e=0, m=2) → one E2M1
+theorem fromFp_one_E2M1 :
+    fromFiniteFp E2M1 .saturate ⟨false, 0, 2, by decide⟩ = one E2M1 := by decide
+
+-- maxFinite (e=2, m=3) → maxFinite E2M1
+theorem fromFp_maxFinite_E2M1 :
+    fromFiniteFp E2M1 .saturate ⟨false, 2, 3, by decide⟩ = maxFinite E2M1 := by decide
+
+-- Smallest subnormal: e=0, m=1 → minPos E2M1
+theorem fromFp_minPos_E2M1 :
+    fromFiniteFp E2M1 .saturate ⟨false, 0, 1, by decide⟩ = minPos E2M1 := by decide
+
+end E2M1_verification
+
 end StorageFp
