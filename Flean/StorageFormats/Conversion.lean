@@ -179,6 +179,13 @@ theorem toFiniteFp_toVal (v : StorageFp f)
 ## Concrete zero and common values
 -/
 
+/-- Construct a `StorageFp` from sign, exponent field, and mantissa field values.
+    The bit layout is `[sign][exponent][mantissa]` from MSB to LSB. -/
+def ofFields (f : StorageFormat) (s : Bool) (e : ℕ) (m : ℕ) : StorageFp f :=
+  ⟨BitVec.ofNat f.bitSize
+    ((if s ∧ f.hasSigned then 1 else 0) * 2 ^ (f.expBits + f.manBits) +
+     e * 2 ^ f.manBits + m)⟩
+
 /-- The positive zero encoding: all bits zero -/
 def zero (f : StorageFormat) : StorageFp f :=
   ⟨0⟩
@@ -186,6 +193,16 @@ def zero (f : StorageFormat) : StorageFp f :=
 /-- The negative zero encoding (for signed formats): sign bit set, rest zero -/
 def negZero (f : StorageFormat) : StorageFp f :=
   ⟨BitVec.ofNat f.bitSize (2 ^ (f.bitSize - 1))⟩
+
+/-- The encoding of 1.0: sign=0, exponent=bias, mantissa=0. -/
+def one (f : StorageFormat) : StorageFp f := ofFields f false f.bias 0
+
+/-- The largest finite positive value. -/
+def maxFinite (f : StorageFormat) : StorageFp f :=
+  ofFields f false f.maxExpField f.maxManFieldAtMaxExp
+
+/-- The smallest positive value (smallest subnormal). -/
+def minPos (f : StorageFormat) : StorageFp f := ofFields f false 0 1
 
 theorem zero_exp (f : StorageFormat) : (zero f).exp = 0 := by
   unfold zero exp; simp [StorageFormat.bitSize]
@@ -215,5 +232,87 @@ theorem zero_toVal (f : StorageFormat) {R : Type*} [Field R] :
     (zero f).toVal = (0 : R) := by
   simp only [toVal, signVal, effectiveSignificand, unbiasedExp,
     zero_sign, zero_man, zero_isExpZero, ↓reduceIte, Nat.cast_zero, mul_zero, zero_mul]
+
+/-!
+### Field extraction for concrete values
+-/
+
+-- one (E4M3): exp=7 (bias), man=0, sign=false → toVal = 1
+@[simp] theorem one_exp_E4M3 : (one E4M3).exp = 7 := by decide
+@[simp] theorem one_man_E4M3 : (one E4M3).man = 0 := by decide
+@[simp] theorem one_sign_E4M3 : (one E4M3).sign = false := by decide
+
+-- one (E5M2): exp=15 (bias), man=0, sign=false → toVal = 1
+@[simp] theorem one_exp_E5M2 : (one E5M2).exp = 15 := by decide
+@[simp] theorem one_man_E5M2 : (one E5M2).man = 0 := by decide
+@[simp] theorem one_sign_E5M2 : (one E5M2).sign = false := by decide
+
+-- maxFinite (E4M3): exp=15, man=6, sign=false → toVal = 448
+@[simp] theorem maxFinite_exp_E4M3 : (maxFinite E4M3).exp = 15 := by decide
+@[simp] theorem maxFinite_man_E4M3 : (maxFinite E4M3).man = 6 := by decide
+@[simp] theorem maxFinite_sign_E4M3 : (maxFinite E4M3).sign = false := by decide
+
+-- maxFinite (E5M2): exp=30, man=3, sign=false → toVal = 57344
+@[simp] theorem maxFinite_exp_E5M2 : (maxFinite E5M2).exp = 30 := by decide
+@[simp] theorem maxFinite_man_E5M2 : (maxFinite E5M2).man = 3 := by decide
+@[simp] theorem maxFinite_sign_E5M2 : (maxFinite E5M2).sign = false := by decide
+
+-- minPos (E4M3): exp=0, man=1, sign=false
+@[simp] theorem minPos_exp_E4M3 : (minPos E4M3).exp = 0 := by decide
+@[simp] theorem minPos_man_E4M3 : (minPos E4M3).man = 1 := by decide
+@[simp] theorem minPos_sign_E4M3 : (minPos E4M3).sign = false := by decide
+
+-- minPos (E5M2): exp=0, man=1, sign=false
+@[simp] theorem minPos_exp_E5M2 : (minPos E5M2).exp = 0 := by decide
+@[simp] theorem minPos_man_E5M2 : (minPos E5M2).man = 1 := by decide
+@[simp] theorem minPos_sign_E5M2 : (minPos E5M2).sign = false := by decide
+
+/-!
+### Finiteness of concrete values
+-/
+
+theorem one_isFinite_E4M3 : (one E4M3).isFinite := by decide
+theorem one_isFinite_E5M2 : (one E5M2).isFinite := by decide
+theorem maxFinite_isFinite_E4M3 : (maxFinite E4M3).isFinite := by decide
+theorem maxFinite_isFinite_E5M2 : (maxFinite E5M2).isFinite := by decide
+theorem minPos_isFinite_E4M3 : (minPos E4M3).isFinite := by decide
+theorem minPos_isFinite_E5M2 : (minPos E5M2).isFinite := by decide
+
+/-!
+### toVal for concrete values
+-/
+
+theorem one_toVal_E4M3 {R : Type*} [Field R] [NeZero (2 : R)] :
+    (one E4M3).toVal = (1 : R) := by
+  simp only [toVal, signVal, effectiveSignificand, unbiasedExp, isExpZero,
+    one_sign_E4M3, one_exp_E4M3, one_man_E4M3, ↓reduceIte]
+  simp only [E4M3]; push_cast; simp only [one_mul, Nat.add_zero]
+  -- Goal: 8 * 2^(-3) = 1
+  rw [show (8 : R) = 2 ^ 3 from by norm_num]; rw [show (-3 : ℤ) = -(3 : ℤ) from by norm_num]
+  rw [← zpow_natCast (2 : R) 3, ← zpow_add₀ (two_ne_zero' R)]; simp
+
+theorem one_toVal_E5M2 {R : Type*} [Field R] [NeZero (2 : R)] :
+    (one E5M2).toVal = (1 : R) := by
+  simp only [toVal, signVal, effectiveSignificand, unbiasedExp, isExpZero,
+    one_sign_E5M2, one_exp_E5M2, one_man_E5M2, ↓reduceIte]
+  simp only [E5M2]; push_cast; simp only [one_mul, Nat.add_zero]
+  -- Goal: 4 * 2^(-2) = 1
+  rw [show (4 : R) = 2 ^ 2 from by norm_num]; rw [show (-2 : ℤ) = -(2 : ℤ) from by norm_num]
+  rw [← zpow_natCast (2 : R) 2, ← zpow_add₀ (two_ne_zero' R)]; simp
+
+theorem maxFinite_toVal_E4M3 {R : Type*} [Field R] [NeZero (2 : R)] :
+    (maxFinite E4M3).toVal = (448 : R) := by
+  simp only [toVal, signVal, effectiveSignificand, unbiasedExp, isExpZero,
+    maxFinite_sign_E4M3, maxFinite_exp_E4M3, maxFinite_man_E4M3, ↓reduceIte]
+  simp only [E4M3, StorageFormat.maxExpField, StorageFormat.maxManFieldAtMaxExp]
+  push_cast; norm_num [zpow_natCast]
+
+theorem minPos_toVal_E4M3 {R : Type*} [Field R] :
+    (minPos E4M3).toVal = (2 : R)⁻¹ ^ 9 := by
+  simp only [toVal, signVal, effectiveSignificand, unbiasedExp, isExpZero,
+    minPos_sign_E4M3, minPos_exp_E4M3, minPos_man_E4M3, ↓reduceIte]
+  simp only [E4M3]; push_cast; simp only [one_mul]
+  -- Goal: 2^(-9) = 2⁻¹ ^ 9
+  rw [show (-9 : ℤ) = Int.negSucc 8 from rfl, zpow_negSucc, ← inv_pow]
 
 end StorageFp

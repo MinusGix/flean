@@ -113,13 +113,25 @@ def isNaN (v : StorageFp f) : Prop :=
     else
       False
 
+/-- Decidability of `isNaN`. -/
+instance : DecidablePred (fun v : StorageFp f => v.isNaN) :=
+  fun v => inferInstanceAs (Decidable (f.hasNaN ∧ v.isExpAllOnes ∧ _))
+
 /-- Whether this value is an infinity encoding -/
 def isInf (v : StorageFp f) : Prop :=
   f.hasInf ∧ v.isExpAllOnes ∧ v.man = 0
 
+/-- Decidability of `isInf`. -/
+instance : DecidablePred (fun v : StorageFp f => v.isInf) :=
+  fun v => inferInstanceAs (Decidable (f.hasInf ∧ v.isExpAllOnes ∧ v.man = 0))
+
 /-- Whether this value represents a finite number -/
 def isFinite (v : StorageFp f) : Prop :=
   ¬v.isNaN ∧ ¬v.isInf
+
+/-- Decidability of `isFinite`. -/
+instance : DecidablePred (fun v : StorageFp f => v.isFinite) :=
+  fun v => inferInstanceAs (Decidable (¬v.isNaN ∧ ¬v.isInf))
 
 /-- Whether this is a subnormal number (exponent field is zero, value is not zero) -/
 def isSubnormal (v : StorageFp f) : Prop :=
