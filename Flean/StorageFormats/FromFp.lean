@@ -101,7 +101,12 @@ def roundRNE (mag : ℕ) (shift : ℕ) : ℕ :=
 /-- Convert an `Fp` value to a `StorageFp` in the target storage format.
 
     The conversion handles NaN, infinity, and finite values with rounding (RNE)
-    and overflow/underflow according to the given policy. -/
+    and overflow/underflow according to the given policy.
+
+    The significand is rounded in a single pass using the correct ULP exponent,
+    which is clamped to the subnormal minimum. This avoids double-rounding errors
+    that would occur if rounding first to normal precision and then shifting for
+    subnormals separately. -/
 def fromFp [inst : FloatFormat] (f : StorageFormat)
     (policy : StorageOverflowPolicy)
     (x : @Fp inst) : StorageFp f :=
@@ -122,40 +127,42 @@ def fromFp [inst : FloatFormat] (f : StorageFormat)
       -- and subnormal (m < 2^(prec-1)) source values.
       let src_ulp_exp : ℤ := fp.e - inst.prec + 1
       let msb_pos := Nat.log 2 fp.m  -- position of leading 1 bit
-      -- The true binade exponent of the value
-      let target_e : ℤ := src_ulp_exp + msb_pos
-      -- How many bits to shift: msb_pos - manBits
-      -- Positive → discard low bits; negative → pad with zeros
-      let shift : ℤ := (msb_pos : ℤ) - (f.manBits : ℤ)
+      -- Target format parameters
+      let target_min_exp : ℤ := 1 - (f.bias : ℤ)
       let target_max_exp : ℤ := (f.maxExpField : ℤ) - (f.bias : ℤ)
-      -- Round the significand to target precision
+      -- ULP exponent: max of normal and subnormal minimums.
+      -- This ensures a single-pass rounding that correctly handles subnormals.
+      let e_ulp_normal : ℤ := src_ulp_exp + (msb_pos : ℤ) - (f.manBits : ℤ)
+      let e_ulp_subnormal : ℤ := target_min_exp - (f.manBits : ℤ)
+      let e_ulp : ℤ := max e_ulp_normal e_ulp_subnormal
+      -- Total shift: number of bits to discard from fp.m
+      let total_shift : ℤ := e_ulp - src_ulp_exp
+      -- Round the significand in one pass
       let rounded_m : ℕ :=
-        if shift ≥ 0 then roundRNE fp.m shift.toNat
-        else fp.m * 2 ^ (-shift).toNat
+        if total_shift ≥ 0 then roundRNE fp.m total_shift.toNat
+        else fp.m * 2 ^ (-total_shift).toNat
       -- Check if rounding caused a carry (rounded_m ≥ 2^(manBits+1))
-      let (final_m, final_e) : ℕ × ℤ :=
-        if rounded_m ≥ 2 ^ (f.manBits + 1) then
-          (rounded_m / 2, target_e + 1)
+      let target_prec := f.manBits + 1
+      let (final_m, final_e_ulp) : ℕ × ℤ :=
+        if rounded_m ≥ 2 ^ target_prec then
+          (rounded_m / 2, e_ulp + 1)
         else
-          (rounded_m, target_e)
+          (rounded_m, e_ulp)
+      -- Stored exponent (binade exponent of the result)
+      let e_stored : ℤ := final_e_ulp + (f.manBits : ℤ)
       -- Overflow check
-      if final_e > target_max_exp then
+      if e_stored > target_max_exp then
         applyOverflow f policy fp.s
-      -- Subnormal check
-      else if final_e < 1 - (f.bias : ℤ) then
-        let subnorm_shift : ℤ := (1 - (f.bias : ℤ)) - final_e
-        if subnorm_shift ≥ (f.manBits + 1 : ℤ) then
-          -- Complete underflow
-          if fp.s then negZero f else zero f
-        else
-          let sub_m := roundRNE final_m subnorm_shift.toNat
-          if sub_m = 0 then
-            if fp.s then negZero f else zero f
-          else
-            ofFields f fp.s 0 sub_m
+      -- Underflow to zero
+      else if rounded_m = 0 then
+        if fp.s then negZero f else zero f
+      -- Encoding
+      else if final_m < 2 ^ f.manBits then
+        -- Subnormal: exp_field = 0, man = final_m (no implicit leading 1)
+        ofFields f fp.s 0 final_m
       else
         -- Normal encoding
-        let exp_field : ℕ := (final_e + (f.bias : ℤ)).toNat
+        let exp_field : ℕ := (e_stored + (f.bias : ℤ)).toNat
         let man_field : ℕ := final_m - 2 ^ f.manBits
         -- E4M3-style NaN exclusion at max exponent
         if exp_field = f.maxExpField && man_field > f.maxManFieldAtMaxExp then
