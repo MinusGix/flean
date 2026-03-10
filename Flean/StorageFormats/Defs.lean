@@ -64,6 +64,7 @@ end StorageFormat
 /-- A floating point value stored in a storage format. Wraps a `BitVec` of the appropriate width. -/
 structure StorageFp (f : StorageFormat) where
   bits : BitVec f.bitSize
+deriving DecidableEq, Repr
 
 namespace StorageFp
 
