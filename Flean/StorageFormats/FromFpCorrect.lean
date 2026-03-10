@@ -169,4 +169,149 @@ theorem ofFields_sign (s : Bool) (e m : ℕ)
 
 end ofFields_fields
 
+/-!
+## Value of `ofFields`
+
+Express `(ofFields f s e m).toVal` in terms of the field values, for both
+normal (e > 0) and subnormal (e = 0) cases.
+-/
+
+section ofFields_toVal
+
+variable {f : StorageFormat} {R : Type*} [Field R]
+
+/-- `isExpZero` for `ofFields` reduces to whether `e = 0`. -/
+theorem ofFields_isExpZero (s : Bool) (e m : ℕ)
+    (hm : m < 2 ^ f.manBits) (he : e < 2 ^ f.expBits) :
+    (ofFields f s e m).isExpZero ↔ e = 0 := by
+  unfold isExpZero; rw [ofFields_exp s e m hm he]
+
+/-- The effective significand of `ofFields` when the exponent is zero (subnormal). -/
+theorem ofFields_effectiveSignificand_zero (s : Bool) (m : ℕ)
+    (hm : m < 2 ^ f.manBits) (he : (0 : ℕ) < 2 ^ f.expBits) :
+    (ofFields f s 0 m).effectiveSignificand = m := by
+  unfold effectiveSignificand
+  have : (ofFields f s 0 m).isExpZero := (ofFields_isExpZero s 0 m hm he).mpr rfl
+  rw [if_pos this]; exact ofFields_man s 0 m hm he
+
+/-- The effective significand of `ofFields` when the exponent is nonzero (normal). -/
+theorem ofFields_effectiveSignificand_pos (s : Bool) (e m : ℕ)
+    (hm : m < 2 ^ f.manBits) (he : e < 2 ^ f.expBits) (he0 : 0 < e) :
+    (ofFields f s e m).effectiveSignificand = 2 ^ f.manBits + m := by
+  unfold effectiveSignificand
+  have : ¬(ofFields f s e m).isExpZero := by
+    rw [ofFields_isExpZero s e m hm he]; omega
+  rw [if_neg this]; congr 1; exact ofFields_man s e m hm he
+
+/-- The unbiased exponent of `ofFields` when the exponent is zero. -/
+theorem ofFields_unbiasedExp_zero (s : Bool) (m : ℕ)
+    (hm : m < 2 ^ f.manBits) (he : (0 : ℕ) < 2 ^ f.expBits) :
+    (ofFields f s 0 m).unbiasedExp = 1 - (f.bias : ℤ) := by
+  unfold unbiasedExp
+  have : (ofFields f s 0 m).isExpZero := (ofFields_isExpZero s 0 m hm he).mpr rfl
+  rw [if_pos this]
+
+/-- The unbiased exponent of `ofFields` when the exponent is nonzero. -/
+theorem ofFields_unbiasedExp_pos (s : Bool) (e m : ℕ)
+    (hm : m < 2 ^ f.manBits) (he : e < 2 ^ f.expBits) (he0 : 0 < e) :
+    (ofFields f s e m).unbiasedExp = (e : ℤ) - (f.bias : ℤ) := by
+  unfold unbiasedExp
+  have : ¬(ofFields f s e m).isExpZero := by
+    rw [ofFields_isExpZero s e m hm he]; omega
+  rw [if_neg this]; congr 1; exact_mod_cast ofFields_exp s e m hm he
+
+/-- Value of a subnormal `ofFields` encoding:
+    `toVal = intSigVal s m (1 - bias - manBits)`. -/
+theorem ofFields_toVal_subnormal (s : Bool) (m : ℕ)
+    (hm : m < 2 ^ f.manBits) (he : (0 : ℕ) < 2 ^ f.expBits)
+    (hsigned : f.hasSigned = true) :
+    (ofFields f s 0 m).toVal (R := R) =
+    intSigVal (R := R) s m (1 - (f.bias : ℤ) - (f.manBits : ℤ)) := by
+  unfold toVal intSigVal signVal
+  rw [ofFields_effectiveSignificand_zero s m hm he,
+      ofFields_unbiasedExp_zero s m hm he,
+      ofFields_sign s 0 m hm he hsigned]
+  cases s <;> simp
+
+/-- Value of a normal `ofFields` encoding:
+    `toVal = intSigVal s (2^manBits + m) (e - bias - manBits)`. -/
+theorem ofFields_toVal_normal (s : Bool) (e m : ℕ)
+    (hm : m < 2 ^ f.manBits) (he : e < 2 ^ f.expBits) (he0 : 0 < e)
+    (hsigned : f.hasSigned = true) :
+    (ofFields f s e m).toVal (R := R) =
+    intSigVal (R := R) s (2 ^ f.manBits + m) ((e : ℤ) - (f.bias : ℤ) - (f.manBits : ℤ)) := by
+  unfold toVal intSigVal signVal
+  rw [ofFields_effectiveSignificand_pos s e m hm he he0,
+      ofFields_unbiasedExp_pos s e m hm he he0,
+      ofFields_sign s e m hm he hsigned]
+  cases s <;> simp
+
+-- Unified: both normal and subnormal encode `intSigVal s final_m final_e_ulp`
+-- Normal case: exp_field = (final_e_ulp + manBits + bias).toNat, man_field = final_m - 2^manBits
+-- => toVal = intSigVal s (2^manBits + man_field) (exp_field - bias - manBits)
+--         = intSigVal s final_m (final_e_ulp + manBits + bias - bias - manBits)
+--         = intSigVal s final_m final_e_ulp
+
+/-- The normal encoding `ofFields f s exp_field (final_m - 2^manBits)` has value
+    `intSigVal s final_m final_e_ulp` when `exp_field = (final_e_ulp + manBits + bias).toNat`
+    and `2^manBits ≤ final_m < 2^(manBits+1)`. -/
+theorem ofFields_normal_intSigVal (s : Bool) (final_m : ℕ) (final_e_ulp : ℤ)
+    (hm_lo : 2 ^ f.manBits ≤ final_m) (hm_hi : final_m < 2 ^ (f.manBits + 1))
+    (he_pos : 0 < (final_e_ulp + (f.manBits : ℤ) + (f.bias : ℤ)).toNat)
+    (he_lt : (final_e_ulp + (f.manBits : ℤ) + (f.bias : ℤ)).toNat < 2 ^ f.expBits)
+    (he_nonneg : 0 ≤ final_e_ulp + (f.manBits : ℤ) + (f.bias : ℤ))
+    (hsigned : f.hasSigned = true) :
+    (ofFields f s (final_e_ulp + (f.manBits : ℤ) + (f.bias : ℤ)).toNat
+      (final_m - 2 ^ f.manBits)).toVal (R := R) =
+    intSigVal (R := R) s final_m final_e_ulp := by
+  have hman : final_m - 2 ^ f.manBits < 2 ^ f.manBits := by omega
+  rw [ofFields_toVal_normal s _ _ hman he_lt he_pos hsigned]
+  congr 1
+  · omega
+  · rw [Int.toNat_of_nonneg he_nonneg]; ring
+
+/-- The subnormal encoding `ofFields f s 0 final_m` has value
+    `intSigVal s final_m (1 - bias - manBits)`. -/
+theorem ofFields_subnormal_intSigVal (s : Bool) (final_m : ℕ)
+    (hm : final_m < 2 ^ f.manBits)
+    (he : (0 : ℕ) < 2 ^ f.expBits)
+    (hsigned : f.hasSigned = true) :
+    (ofFields f s 0 final_m).toVal (R := R) =
+    intSigVal (R := R) s final_m (1 - (f.bias : ℤ) - (f.manBits : ℤ)) :=
+  ofFields_toVal_subnormal s final_m hm he hsigned
+
+end ofFields_toVal
+
+/-!
+## `fromFp` encoding value
+
+Show that both the normal and subnormal encoding branches of `fromFp` produce
+the value `intSigVal sign final_m final_e_ulp`, where `final_m` and `final_e_ulp`
+are the post-carry-adjustment values computed in `fromFp`.
+
+The key property: `final_m * 2^final_e_ulp = rounded_m * 2^e_ulp` holds because
+the carry adjustment divides `m` by 2 and increments the exponent.
+-/
+
+section fromFp_value
+
+variable {R : Type*} [Field R]
+
+/-- When an even natural `m` is divided by 2 and the exponent is incremented,
+    the `intSigVal` is preserved. -/
+theorem intSigVal_div2_succ [CharZero R] (sign : Bool) (m : ℕ) (e : ℤ)
+    (heven : 2 ∣ m) :
+    intSigVal (R := R) sign (m / 2) (e + 1) =
+    intSigVal (R := R) sign m e := by
+  unfold intSigVal
+  have h2 : (2 : R) ≠ 0 := two_ne_zero
+  have hdiv : (↑(m / 2) : R) = (↑m : R) / 2 := by
+    rw [Nat.cast_div heven h2]; push_cast; ring
+  rw [hdiv, zpow_add₀ h2, zpow_one]
+  have cancel : ∀ (x : R), x / 2 * (2 ^ e * 2) = x * 2 ^ e := by
+    intro x; rw [mul_comm (2 ^ e) 2, ← mul_assoc, div_mul_cancel₀ _ h2]
+  cases sign <;> simp [cancel]
+
+end fromFp_value
+
 end StorageFp
