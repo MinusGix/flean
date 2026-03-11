@@ -21,27 +21,15 @@ Decompose a `StorageFp`'s bits into sign, exponent, and mantissa fields,
 then prove two values are equal iff their fields match.
 -/
 
-private theorem manBits_le_bitSize' : f.manBits ≤ f.bitSize := by
-  unfold StorageFormat.bitSize; omega
-
-private theorem expBits_le_bitSize' : f.expBits ≤ f.bitSize := by
-  unfold StorageFormat.bitSize; omega
-
-private theorem zext_allOnes_toNat' (n m : Nat) (h : n ≤ m) :
-    ((BitVec.allOnes n).zeroExtend m).toNat = 2 ^ n - 1 := by
-  simp [BitVec.zeroExtend, BitVec.toNat_setWidth, BitVec.toNat_allOnes]
-  apply Nat.mod_eq_of_lt
-  have := Nat.pow_le_pow_right (by norm_num : 1 ≤ 2) h; have := Nat.two_pow_pos n; omega
-
 theorem man_eq_bits_mod (v : StorageFp f) : v.man = v.bits.toNat % 2 ^ f.manBits := by
   unfold man; simp only [BitVec.toNat_and]
-  rw [zext_allOnes_toNat' f.manBits f.bitSize manBits_le_bitSize']
+  rw [zeroExtend_allOnes_toNat f.manBits f.bitSize (manBits_le_bitSize f)]
   rw [Nat.and_two_pow_sub_one_eq_mod, Nat.mod_mod_of_dvd _ (dvd_refl _)]
 
 theorem exp_eq_bits_div_mod (v : StorageFp f) :
     v.exp = (v.bits.toNat / 2 ^ f.manBits) % 2 ^ f.expBits := by
   unfold exp; simp only [BitVec.toNat_and, BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow]
-  rw [zext_allOnes_toNat' f.expBits f.bitSize expBits_le_bitSize']
+  rw [zeroExtend_allOnes_toNat f.expBits f.bitSize (expBits_le_bitSize f)]
   rw [Nat.and_two_pow_sub_one_eq_mod]; exact Nat.mod_mod_of_dvd _ (dvd_refl _)
 
 private theorem testBit_of_div_01 {n k : ℕ} (h : n / 2 ^ k = 0 ∨ n / 2 ^ k = 1) :

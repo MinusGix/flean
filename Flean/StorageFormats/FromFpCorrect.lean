@@ -53,17 +53,17 @@ section ofFields_fields
 variable {f : StorageFormat}
 
 -- Helper: the zero-extended allOnes mask has the expected toNat
-private theorem zeroExtend_allOnes_toNat (n m : Nat) (h : n ≤ m) :
+theorem zeroExtend_allOnes_toNat (n m : Nat) (h : n ≤ m) :
     ((BitVec.allOnes n).zeroExtend m).toNat = 2 ^ n - 1 := by
   simp [BitVec.zeroExtend, BitVec.toNat_setWidth, BitVec.toNat_allOnes]
   apply Nat.mod_eq_of_lt
   have := Nat.pow_le_pow_right (by norm_num : 1 ≤ 2) h
   have := Nat.two_pow_pos n; omega
 
-private theorem manBits_le_bitSize (f : StorageFormat) : f.manBits ≤ f.bitSize := by
+theorem manBits_le_bitSize (f : StorageFormat) : f.manBits ≤ f.bitSize := by
   unfold StorageFormat.bitSize; omega
 
-private theorem expBits_le_bitSize (f : StorageFormat) : f.expBits ≤ f.bitSize := by
+theorem expBits_le_bitSize (f : StorageFormat) : f.expBits ≤ f.bitSize := by
   unfold StorageFormat.bitSize; omega
 
 -- The packed value fits in bitSize bits
@@ -616,8 +616,7 @@ private theorem roundSigCore_e_stored_le
     max_exp := by
   unfold roundSigCore at hov ⊢
   simp only at hov ⊢
-  split_ifs at hov ⊢ <;> (try exact absurd rfl hov) <;>
-    simp only [not_le, not_lt] at * <;> omega
+  split_ifs at hov ⊢ <;> simp only [not_le, not_lt] at * <;> omega
 
 omit inst in
 /-- `encodeRounded` with a subnormal result produces `intSigVal`. -/
@@ -768,6 +767,7 @@ section capstone
 
 variable [inst : FloatFormat] {R : Type*} [Field R]
 
+omit inst in
 /-- `rneRoundUp` is definitionally `policyShouldRoundUp .nearestEven`. -/
 theorem rneRoundUp_eq_policyShouldRoundUp :
     ∀ s q r shift, rneRoundUp s q r shift = policyShouldRoundUp .nearestEven s q r shift := by
