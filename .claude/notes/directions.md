@@ -151,8 +151,16 @@ Rounding/ files but narrow applicability.
   `.saturate` → `signedMaxFinite`, `.overflow` + `hasInf` → `infEncoding`, `.overflow` + `¬hasInf` → `canonicalNaN`.
 - [ ] **E8M0 round-trip**: BLOCKED — `FloatFormat` requires `prec ≥ 2`, but E8M0 has `prec = 1` (manBits = 0).
   Would need either relaxing `FloatFormat.valid_prec` or a separate conversion path.
-- [ ] **General round-trip**: `∀ f, ...` instead of per-format `native_decide` (hard, needs bitvector extensionality)
+- [x] **General round-trip**: `roundtrip_general` in Extensionality.lean — structural proof via bitvector extensionality ✓
 - **Note**: `hsigned : f.hasSigned = true` required everywhere — E8M0 (unsigned) is excluded from all FromFpCorrect theorems
+
+## Mid-Term — Algorithm Error Analysis
+- [ ] **Kahan compensated summation** — Error bound O(ε·Σ|xᵢ|) instead of O(nε·Σ|xᵢ|). Builds on TwoSum.
+- [ ] **Dot product error bound** — `|fl(x·y) - x·y| ≤ γ_n · |x|·|y|` where `γ_n = nε/(1-nε)`. Uses fpAdd + fpMul.
+- [ ] **Newton reciprocal** — `x_{n+1} = x_n(2 - ax_n)`, quadratic convergence in floats.
+- [ ] **Newton sqrt** — Similar to reciprocal, used in hardware implementations.
+- [ ] **Horner's method error analysis** — Polynomial evaluation running error bound.
+- [ ] **Mixed-precision accumulation** — Error of computing in FP16/BF16 and accumulating in FP32 (bridges StorageFormats + ML).
 
 ## Long-Term
 - [ ] Error-minimizing tactic (reorder FP computations)
