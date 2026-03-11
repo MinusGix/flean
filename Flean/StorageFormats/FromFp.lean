@@ -95,6 +95,80 @@ def roundRNE (mag : ℕ) (shift : ℕ) : ℕ :=
       truncated
 
 /-!
+## Core Rounding Computation
+
+The shared rounding algorithm for floating-point conversions. Given a significand
+magnitude, base exponent, target format parameters, and a rounding decision function,
+computes the rounded significand and exponent.
+
+Both `fromFp` (RNE-hardcoded) and `roundIntSigM` (configurable mode) use essentially
+this same algorithm. Factoring it out makes correctness proofs straightforward.
+-/
+
+/-- RNE rounding decision: should we round up given quotient, remainder, and shift?
+    This is the `policyShouldRoundUp .nearestEven` function, defined independently
+    to avoid importing the rounding mode infrastructure. -/
+def rneRoundUp (_sign : Bool) (q r shift : ℕ) : Bool :=
+  if r = 0 then false
+  else
+    let half := 2 ^ (shift - 1)
+    if r > half then true
+    else if r < half then false
+    else q % 2 ≠ 0
+
+/-- Core rounding computation: round magnitude `mag` with base exponent `e_base`
+    to the given format parameters. Returns `(m_final, e_ulp_final, overflow)`.
+
+    The `shouldRoundUp sign q r shift` parameter decides whether to round up,
+    enabling different rounding modes to share this computation. -/
+def roundSigCore (sign : Bool) (mag : ℕ) (e_base : ℤ)
+    (prec : ℕ) (min_exp max_exp : ℤ)
+    (shouldRoundUp : Bool → ℕ → ℕ → ℕ → Bool) : ℕ × ℤ × Bool :=
+  let bits : ℤ := (Nat.log2 mag + 1 : ℕ)
+  let e_ulp := max (e_base + bits - ↑prec) (min_exp - ↑prec + 1)
+  let shift := e_ulp - e_base
+  if shift ≤ 0 then
+    -- Exact: value fits without rounding (left-shift to align)
+    let m := mag * 2 ^ (-shift).toNat
+    let e_stored := e_ulp + ↑prec - 1
+    if e_stored > max_exp then (m, e_ulp, true) else (m, e_ulp, false)
+  else
+    -- Rounding needed: discard low bits
+    let shift_nat := shift.toNat
+    let q := mag / 2 ^ shift_nat
+    let r := mag % 2 ^ shift_nat
+    let m_rounded := if shouldRoundUp sign q r shift_nat then q + 1 else q
+    -- Carry check: rounding may push significand to 2^prec
+    if m_rounded ≥ 2 ^ prec then
+      let m_final := m_rounded / 2
+      let e_ulp_final := e_ulp + 1
+      if e_ulp_final + ↑prec - 1 > max_exp then (m_final, e_ulp_final, true)
+      else (m_final, e_ulp_final, false)
+    else
+      if e_ulp + ↑prec - 1 > max_exp then (m_rounded, e_ulp, true)
+      else (m_rounded, e_ulp, false)
+
+/-- Encode a rounded result `(m_final, e_ulp_final)` as a `StorageFp`,
+    handling zero, subnormal, normal, and NaN-exclusion cases. -/
+def encodeRounded (f : StorageFormat) (policy : StorageOverflowPolicy)
+    (sign : Bool) (m_final : ℕ) (e_ulp_final : ℤ) : StorageFp f :=
+  if m_final = 0 then
+    if sign then negZero f else zero f
+  else if m_final < 2 ^ f.manBits then
+    -- Subnormal: exp_field = 0, man = m_final (no implicit leading 1)
+    ofFields f sign 0 m_final
+  else
+    -- Normal encoding
+    let e_stored := e_ulp_final + (f.manBits : ℤ)
+    let exp_field := (e_stored + (f.bias : ℤ)).toNat
+    let man_field := m_final - 2 ^ f.manBits
+    -- E4M3-style NaN exclusion at max exponent
+    if exp_field = f.maxExpField && man_field > f.maxManFieldAtMaxExp then
+      applyOverflow f policy sign
+    else
+      ofFields f sign exp_field man_field
+
+/-!
 ## Core Conversion: Fp → StorageFp
 -/
 
@@ -103,10 +177,12 @@ def roundRNE (mag : ℕ) (shift : ℕ) : ℕ :=
     The conversion handles NaN, infinity, and finite values with rounding (RNE)
     and overflow/underflow according to the given policy.
 
-    The significand is rounded in a single pass using the correct ULP exponent,
-    which is clamped to the subnormal minimum. This avoids double-rounding errors
-    that would occur if rounding first to normal precision and then shifting for
-    subnormals separately. -/
+    The significand is rounded in a single pass via `roundSigCore`, using the
+    correct ULP exponent clamped to the subnormal minimum. This avoids
+    double-rounding errors that would occur from separate normal/subnormal steps.
+
+    This function shares its core rounding computation with `roundIntSigM`,
+    making correctness proofs straightforward. -/
 def fromFp [inst : FloatFormat] (f : StorageFormat)
     (policy : StorageOverflowPolicy)
     (x : @Fp inst) : StorageFp f :=
@@ -116,59 +192,15 @@ def fromFp [inst : FloatFormat] (f : StorageFormat)
     if f.hasInf then infEncoding f sign
     else applyOverflow f policy sign
   | .finite fp =>
-    -- Source value = (-1)^s * m * 2^(e - prec + 1)
     if fp.m = 0 then
-      -- Zero (preserve sign)
       if fp.s then negZero f else zero f
     else
-      -- Nonzero finite value.
-      -- Use Nat.log to find the true MSB position of the significand.
-      -- This correctly handles both normal (m ∈ [2^(prec-1), 2^prec))
-      -- and subnormal (m < 2^(prec-1)) source values.
-      let src_ulp_exp : ℤ := fp.e - inst.prec + 1
-      let msb_pos := Nat.log 2 fp.m  -- position of leading 1 bit
-      -- Target format parameters
-      let target_min_exp : ℤ := 1 - (f.bias : ℤ)
-      let target_max_exp : ℤ := (f.maxExpField : ℤ) - (f.bias : ℤ)
-      -- ULP exponent: max of normal and subnormal minimums.
-      -- This ensures a single-pass rounding that correctly handles subnormals.
-      let e_ulp_normal : ℤ := src_ulp_exp + (msb_pos : ℤ) - (f.manBits : ℤ)
-      let e_ulp_subnormal : ℤ := target_min_exp - (f.manBits : ℤ)
-      let e_ulp : ℤ := max e_ulp_normal e_ulp_subnormal
-      -- Total shift: number of bits to discard from fp.m
-      let total_shift : ℤ := e_ulp - src_ulp_exp
-      -- Round the significand in one pass
-      let rounded_m : ℕ :=
-        if total_shift ≥ 0 then roundRNE fp.m total_shift.toNat
-        else fp.m * 2 ^ (-total_shift).toNat
-      -- Check if rounding caused a carry (rounded_m ≥ 2^(manBits+1))
-      let target_prec := f.manBits + 1
-      let (final_m, final_e_ulp) : ℕ × ℤ :=
-        if rounded_m ≥ 2 ^ target_prec then
-          (rounded_m / 2, e_ulp + 1)
-        else
-          (rounded_m, e_ulp)
-      -- Stored exponent (binade exponent of the result)
-      let e_stored : ℤ := final_e_ulp + (f.manBits : ℤ)
-      -- Overflow check
-      if e_stored > target_max_exp then
-        applyOverflow f policy fp.s
-      -- Underflow to zero
-      else if rounded_m = 0 then
-        if fp.s then negZero f else zero f
-      -- Encoding
-      else if final_m < 2 ^ f.manBits then
-        -- Subnormal: exp_field = 0, man = final_m (no implicit leading 1)
-        ofFields f fp.s 0 final_m
-      else
-        -- Normal encoding
-        let exp_field : ℕ := (e_stored + (f.bias : ℤ)).toNat
-        let man_field : ℕ := final_m - 2 ^ f.manBits
-        -- E4M3-style NaN exclusion at max exponent
-        if exp_field = f.maxExpField && man_field > f.maxManFieldAtMaxExp then
-          applyOverflow f policy fp.s
-        else
-          ofFields f fp.s exp_field man_field
+      let (m_final, e_ulp_final, overflow) := roundSigCore fp.s fp.m
+        (fp.e - inst.prec + 1) (f.manBits + 1)
+        (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ))
+        rneRoundUp
+      if overflow then applyOverflow f policy fp.s
+      else encodeRounded f policy fp.s m_final e_ulp_final
 
 /-!
 ## Basic Properties
