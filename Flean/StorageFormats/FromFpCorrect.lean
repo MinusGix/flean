@@ -903,4 +903,87 @@ theorem fromFp_correct
 
 end capstone
 
+/-!
+## Overflow correctness
+
+When `roundSigCore` sets the overflow flag, `fromFp` delegates to `applyOverflow`.
+Under the `.saturate` policy this returns `signedMaxFinite f fp.s`.
+Under the `.overflow` policy this returns `infEncoding` (if the format has infinity)
+or `canonicalNaN` (otherwise).
+-/
+
+section overflow
+
+variable [inst : FloatFormat]
+
+/-- When `roundSigCore` overflows, `fromFp` with `.saturate` returns `signedMaxFinite`. -/
+theorem fromFp_overflow_saturate (f : StorageFormat) (fp : FiniteFp)
+    (hm : fp.m ≠ 0)
+    (h_ov : (roundSigCore fp.s fp.m (fp.e - inst.prec + 1) (f.manBits + 1)
+        (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ)) rneRoundUp).2.2 = true) :
+    fromFp f .saturate (Fp.finite fp) = signedMaxFinite f fp.s := by
+  unfold fromFp
+  simp only [show ¬(fp.m = 0) from hm, ↓reduceIte]
+  set rc := roundSigCore fp.s fp.m (fp.e - inst.prec + 1) (f.manBits + 1)
+      (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ)) rneRoundUp
+  show (match rc with | (m, e, ov) => if ov then applyOverflow f .saturate fp.s
+      else encodeRounded f .saturate fp.s m e) = signedMaxFinite f fp.s
+  obtain ⟨m, e, ov⟩ := rc
+  simp only at h_ov
+  simp [h_ov, applyOverflow]
+
+/-- When `roundSigCore` overflows with `.overflow` policy and the target has infinity,
+    `fromFp` returns `infEncoding`. -/
+theorem fromFp_overflow_inf (f : StorageFormat) (fp : FiniteFp)
+    (hm : fp.m ≠ 0)
+    (h_ov : (roundSigCore fp.s fp.m (fp.e - inst.prec + 1) (f.manBits + 1)
+        (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ)) rneRoundUp).2.2 = true)
+    (h_inf : f.hasInf = true) :
+    fromFp f .overflow (Fp.finite fp) = infEncoding f fp.s := by
+  unfold fromFp
+  simp only [show ¬(fp.m = 0) from hm, ↓reduceIte]
+  set rc := roundSigCore fp.s fp.m (fp.e - inst.prec + 1) (f.manBits + 1)
+      (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ)) rneRoundUp
+  show (match rc with | (m, e, ov) => if ov then applyOverflow f .overflow fp.s
+      else encodeRounded f .overflow fp.s m e) = infEncoding f fp.s
+  obtain ⟨m, e, ov⟩ := rc
+  simp only at h_ov
+  simp [h_ov, applyOverflow, h_inf]
+
+/-- When `roundSigCore` overflows with `.overflow` policy and the target has no infinity,
+    `fromFp` returns `canonicalNaN`. -/
+theorem fromFp_overflow_nan (f : StorageFormat) (fp : FiniteFp)
+    (hm : fp.m ≠ 0)
+    (h_ov : (roundSigCore fp.s fp.m (fp.e - inst.prec + 1) (f.manBits + 1)
+        (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ)) rneRoundUp).2.2 = true)
+    (h_no_inf : f.hasInf = false) :
+    fromFp f .overflow (Fp.finite fp) = canonicalNaN f := by
+  unfold fromFp
+  simp only [show ¬(fp.m = 0) from hm, ↓reduceIte]
+  set rc := roundSigCore fp.s fp.m (fp.e - inst.prec + 1) (f.manBits + 1)
+      (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ)) rneRoundUp
+  show (match rc with | (m, e, ov) => if ov then applyOverflow f .overflow fp.s
+      else encodeRounded f .overflow fp.s m e) = canonicalNaN f
+  obtain ⟨m, e, ov⟩ := rc
+  simp only at h_ov
+  simp [h_ov, applyOverflow, h_no_inf]
+
+/-- Unified: `fromFp` on overflow applies the overflow policy. -/
+theorem fromFp_overflow (f : StorageFormat) (policy : StorageOverflowPolicy) (fp : FiniteFp)
+    (hm : fp.m ≠ 0)
+    (h_ov : (roundSigCore fp.s fp.m (fp.e - inst.prec + 1) (f.manBits + 1)
+        (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ)) rneRoundUp).2.2 = true) :
+    fromFp f policy (Fp.finite fp) = applyOverflow f policy fp.s := by
+  unfold fromFp
+  simp only [show ¬(fp.m = 0) from hm, ↓reduceIte]
+  set rc := roundSigCore fp.s fp.m (fp.e - inst.prec + 1) (f.manBits + 1)
+      (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ)) rneRoundUp
+  show (match rc with | (m, e, ov) => if ov then applyOverflow f policy fp.s
+      else encodeRounded f policy fp.s m e) = applyOverflow f policy fp.s
+  obtain ⟨m, e, ov⟩ := rc
+  simp only at h_ov
+  simp [h_ov]
+
+end overflow
+
 end StorageFp

@@ -146,8 +146,11 @@ Rounding/ files but narrow applicability.
   Chain: `fromFp_val_eq_intSigVal` → `roundSigCore_eq_roundIntSigM` → `RoundIntSigMSound` → `RMode.round`.
   Need: show `roundSigCore` with `rneRoundUp` matches `roundIntSigM` with RNE `shouldRoundUp`.
   Typeclasses: `[RMode R] [RModeExec] [RoundIntSigMSound R]` + hypothesis that `shouldRoundUp = policyShouldRoundUp .nearestEven`.
-- [ ] **Overflow correctness**: characterize when overflow occurs (magnitude > max finite) and that saturation → `maxFinite`
-- [ ] **E8M0 round-trip**: unsigned format, no mantissa — different logic, currently uncovered in RoundTrip.lean
+- [x] **Overflow correctness**: `fromFp_overflow` + `fromFp_overflow_saturate`/`_inf`/`_nan` ✓
+  When `roundSigCore` overflows, `fromFp` delegates to `applyOverflow`:
+  `.saturate` → `signedMaxFinite`, `.overflow` + `hasInf` → `infEncoding`, `.overflow` + `¬hasInf` → `canonicalNaN`.
+- [ ] **E8M0 round-trip**: BLOCKED — `FloatFormat` requires `prec ≥ 2`, but E8M0 has `prec = 1` (manBits = 0).
+  Would need either relaxing `FloatFormat.valid_prec` or a separate conversion path.
 - [ ] **General round-trip**: `∀ f, ...` instead of per-format `native_decide` (hard, needs bitvector extensionality)
 - **Note**: `hsigned : f.hasSigned = true` required everywhere — E8M0 (unsigned) is excluded from all FromFpCorrect theorems
 
