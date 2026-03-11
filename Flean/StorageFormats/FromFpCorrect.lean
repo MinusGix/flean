@@ -750,4 +750,157 @@ theorem fromFp_val_eq_intSigVal
 
 end main_theorem
 
+/-!
+## Capstone: `fromFp` computes the correctly-rounded value
+
+When the target format's `FloatFormat` uses RNE rounding (i.e., `RModeExec.shouldRoundUp`
+agrees with `rneRoundUp`), `fromFp`'s output value equals `RMode.round(fp.toVal)`.
+
+The proof chain:
+1. `fromFp_val_eq_intSigVal`: `fromFp.toVal = intSigVal sign rc.1 rc.2.1`
+2. `roundIntSigM_matches_roundSigCore`: `roundIntSigM` returns `Fp.finite fp_out`
+   with `fp_out.m = rc.1` and `fp_out.e = rc.2.1 + prec - 1`
+3. `RoundIntSigMSound`: `roundIntSigM = ○(intSigVal ...)`
+4. `finiteFp_toVal_eq_intSigVal`: `fp_out.toVal = intSigVal sign fp_out.m (...)`
+-/
+
+section capstone
+
+variable [inst : FloatFormat] {R : Type*} [Field R]
+
+/-- `rneRoundUp` is definitionally `policyShouldRoundUp .nearestEven`. -/
+theorem rneRoundUp_eq_policyShouldRoundUp :
+    ∀ s q r shift, rneRoundUp s q r shift = policyShouldRoundUp .nearestEven s q r shift := by
+  intro s q r shift; rfl
+
+/-- When `roundSigCore` does not overflow, `roundIntSigM` produces
+    `Fp.finite fp_ri` with `fp_ri.m = rc.1` and `fp_ri.e = rc.2.1 + prec - 1`.
+
+    Proof by unfolding `roundIntSigM`, rewriting `shouldRoundUp → rneRoundUp`,
+    normalizing `↑prec.toNat → prec`, and matching branches to `roundSigCore`. -/
+private theorem roundIntSigM_finite_matches_roundSigCore
+    [exec : RModeExec]
+    (sign : Bool) (mag : ℕ) (e_base : ℤ) (hmag : mag ≠ 0)
+    (h_shouldRoundUp : ∀ s q r sh,
+      RModeExec.shouldRoundUp s q r sh = rneRoundUp s q r sh)
+    (h_no_ov : (roundSigCore sign mag e_base FloatFormat.prec.toNat
+        FloatFormat.min_exp FloatFormat.max_exp rneRoundUp).2.2 = false) :
+    ∃ fp_ri : FiniteFp,
+      roundIntSigM sign mag e_base = Fp.finite fp_ri ∧
+      fp_ri.s = sign ∧
+      fp_ri.m = (roundSigCore sign mag e_base FloatFormat.prec.toNat
+        FloatFormat.min_exp FloatFormat.max_exp rneRoundUp).1 ∧
+      fp_ri.e = (roundSigCore sign mag e_base FloatFormat.prec.toNat
+        FloatFormat.min_exp FloatFormat.max_exp rneRoundUp).2.1 +
+        FloatFormat.prec - 1 := by
+  -- Key: ↑prec.toNat = prec as ℤ
+  have hpc : (↑FloatFormat.prec.toNat : ℤ) = FloatFormat.prec := FloatFormat.prec_toNat_eq
+  -- Rewrite roundSigCore to use FloatFormat.prec instead of ↑prec.toNat
+  have hrc_rw : roundSigCore sign mag e_base FloatFormat.prec.toNat
+      FloatFormat.min_exp FloatFormat.max_exp rneRoundUp =
+    roundSigCore sign mag e_base FloatFormat.prec.toNat
+      FloatFormat.min_exp FloatFormat.max_exp
+      (fun s q r sh => RModeExec.shouldRoundUp s q r sh) := by
+    congr 1; ext s q r sh; exact (h_shouldRoundUp s q r sh).symm
+  -- roundIntSigM is definitionally roundSigCore + Fp wrapping.
+  -- Both compute the same let-bindings when shouldRoundUp agrees.
+  -- Unfold both and show the non-overflow branches produce matching (m, e).
+  unfold roundSigCore at h_no_ov hrc_rw ⊢
+  simp only [hpc] at h_no_ov hrc_rw ⊢
+  unfold roundIntSigM
+  simp only [hmag, dite_false, h_shouldRoundUp]
+  -- h_no_ov tells us which overflow branches are false.
+  -- Match the if-then-else structure.
+  split_ifs at h_no_ov ⊢ with h1 h2 h3 h4 h5
+  all_goals (first | exact absurd rfl h_no_ov | exact ⟨_, rfl, rfl, rfl, rfl⟩)
+
+/-- Composing the structural match with `RoundIntSigMSound`: when `roundSigCore`
+    doesn't overflow and `○(intSigVal ...)` is finite, the rounded output's value
+    equals `intSigVal sign rc.1 rc.2.1`. -/
+private theorem roundIntSigM_val_eq_roundSigCore_val
+    [exec : RModeExec] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    [RMode R] [RoundIntSigMSound R]
+    (sign : Bool) (mag : ℕ) (e_base : ℤ) (hmag : mag ≠ 0)
+    (fp_out : FiniteFp)
+    (h_shouldRoundUp : ∀ s q r sh,
+      RModeExec.shouldRoundUp s q r sh = rneRoundUp s q r sh)
+    (h_no_ov : (roundSigCore sign mag e_base FloatFormat.prec.toNat
+        FloatFormat.min_exp FloatFormat.max_exp rneRoundUp).2.2 = false)
+    (h_round_finite : ○(intSigVal (R := R) sign mag e_base) = Fp.finite fp_out) :
+    fp_out.toVal (R := R) =
+    intSigVal (R := R) sign
+      (roundSigCore sign mag e_base FloatFormat.prec.toNat
+        FloatFormat.min_exp FloatFormat.max_exp rneRoundUp).1
+      (roundSigCore sign mag e_base FloatFormat.prec.toNat
+        FloatFormat.min_exp FloatFormat.max_exp rneRoundUp).2.1 := by
+  -- Get the structural match
+  obtain ⟨fp_ri, hri_eq, hs_eq, hm_eq, he_eq⟩ :=
+    roundIntSigM_finite_matches_roundSigCore sign mag e_base hmag h_shouldRoundUp h_no_ov
+  -- roundIntSigM = ○(intSigVal ...) by RoundIntSigMSound
+  have hri := roundIntSigM_correct_tc (R := R) sign mag e_base hmag
+  rw [h_round_finite, hri_eq] at hri
+  -- fp_out = fp_ri
+  have := Fp.finite.inj hri
+  subst this
+  -- fp_ri.toVal = intSigVal sign fp_ri.m (fp_ri.e - prec + 1)
+  rw [finiteFp_toVal_eq_intSigVal (R := R) fp_ri, hs_eq, hm_eq, he_eq]
+  -- intSigVal sign rc.1 (rc.2.1 + prec - 1 - prec + 1) = intSigVal sign rc.1 rc.2.1
+  unfold intSigVal; congr 1; ring
+
+/-- **Capstone**: When `fromFp` does not overflow, its output value equals the
+    correctly-rounded value of the input in the target format.
+
+    Specifically, if `○(fp.toVal) = Fp.finite fp_out`, then
+    `(fromFp f policy (Fp.finite fp)).toVal = fp_out.toVal`.
+
+    This connects `fromFp` (bitwise storage encoding) to `RMode.round`
+    (semantic rounding specification). -/
+theorem fromFp_correct
+    [exec : RModeExec] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    [RMode R] [RoundIntSigMSound R]
+    (f : StorageFormat) (policy : StorageOverflowPolicy) (fp : FiniteFp)
+    (hsigned : f.hasSigned = true)
+    (h_prec : f.manBits ≥ 1)
+    (hm : fp.m ≠ 0)
+    -- The FloatFormat in scope matches the target storage format
+    (h_fmt_prec : FloatFormat.prec = (f.manBits + 1 : ℤ))
+    (h_fmt_min : FloatFormat.min_exp = 1 - (f.bias : ℤ))
+    (h_fmt_max : FloatFormat.max_exp = (f.maxExpField : ℤ) - (f.bias : ℤ))
+    -- shouldRoundUp implements RNE
+    (h_shouldRoundUp : ∀ s q r sh,
+      RModeExec.shouldRoundUp s q r sh = rneRoundUp s q r sh)
+    -- No overflow in roundSigCore
+    (h_no_ov : (roundSigCore fp.s fp.m (fp.e - inst.prec + 1) (f.manBits + 1)
+        (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ)) rneRoundUp).2.2 = false)
+    -- No NaN exclusion issue
+    (h_no_nan : f.maxManFieldAtMaxExp ≥ 2 ^ f.manBits - 1)
+    -- Rounding produces a finite result
+    (fp_out : FiniteFp)
+    (h_round_finite : ○(fp.toVal (R := R)) = Fp.finite fp_out) :
+    (fromFp f policy (Fp.finite fp)).toVal (R := R) = fp_out.toVal (R := R) := by
+  -- Step 1: fromFp.toVal = intSigVal sign rc.1 rc.2.1
+  have h1 := fromFp_val_eq_intSigVal (R := R) f policy fp hsigned h_prec hm h_no_ov h_no_nan
+  -- Step 2: fp_out.toVal = intSigVal sign rc.1 rc.2.1 (via roundIntSigM match)
+  -- The roundSigCore params match FloatFormat params:
+  have h_prec_nat : FloatFormat.prec.toNat = f.manBits + 1 := by
+    have := @FloatFormat.prec_toNat_eq inst
+    omega
+  have hrc_params : roundSigCore fp.s fp.m (fp.e - inst.prec + 1) (f.manBits + 1)
+      (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ)) rneRoundUp =
+    roundSigCore fp.s fp.m (fp.e - inst.prec + 1) FloatFormat.prec.toNat
+      FloatFormat.min_exp FloatFormat.max_exp rneRoundUp := by
+    rw [h_prec_nat, h_fmt_min, h_fmt_max]
+  -- Rewrite h1 and h_no_ov using unified params
+  rw [hrc_params] at h1 h_no_ov
+  rw [h1]
+  -- Now need: intSigVal sign rc.1 rc.2.1 = fp_out.toVal
+  -- This follows from roundIntSigM matching roundSigCore
+  have h_fp_toVal : fp.toVal (R := R) = intSigVal (R := R) fp.s fp.m (fp.e - inst.prec + 1) :=
+    finiteFp_toVal_eq_intSigVal fp
+  rw [h_fp_toVal] at h_round_finite
+  exact (roundIntSigM_val_eq_roundSigCore_val (R := R) fp.s fp.m
+    (fp.e - inst.prec + 1) hm fp_out h_shouldRoundUp h_no_ov h_round_finite).symm
+
+end capstone
+
 end StorageFp

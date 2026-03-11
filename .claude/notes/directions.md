@@ -141,6 +141,16 @@ Domain-specific: unfold rounding function → simp reduceDIte → three-way case
 (subnormal/normal/overflow) → unfold appropriate subroutine. Very repetitive in
 Rounding/ files but narrow applicability.
 
+## StorageFormats Extensions
+- [x] **Capstone theorem**: `fromFp.toVal = RMode.round(fp.toVal)` when no overflow. ✓
+  Chain: `fromFp_val_eq_intSigVal` → `roundSigCore_eq_roundIntSigM` → `RoundIntSigMSound` → `RMode.round`.
+  Need: show `roundSigCore` with `rneRoundUp` matches `roundIntSigM` with RNE `shouldRoundUp`.
+  Typeclasses: `[RMode R] [RModeExec] [RoundIntSigMSound R]` + hypothesis that `shouldRoundUp = policyShouldRoundUp .nearestEven`.
+- [ ] **Overflow correctness**: characterize when overflow occurs (magnitude > max finite) and that saturation → `maxFinite`
+- [ ] **E8M0 round-trip**: unsigned format, no mantissa — different logic, currently uncovered in RoundTrip.lean
+- [ ] **General round-trip**: `∀ f, ...` instead of per-format `native_decide` (hard, needs bitvector extensionality)
+- **Note**: `hsigned : f.hasSigned = true` required everywhere — E8M0 (unsigned) is excluded from all FromFpCorrect theorems
+
 ## Long-Term
 - [ ] Error-minimizing tactic (reorder FP computations)
 - [ ] Verified computation examples (e.g. count of floats between 0 and 1)
