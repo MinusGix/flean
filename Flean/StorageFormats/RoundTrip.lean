@@ -169,7 +169,6 @@ for each concrete format without needing general bitvector extensionality.
 
 end StorageFp
 
--- Fintype instances needed for exhaustive verification via native_decide
 instance BitVec.instFintype (n : ℕ) : Fintype (BitVec n) :=
   Fintype.ofEquiv (Fin (2 ^ n))
     ⟨BitVec.ofFin, BitVec.toFin, fun _ => rfl, fun ⟨_⟩ => rfl⟩
@@ -183,11 +182,13 @@ section exhaustive
 
 private local instance : FloatFormat := FloatFormat.ofE4M3
 
+set_option maxRecDepth 4096 in
+set_option maxHeartbeats 6400000 in
 /-- Every finite E4M3 value round-trips through toFiniteFp/fromFiniteFp. -/
 theorem roundtrip_all_E4M3 :
     ∀ v : StorageFp E4M3, ∀ (h : v.isFinite),
       fromFiniteFp E4M3 .saturate
-        (v.toFiniteFp (by decide) (by decide) (by decide) h) = v := by native_decide
+        (v.toFiniteFp (by decide) (by decide) (by decide) h) = v := by decide
 
 end exhaustive
 
@@ -195,10 +196,12 @@ section exhaustive2
 
 private local instance : FloatFormat := FloatFormat.ofE5M2
 
+set_option maxRecDepth 4096 in
+set_option maxHeartbeats 6400000 in
 theorem roundtrip_all_E5M2 :
     ∀ v : StorageFp E5M2, ∀ (h : v.isFinite),
       fromFiniteFp E5M2 .saturate
-        (v.toFiniteFp (by decide) (by decide) (by decide) h) = v := by native_decide
+        (v.toFiniteFp (by decide) (by decide) (by decide) h) = v := by decide
 
 end exhaustive2
 
@@ -206,10 +209,12 @@ section exhaustive3
 
 private local instance : FloatFormat := FloatFormat.ofE3M2
 
+set_option maxRecDepth 4096 in
+set_option maxHeartbeats 1600000 in
 theorem roundtrip_all_E3M2 :
     ∀ v : StorageFp E3M2, ∀ (h : v.isFinite),
       fromFiniteFp E3M2 .saturate
-        (v.toFiniteFp (by decide) (by decide) (by decide) h) = v := by native_decide
+        (v.toFiniteFp (by decide) (by decide) (by decide) h) = v := by decide
 
 end exhaustive3
 
@@ -217,10 +222,12 @@ section exhaustive4
 
 private local instance : FloatFormat := FloatFormat.ofE2M3
 
+set_option maxRecDepth 4096 in
+set_option maxHeartbeats 1600000 in
 theorem roundtrip_all_E2M3 :
     ∀ v : StorageFp E2M3, ∀ (h : v.isFinite),
       fromFiniteFp E2M3 .saturate
-        (v.toFiniteFp (by decide) (by decide) (by decide) h) = v := by native_decide
+        (v.toFiniteFp (by decide) (by decide) (by decide) h) = v := by decide
 
 end exhaustive4
 
@@ -228,10 +235,12 @@ section exhaustive5
 
 private local instance : FloatFormat := FloatFormat.ofE2M1
 
+set_option maxRecDepth 4096 in
+set_option maxHeartbeats 800000 in
 theorem roundtrip_all_E2M1 :
     ∀ v : StorageFp E2M1, ∀ (h : v.isFinite),
       fromFiniteFp E2M1 .saturate
-        (v.toFiniteFp (by decide) (by decide) (by decide) h) = v := by native_decide
+        (v.toFiniteFp (by decide) (by decide) (by decide) h) = v := by decide
 
 end exhaustive5
 
