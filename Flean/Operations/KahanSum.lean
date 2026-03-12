@@ -423,4 +423,108 @@ theorem kahan_error_bound
     _ ≤ traceResidualAbsBound trace + |final.comp.toVal (R := R)| :=
         add_le_add (traceResidual_abs_le trace) (le_refl _)
 
+/-! ## Concrete Bounds via Second-Order Analysis
+
+To derive the concrete `O(η)` error bound, we show that ρ₃ and ρ₄ are second-order
+(O(η²)) since they operate on quantities that are themselves O(η)-sized rounding errors.
+
+Key algebraic identities:
+- `t - sum = y + ρ₂` (the "t−sum recovers y up to ρ₂")
+- `w - y = ρ₂ + ρ₃` (the "w−y captures rounding errors")
+- `c' = ρ₂ + ρ₃ + ρ₄` (compensation captures all remaining errors)
+
+These let us bound:
+- `|ρ₃| ≤ η · |y + ρ₂| ≤ η(|y| + η|sum + y|)` — first-order in y, second-order correction
+- `|ρ₄| ≤ η · |ρ₂ + ρ₃|` — purely second-order
+- `|c'| ≤ η|sum + y| + η|y + ρ₂| + η|ρ₂ + ρ₃|` — bounded by O(η) -/
+
+omit [FloorRing R] in
+/-- Triangle inequality bound on the step residual:
+    `|ρ₁ - ρ₃ - ρ₄| ≤ |ρ₁| + |ρ₃| + |ρ₄|`. -/
+theorem stepResidual_abs_le [RModeExec]
+    (st : State) (x : FiniteFp) (step : StepWitness st x) :
+    let ρ₁ := (step.y.toVal : R) - (x.toVal - st.comp.toVal)
+    let ρ₃ := (step.w.toVal : R) - (step.t.toVal - st.sum.toVal)
+    let ρ₄ := (step.c'.toVal : R) - (step.w.toVal - step.y.toVal)
+    |stepResidual (R := R) st x step| ≤ |ρ₁| + |ρ₃| + |ρ₄| := by
+  simp only
+  set ρ₁ := (step.y.toVal : R) - (x.toVal - st.comp.toVal)
+  set ρ₃ := (step.w.toVal : R) - (step.t.toVal - st.sum.toVal)
+  set ρ₄ := (step.c'.toVal : R) - (step.w.toVal - step.y.toVal)
+  have hconv : stepResidual (R := R) st x step = ρ₁ + (-ρ₃) + (-ρ₄) := by
+    unfold stepResidual; ring
+  rw [hconv]
+  have h1 := abs_add_le (ρ₁ + (-ρ₃)) (-ρ₄)
+  have h2 := abs_add_le ρ₁ (-ρ₃)
+  rw [abs_neg ρ₃] at h2
+  rw [abs_neg ρ₄] at h1
+  linarith
+
+/-- Bound on |ρ₃| using the identity `t - sum = y + ρ₂`:
+    `|ρ₃| ≤ η · |y + ρ₂|`. -/
+theorem rho3_bound_via_y
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    (st : State) (x : FiniteFp) (step : StepWitness st x)
+    (hnr : StepNormalRange (R := R) st x step) :
+    |(step.w.toVal : R) - (step.t.toVal - st.sum.toVal)| ≤
+      η * |(step.y.toVal : R) + (step.t.toVal - (st.sum.toVal + step.y.toVal))| := by
+  have hbnd := (kahan_step_rounding_bounds st x step hnr).2.2.1
+  -- hbnd : |ρ₃| ≤ η * |t.toVal - sum.toVal|
+  -- t.toVal - sum.toVal = y.toVal + (t.toVal - (sum.toVal + y.toVal))
+  conv at hbnd => rhs; rw [show (step.t.toVal : R) - st.sum.toVal =
+    step.y.toVal + (step.t.toVal - (st.sum.toVal + step.y.toVal)) from by ring]
+  exact hbnd
+
+/-- Bound on |ρ₄| using the identity `w - y = ρ₂ + ρ₃`:
+    `|ρ₄| ≤ η · |ρ₂ + ρ₃|` — purely second-order. -/
+theorem rho4_bound_via_rhos
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    (st : State) (x : FiniteFp) (step : StepWitness st x)
+    (hnr : StepNormalRange (R := R) st x step) :
+    |(step.c'.toVal : R) - (step.w.toVal - step.y.toVal)| ≤
+      η * |((step.t.toVal : R) - (st.sum.toVal + step.y.toVal)) +
+           (step.w.toVal - (step.t.toVal - st.sum.toVal))| := by
+  have hbnd := (kahan_step_rounding_bounds st x step hnr).2.2.2
+  conv at hbnd => rhs; rw [show (step.w.toVal : R) - step.y.toVal =
+    (step.t.toVal - (st.sum.toVal + step.y.toVal)) +
+    (step.w.toVal - (step.t.toVal - st.sum.toVal)) from by ring]
+  exact hbnd
+
+omit [FloorRing R] in
+/-- The compensation `c'` is bounded by the sum of |ρ₂|, |ρ₃|, |ρ₄|
+    (since `c' = ρ₂ + ρ₃ + ρ₄` algebraically). -/
+theorem comp_abs_le_rounding_errors
+    [RModeExec]
+    (st : State) (x : FiniteFp) (step : StepWitness st x) :
+    let ρ₂ := (step.t.toVal : R) - (st.sum.toVal + step.y.toVal)
+    let ρ₃ := (step.w.toVal : R) - (step.t.toVal - st.sum.toVal)
+    let ρ₄ := (step.c'.toVal : R) - (step.w.toVal - step.y.toVal)
+    |step.c'.toVal (R := R)| ≤ |ρ₂| + |ρ₃| + |ρ₄| := by
+  simp only
+  have heq := kahan_step_comp_eq_rounding_errors (R := R) st x step
+  set a := (step.t.toVal : R) - (st.sum.toVal + step.y.toVal)
+  set b := (step.w.toVal : R) - (step.t.toVal - st.sum.toVal)
+  set c := (step.c'.toVal : R) - (step.w.toVal - step.y.toVal)
+  rw [heq]
+  linarith [abs_add_le (a + b) c, abs_add_le a b]
+
+/-- Combined bound: |c'| ≤ η|sum + y| + η|y + ρ₂| + η|ρ₂ + ρ₃|.
+    The first term is O(η), the second O(η) with O(η²) correction,
+    the third purely O(η²). -/
+theorem comp_concrete_bound
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    (st : State) (x : FiniteFp) (step : StepWitness st x)
+    (hnr : StepNormalRange (R := R) st x step) :
+    |step.c'.toVal (R := R)| ≤
+      η * |(st.sum.toVal : R) + step.y.toVal| +
+      η * |(step.y.toVal : R) + (step.t.toVal - (st.sum.toVal + step.y.toVal))| +
+      η * |((step.t.toVal : R) - (st.sum.toVal + step.y.toVal)) +
+           (step.w.toVal - (step.t.toVal - st.sum.toVal))| := by
+  have hcomp := comp_abs_le_rounding_errors (R := R) st x step
+  simp only at hcomp
+  have ⟨_, hρ₂, _, _⟩ := kahan_step_rounding_bounds st x step hnr
+  have hρ₃' := rho3_bound_via_y st x step hnr
+  have hρ₄' := rho4_bound_via_rhos st x step hnr
+  linarith
+
 end KahanSum
