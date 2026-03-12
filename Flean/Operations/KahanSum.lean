@@ -1469,7 +1469,7 @@ theorem step_twosum_exact_of_sub_exact
         hm_sum hsy_ne step.t step.ht
     -- w - y = -(sum + y - t) = -err.toVal = (-err).toVal
     have hwy_val : (step.w.toVal : R) - step.y.toVal = (-err_fp).toVal := by
-      rw [hw_exact, FiniteFp.toVal_neg_eq_neg (R := R), herr_val]; ring
+      rw [hw_exact, FiniteFp.toVal_neg_eq_neg, herr_val]; ring
     -- (-err_fp).notNegZero since err_fp.m > 0 (its value is nonzero)
     have herr_m_pos : 0 < err_fp.m := by
       by_contra h
@@ -1480,7 +1480,7 @@ theorem step_twosum_exact_of_sub_exact
       rw [herr_val] at this
       exact absurd (by linarith [hwy_val,
         show (-err_fp).toVal (R := R) = -err_fp.toVal from
-          FiniteFp.toVal_neg_eq_neg (R := R) err_fp] :
+          FiniteFp.toVal_neg_eq_neg err_fp] :
         (step.w.toVal : R) - step.y.toVal = 0) hwy
     have hneg_nnz : (-err_fp).notNegZero := Or.inr (by simp [herr_m_pos])
     -- fl(w - y) = round(w.toVal - y.toVal) = round((-err_fp).toVal) = (-err_fp)
@@ -1492,6 +1492,6 @@ theorem step_twosum_exact_of_sub_exact
     have hc_eq := Fp.finite.inj hc
     -- c' = -err_fp, so c'.toVal = (-err_fp).toVal = -err_fp.toVal = -(sum+y-t) = w-y
     have : step.c'.toVal (R := R) = (-err_fp).toVal := by rw [hc_eq]
-    rw [this, FiniteFp.toVal_neg_eq_neg (R := R), herr_val, hw_exact]; ring
+    rw [this, FiniteFp.toVal_neg_eq_neg, herr_val, hw_exact]; ring
 
 end KahanSum
