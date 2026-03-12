@@ -410,6 +410,34 @@ theorem toVal_normal_lower [Field R] [LinearOrder R] [IsStrictOrderedRing R]
             _ ≤ (x.m : R) := by exact_mod_cast hn.1
         bound_calc
 
+/-- Positive projection: same float with positive sign. -/
+def posProj (x : FiniteFp) : FiniteFp := ⟨false, x.e, x.m, x.valid⟩
+
+@[simp] theorem posProj_s (x : FiniteFp) : (posProj x).s = false := rfl
+@[simp] theorem posProj_e (x : FiniteFp) : (posProj x).e = x.e := rfl
+@[simp] theorem posProj_m (x : FiniteFp) : (posProj x).m = x.m := rfl
+
+theorem toVal_mag_eq_toVal_posProj [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (x : FiniteFp) : toVal_mag x (R := R) = toVal (posProj x) := by
+  have : (posProj x).toVal (R := R) = toVal_mag x := by
+    rw [toVal_pos_eq (posProj x) rfl]
+    simp [toVal_mag, posProj, FloatFormat.radix_val_eq_two]
+  linarith
+
+/-- Every finite float satisfies `toVal_mag < 2^(e + 1)` (sign-independent). -/
+theorem toVal_mag_lt_zpow_succ [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (x : FiniteFp) :
+    toVal_mag x (R := R) < (2 : R) ^ (x.e + 1) := by
+  rw [toVal_mag_eq_toVal_posProj]
+  exact toVal_lt_zpow_succ (posProj x) rfl
+
+/-- A normal float satisfies `2^e ≤ toVal_mag` (sign-independent). -/
+theorem toVal_mag_normal_lower [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (x : FiniteFp) (hn : _root_.isNormal x.m) :
+    (2 : R) ^ x.e ≤ toVal_mag x (R := R) := by
+  rw [toVal_mag_eq_toVal_posProj]
+  exact toVal_normal_lower (posProj x) rfl hn
+
 /-- A positive subnormal float satisfies `toVal < 2^min_exp`. -/
 theorem toVal_subnormal_lt [Field R] [LinearOrder R] [IsStrictOrderedRing R]
     (f : FiniteFp) (hs : f.s = false) (hsub : _root_.isSubnormal f.e f.m) :

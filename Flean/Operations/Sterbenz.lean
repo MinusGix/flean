@@ -3,9 +3,12 @@ import Flean.ZpowNorm.ZpowNorm
 
 /-! # Sterbenz Lemma
 
-The Sterbenz lemma states that if two positive floating-point numbers `a` and `b` satisfy
-`b/2 ≤ a ≤ 2b`, then their difference `a - b` is exactly representable — no rounding error
-occurs regardless of the rounding mode.
+The Sterbenz lemma states that if two floating-point numbers `a` and `b` of the same sign
+satisfy `|b|/2 ≤ |a| ≤ 2|b|`, then their difference `a - b` is exactly representable —
+no rounding error occurs regardless of the rounding mode.
+
+The original `sterbenz` theorem handles the positive case. The generalized
+`sterbenz_same_sign` handles arbitrary same-sign operands using `toVal_mag` conditions.
 -/
 
 section Sterbenz
@@ -169,6 +172,148 @@ theorem sterbenz (a b : FiniteFp) (ha : a.s = false) (hb : b.s = false)
     have hisum_bound : isum.natAbs < 2 ^ precNat := by
       simpa [isum_def, sterbenzAlignedDiffInt, sterbenzEMin] using
         sterbenz_aligned_diff_bound a b ha hb ha_nz hb_nz h_lb h_ub h_exp
+    have he_lo : e_base ≥ FloatFormat.min_exp - prec + 1 := by
+      rw [e_base_def, he_min_eq]
+      have : FloatFormat.min_exp ≤ min a.e b.e := le_min a.valid.1 b.valid.1; omega
+    have he_hi : e_base + prec - 1 ≤ FloatFormat.max_exp := by
+      rw [e_base_def, he_min_eq]
+      have : min a.e b.e ≤ FloatFormat.max_exp := le_trans (min_le_left _ _) a.valid.2.1; omega
+    have hdiff_ne : ⌞a⌟[R] - ⌞b⌟[R] ≠ 0 := sub_ne_zero.mpr hdiff
+    obtain ⟨f, hf_valid, hfv⟩ := exists_finiteFp_of_int_mul_zpow (R := R) isum e_base
+      hsum_ne hisum_bound he_lo he_hi
+    have hval_eq : ⌞a⌟[R] - ⌞b⌟[R] = ⌞f⌟[R] := hdiff_eq.trans hfv.symm
+    refine ⟨f, ?_, ?_⟩
+    have hsub_corr : a - b =
+        ○(⌞a⌟[R] - ⌞b⌟[R]) := by
+      simpa [sub_finite_eq_fpSubFinite, fpSubFinite, add_eq_fpAdd, fpAdd, add_finite_eq_fpAddFinite] using
+        (fpSubFinite_correct (R := R) a b hdiff_ne)
+    calc
+      a - b = ○(⌞a⌟[R] - ⌞b⌟[R]) := hsub_corr
+      _ = ○(⌞f⌟[R]) := by rw [hval_eq]
+      _ = f := RModeIdem.round_idempotent (R := R) f hf_valid
+    simpa [Fp.Represents] using hval_eq.symm
+
+/-! ## Generalized Sterbenz (same-sign operands)
+
+The classical Sterbenz lemma requires both operands positive. Since exponents and
+significands are sign-independent, the result extends to same-sign operands using
+magnitude conditions. -/
+
+omit [FloorRing R] in
+/-- Exponent proximity under magnitude conditions (sign-independent). -/
+theorem sterbenz_exp_proximity_mag (a b : FiniteFp)
+    (h_lb : FiniteFp.toVal_mag b (R := R) / 2 ≤ FiniteFp.toVal_mag a)
+    (h_ub : FiniteFp.toVal_mag a (R := R) ≤ 2 * FiniteFp.toVal_mag b) :
+    a.e - 1 ≤ b.e ∧ b.e - 1 ≤ a.e := by
+  have h2gt : (1 : R) < 2 := by norm_num
+  have two_mul_zpow (n : ℤ) : (2 : R) * (2 : R) ^ n = (2 : R) ^ (n + 1) := by zpow_norm
+  constructor
+  · by_cases ha_normal : _root_.isNormal a.m
+    · have : (2 : R) ^ a.e < (2 : R) ^ (b.e + 2) :=
+        calc (2 : R) ^ a.e ≤ FiniteFp.toVal_mag a := FiniteFp.toVal_mag_normal_lower a ha_normal
+          _ ≤ 2 * FiniteFp.toVal_mag b := h_ub
+          _ < 2 * (2 : R) ^ (b.e + 1) := by linarith [FiniteFp.toVal_mag_lt_zpow_succ (R := R) b]
+          _ = (2 : R) ^ ((b.e + 1) + 1) := two_mul_zpow _
+          _ = (2 : R) ^ (b.e + 2) := by congr 1; ring
+      linarith [(zpow_lt_zpow_iff_right₀ h2gt).mp this]
+    · linarith [(a.isNormal_or_isSubnormal.resolve_left ha_normal).1, b.valid.1]
+  · by_cases hb_normal : _root_.isNormal b.m
+    · have hb_div2 : (2 : R) ^ (b.e - 1) ≤ FiniteFp.toVal_mag b / 2 := by
+        have : (2 : R) ^ (b.e - 1) * 2 = (2 : R) ^ b.e := by zpow_norm
+        rw [le_div_iff₀ (by norm_num : (0 : R) < 2)]
+        linarith [FiniteFp.toVal_mag_normal_lower (R := R) b hb_normal]
+      have : (2 : R) ^ (b.e - 1) < (2 : R) ^ (a.e + 1) :=
+        calc (2 : R) ^ (b.e - 1) ≤ FiniteFp.toVal_mag b / 2 := hb_div2
+          _ ≤ FiniteFp.toVal_mag a := h_lb
+          _ < (2 : R) ^ (a.e + 1) := FiniteFp.toVal_mag_lt_zpow_succ a
+      linarith [(zpow_lt_zpow_iff_right₀ h2gt).mp this]
+    · linarith [(b.isNormal_or_isSubnormal.resolve_left hb_normal).1, a.valid.1]
+
+omit [FloorRing R] in
+/-- The aligned integer bound holds for same-sign operands: `|isum| < 2^prec`.
+    For same sign, the integer sum negates when both signs flip, preserving natAbs. -/
+theorem sterbenz_aligned_diff_bound_same_sign (a b : FiniteFp)
+    (hsame : a.s = b.s)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (h_lb : FiniteFp.toVal_mag b (R := R) / 2 ≤ FiniteFp.toVal_mag a)
+    (h_ub : FiniteFp.toVal_mag a (R := R) ≤ 2 * FiniteFp.toVal_mag b)
+    (h_exp : a.e - 1 ≤ b.e ∧ b.e - 1 ≤ a.e) :
+    (sterbenzAlignedDiffInt a b).natAbs < 2 ^ precNat := by
+  -- Reduce to positive case via posProj
+  rw [FiniteFp.toVal_mag_eq_toVal_posProj a, FiniteFp.toVal_mag_eq_toVal_posProj b] at h_lb h_ub
+  have h_lb_corr : ⌞b.posProj⌟[R] / 2 ≤ ⌞a.posProj⌟ := h_lb
+  have h_ub_corr : ⌞a.posProj⌟[R] ≤ 2 * ⌞b.posProj⌟ := h_ub
+  have hpos_bound := sterbenz_aligned_diff_bound a.posProj b.posProj
+    rfl rfl ha_nz hb_nz h_lb_corr h_ub_corr h_exp
+  -- Same-sign aligned diff has same natAbs as positive case
+  suffices (sterbenzAlignedDiffInt a b).natAbs =
+      (sterbenzAlignedDiffInt a.posProj b.posProj).natAbs from
+    this ▸ hpos_bound
+  unfold sterbenzAlignedDiffInt sterbenzEMin FiniteFp.posProj
+  simp only [FiniteFp.neg_def]
+  -- Bool.eq_false_or_eq_true returns (true ∨ false)
+  rcases Bool.eq_false_or_eq_true a.s with has | has
+  · -- a.s = true, b.s = true: need |(-am*2^k + bm*2^l)| = |(am*2^k - bm*2^l)|
+    simp only [has, hsame ▸ has, condNeg, Bool.not_true, Bool.not_false,
+      ite_true, ite_false, Bool.false_eq_true]
+    rw [show -(↑a.m : ℤ) * 2 ^ (a.e - min a.e b.e).toNat +
+      ↑b.m * 2 ^ (b.e - min a.e b.e).toNat =
+      -(↑a.m * 2 ^ (a.e - min a.e b.e).toNat +
+      -(↑b.m * 2 ^ (b.e - min a.e b.e).toNat)) from by ring,
+      Int.natAbs_neg]
+    congr 1; ring
+  · -- a.s = false, b.s = false: trivial
+    simp [has, hsame ▸ has, condNeg]
+
+/-- **Generalized Sterbenz Lemma**: If `a` and `b` are same-sign finite floats with
+    `|b|/2 ≤ |a| ≤ 2|b|`, then `a - b` is exactly representable. -/
+theorem sterbenz_same_sign (a b : FiniteFp) (hsame : a.s = b.s)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (h_lb : FiniteFp.toVal_mag b (R := R) / 2 ≤ FiniteFp.toVal_mag a)
+    (h_ub : FiniteFp.toVal_mag a (R := R) ≤ 2 * FiniteFp.toVal_mag b)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R] :
+    ∃ f : FiniteFp,
+      a - b = f ∧
+        Fp.Represents (⌞a⌟[R] - ⌞b⌟[R]) f := by
+  have h_exp := sterbenz_exp_proximity_mag a b h_lb h_ub
+  set e_min := min a.e (-b).e with e_min_def
+  have hnb_e : (-b).e = b.e := by rw [FiniteFp.neg_def]
+  have he_min_eq : e_min = min a.e b.e := by rw [e_min_def, hnb_e]
+  set isum : ℤ := condNeg a.s (a.m : ℤ) * 2 ^ (a.e - e_min).toNat +
+    condNeg (-b).s ((-b).m : ℤ) * 2 ^ ((-b).e - e_min).toNat with isum_def
+  have hexact := fpAddFinite_exact_sum R a (-b)
+  rw [FiniteFp.toVal_neg_eq_neg] at hexact
+  set e_base := e_min - prec + 1 with e_base_def
+  have hdiff_eq : ⌞a⌟[R] - ⌞b⌟[R] = (isum : R) * (2 : R) ^ e_base := by
+    rw [e_base_def]; linarith
+  by_cases hdiff : ⌞a⌟[R] = ⌞b⌟[R]
+  · have hisum_zero : isum = 0 := by
+      by_contra h
+      exact absurd (sub_eq_zero.mpr hdiff)
+        (by rw [hdiff_eq]; exact mul_ne_zero (Int.cast_ne_zero.mpr h) (zpow_ne_zero _ (by norm_num)))
+    let z : FiniteFp := {
+      s := exactCancelSign a.s (!b.s)
+      e := FloatFormat.min_exp
+      m := 0
+      valid := IsValidFiniteVal.zero
+    }
+    have hsum0 :
+        condNeg a.s (a.m : ℤ) * 2 ^ (a.e - min a.e b.e).toNat +
+          condNeg (!b.s) (b.m : ℤ) * 2 ^ (b.e - min a.e b.e).toNat = 0 := by
+      simpa [isum_def, e_min_def, hnb_e] using hisum_zero
+    refine ⟨z, ?_, ?_⟩
+    · simp [sub_finite_eq_fpSubFinite, fpSubFinite, add_eq_fpAdd, fpAdd,
+        add_finite_eq_fpAddFinite, fpAddFinite, hsum0, z]
+    rw [Fp.Represents]
+    rw [show ⌞a⌟[R] - ⌞b⌟[R] = 0 from sub_eq_zero.mpr hdiff]
+    exact FiniteFp.toVal_isZero (R := R) (by simp [z, FiniteFp.isZero])
+  · have hsum_ne : isum ≠ 0 := by
+      intro hzero; apply hdiff
+      have : ⌞a⌟[R] - ⌞b⌟[R] = 0 := by rw [hdiff_eq, hzero, Int.cast_zero, zero_mul]
+      linarith
+    have hisum_bound : isum.natAbs < 2 ^ precNat := by
+      simpa [isum_def, sterbenzAlignedDiffInt, sterbenzEMin] using
+        sterbenz_aligned_diff_bound_same_sign a b hsame ha_nz hb_nz h_lb h_ub h_exp
     have he_lo : e_base ≥ FloatFormat.min_exp - prec + 1 := by
       rw [e_base_def, he_min_eq]
       have : FloatFormat.min_exp ≤ min a.e b.e := le_min a.valid.1 b.valid.1; omega
