@@ -592,4 +592,131 @@ theorem split_b_sub_bv_pos
   · exact split_b_sub_bv_sterbenz a b s ha hb ha_nz hb_nz hab hsum_ne hs bv hbv
   · exact split_b_sub_bv_grid a b s ha hb ha_nz hb_nz hab hsum_ne hs bv hbv
 
+/-! ## Same-sign generalization
+
+Extends the positive-case splits to same-sign operands via `RModeConj`.
+When both operands are negative, negate to the positive case. -/
+
+/-- Same-sign split: `s - bv` is representable for same-sign operands. -/
+theorem split_s_sub_bv_same_sign
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
+    [RModeGrid R]
+    (a b s : FiniteFp) (hsame : a.s = b.s)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
+    (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s)
+    (bv : FiniteFp)
+    (hbv : ○((s.toVal : R) - a.toVal) = Fp.finite bv) :
+    ∃ f : FiniteFp, (f.notNegZero) ∧
+      f.toVal (R := R) = s.toVal - bv.toVal := by
+  rcases Bool.eq_false_or_eq_true a.s with ha | ha
+  · -- a.s = true → both negative → negate to positive case
+    have hb : b.s = true := hsame ▸ ha
+    -- Handle s.toVal = a.toVal case: bv.toVal = 0, witness is s
+    by_cases hsa_ne : (s.toVal : R) - a.toVal = 0
+    · -- s.toVal = a.toVal ⟹ bv = fl(0) = 0, so bv.toVal = 0
+      have hsa_eq : (s.toVal : R) = a.toVal := sub_eq_zero.mp hsa_ne
+      rw [hsa_eq, sub_self] at hbv
+      have h0 := RModeZero.round_zero (R := R)
+      have hbv_m0 : bv.m = 0 := by
+        rw [h0] at hbv
+        have := (Fp.finite.injEq bv 0).mp hbv.symm
+        simp [FiniteFp.ext_iff] at this
+        exact this.2.2
+      have hbv_zero : bv.toVal (R := R) = 0 := FiniteFp.toVal_isZero hbv_m0
+      rw [hbv_zero, sub_zero]
+      have hs_nz : 0 < s.m := by
+        by_contra hc; push_neg at hc
+        have hsm : s.m = 0 := by omega
+        have : s.toVal (R := R) = 0 := FiniteFp.toVal_isZero hsm
+        exact FiniteFp.toVal_ne_zero_of_m_pos a ha_nz (R := R) (by linarith)
+      exact ⟨s, Or.inr hs_nz, rfl⟩
+    · -- s.toVal ≠ a.toVal: use RModeConj to negate
+      have ha' : (-a).s = false := by simp [ha]
+      have hb' : (-b).s = false := by simp [hb]
+      have ha'_nz : 0 < (-a).m := by simp; exact ha_nz
+      have hb'_nz : 0 < (-b).m := by simp; exact hb_nz
+      have hsum_ne' : ((-a).toVal : R) + (-b).toVal ≠ 0 := by
+        rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg]
+        intro h; exact hsum_ne (by linarith)
+      have hs' : ○(((-a).toVal : R) + (-b).toVal) = Fp.finite (-s) := by
+        rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg,
+            show -(a.toVal : R) + -(b.toVal : R) = -((a.toVal : R) + b.toVal) from by ring,
+            RModeConj.round_neg _ hsum_ne, hs, Fp.neg_finite]
+      have hbv' : ○(((-s).toVal : R) - (-a).toVal) = Fp.finite (-bv) := by
+        rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg,
+            show -(s.toVal : R) - -(a.toVal : R) = -((s.toVal : R) - a.toVal) from by ring,
+            RModeConj.round_neg _ hsa_ne, hbv, Fp.neg_finite]
+      obtain ⟨f, hf, hfv⟩ := split_s_sub_bv_pos (R := R) (-a) (-b) (-s)
+        ha' hb' ha'_nz hb'_nz hsum_ne' hs' (-bv) hbv'
+      rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg] at hfv
+      -- f.toVal = -(s.toVal - bv.toVal), need witness with value s.toVal - bv.toVal
+      by_cases hval : (s.toVal : R) - bv.toVal = 0
+      · exact ⟨f, hf, by linarith⟩
+      · have hfm_pos : 0 < f.m := by
+          by_contra hc; push_neg at hc
+          have : f.m = 0 := by omega
+          have hfz : f.toVal (R := R) = 0 := FiniteFp.toVal_isZero this
+          exact hval (by linarith)
+        exact ⟨-f, Or.inr hfm_pos, by rw [FiniteFp.toVal_neg_eq_neg]; linarith⟩
+  · -- a.s = false → both positive → direct
+    have hb : b.s = false := hsame ▸ ha
+    exact split_s_sub_bv_pos (R := R) a b s ha hb ha_nz hb_nz hsum_ne hs bv hbv
+
+/-- Same-sign split: `b - bv` is representable for same-sign operands. -/
+theorem split_b_sub_bv_same_sign
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
+    [RModeGrid R]
+    (a b s : FiniteFp) (hsame : a.s = b.s)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
+    (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s)
+    (bv : FiniteFp)
+    (hbv : ○((s.toVal : R) - a.toVal) = Fp.finite bv) :
+    ∃ f : FiniteFp, (f.notNegZero) ∧
+      f.toVal (R := R) = b.toVal - bv.toVal := by
+  rcases Bool.eq_false_or_eq_true a.s with ha | ha
+  · -- a.s = true → both negative → negate to positive case
+    have hb : b.s = true := hsame ▸ ha
+    by_cases hsa_ne : (s.toVal : R) - a.toVal = 0
+    · have hsa_eq : (s.toVal : R) = a.toVal := sub_eq_zero.mp hsa_ne
+      rw [hsa_eq, sub_self] at hbv
+      have h0 := RModeZero.round_zero (R := R)
+      have hbv_m0 : bv.m = 0 := by
+        rw [h0] at hbv
+        have := (Fp.finite.injEq bv 0).mp hbv.symm
+        simp [FiniteFp.ext_iff] at this
+        exact this.2.2
+      have hbv_zero : bv.toVal (R := R) = 0 := FiniteFp.toVal_isZero hbv_m0
+      rw [hbv_zero, sub_zero]
+      exact ⟨b, Or.inr hb_nz, rfl⟩
+    · have ha' : (-a).s = false := by simp [ha]
+      have hb' : (-b).s = false := by simp [hb]
+      have ha'_nz : 0 < (-a).m := by simp; exact ha_nz
+      have hb'_nz : 0 < (-b).m := by simp; exact hb_nz
+      have hsum_ne' : ((-a).toVal : R) + (-b).toVal ≠ 0 := by
+        rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg]
+        intro h; exact hsum_ne (by linarith)
+      have hs' : ○(((-a).toVal : R) + (-b).toVal) = Fp.finite (-s) := by
+        rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg,
+            show -(a.toVal : R) + -(b.toVal : R) = -((a.toVal : R) + b.toVal) from by ring,
+            RModeConj.round_neg _ hsum_ne, hs, Fp.neg_finite]
+      have hbv' : ○(((-s).toVal : R) - (-a).toVal) = Fp.finite (-bv) := by
+        rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg,
+            show -(s.toVal : R) - -(a.toVal : R) = -((s.toVal : R) - a.toVal) from by ring,
+            RModeConj.round_neg _ hsa_ne, hbv, Fp.neg_finite]
+      obtain ⟨f, hf, hfv⟩ := split_b_sub_bv_pos (R := R) (-a) (-b) (-s)
+        ha' hb' ha'_nz hb'_nz hsum_ne' hs' (-bv) hbv'
+      rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg] at hfv
+      by_cases hval : (b.toVal : R) - bv.toVal = 0
+      · exact ⟨f, hf, by linarith⟩
+      · have hfm_pos : 0 < f.m := by
+          by_contra hc; push_neg at hc
+          have : f.m = 0 := by omega
+          have hfz : f.toVal (R := R) = 0 := FiniteFp.toVal_isZero this
+          exact hval (by linarith)
+        exact ⟨-f, Or.inr hfm_pos, by rw [FiniteFp.toVal_neg_eq_neg]; linarith⟩
+  · have hb : b.s = false := hsame ▸ ha
+    exact split_b_sub_bv_pos (R := R) a b s ha hb ha_nz hb_nz hsum_ne hs bv hbv
+
 end SplitPositive
