@@ -1,5 +1,6 @@
 import Flean.Operations.Add
 import Flean.Operations.Sub
+import Flean.Operations.AddErrorRepresentable
 import Flean.Rounding.PolicyInstances
 
 /-!
@@ -154,13 +155,16 @@ conditionally swapping, removing the need for `StepNormalRange` in some cases.
 Would require a modified `StepWitness` with conditional logic. Architecture:
 new file `NeumaierSum.lean` reusing the trace infrastructure.
 
-### E. Connection to `twoSum_exact`
+### E. Connection to `twoSum_exact` (partially done)
 
-Currently `StepTwoSumExact` is stated as a hypothesis. Connecting it to our
-proven `twoSum_exact` (TwoSum.lean) requires showing that the Kahan step's
-`(t, w, c') = (fl(sum+y), fl(t-sum), fl(w-y))` is indeed a 2Sum computation
-on `(sum, y)`. This would make the TwoSum-exactness automatic rather than
-hypothesized, eliminating `hexact` from all Approach B theorems.
+`step_twosum_exact_of_sub_exact` bridges from a simpler hypothesis — that the
+first subtraction `w = fl(t - sum)` is exact — to full `StepTwoSumExact`.
+The proof uses `add_error_representable_general_left_nz` to show the rounding
+error is representable, then `RModeIdem.round_idempotent` to show the second
+subtraction is also exact. Requires `RModeIdem`, `RModeConj`, and `sum.m > 0`.
+
+Remaining: connect `hw_exact` to Sterbenz/Dekker conditions or `twoSum_exact`
+to fully eliminate `hexact` from Approach B theorems.
 
 ## References
 
@@ -206,6 +210,9 @@ hypothesized, eliminating `hexact` from all Approach B theorems.
 - `step_sum_output_le` — |t| ≤ (1+η)·|sum+y|
 - `trace_energy_bound` — energy invariant: F' ≤ (1+η)²·F propagated through trace
 - **`kahan_higham_bound_auto`** — self-contained bound eliminating hM hypothesis
+
+### Extension E (TwoSum-exactness bridge)
+- `step_twosum_exact_of_sub_exact` — derives `StepTwoSumExact` from first-subtraction exactness
 -/
 
 namespace KahanSum
@@ -1414,5 +1421,77 @@ theorem kahan_higham_bound_auto
       _ = η * P * S := by ring
   -- Combine: η·S + n·η²·P·S + η·P·S = (η(1+P) + nη²P)·S
   linarith
+
+/-! ## Extension E: Deriving `StepTwoSumExact` from First-Subtraction Exactness
+
+The `StepTwoSumExact` hypothesis states `c' = t - (sum + y)` — the compensation
+exactly captures the rounding error. This follows from the **error-free
+transformation**: if the first subtraction `w = fl(t - sum)` is exact
+(i.e., `w.toVal = t.toVal - sum.toVal`), then the second subtraction
+`c' = fl(w - y)` is also exact because `w - y = -(rounding error)` is
+representable (by `add_error_representable_general_left_nz`), and rounding a
+representable number is exact (by `RModeIdem`).
+
+The first subtraction is exact under the **Dekker condition** `|sum| ≥ |y|`
+(Sterbenz applies), which holds in practice when the partial sum dominates
+the compensated input. -/
+
+/-- Given that the first subtraction `w = fl(t - sum)` is exact and `sum` has
+    nonzero significand, `StepTwoSumExact` follows automatically.
+
+    This reduces the TwoSum-exactness hypothesis to a single exactness condition
+    on `fl(t - sum)`, which holds whenever Sterbenz/Dekker conditions are met. -/
+theorem step_twosum_exact_of_sub_exact
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    [RModeConj R] [RModeIdem R]
+    (st : State) (x : FiniteFp) (step : StepWitness st x)
+    (hm_sum : 0 < st.sum.m)
+    (hw_exact : step.w.toVal (R := R) = step.t.toVal - st.sum.toVal) :
+    StepTwoSumExact (R := R) st x step := by
+  unfold StepTwoSumExact
+  -- Need: c'.toVal = t.toVal - (sum.toVal + y.toVal)
+  -- Since w.toVal = t.toVal - sum.toVal (hw_exact), this is c'.toVal = w.toVal - y.toVal
+  suffices h : step.c'.toVal (R := R) = step.w.toVal - step.y.toVal by
+    rw [h, hw_exact]; ring
+  by_cases hwy : (step.w.toVal : R) - step.y.toVal = 0
+  · -- Zero case: w.toVal = y.toVal, so c' = fl(w - y) = fl(0) = 0
+    have hweq : (step.w.toVal : R) = step.y.toVal := sub_eq_zero.mp hwy
+    exact (fpSub_exact_zero (R := R) step.w step.y step.c' step.hc hwy).symm ▸ hwy.symm
+  · -- Nonzero case: the error sum+y-t is representable
+    -- First, sum + y ≠ 0 (otherwise w-y = 0, contradiction)
+    have hsy_ne : (st.sum.toVal : R) + step.y.toVal ≠ 0 := by
+      intro heq; apply hwy
+      have := fpAdd_exact_zero (R := R) st.sum step.y step.t step.ht heq
+      linarith [hw_exact]
+    -- Get representable error: err.toVal = sum + y - t
+    obtain ⟨err_fp, herr_nnz, herr_val⟩ :=
+      add_error_representable_general_left_nz (R := R) st.sum step.y
+        hm_sum hsy_ne step.t step.ht
+    -- w - y = -(sum + y - t) = -err.toVal = (-err).toVal
+    have hwy_val : (step.w.toVal : R) - step.y.toVal = (-err_fp).toVal := by
+      rw [hw_exact, FiniteFp.toVal_neg_eq_neg (R := R), herr_val]; ring
+    -- (-err_fp).notNegZero since err_fp.m > 0 (its value is nonzero)
+    have herr_m_pos : 0 < err_fp.m := by
+      by_contra h
+      push_neg at h
+      have hm0 : err_fp.m = 0 := Nat.eq_zero_of_le_zero h
+      have : (err_fp.toVal : R) = 0 := FiniteFp.toVal_isZero (show err_fp.isZero from by
+        unfold FiniteFp.isZero; omega)
+      rw [herr_val] at this
+      exact absurd (by linarith [hwy_val,
+        show (-err_fp).toVal (R := R) = -err_fp.toVal from
+          FiniteFp.toVal_neg_eq_neg (R := R) err_fp] :
+        (step.w.toVal : R) - step.y.toVal = 0) hwy
+    have hneg_nnz : (-err_fp).notNegZero := Or.inr (by simp [herr_m_pos])
+    -- fl(w - y) = round(w.toVal - y.toVal) = round((-err_fp).toVal) = (-err_fp)
+    have hsub_corr := fpSubFinite_correct (R := R) step.w step.y hwy
+    have hc := step.hc
+    simp only [sub_eq_fpSub, fpSub_coe_coe] at hsub_corr hc
+    rw [hsub_corr, hwy_val,
+      RModeIdem.round_idempotent (R := R) (-err_fp) hneg_nnz] at hc
+    have hc_eq := Fp.finite.inj hc
+    -- c' = -err_fp, so c'.toVal = (-err_fp).toVal = -err_fp.toVal = -(sum+y-t) = w-y
+    have : step.c'.toVal (R := R) = (-err_fp).toVal := by rw [hc_eq]
+    rw [this, FiniteFp.toVal_neg_eq_neg (R := R), herr_val, hw_exact]; ring
 
 end KahanSum
