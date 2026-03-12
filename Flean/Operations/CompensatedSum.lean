@@ -23,7 +23,9 @@ so the only rounding error per step is `ρ₁ = fl(x + err) - (x + err)`.
 
 - `cs_step_corrected_sum` — per-step identity: `σ' = σ + x + ρ₁`
 - `cs_trace_sigma_eq` — telescoping: `σₙ = σ₀ + Σxᵢ + Σρ₁ᵢ`
-- `cs_error_bound` — error bound: `|final_sum - Σxᵢ| ≤ |err| + η·Σ|xᵢ + errᵢ|`
+- `cs_error_bound` — error bound: `|final_sum - Σxᵢ| ≤ |err| + Σ|ρ₁ᵢ|`
+- `cs_rho1_abs_le` — concrete η model: `|ρ₁| ≤ η · |x + err|` (normal range)
+- `bv_exact_of_same_sign_dekker` — discharges `hbv_exact` under Dekker conditions
 -/
 
 namespace CompensatedSum
@@ -85,6 +87,43 @@ structure CSStep [RModeExec] (st : CSState) (x : FiniteFp) where
 def CSStep.nextState [RModeExec] {st : CSState} {x : FiniteFp}
     (step : CSStep (R := R) st x) : CSState :=
   ⟨step.t, step.err'⟩
+
+/-! ## Discharging `hbv_exact`
+
+The `hbv_exact` field of `CSStep` requires proving that `fl(t - sum)` exactly
+recovers `t - sum` when the sum is nonzero. This holds under the Dekker
+condition (same-sign with `|y| ≤ |sum|`) via Sterbenz.
+
+Note: `hbv_exact` does NOT hold in general when the Dekker condition fails.
+For unrestricted magnitude ordering, use `twoSum_6op_of_witnesses` directly
+with split-representability witnesses from `split_s_sub_bv_pos` / `split_b_sub_bv_pos`. -/
+
+/-- `fl(s - a) = s - a` when `a, b` are same-sign with `|b| ≤ |a|`.
+
+Uses Sterbenz: same-sign + Dekker ⟹ `|a| ≤ |s| ≤ 2|a|`, so `s - a` is exact. -/
+theorem bv_exact_of_same_sign_dekker [RModeExec]
+    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
+    (a b : FiniteFp) (hsame : a.s = b.s)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (hdekker : FiniteFp.toVal_mag b (R := R) ≤ FiniteFp.toVal_mag a)
+    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
+    (s : FiniteFp) (hs : a + b = (s : Fp))
+    (bv : FiniteFp) (hbv : s - a = (bv : Fp)) :
+    bv.toVal (R := R) = s.toVal - a.toVal := by
+  -- Get ○(a.toVal + b.toVal) = s from fpAddFinite_correct
+  have hcorr := fpAddFinite_correct (R := R) a b hsum_ne
+  simp only [add_eq_fpAdd, fpAdd_coe_coe] at hcorr hs
+  have hs_round : ○((a.toVal : R) + b.toVal) = Fp.finite s := hcorr.symm.trans hs
+  -- Sterbenz gives fl(s - a) = s - a exactly
+  obtain ⟨z_fp, hz_eq, hz_val⟩ := sterbenz_sub_sa_same_sign (R := R) a b
+    hsame ha_nz hb_nz hdekker hsum_ne s
+    (by simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe]; exact hs)
+  -- z_fp = bv since both equal s - a in Fp
+  simp only [sub_finite_eq_fpSubFinite, sub_eq_fpSub, fpSub_coe_coe] at hbv hz_eq
+  have : (bv : Fp) = (z_fp : Fp) := hbv.symm.trans hz_eq
+  have hbv_eq : bv = z_fp := by
+    cases this; rfl
+  rw [hbv_eq, hz_val]
 
 /-! ## TwoSum exactness -/
 
@@ -214,5 +253,63 @@ theorem cs_error_bound [RModeExec]
     _ ≤ csTraceResidualAbs trace + |final.err.toVal (R := R)| := by
         linarith [csTraceResidual_abs_le (R := R) trace]
     _ = |final.err.toVal (R := R)| + csTraceResidualAbs trace := by ring
+
+/-! ## Per-step rounding bound (η model)
+
+When `x + err` is in the normal range, the rounding error `ρ₁` satisfies
+`|ρ₁| ≤ η · |x + err|` where `η = 2^(-prec)` is the half machine epsilon.
+
+This connects the abstract residual to the concrete error model. -/
+
+/-- The rounding error `ρ₁ = fl(x + err) - (x + err)` satisfies the standard
+relative error model: `|ρ₁| ≤ η · |x + err|`, provided `x + err` is in
+the normal range (positive version). -/
+theorem cs_rho1_abs_le [RModeExec]
+    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
+    (st : CSState) (x : FiniteFp) (step : CSStep (R := R) st x)
+    (hnr : isNormalRange (|x.toVal (R := R) + st.err.toVal|)) :
+    |cs_rho1 (R := R) st x step| ≤
+      (2 : R) ^ (-(FloatFormat.prec : ℤ)) * |x.toVal + st.err.toVal| := by
+  set val := (x.toVal : R) + st.err.toVal with val_def
+  have hval_ne : val ≠ 0 := by
+    intro h; rw [h, abs_zero] at hnr
+    exact not_le.mpr (by linearize) hnr.1
+  -- ρ₁ = y.toVal - val
+  unfold cs_rho1
+  rw [show step.y.toVal (R := R) - (x.toVal + st.err.toVal) =
+      -(val - step.y.toVal) from by ring]
+  rw [abs_neg]
+  -- Get ○val = Fp.finite y
+  have hround : ○val = Fp.finite step.y := by
+    have := fpAddFinite_correct (R := R) x st.err hval_ne
+    simp only [add_eq_fpAdd, fpAdd_coe_coe] at this
+    rw [← this]; exact step.hy
+  -- Case split on sign of val
+  rcases le_or_gt val 0 with hle | hpos
+  · -- val < 0 (can't be 0 since val ≠ 0)
+    have hlt : val < 0 := lt_of_le_of_ne hle hval_ne
+    -- Use RModeConj: ○(-val) = -○val
+    have hneg_round : ○(-val) = Fp.finite (-step.y) := by
+      rw [RModeConj.round_neg val (ne_of_lt hlt), hround, Fp.neg_finite]
+    have hnr_neg : isNormalRange (-val) := by
+      rw [abs_of_neg hlt] at hnr; exact hnr
+    have hrel := RModeNearest_relativeError_le_half (-val) hnr_neg (-step.y) hneg_round
+    -- relativeError (-val) (-y) = |(-val - (-y).toVal) / (-val)|
+    --                            = |(val - y.toVal) / val|
+    --                            = relativeError val y  (in effect)
+    unfold Fp.relativeError at hrel
+    rw [FiniteFp.toVal_neg_eq_neg, neg_sub_neg] at hrel
+    -- hrel : |((val - y.toVal) / (-val))| ≤ η
+    rw [abs_div, abs_neg] at hrel
+    -- hrel : |val - y.toVal| / |val| ≤ η
+    rw [div_le_iff₀ (abs_pos.mpr hval_ne)] at hrel
+    rwa [abs_sub_comm] at hrel
+  · -- val > 0
+    have hnr_pos : isNormalRange val := by
+      rw [abs_of_pos hpos] at hnr; exact hnr
+    have hrel := RModeNearest_relativeError_le_half val hnr_pos step.y hround
+    unfold Fp.relativeError at hrel
+    rw [abs_div, div_le_iff₀ (abs_pos.mpr hval_ne)] at hrel
+    exact hrel
 
 end CompensatedSum
