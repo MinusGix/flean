@@ -119,17 +119,16 @@ The capstone `kahan_higham_bound` requires `hM : ∀ step, |sumᵢ + yᵢ| ≤ �
 This says the floating-point addition magnitudes don't exceed the sum of absolute
 values. Several approaches to discharging this:
 
-### A. Bootstrap from `nη < 1` (recommended next step)
+### A. Self-contained bound (✓ DONE)
 
-Assume `(xs.length : R) * η < 1`. Prove `|sumᵢ| ≤ (1 + O(iη))·Σⱼ≤ᵢ|xⱼ|` by
-simultaneous induction on `|sumᵢ|` and `|cᵢ|`, using the rounding bounds already
-in this file. This gives `|sumᵢ + yᵢ| ≤ (1 + O(nη))·Σ|xⱼ| ≤ 2·Σ|xⱼ|` when
-`nη ≤ 1/2`. Architecture: wrapper theorem `kahan_higham_bound'` taking `hsmall`
-instead of `hM`, deriving `hM` internally.
+The `hM` hypothesis is eliminated by `kahan_higham_bound_auto`, which uses
+`trace_energy_bound` (an energy invariant: `F' ≤ (1+η)²·F` at each step)
+to derive addition magnitude bounds automatically. The resulting bound:
 
-For Float64 (`η ≈ 10⁻¹⁶`), `nη < 1` allows `n ≈ 10¹⁵` — far beyond any
-practical summation. The constant degrades from `(2η + nη²)` to roughly
-`(4η + 4nη²)` due to the bootstrap factor of 2.
+  `|Eₙ| ≤ (η(1 + P) + nη²·P) · Σ|xᵢ|`   where `P = (1+η)^{2n}`
+
+For Float64 (`η ≈ 10⁻¹⁶`), `P ≈ 1` for any practical `n`, recovering
+Higham's `(2η + nη²)·Σ|xᵢ|`.
 
 ### B. Backward error form (Higham eq. 4.8)
 
@@ -201,6 +200,12 @@ hypothesized, eliminating `hexact` from all Approach B theorems.
 - `traceAddMag_le_mul_length` — traceAddMag ≤ n·M
 - `final_comp_le_eta_mul` — |cₙ| ≤ η·M (inductive invariant)
 - **`kahan_higham_bound`** — **(2η + nη²)·Σ|xᵢ|** (Higham Theorem 4.3)
+
+### Extension A (energy invariant → self-contained bound)
+- `step_add_mag_le_energy` — per-step: |sum+y| ≤ (1+η)²·(E+|x|)
+- `step_sum_output_le` — |t| ≤ (1+η)·|sum+y|
+- `trace_energy_bound` — energy invariant: F' ≤ (1+η)²·F propagated through trace
+- **`kahan_higham_bound_auto`** — self-contained bound eliminating hM hypothesis
 -/
 
 namespace KahanSum
@@ -1162,6 +1167,252 @@ theorem kahan_higham_bound
   -- Combine: η·S + η²·(n·S) + η·S = (2η + nη²)·S
   have h2' : η ^ 2 * traceAddMag (R := R) trace ≤ η ^ 2 * ((xs.length : R) * S) :=
     mul_le_mul_of_nonneg_left h2 (sq_nonneg _)
+  linarith
+
+/-! ## Extension A: Eliminating the `hM` Hypothesis
+
+The `kahan_higham_bound` theorem requires a user-supplied bound `hM` on the
+addition magnitudes `|sumᵢ + yᵢ| ≤ Σ|xⱼ|`. Extension A proves this
+automatically using an **energy invariant**: if `|sum| ≤ (1+η)·E` and
+`|comp| ≤ η·E`, then the addition magnitude `|sum + y| ≤ (1+η)²·(E + |x|)`,
+and the next state satisfies the same invariant with `E' = |sum + y|`.
+
+The key insight is to track `F = E + S` where `S` is the remaining input sum.
+At each step, `F' ≤ (1+η)²·F`, giving `Fₙ ≤ (1+η)^{2n}·F₀`. -/
+
+/-- Per-step energy transition: given `|sum| ≤ (1+η)·E` and `|comp| ≤ η·E`,
+    the addition magnitude `|sum + y|` is at most `(1+η)²·(E + |x|)`. -/
+theorem step_add_mag_le_energy
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    (st : State) (x : FiniteFp) (step : StepWitness st x)
+    (hnr : StepNormalRange (R := R) st x step)
+    (E : R)
+    (hsum_le : |st.sum.toVal (R := R)| ≤ (1 + η) * E)
+    (hcomp_le : |st.comp.toVal (R := R)| ≤ η * E) :
+    |(st.sum.toVal : R) + step.y.toVal| ≤
+      (1 + η) ^ 2 * (E + |x.toVal (R := R)|) := by
+  have hη : (0 : R) ≤ η := by positivity
+  -- |y - (x - comp)| ≤ η|x - comp|  (ρ₁ bound)
+  have hρ₁ := (kahan_step_rounding_bounds st x step hnr).1
+  -- |y| ≤ (1+η)|x - comp| ≤ (1+η)(|x| + |comp|)
+  have hy_sub : |step.y.toVal (R := R)| ≤ (1 + η) * (|x.toVal (R := R)| + |st.comp.toVal|) := by
+    have htri_xc : |(x.toVal : R) - st.comp.toVal| ≤ |x.toVal| + |st.comp.toVal| := by
+      calc |(x.toVal : R) - st.comp.toVal|
+          = |x.toVal + (-(st.comp.toVal : R))| := by ring_nf
+        _ ≤ |x.toVal| + |-(st.comp.toVal : R)| := abs_add_le _ _
+        _ = |x.toVal| + |st.comp.toVal| := by rw [abs_neg]
+    -- |y| = |(x-comp) + ρ₁| ≤ |x-comp| + |ρ₁| ≤ |x-comp| + η|x-comp| = (1+η)|x-comp|
+    have hy_le : |step.y.toVal (R := R)| ≤ (1 + η) * |(x.toVal : R) - st.comp.toVal| := by
+      have : (step.y.toVal : R) = (x.toVal - st.comp.toVal) +
+        (step.y.toVal - (x.toVal - st.comp.toVal)) := by ring
+      rw [this]
+      calc |((x.toVal : R) - st.comp.toVal) + (step.y.toVal - (x.toVal - st.comp.toVal))|
+          ≤ |x.toVal - st.comp.toVal| + |step.y.toVal - (x.toVal - st.comp.toVal)| :=
+            abs_add_le _ _
+        _ ≤ |x.toVal - st.comp.toVal| + η * |x.toVal - st.comp.toVal| := by linarith
+        _ = (1 + η) * |x.toVal - st.comp.toVal| := by ring
+    linarith [mul_le_mul_of_nonneg_left htri_xc (by linarith : (0 : R) ≤ 1 + η)]
+  -- |sum + y| ≤ |sum| + |y| ≤ (1+η)E + (1+η)(|x| + ηE)
+  --           = (1+η)((1+η)E + |x|) = (1+η)²E + (1+η)|x| ≤ (1+η)²(E + |x|)
+  calc |(st.sum.toVal : R) + step.y.toVal|
+      ≤ |st.sum.toVal| + |step.y.toVal| := abs_add_le _ _
+    _ ≤ (1 + η) * E + (1 + η) * (|x.toVal (R := R)| + |st.comp.toVal|) := by linarith
+    _ ≤ (1 + η) * E + (1 + η) * (|x.toVal| + η * E) := by
+        have : |st.comp.toVal (R := R)| ≤ η * E := hcomp_le
+        nlinarith [abs_nonneg (x.toVal (R := R))]
+    _ = (1 + η) * ((1 + η) * E + |x.toVal|) := by ring
+    _ = (1 + η) ^ 2 * E + (1 + η) * |x.toVal| := by ring
+    _ ≤ (1 + η) ^ 2 * E + (1 + η) ^ 2 * |x.toVal| := by
+        nlinarith [sq_nonneg (η : R), abs_nonneg (x.toVal (R := R))]
+    _ = (1 + η) ^ 2 * (E + |x.toVal (R := R)|) := by ring
+
+/-- The new partial sum `t = fl(sum + y)` satisfies `|t| ≤ (1+η)|sum+y|`. -/
+theorem step_sum_output_le
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    (st : State) (x : FiniteFp) (step : StepWitness st x)
+    (hnr : StepNormalRange (R := R) st x step) :
+    |step.t.toVal (R := R)| ≤
+      (1 + η) * |(st.sum.toVal : R) + step.y.toVal| := by
+  have hρ₂ := (kahan_step_rounding_bounds st x step hnr).2.1
+  have : (step.t.toVal : R) = (st.sum.toVal + step.y.toVal) +
+    (step.t.toVal - (st.sum.toVal + step.y.toVal)) := by ring
+  rw [this]
+  calc |(st.sum.toVal + step.y.toVal : R) +
+        (step.t.toVal - (st.sum.toVal + step.y.toVal))|
+      ≤ |st.sum.toVal + step.y.toVal| +
+        |step.t.toVal - (st.sum.toVal + step.y.toVal)| := abs_add_le _ _
+    _ ≤ |st.sum.toVal + step.y.toVal| +
+        η * |st.sum.toVal + step.y.toVal| := by linarith
+    _ = (1 + η) * |(st.sum.toVal : R) + step.y.toVal| := by ring
+
+set_option maxHeartbeats 400000 in
+/-- **Energy invariant for Kahan summation traces.**
+
+    Track `F = E + S` where `E` is the "energy" (bounding the state) and
+    `S = Σ|xᵢ|` is the remaining input magnitude. At each step,
+    `F' ≤ (1+η)²·F`, giving `F_final ≤ (1+η)^{2n}·F₀`.
+
+    Returns three bounds:
+    1. `traceAddMag ≤ n · (1+η)^{2n} · (E + S)` — total addition magnitudes
+    2. `|final.sum| ≤ (1+η) · (1+η)^{2n} · (E + S)` — final sum bounded
+    3. `|final.comp| ≤ η · (1+η)^{2n} · (E + S)` — final compensation bounded -/
+theorem trace_energy_bound
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final)
+    (hexact : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepTwoSumExact (R := R) st x step)
+    (hnr : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepNormalRange (R := R) st x step)
+    (E : R) (hE : 0 ≤ E)
+    (hsum_le : |init.sum.toVal (R := R)| ≤ (1 + η) * E)
+    (hcomp_le : |init.comp.toVal (R := R)| ≤ η * E) :
+    let S := (xs.map (fun x => |x.toVal (R := R)|)).sum
+    traceAddMag (R := R) trace ≤ (xs.length : R) * (1 + η) ^ (2 * xs.length) * (E + S) ∧
+    |final.sum.toVal (R := R)| ≤ (1 + η) * ((1 + η) ^ (2 * xs.length) * (E + S)) ∧
+    |final.comp.toVal (R := R)| ≤ η * ((1 + η) ^ (2 * xs.length) * (E + S)) := by
+  induction trace generalizing E with
+  | nil =>
+    simp only [traceAddMag, List.map_nil, List.sum_nil, List.length_nil,
+      Nat.cast_zero, zero_mul, mul_zero, pow_zero, one_mul, add_zero]
+    exact ⟨le_refl _, hsum_le, hcomp_le⟩
+  | @cons st x xs' fin step rest ih =>
+    simp only [traceAddMag, List.map_cons, List.sum_cons, List.length_cons]
+    set S' := (xs'.map (fun x => |x.toVal (R := R)|)).sum
+    set A := |(st.sum.toVal : R) + step.y.toVal|
+    have hη : (0 : R) ≤ η := by positivity
+    -- Per-step bounds
+    have hA := step_add_mag_le_energy (R := R) st x step (hnr st x step) E hsum_le hcomp_le
+    have ht_le := step_sum_output_le (R := R) st x step (hnr st x step)
+    have hc_le := comp_le_rho2_of_twosum (R := R) st x step (hexact st x step) (hnr st x step)
+    -- Rewrite to nextState for IH
+    have : step.nextState.sum.toVal (R := R) = step.t.toVal := rfl
+    rw [← this] at ht_le
+    have : step.nextState.comp.toVal (R := R) = step.c'.toVal := rfl
+    rw [← this] at hc_le
+    -- IH with E' = A
+    have ⟨ih1, ih2, ih3⟩ := ih A (abs_nonneg _) ht_le hc_le
+    -- Key: A + S' ≤ (1+η)²·(E + (|x| + S'))
+    have hη1 : (1 : R) ≤ (1 + η) ^ 2 := by nlinarith [sq_nonneg (η : R)]
+    have hS'nn : (0 : R) ≤ S' := List.sum_nonneg (fun _ hx => by
+      simp only [List.mem_map] at hx; obtain ⟨_, _, rfl⟩ := hx; positivity)
+    have hAS' : A + S' ≤ (1 + η) ^ 2 * (E + (|x.toVal (R := R)| + S')) := by
+      nlinarith [le_mul_of_one_le_left hS'nn hη1]
+    -- Power splitting: (1+η)^(2(n+1)) = (1+η)^(2n) · (1+η)²
+    have hpow_split : (1 + η : R) ^ (2 * (xs'.length + 1)) =
+        (1 + η) ^ (2 * xs'.length) * (1 + η) ^ 2 := by
+      rw [show 2 * (xs'.length + 1) = 2 * xs'.length + 2 from by omega, pow_add]
+    have hpp : (0 : R) < (1 + η) ^ (2 * xs'.length) := by positivity
+    have hES_nn : (0 : R) ≤ E + (|x.toVal (R := R)| + S') := by
+      nlinarith [abs_nonneg (x.toVal (R := R))]
+    -- Core: (1+η)^(2n)·(A+S') ≤ (1+η)^(2(n+1))·(E+S)
+    have hkey : (1 + η) ^ (2 * xs'.length) * (A + S') ≤
+        (1 + η) ^ (2 * (xs'.length + 1)) * (E + (|x.toVal (R := R)| + S')) := by
+      calc (1 + η) ^ (2 * xs'.length) * (A + S')
+          ≤ (1 + η) ^ (2 * xs'.length) * ((1 + η) ^ 2 * (E + (|x.toVal (R := R)| + S'))) :=
+            mul_le_mul_of_nonneg_left hAS' hpp.le
+        _ = (1 + η) ^ (2 * xs'.length) * (1 + η) ^ 2 * (E + (|x.toVal| + S')) := by ring
+        _ = (1 + η) ^ (2 * (xs'.length + 1)) * (E + (|x.toVal| + S')) := by
+            rw [← hpow_split]
+    -- A ≤ (1+η)^(2(n+1))·(E+S)
+    have hone_le : (1 : R) ≤ (1 + η) ^ (2 * xs'.length) :=
+      one_le_pow₀ (by linarith : (1 : R) ≤ 1 + η)
+    have hA_le : A ≤ (1 + η) ^ (2 * (xs'.length + 1)) *
+        (E + (|x.toVal (R := R)| + S')) := by
+      calc A ≤ (1 + η) ^ 2 * (E + (|x.toVal (R := R)| + S')) := by nlinarith
+        _ ≤ (1 + η) ^ (2 * xs'.length) * ((1 + η) ^ 2 * (E + (|x.toVal| + S'))) :=
+            le_mul_of_one_le_left (by positivity) hone_le
+        _ = (1 + η) ^ (2 * xs'.length) * (1 + η) ^ 2 * (E + (|x.toVal| + S')) := by ring
+        _ = (1 + η) ^ (2 * (xs'.length + 1)) * (E + (|x.toVal| + S')) := by
+            rw [← hpow_split]
+    -- Lift ih1
+    have ih1' : traceAddMag (R := R) rest ≤
+        (xs'.length : R) * (1 + η) ^ (2 * (xs'.length + 1)) *
+          (E + (|x.toVal (R := R)| + S')) := by
+      calc traceAddMag rest
+          ≤ (xs'.length : R) * (1 + η) ^ (2 * xs'.length) * (A + S') := ih1
+        _ = (xs'.length : R) * ((1 + η) ^ (2 * xs'.length) * (A + S')) := by ring
+        _ ≤ (xs'.length : R) * ((1 + η) ^ (2 * (xs'.length + 1)) *
+              (E + (|x.toVal (R := R)| + S'))) :=
+            mul_le_mul_of_nonneg_left hkey (Nat.cast_nonneg _)
+        _ = (xs'.length : R) * (1 + η) ^ (2 * (xs'.length + 1)) *
+              (E + (|x.toVal (R := R)| + S')) := by ring
+    refine ⟨?_, ?_, ?_⟩
+    · -- traceAddMag ≤ (|xs'|+1)·(1+η)^(2(|xs'|+1))·(E+S)
+      show A + traceAddMag rest ≤
+        ↑(xs'.length + 1) * (1 + η) ^ (2 * (xs'.length + 1)) *
+          (E + (|x.toVal (R := R)| + S'))
+      have hcast : (↑(xs'.length + 1) : R) = (xs'.length : R) + 1 := by
+        push_cast; ring
+      rw [hcast]; nlinarith
+    · -- |final.sum| ≤ (1+η)·(1+η)^(2(|xs'|+1))·(E+S)
+      calc |fin.sum.toVal (R := R)|
+          ≤ (1 + η) * ((1 + η) ^ (2 * xs'.length) * (A + S')) := ih2
+        _ ≤ (1 + η) * ((1 + η) ^ (2 * (xs'.length + 1)) *
+              (E + (|x.toVal (R := R)| + S'))) :=
+            mul_le_mul_of_nonneg_left hkey (by linarith)
+    · -- |final.comp| ≤ η·(1+η)^(2(|xs'|+1))·(E+S)
+      calc |fin.comp.toVal (R := R)|
+          ≤ η * ((1 + η) ^ (2 * xs'.length) * (A + S')) := ih3
+        _ ≤ η * ((1 + η) ^ (2 * (xs'.length + 1)) *
+              (E + (|x.toVal (R := R)| + S'))) :=
+            mul_le_mul_of_nonneg_left hkey hη
+
+/-- **Self-contained Kahan error bound** — eliminates the `hM` hypothesis from
+    `kahan_higham_bound` by deriving it from the energy invariant.
+
+    Starting from zero initialization with TwoSum-exactness and normal range:
+
+    **`|ŝₙ - Σxᵢ| ≤ (η·(1 + (1+η)^{2n}) + n·η²·(1+η)^{2n}) · Σ|xᵢ|`**
+
+    When `nη` is small and `(1+η)^{2n} ≈ 1`, this recovers the `(2η + O(nη²))·Σ|xᵢ|`
+    bound from Higham's Theorem 4.3.
+
+    The three contributing terms:
+    - `η · Σ|xᵢ|` — from per-step ρ₁ rounding (independent of n)
+    - `η · (1+η)^{2n} · Σ|xᵢ|` — final compensation (from energy bound)
+    - `n · η² · (1+η)^{2n} · Σ|xᵢ|` — accumulated compensation (from energy bound) -/
+theorem kahan_higham_bound_auto
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final)
+    (hinit_sum : init.sum.toVal (R := R) = 0)
+    (hinit_comp : init.comp.toVal (R := R) = 0)
+    (hexact : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepTwoSumExact (R := R) st x step)
+    (hnr : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepNormalRange (R := R) st x step) :
+    let S := (xs.map (fun x => |x.toVal (R := R)|)).sum
+    let P := (1 + η) ^ (2 * xs.length)
+    |(final.sum.toVal : R) - (xs.map (fun x => x.toVal (R := R))).sum| ≤
+      (η * (1 + P) + (xs.length : R) * η ^ 2 * P) * S := by
+  set S := (xs.map (fun x => |x.toVal (R := R)|)).sum
+  set P := (1 + η : R) ^ (2 * xs.length)
+  have hη : (0 : R) ≤ η := by positivity
+  have hS_nn : (0 : R) ≤ S := List.sum_nonneg (fun _ hx => by
+    simp only [List.mem_map] at hx; obtain ⟨_, _, rfl⟩ := hx; positivity)
+  -- Apply energy invariant with E = 0
+  have hinit_s : |init.sum.toVal (R := R)| ≤ (1 + η) * 0 := by
+    rw [hinit_sum, abs_zero]; linarith
+  have hinit_c : |init.comp.toVal (R := R)| ≤ η * 0 := by
+    rw [hinit_comp, abs_zero]; linarith
+  have ⟨h_addmag, _, h_comp⟩ :=
+    trace_energy_bound (R := R) trace hexact hnr 0 le_rfl hinit_s hinit_c
+  -- Simplify: (0 + S) = S in energy bounds
+  simp only [zero_add] at h_addmag h_comp
+  -- Use kahan_twosum_eta_squared_bound: |error| ≤ η·S + η²·traceAddMag + |cₙ|
+  have h_base := kahan_twosum_eta_squared_bound trace hinit_sum hinit_comp hexact hnr
+  -- traceAddMag ≤ n · P · S
+  have h_am : η ^ 2 * traceAddMag (R := R) trace ≤ (xs.length : R) * η ^ 2 * P * S := by
+    have := mul_le_mul_of_nonneg_left h_addmag (sq_nonneg (η : R))
+    nlinarith
+  -- |cₙ| ≤ η · P · S
+  have h_cn : |final.comp.toVal (R := R)| ≤ η * P * S := by
+    have hP_nn : (0 : R) ≤ P := by positivity
+    calc |final.comp.toVal (R := R)|
+        ≤ η * (P * S) := h_comp
+      _ = η * P * S := by ring
+  -- Combine: η·S + n·η²·P·S + η·P·S = (η(1+P) + nη²P)·S
   linarith
 
 end KahanSum
