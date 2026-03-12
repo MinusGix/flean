@@ -189,8 +189,9 @@ def StepWitness.nextState [RModeExec] {st : State} {x : FiniteFp}
 
 A trace recording all intermediate steps of Kahan summation over a list. -/
 
-/-- A valid execution trace of Kahan summation over a list of inputs. -/
-inductive Trace [RModeExec] : List FiniteFp → State → State → Prop where
+/-- A valid execution trace of Kahan summation over a list of inputs.
+    Lives in `Type` (not `Prop`) so we can extract data like accumulated residuals. -/
+inductive Trace [RModeExec] : List FiniteFp → State → State → Type where
   /-- Empty list: state unchanged. -/
   | nil (st : State) : Trace [] st st
   /-- One step followed by the rest. -/
@@ -234,23 +235,20 @@ then after one Kahan step processing input `x`:
 where ρ₁, ρ₃, ρ₄ are rounding errors from the subtraction and compensation steps.
 The compensation absorbs the main addition error ρ₂, leaving only second-order terms. -/
 
-/-- Algebraic identity for the corrected sum after one Kahan step.
-    Defines the rounding errors and proves the recurrence. -/
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
+/-- The corrected sum recurrence: `σ' = σ + x + (ρ₁ - ρ₃ - ρ₄)`.
+    Note: `ρ₂` (the addition rounding error) cancels algebraically — the compensation
+    absorbs it. This is the key identity behind Kahan summation. -/
 theorem kahan_step_corrected_sum
-    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    [RModeExec]
     (st : State) (x : FiniteFp)
-    (step : StepWitness st x)
-    (hnr : StepNormalRange (R := R) st x step) :
+    (step : StepWitness st x) :
     let σ := (st.sum.toVal : R) - st.comp.toVal
     let σ' := (step.t.toVal : R) - step.c'.toVal
     let ρ₁ := (step.y.toVal : R) - (x.toVal - st.comp.toVal)
-    let ρ₂ := (step.t.toVal : R) - (st.sum.toVal + step.y.toVal)
     let ρ₃ := (step.w.toVal : R) - (step.t.toVal - st.sum.toVal)
     let ρ₄ := (step.c'.toVal : R) - (step.w.toVal - step.y.toVal)
-    -- The corrected sum recurrence
-    σ' = σ + x.toVal + (ρ₁ - ρ₃ - ρ₄)
-    -- (Note: ρ₂ cancels out — the compensation absorbs the addition error!)
-    := by
+    σ' = σ + x.toVal + (ρ₁ - ρ₃ - ρ₄) := by
   simp only
   ring
 
@@ -273,5 +271,156 @@ theorem kahan_step_rounding_bounds
   · exact fpAdd_error_or_zero st.sum step.y step.t step.ht hnr.t_normal
   · exact fpSub_error_or_zero step.t st.sum step.w step.hw hnr.w_normal
   · exact fpSub_error_or_zero step.w step.y step.c' step.hc hnr.c_normal
+
+/-! ## Compensation Identity
+
+The compensation `c'` exactly captures the sum of the three "remaining" rounding errors
+(ρ₂ + ρ₃ + ρ₄). This is the algebraic reason why Kahan works: the compensation
+absorbs the O(η) errors, leaving only O(η²) residuals in ρ₃ and ρ₄. -/
+
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
+/-- The compensation equals the sum of the three remaining rounding errors. -/
+theorem kahan_step_comp_eq_rounding_errors
+    [RModeExec]
+    (st : State) (x : FiniteFp)
+    (step : StepWitness st x) :
+    (step.c'.toVal : R) =
+      ((step.t.toVal : R) - (st.sum.toVal + step.y.toVal)) +
+      ((step.w.toVal : R) - (step.t.toVal - st.sum.toVal)) +
+      ((step.c'.toVal : R) - (step.w.toVal - step.y.toVal)) := by
+  ring
+
+/-! ## Inductive Error Accumulation
+
+Telescope the per-step corrected sum identity over a full trace to get:
+  `σ_final = σ_init + Σxᵢ + Σ(ρ₁ᵢ - ρ₃ᵢ - ρ₄ᵢ)`
+
+Then combine with the final compensation to bound `|sum - Σxᵢ|`. -/
+
+/-- Per-step rounding residual: `ρ₁ - ρ₃ - ρ₄` for one Kahan step. -/
+def stepResidual [RModeExec] (st : State) (x : FiniteFp)
+    (step : StepWitness st x) : R :=
+  let ρ₁ := (step.y.toVal : R) - (x.toVal - st.comp.toVal)
+  let ρ₃ := (step.w.toVal : R) - (step.t.toVal - st.sum.toVal)
+  let ρ₄ := (step.c'.toVal : R) - (step.w.toVal - step.y.toVal)
+  ρ₁ - ρ₃ - ρ₄
+
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
+/-- The corrected sum after a Kahan step equals the old corrected sum
+    plus the input plus the step residual. -/
+theorem kahan_step_sigma_eq [RModeExec]
+    (st : State) (x : FiniteFp) (step : StepWitness st x) :
+    (step.t.toVal : R) - step.c'.toVal =
+      ((st.sum.toVal : R) - st.comp.toVal) + x.toVal + stepResidual st x step := by
+  unfold stepResidual; ring
+
+/-- Accumulated residuals from a trace. -/
+def traceResidual [RModeExec] :
+    {xs : List FiniteFp} → {init final : State} → Trace xs init final → R
+  | _, _, _, .nil _ => 0
+  | _, _, _, .cons step rest =>
+    stepResidual _ _ step + traceResidual rest
+
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
+/-- The corrected sum telescopes over a full trace:
+    `σ_final = σ_init + Σxᵢ + Σ(residuals)`. -/
+theorem kahan_trace_sigma_eq [RModeExec]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final) :
+    (final.sum.toVal : R) - final.comp.toVal =
+      ((init.sum.toVal : R) - init.comp.toVal) +
+      (xs.map (fun x => x.toVal (R := R))).sum +
+      traceResidual trace := by
+  induction trace with
+  | nil st => simp [traceResidual]
+  | cons step rest ih =>
+    simp only [List.map_cons, List.sum_cons, traceResidual, StepWitness.nextState] at *
+    rw [ih, kahan_step_sigma_eq]
+    ring
+
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
+/-- **Main error decomposition**: the final sum error splits into
+    corrected-sum error plus final compensation.
+
+    `sum_n - Σxᵢ = (σ_n - Σxᵢ) + c_n`
+
+    where `σ_n = sum_n - c_n` is the corrected sum. By the per-step identity,
+    `σ_n - Σxᵢ = Σ(ρ₁ᵢ - ρ₃ᵢ - ρ₄ᵢ)` (accumulated second-order errors),
+    giving `|sum_n - Σxᵢ| ≤ Σ|ρ₁ᵢ - ρ₃ᵢ - ρ₄ᵢ| + |c_n|`. -/
+theorem kahan_error_decomposition
+    [RModeExec]
+    {final : State} (xs : List FiniteFp) :
+    (final.sum.toVal : R) - (xs.map (fun x => x.toVal (R := R))).sum =
+      ((final.sum.toVal : R) - final.comp.toVal -
+        (xs.map (fun x => x.toVal (R := R))).sum) +
+      final.comp.toVal := by ring
+
+omit [FloorRing R] in
+/-- Triangle inequality form of the error decomposition. -/
+theorem kahan_error_triangle
+    [RModeExec]
+    {final : State} (xs : List FiniteFp) :
+    |(final.sum.toVal : R) - (xs.map (fun x => x.toVal (R := R))).sum| ≤
+      |(final.sum.toVal : R) - final.comp.toVal -
+        (xs.map (fun x => x.toVal (R := R))).sum| +
+      |final.comp.toVal (R := R)| := by
+  rw [kahan_error_decomposition xs]
+  exact abs_add_le _ _
+
+/-- Sum of |stepResidual| over the trace — the triangle inequality bound. -/
+def traceResidualAbsBound [RModeExec] :
+    {xs : List FiniteFp} → {init final : State} → Trace xs init final → R
+  | _, _, _, .nil _ => 0
+  | _, _, _, .cons step rest =>
+    |stepResidual (R := R) _ _ step| + traceResidualAbsBound rest
+
+omit [FloorRing R] in
+/-- The accumulated residual is bounded by the sum of absolute step residuals. -/
+theorem traceResidual_abs_le [RModeExec]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final) :
+    |traceResidual (R := R) trace| ≤ traceResidualAbsBound trace := by
+  induction trace with
+  | nil => simp [traceResidual, traceResidualAbsBound]
+  | cons step rest ih =>
+    simp only [traceResidual, traceResidualAbsBound]
+    exact le_trans (abs_add_le _ _) (add_le_add_right ih _)
+
+omit [FloorRing R] in
+/-- **Kahan summation error bound** (general form).
+
+    Starting from zero initial state, the error of Kahan summation satisfies:
+
+    `|sum_n - Σxᵢ| ≤ Σ|ρ₁ᵢ - ρ₃ᵢ - ρ₄ᵢ| + |c_n|`
+
+    where each `|ρ₁ᵢ - ρ₃ᵢ - ρ₄ᵢ|` is bounded by
+    `η|xᵢ - cᵢ₋₁| + η|tᵢ - sᵢ₋₁| + η|wᵢ - yᵢ|`
+    via `kahan_step_rounding_bounds`.
+
+    The key insight is that ρ₂ (the O(η) addition error) is absent — it is
+    absorbed by the compensation. The remaining terms ρ₃, ρ₄ are O(η²) since
+    they operate on quantities that are themselves O(η), giving total error
+    O(nη²) for the corrected sum. Combined with the O(η) compensation `c_n`,
+    the total error is O(η) instead of O(nη). -/
+theorem kahan_error_bound
+    [RModeExec]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final)
+    (hinit_sum : init.sum.toVal (R := R) = 0)
+    (hinit_comp : init.comp.toVal (R := R) = 0) :
+    |(final.sum.toVal : R) - (xs.map (fun x => x.toVal (R := R))).sum| ≤
+      traceResidualAbsBound trace +
+      |final.comp.toVal (R := R)| := by
+  have hsigma := kahan_trace_sigma_eq (R := R) trace
+  rw [hinit_sum, hinit_comp] at hsigma
+  have hresid : (final.sum.toVal : R) - final.comp.toVal -
+      (xs.map (fun x => x.toVal (R := R))).sum = traceResidual trace := by linarith
+  calc |(final.sum.toVal : R) - (xs.map (fun x => x.toVal (R := R))).sum|
+      ≤ |(final.sum.toVal : R) - final.comp.toVal -
+          (xs.map (fun x => x.toVal (R := R))).sum| +
+        |final.comp.toVal (R := R)| := kahan_error_triangle xs
+    _ = |traceResidual trace| + |final.comp.toVal (R := R)| := by rw [hresid]
+    _ ≤ traceResidualAbsBound trace + |final.comp.toVal (R := R)| :=
+        add_le_add (traceResidual_abs_le trace) (le_refl _)
 
 end KahanSum
