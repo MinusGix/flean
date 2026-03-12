@@ -717,4 +717,370 @@ theorem kahan_concrete_error_bound
   have hle := traceResidualAbsBound_le_concrete trace hnr
   linarith
 
+/-! ## TwoSum-Exact Kahan Steps (Approach B)
+
+When the compensation step is a TwoSum (exact for rounded base-2 arithmetic,
+Higham eq. 4.7), we have `sum.toVal + y.toVal = t.toVal - c'.toVal` exactly.
+Equivalently, `c'.toVal = ρ₂` (the compensation exactly captures the addition
+rounding error), which means `ρ₃ + ρ₄ = 0`.
+
+This reduces the per-step error to just ρ₁, giving a much simpler bound.
+We state the TwoSum exactness as a hypothesis (it follows from `twoSum_exact`
+in TwoSum.lean, but connecting the specific Kahan computation requires
+matching the intermediates). -/
+
+/-- TwoSum-exactness condition for a Kahan step: the compensation exactly
+    captures the addition rounding error. Follows from the error-free
+    transformation property (Dekker 1971, Knuth 1998, our `twoSum_exact`). -/
+def StepTwoSumExact [RModeExec] (st : State) (x : FiniteFp)
+    (step : StepWitness st x) : Prop :=
+  (step.c'.toVal : R) = (step.t.toVal : R) - (st.sum.toVal + step.y.toVal)
+
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
+/-- Under TwoSum-exactness, the step residual simplifies to just ρ₁. -/
+theorem stepResidual_eq_rho1_of_twosum [RModeExec]
+    (st : State) (x : FiniteFp) (step : StepWitness st x)
+    (hexact : StepTwoSumExact (R := R) st x step) :
+    stepResidual (R := R) st x step =
+      (step.y.toVal : R) - (x.toVal - st.comp.toVal) := by
+  unfold stepResidual
+  unfold StepTwoSumExact at hexact
+  -- hexact : c'.toVal = t.toVal - (sum.toVal + y.toVal)
+  -- goal : (y - (x - c)) - (w - (t - sum)) - (c' - (w - y)) = y - (x - c)
+  -- Substituting hexact: c' = t - (sum + y), so c' - (w - y) = t - sum - w
+  -- and (w - (t - sum)) + (t - sum - w) = 0
+  rw [hexact]; ring
+
+/-- Under TwoSum-exactness, the per-step residual is bounded by just ρ₁.
+    `|stepResidual| ≤ η|x - c|` -/
+theorem stepResidual_le_rho1_of_twosum
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    (st : State) (x : FiniteFp) (step : StepWitness st x)
+    (hexact : StepTwoSumExact (R := R) st x step)
+    (hnr : StepNormalRange (R := R) st x step) :
+    |stepResidual (R := R) st x step| ≤
+      η * |(x.toVal : R) - st.comp.toVal| := by
+  rw [stepResidual_eq_rho1_of_twosum (R := R) st x step hexact]
+  exact (kahan_step_rounding_bounds st x step hnr).1
+
+/-- Under TwoSum-exactness, |c'| = |ρ₂| ≤ η|sum + y|. -/
+theorem comp_le_rho2_of_twosum
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    (st : State) (x : FiniteFp) (step : StepWitness st x)
+    (hexact : StepTwoSumExact (R := R) st x step)
+    (hnr : StepNormalRange (R := R) st x step) :
+    |step.c'.toVal (R := R)| ≤
+      η * |(st.sum.toVal : R) + step.y.toVal| := by
+  unfold StepTwoSumExact at hexact
+  rw [hexact]
+  exact (kahan_step_rounding_bounds st x step hnr).2.1
+
+/-! ## TwoSum-Exact Trace Bound
+
+With TwoSum-exactness at every step, the trace residual bound simplifies from
+three η-terms per step to just one: `Σ η|xᵢ - cᵢ₋₁|`. Combined with the
+compensation bound `|cₙ| ≤ η|sumₙ₋₁ + yₙ|`, this gives the clean
+`(2η + O(nη²)) · Σ|xᵢ|` form. -/
+
+/-- Trace residual bound under TwoSum-exactness: `Σ η|xᵢ - cᵢ₋₁|`. -/
+def traceTwoSumBound [RModeExec] :
+    {xs : List FiniteFp} → {init final : State} → Trace xs init final → R
+  | _, _, _, .nil _ => 0
+  | _, _, _, .cons (st := st) (x := x) _ rest =>
+    η * |(x.toVal : R) - st.comp.toVal| + traceTwoSumBound rest
+
+/-- Under TwoSum-exactness, the abstract residual bound reduces to `traceTwoSumBound`. -/
+theorem traceResidualAbsBound_le_twosum
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final)
+    (hexact : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepTwoSumExact (R := R) st x step)
+    (hnr : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepNormalRange (R := R) st x step) :
+    traceResidualAbsBound (R := R) trace ≤ traceTwoSumBound trace := by
+  induction trace with
+  | nil => simp [traceResidualAbsBound, traceTwoSumBound]
+  | cons step rest ih =>
+    simp only [traceResidualAbsBound, traceTwoSumBound]
+    have hstep := stepResidual_le_rho1_of_twosum _ _ step (hexact _ _ step) (hnr _ _ step)
+    linarith [ih]
+
+/-- **Kahan summation error bound under TwoSum-exactness** (Higham-style).
+
+    Under the TwoSum-exactness hypothesis (which holds for rounded base-2
+    arithmetic by `twoSum_exact`), the total error satisfies:
+
+    `|sum_n - Σxᵢ| ≤ Σ η|xᵢ - cᵢ₋₁| + |cₙ|`
+
+    where `|cₙ| ≤ η|sumₙ₋₁ + yₙ|` (by `comp_le_rho2_of_twosum`).
+
+    The dominant term `Σ η|xᵢ - cᵢ₋₁|` gives one factor of η, and
+    `|cₙ| ≤ η·(partial sum)` gives the second, yielding the `2η + O(nη²)`
+    constant from Higham's Theorem 4.3 / eq. (4.9). -/
+theorem kahan_twosum_error_bound
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final)
+    (hinit_sum : init.sum.toVal (R := R) = 0)
+    (hinit_comp : init.comp.toVal (R := R) = 0)
+    (hexact : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepTwoSumExact (R := R) st x step)
+    (hnr : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepNormalRange (R := R) st x step) :
+    |(final.sum.toVal : R) - (xs.map (fun x => x.toVal (R := R))).sum| ≤
+      traceTwoSumBound trace +
+      |final.comp.toVal (R := R)| := by
+  have habstract := kahan_error_bound trace hinit_sum hinit_comp
+  have hle := traceResidualAbsBound_le_twosum trace hexact hnr
+  linarith
+
+/-! ## Expanding to `2η · Σ|xᵢ|` Form
+
+The final step: bound `traceTwoSumBound` and `|cₙ|` in terms of `Σ|xᵢ|`.
+
+`traceTwoSumBound = Σ η|xᵢ - cᵢ₋₁| ≤ η·Σ(|xᵢ| + |cᵢ₋₁|)`
+
+Since `|cᵢ| ≤ η|sumᵢ₋₁ + yᵢ|` (each compensation is one rounding error), and
+the partial sums are bounded, the `η|cᵢ₋₁|` terms contribute O(nη²). -/
+
+/-- Sum of `|cᵢ₋₁|` over the trace steps (the compensation magnitudes). -/
+def traceCompSum [RModeExec] :
+    {xs : List FiniteFp} → {init final : State} → Trace xs init final → R
+  | _, _, _, .nil _ => 0
+  | _, _, _, .cons (st := st) _ rest =>
+    |st.comp.toVal (R := R)| + traceCompSum rest
+
+omit [FloorRing R] in
+/-- Split `|xᵢ - cᵢ₋₁| ≤ |xᵢ| + |cᵢ₋₁|` in the trace bound:
+    `traceTwoSumBound ≤ η·Σ|xᵢ| + η·Σ|cᵢ₋₁|`. -/
+theorem traceTwoSumBound_le_split [RModeExec]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final) :
+    traceTwoSumBound (R := R) trace ≤
+      η * (xs.map (fun x => |x.toVal (R := R)|)).sum +
+      η * traceCompSum trace := by
+  induction trace with
+  | nil => simp [traceTwoSumBound, traceCompSum]
+  | @cons st x _ _ step rest ih =>
+    simp only [traceTwoSumBound, traceCompSum, List.map_cons, List.sum_cons]
+    have hη : (0 : R) ≤ η := by positivity
+    have htri : |(x.toVal : R) - st.comp.toVal| ≤ |x.toVal| + |st.comp.toVal| := by
+      calc |(x.toVal : R) - st.comp.toVal|
+          = |x.toVal + (-(st.comp.toVal : R))| := by ring_nf
+        _ ≤ |x.toVal| + |-(st.comp.toVal : R)| := abs_add_le _ _
+        _ = |x.toVal| + |st.comp.toVal| := by rw [abs_neg]
+    have hmul := mul_le_mul_of_nonneg_left htri hη
+    nlinarith [ih]
+
+/-- Sum of `|sumᵢ₋₁ + yᵢ|` over the trace steps (addition magnitudes). -/
+def traceAddMag [RModeExec] :
+    {xs : List FiniteFp} → {init final : State} → Trace xs init final → R
+  | _, _, _, .nil _ => 0
+  | _, _, _, .cons (st := st) (x := x) step rest =>
+    |(st.sum.toVal : R) + step.y.toVal| + traceAddMag rest
+
+/-- Under TwoSum-exactness + normal range, the compensation magnitudes are bounded
+    by η times the addition magnitudes: `traceCompSum ≤ η · traceAddMag`.
+
+    This uses `comp_le_rho2_of_twosum` at each step: the compensation `c'` produced
+    by step i becomes the `comp` entering step i+1, and `|c'| ≤ η|sum + y|`.
+    The initial compensation `c₀` is bounded by the `hinit` hypothesis.
+
+    Note: `traceCompSum` sums `|cᵢ₋₁|` (comp *entering* each step), while
+    `comp_le_rho2_of_twosum` bounds `|c'ᵢ|` (comp *produced* by each step).
+    So the bound shifts by one index: `|cᵢ₋₁| ≤ η|sumᵢ₋₂ + yᵢ₋₁|`.
+    This makes the overall bound:
+    `traceCompSum ≤ |c₀| + η · traceAddMag(rest)` for a cons trace. -/
+theorem traceCompSum_le_addMag
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final)
+    (hexact : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepTwoSumExact (R := R) st x step)
+    (hnr : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepNormalRange (R := R) st x step) :
+    traceCompSum (R := R) trace ≤
+      |init.comp.toVal (R := R)| + η * traceAddMag trace := by
+  induction trace with
+  | nil => simp [traceCompSum, traceAddMag]
+  | @cons st x _ _ step rest ih =>
+    simp only [traceCompSum, traceAddMag]
+    -- Goal: |st.comp| + traceCompSum(rest) ≤ |st.comp| + η * (|st.sum + y| + traceAddMag(rest))
+    -- ih: traceCompSum(rest) ≤ |step.nextState.comp| + η * traceAddMag(rest)
+    -- step.nextState.comp = step.c', and |c'| ≤ η|st.sum + y|
+    have hcomp := comp_le_rho2_of_twosum (R := R) st x step (hexact st x step) (hnr st x step)
+    have hnext : step.nextState.comp.toVal (R := R) = step.c'.toVal := rfl
+    rw [hnext] at ih
+    have hη : (0 : R) ≤ η := by positivity
+    nlinarith [abs_nonneg (st.comp.toVal (R := R))]
+
+/-- **Combined Kahan error bound with explicit `η` factors** (Higham Theorem 4.3).
+
+    Under TwoSum-exactness and zero initial compensation:
+
+    `|ŝₙ - Σxᵢ| ≤ η · Σ|xᵢ| + η · traceCompSum + |cₙ|`
+
+    where `traceCompSum ≤ η · traceAddMag` (the compensation terms are O(η²)),
+    giving the `(2η + O(nη²)) · Σ|xᵢ|` form from Higham eq. (4.9).
+
+    The three terms are:
+    - `η · Σ|xᵢ|`: dominant term from `ρ₁` (subtraction rounding in `y = fl(x-c)`)
+    - `η · traceCompSum`: second η factor from the compensation triangle inequality
+    - `|cₙ|`: final compensation, bounded by `η|sumₙ₋₁ + yₙ|` -/
+theorem kahan_twosum_split_error_bound
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final)
+    (hinit_sum : init.sum.toVal (R := R) = 0)
+    (hinit_comp : init.comp.toVal (R := R) = 0)
+    (hexact : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepTwoSumExact (R := R) st x step)
+    (hnr : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepNormalRange (R := R) st x step) :
+    |(final.sum.toVal : R) - (xs.map (fun x => x.toVal (R := R))).sum| ≤
+      η * (xs.map (fun x => |x.toVal (R := R)|)).sum +
+      η * traceCompSum trace +
+      |final.comp.toVal (R := R)| := by
+  have hbase := kahan_twosum_error_bound trace hinit_sum hinit_comp hexact hnr
+  have hsplit := traceTwoSumBound_le_split (R := R) trace
+  linarith
+
+/-- **Final concrete form**: Under TwoSum-exactness, zero initialization, the
+    Kahan error is at most `η·Σ|xᵢ| + η²·traceAddMag + |cₙ|`.
+
+    Since `traceAddMag ≤ n · max|partialSum|`, this gives the
+    `(2η + O(nη²)) · Σ|xᵢ|` asymptotic from Higham. -/
+theorem kahan_twosum_eta_squared_bound
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final)
+    (hinit_sum : init.sum.toVal (R := R) = 0)
+    (hinit_comp : init.comp.toVal (R := R) = 0)
+    (hexact : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepTwoSumExact (R := R) st x step)
+    (hnr : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepNormalRange (R := R) st x step) :
+    |(final.sum.toVal : R) - (xs.map (fun x => x.toVal (R := R))).sum| ≤
+      η * (xs.map (fun x => |x.toVal (R := R)|)).sum +
+      η ^ 2 * traceAddMag trace +
+      |final.comp.toVal (R := R)| := by
+  have hsplit := kahan_twosum_split_error_bound trace hinit_sum hinit_comp hexact hnr
+  have hcomp := traceCompSum_le_addMag (R := R) trace hexact hnr
+  rw [hinit_comp, abs_zero] at hcomp
+  have hη : (0 : R) ≤ η := by positivity
+  -- η · traceCompSum ≤ η · (0 + η · traceAddMag) = η² · traceAddMag
+  have hmul := mul_le_mul_of_nonneg_left hcomp hη
+  -- η * traceCompSum ≤ η * (η * traceAddMag) = η² * traceAddMag
+  nlinarith [sq_nonneg (η : R)]
+
+/-! ## Closing the Bound: Higham's Theorem 4.3
+
+To obtain the fully closed `(2η + nη²) · Σ|xᵢ|` form, we need two more pieces:
+
+1. **`traceAddMag ≤ n · M`** given a uniform bound `M` on each `|sumᵢ + yᵢ|`.
+2. **`|cₙ| ≤ η · M`** — the final compensation is bounded by η times the
+   addition magnitude bound.
+
+With `M = Σ|xᵢ|` (a hypothesis the user supplies — it holds when floating-point
+partial sums don't exceed the sum of absolute values), this gives:
+
+`|error| ≤ η·Σ|xᵢ| + η²·n·Σ|xᵢ| + η·Σ|xᵢ| = (2η + nη²)·Σ|xᵢ|` -/
+
+omit [FloorRing R] in
+/-- Addition magnitudes bounded by `n × M` given a uniform bound `M` on each
+    `|sumᵢ + yᵢ|`. -/
+theorem traceAddMag_le_mul_length [RModeExec]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final) (M : R)
+    (hM : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      |(st.sum.toVal : R) + step.y.toVal| ≤ M) :
+    traceAddMag (R := R) trace ≤ (xs.length : R) * M := by
+  induction trace with
+  | nil => simp [traceAddMag]
+  | @cons st x xs' _ step rest ih =>
+    simp only [traceAddMag, List.length_cons]
+    push_cast
+    nlinarith [hM st x step, ih]
+
+/-- The final compensation satisfies `|comp| ≤ η · M` whenever:
+    - every step's addition magnitude `|sum + y|` is bounded by `M`, and
+    - the initial compensation already satisfies `|c₀| ≤ η · M`.
+
+    The invariant is preserved because each step produces `c' = fl(w - y)`
+    with `|c'| ≤ η|sum + y| ≤ η · M` (by `comp_le_rho2_of_twosum`). -/
+theorem final_comp_le_eta_mul
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final) (M : R)
+    (hexact : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepTwoSumExact (R := R) st x step)
+    (hnr : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepNormalRange (R := R) st x step)
+    (hM : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      |(st.sum.toVal : R) + step.y.toVal| ≤ M)
+    (hinit_le : |init.comp.toVal (R := R)| ≤ η * M) :
+    |final.comp.toVal (R := R)| ≤ η * M := by
+  induction trace with
+  | nil => exact hinit_le
+  | @cons st x _ _ step rest ih =>
+    apply ih
+    -- Need: |step.nextState.comp.toVal| ≤ η * M
+    have hcomp := comp_le_rho2_of_twosum (R := R) st x step (hexact st x step) (hnr st x step)
+    have hnext : step.nextState.comp.toVal (R := R) = step.c'.toVal := rfl
+    rw [hnext]
+    have hη : (0 : R) ≤ η := by positivity
+    nlinarith [hM st x step, abs_nonneg ((st.sum.toVal : R) + step.y.toVal)]
+
+/-- **Higham's Theorem 4.3, eq. (4.9)** — Kahan compensated summation error bound.
+
+    Under TwoSum-exactness (which holds for rounded base-2 arithmetic by
+    `twoSum_exact`), zero initialization, normal range at every step, and
+    the condition that all intermediate addition magnitudes `|sumᵢ + yᵢ|`
+    are bounded by `Σ|xⱼ|`:
+
+    **`|ŝₙ - Σxᵢ| ≤ (2η + nη²) · Σ|xᵢ|`**
+
+    where `η = 2⁻ᵖʳᵉᶜ` (half machine epsilon) and `n = |xs|`.
+
+    The three contributing terms:
+    - **`η · Σ|xᵢ|`**: from per-step ρ₁ rounding error in `y = fl(x - c)`
+    - **`nη² · Σ|xᵢ|`**: from the triangle split `|xᵢ - cᵢ₋₁| ≤ |xᵢ| + |cᵢ₋₁|`
+      with `|cᵢ| ≤ η|sumᵢ + yᵢ| ≤ η·Σ|xⱼ|`
+    - **`η · Σ|xᵢ|`**: from the final compensation `|cₙ| ≤ η·Σ|xⱼ|`
+
+    **Reference**: N.J. Higham, *Accuracy and Stability of Numerical Algorithms*,
+    2nd ed., SIAM, 2002, §4.3, Theorem 4.3. -/
+theorem kahan_higham_bound
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final)
+    (hinit_sum : init.sum.toVal (R := R) = 0)
+    (hinit_comp : init.comp.toVal (R := R) = 0)
+    (hexact : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepTwoSumExact (R := R) st x step)
+    (hnr : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepNormalRange (R := R) st x step)
+    (hM : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      |(st.sum.toVal : R) + step.y.toVal| ≤
+        (xs.map (fun x => |x.toVal (R := R)|)).sum) :
+    |(final.sum.toVal : R) - (xs.map (fun x => x.toVal (R := R))).sum| ≤
+      (2 * η + (xs.length : R) * η ^ 2) *
+        (xs.map (fun x => |x.toVal (R := R)|)).sum := by
+  set S := (xs.map (fun x => |x.toVal (R := R)|)).sum with hS_def
+  -- Step 1: η·S + η²·traceAddMag + |cₙ|
+  have h1 := kahan_twosum_eta_squared_bound trace hinit_sum hinit_comp hexact hnr
+  -- Step 2: traceAddMag ≤ n · S
+  have h2 := traceAddMag_le_mul_length (R := R) trace S hM
+  -- Step 3: |cₙ| ≤ η · S
+  have hS_nonneg : (0 : R) ≤ S := List.sum_nonneg (fun _ hx => by
+    simp only [List.mem_map] at hx; obtain ⟨_, _, rfl⟩ := hx; positivity)
+  have hη : (0 : R) ≤ η := by positivity
+  have h3 := final_comp_le_eta_mul (R := R) trace S hexact hnr hM
+    (by rw [hinit_comp, abs_zero]; exact mul_nonneg hη hS_nonneg)
+  -- Combine: η·S + η²·(n·S) + η·S = (2η + nη²)·S
+  have h2' : η ^ 2 * traceAddMag (R := R) trace ≤ η ^ 2 * ((xs.length : R) * S) :=
+    mul_le_mul_of_nonneg_left h2 (sq_nonneg _)
+  linarith
+
 end KahanSum
