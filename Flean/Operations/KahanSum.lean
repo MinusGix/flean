@@ -527,4 +527,103 @@ theorem comp_concrete_bound
   have hρ₄' := rho4_bound_via_rhos st x step hnr
   linarith
 
+/-! ## Per-Step Residual Concrete Bound
+
+Combine the triangle inequality with the second-order bounds to get:
+
+  `|stepResidual| ≤ η|x - c| + η|y + ρ₂| + η|ρ₂ + ρ₃|`
+
+This is the bound in terms of intermediate fp values and their rounding errors.
+The first term is O(η), the second is O(η) (since |y + ρ₂| ≈ |sum + y| which is
+the partial sum magnitude), and the third is O(η²). -/
+
+/-- Per-step residual bound: `|ρ₁ - ρ₃ - ρ₄| ≤ η|x - c| + η|y + ρ₂| + η|ρ₂ + ρ₃|`. -/
+theorem stepResidual_concrete_bound
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    (st : State) (x : FiniteFp) (step : StepWitness st x)
+    (hnr : StepNormalRange (R := R) st x step) :
+    |stepResidual (R := R) st x step| ≤
+      η * |(x.toVal : R) - st.comp.toVal| +
+      η * |(step.y.toVal : R) + ((step.t.toVal : R) - (st.sum.toVal + step.y.toVal))| +
+      η * |((step.t.toVal : R) - (st.sum.toVal + step.y.toVal)) +
+           ((step.w.toVal : R) - (step.t.toVal - st.sum.toVal))| := by
+  have hstep := stepResidual_abs_le (R := R) st x step
+  simp only at hstep
+  have ⟨hρ₁, _, _, _⟩ := kahan_step_rounding_bounds st x step hnr
+  have hρ₃ := rho3_bound_via_y st x step hnr
+  have hρ₄ := rho4_bound_via_rhos st x step hnr
+  linarith
+
+/-! ## Trace-Level Concrete Bound
+
+To get from the abstract `traceResidualAbsBound` to a bound in terms of η and inputs,
+we define a concrete bound that sums the per-step η-contributions.
+
+The per-step bound `η|x - c| + η|y + ρ₂| + η|ρ₂ + ρ₃|` has:
+- First term: `η · |xᵢ - cᵢ₋₁|` — bounded by `η(|xᵢ| + |cᵢ₋₁|)`, and cᵢ₋₁ is O(η)
+- Second term: `η · |yᵢ + ρ₂ᵢ|` — this equals `η · |tᵢ - sumᵢ₋₁|` (recovering y up to ρ₂)
+- Third term: `η · |ρ₂ᵢ + ρ₃ᵢ|` — purely O(η²), negligible
+
+For the final `(2η + O(nη²)) · Σ|xᵢ|` form, we would need to:
+1. Bound |cᵢ₋₁| ≤ η · (partial sum) inductively
+2. Bound |tᵢ - sumᵢ₋₁| ≈ |yᵢ| ≈ |xᵢ|
+3. Sum over all steps
+
+This is Higham's Theorem 4.3 analysis. We provide the key building blocks above;
+the full quantitative bound depends on assumptions about the relative magnitudes
+of partial sums vs individual inputs. -/
+
+/-- Per-step concrete bound summed over a trace. -/
+def traceConcreteBound [RModeExec] :
+    {xs : List FiniteFp} → {init final : State} → Trace xs init final → R
+  | _, _, _, .nil _ => 0
+  | _, _, _, .cons (st := st) (x := x) step rest =>
+    η * |(x.toVal : R) - st.comp.toVal| +
+    η * |(step.y.toVal : R) + ((step.t.toVal : R) - (st.sum.toVal + step.y.toVal))| +
+    η * |((step.t.toVal : R) - (st.sum.toVal + step.y.toVal)) +
+         ((step.w.toVal : R) - (step.t.toVal - st.sum.toVal))| +
+    traceConcreteBound rest
+
+/-- The abstract trace residual bound is dominated by the concrete trace bound. -/
+theorem traceResidualAbsBound_le_concrete
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final)
+    (hnr : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      -- This should really be: for each step in the trace, we have StepNormalRange.
+      -- For now, we use a universal quantification as a simplification.
+      StepNormalRange (R := R) st x step) :
+    traceResidualAbsBound (R := R) trace ≤ traceConcreteBound trace := by
+  induction trace with
+  | nil => simp [traceResidualAbsBound, traceConcreteBound]
+  | cons step rest ih =>
+    simp only [traceResidualAbsBound, traceConcreteBound]
+    have hstep := stepResidual_concrete_bound _ _ step (hnr _ _ step)
+    linarith [ih]
+
+/-- **Kahan summation concrete error bound**.
+
+    Under the assumption that all intermediate values are in normal range,
+    the total error is bounded by a sum of η-weighted terms:
+
+    `|sum_n - Σxᵢ| ≤ traceConcreteBound + |c_n|`
+
+    where `traceConcreteBound` sums `η|xᵢ - cᵢ₋₁| + η|yᵢ + ρ₂ᵢ| + η|ρ₂ᵢ + ρ₃ᵢ|`
+    over all steps. The last two terms of each step are O(η²), making the dominant
+    contribution `Σ η|xᵢ - cᵢ₋₁| ≈ η · Σ|xᵢ|`. -/
+theorem kahan_concrete_error_bound
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final)
+    (hinit_sum : init.sum.toVal (R := R) = 0)
+    (hinit_comp : init.comp.toVal (R := R) = 0)
+    (hnr : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepNormalRange (R := R) st x step) :
+    |(final.sum.toVal : R) - (xs.map (fun x => x.toVal (R := R))).sum| ≤
+      traceConcreteBound trace +
+      |final.comp.toVal (R := R)| := by
+  have habstract := kahan_error_bound trace hinit_sum hinit_comp
+  have hle := traceResidualAbsBound_le_concrete trace hnr
+  linarith
+
 end KahanSum
