@@ -1,6 +1,7 @@
 import Flean.Operations.Add
 import Flean.Operations.Sub
 import Flean.Operations.AddErrorRepresentable
+import Flean.Operations.Fast2Sum
 import Flean.Rounding.PolicyInstances
 
 /-!
@@ -163,8 +164,10 @@ The proof uses `add_error_representable_general_left_nz` to show the rounding
 error is representable, then `RModeIdem.round_idempotent` to show the second
 subtraction is also exact. Requires `RModeIdem`, `RModeConj`, and `sum.m > 0`.
 
-Remaining: connect `hw_exact` to Sterbenz/Dekker conditions or `twoSum_exact`
-to fully eliminate `hexact` from Approach B theorems.
+For the positive case, `step_twosum_exact_of_pos_dekker` completes the chain:
+Dekker condition (`y ≤ sum`) → Sterbenz → first-sub exact → full TwoSum exact.
+
+Remaining: generalize to arbitrary signs (needs signed Sterbenz or case analysis).
 
 ## References
 
@@ -213,6 +216,7 @@ to fully eliminate `hexact` from Approach B theorems.
 
 ### Extension E (TwoSum-exactness bridge)
 - `step_twosum_exact_of_sub_exact` — derives `StepTwoSumExact` from first-subtraction exactness
+- `step_twosum_exact_of_pos_dekker` — full Dekker chain for positive operands with `y ≤ sum`
 -/
 
 namespace KahanSum
@@ -1493,5 +1497,37 @@ theorem step_twosum_exact_of_sub_exact
     -- c' = -err_fp, so c'.toVal = (-err_fp).toVal = -err_fp.toVal = -(sum+y-t) = w-y
     have : step.c'.toVal (R := R) = (-err_fp).toVal := by rw [hc_eq]
     rw [this, FiniteFp.toVal_neg_eq_neg, herr_val, hw_exact]; ring
+
+/-- **Full Dekker chain (positive case)**: When `sum` and `y` are both positive
+    with `y ≤ sum` (the Dekker condition), `StepTwoSumExact` follows automatically.
+
+    The proof chains: Dekker condition → Sterbenz (`fl(t - sum)` exact) →
+    `step_twosum_exact_of_sub_exact` (`fl(w - y)` exact) → `StepTwoSumExact`.
+
+    This eliminates `hexact` from Approach B theorems for positive-operand sums. -/
+theorem step_twosum_exact_of_pos_dekker
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    [RModeConj R] [RModeIdem R] [RModeMono R]
+    (st : State) (x : FiniteFp) (step : StepWitness st x)
+    (hsum_pos : st.sum.s = false)
+    (hy_pos : step.y.s = false)
+    (hm_sum : 0 < st.sum.m)
+    (hm_y : 0 < step.y.m)
+    (hdekker : step.y.toVal (R := R) ≤ st.sum.toVal) :
+    StepTwoSumExact (R := R) st x step := by
+  have hsum_ne : (st.sum.toVal : R) + step.y.toVal ≠ 0 := by
+    have := FiniteFp.toVal_pos st.sum hsum_pos hm_sum (R := R)
+    have := FiniteFp.toVal_pos step.y hy_pos hm_y (R := R)
+    linarith
+  -- Sterbenz: fl(t - sum) is exact
+  obtain ⟨z_fp, hz_eq, hz_val⟩ :=
+    sterbenz_sub_sa (R := R) st.sum step.y hsum_pos hy_pos hm_sum hm_y
+      hdekker hsum_ne step.t step.ht
+  -- z_fp = step.w (both equal t - sum)
+  have hw_eq_z : step.w = z_fp :=
+    Fp.finite.inj (step.hw.symm.trans hz_eq)
+  have hw_exact : step.w.toVal (R := R) = step.t.toVal - st.sum.toVal := by
+    rw [hw_eq_z]; exact hz_val
+  exact step_twosum_exact_of_sub_exact st x step hm_sum hw_exact
 
 end KahanSum
