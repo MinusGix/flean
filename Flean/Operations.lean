@@ -33,3 +33,4 @@ import Flean.Operations.LogBScaleB
 import Flean.Operations.RoundToIntegral
 import Flean.Operations.VeltkampSplit
 import Flean.Operations.KahanSum
+import Flean.Operations.CompensatedSum
