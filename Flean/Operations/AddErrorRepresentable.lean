@@ -12,6 +12,8 @@ This is the core mathematical fact underlying error-free transformations (2Sum, 
 
 - `round_sum_ge_left`: rounded sum of positive values ≥ the larger operand
 - `round_sum_le_double`: rounded sum of positive values with `a ≥ b` is ≤ 2a
+- `round_sum_ge_left_mag`: same-sign magnitude lower bound: `|a| ≤ |fl(a+b)|`
+- `round_sum_le_double_mag`: same-sign magnitude upper bound: `|fl(a+b)| ≤ 2|a|`
 - `add_error_representable`: the rounding error `(a + b) - fl(a + b)` is representable
 -/
 
@@ -106,6 +108,175 @@ theorem round_sum_le_double (a b : FiniteFp)
         RModeMono.round_mono (R := R) (by rw [hdv']; exact hab_le)
       rw [RModeIdem.round_idempotent (R := R) d (Or.inl hds)] at hmono; rw [hs_round] at hmono
       linarith [FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff s_fp d).mp hmono)]
+
+/-! ## Same-sign magnitude bounds
+
+Magnitude versions of `round_sum_ge_left` and `round_sum_le_double` that work
+for both-positive and both-negative operands via `toVal_mag`. -/
+
+/-- The rounded sum of same-sign values has magnitude ≥ the larger operand's magnitude. -/
+theorem round_sum_ge_left_mag (a b : FiniteFp)
+    (hsame : a.s = b.s) (ha_nz : 0 < a.m)
+    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
+    (s_fp : FiniteFp)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeMono R] [RModeIdem R]
+    (hs : a + b = s_fp) :
+    FiniteFp.toVal_mag a (R := R) ≤ FiniteFp.toVal_mag s_fp := by
+  rcases Bool.eq_false_or_eq_true a.s with ha | ha
+  · -- a.s = true (negative)
+    have hb : b.s = true := hsame ▸ ha
+    -- b.toVal ≤ 0
+    have hb_nonpos : (b.toVal : R) ≤ 0 := by
+      have : 0 ≤ ((-b).toVal : R) := FiniteFp.toVal_nonneg _ (by simp [FiniteFp.neg_def, hb])
+      rw [FiniteFp.toVal_neg_eq_neg] at this; linarith
+    -- a + b ≤ a since b ≤ 0
+    have hab_le : (a.toVal : R) + b.toVal ≤ a.toVal := by linarith
+    -- Round preserves this
+    have hcorr := fpAddFinite_correct (R := R) a b hsum_ne
+    simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe] at hs hcorr
+    have hs_round := hcorr.symm.trans hs
+    have hmono : ○(a.toVal (R := R) + b.toVal) ≤ ○(a.toVal (R := R)) :=
+      RModeMono.round_mono (R := R) hab_le
+    have hround_a := RModeIdem.round_idempotent (R := R) a (Or.inr ha_nz)
+    rw [hround_a] at hmono; rw [hs_round] at hmono
+    have hs_le_a := FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff s_fp a).mp hmono)
+    -- Both ≤ 0, so |a| ≤ |s_fp|
+    have ha_nonpos : (a.toVal : R) ≤ 0 := by
+      have : 0 ≤ ((-a).toVal : R) := FiniteFp.toVal_nonneg _ (by simp [FiniteFp.neg_def, ha])
+      rw [FiniteFp.toVal_neg_eq_neg] at this; linarith
+    rw [FiniteFp.toVal_mag_toVal_abs, FiniteFp.toVal_mag_toVal_abs]
+    rw [abs_of_nonpos ha_nonpos, abs_of_nonpos (by linarith)]
+    linarith
+  · -- a.s = false (positive)
+    have hb : b.s = false := hsame ▸ ha
+    have hge := round_sum_ge_left (R := R) a b ha hb ha_nz hsum_ne s_fp hs
+    rw [FiniteFp.toVal_mag_toVal_abs, FiniteFp.toVal_mag_toVal_abs]
+    have ha_nn := FiniteFp.toVal_nonneg a ha (R := R)
+    rw [abs_of_nonneg ha_nn, abs_of_nonneg (by linarith)]
+    exact hge
+
+/-- The rounded sum of same-sign values with `|b| ≤ |a|` has magnitude ≤ `2|a|`. -/
+theorem round_sum_le_double_mag (a b : FiniteFp)
+    (hsame : a.s = b.s) (ha_nz : 0 < a.m)
+    (hab : FiniteFp.toVal_mag b (R := R) ≤ FiniteFp.toVal_mag a)
+    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
+    (s_fp : FiniteFp)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeMono R] [RModeIdem R]
+    (hs : a + b = s_fp) :
+    FiniteFp.toVal_mag s_fp (R := R) ≤ 2 * FiniteFp.toVal_mag a := by
+  rcases Bool.eq_false_or_eq_true a.s with ha | ha
+  · -- a.s = true (negative)
+    have hb : b.s = true := hsame ▸ ha
+    -- Convert magnitude ordering to value ordering for negative floats
+    have ha_nonpos : (a.toVal : R) ≤ 0 := by
+      have : 0 ≤ ((-a).toVal : R) := FiniteFp.toVal_nonneg _ (by simp [FiniteFp.neg_def, ha])
+      rw [FiniteFp.toVal_neg_eq_neg] at this; linarith
+    have hb_nonpos : (b.toVal : R) ≤ 0 := by
+      have : 0 ≤ ((-b).toVal : R) := FiniteFp.toVal_nonneg _ (by simp [FiniteFp.neg_def, hb])
+      rw [FiniteFp.toVal_neg_eq_neg] at this; linarith
+    -- |b| ≤ |a| and both neg means a ≤ b
+    have hab_val : (a.toVal : R) ≤ b.toVal := by
+      rw [FiniteFp.toVal_mag_toVal_abs, FiniteFp.toVal_mag_toVal_abs] at hab
+      rw [abs_of_nonpos hb_nonpos, abs_of_nonpos ha_nonpos] at hab; linarith
+    -- a + b ≥ 2a since b ≥ a
+    have hab_ge : 2 * (a.toVal : R) ≤ a.toVal + b.toVal := by linarith
+    -- Round preserves a+b ≤ a: s_fp.toVal ≤ a.toVal
+    have hcorr := fpAddFinite_correct (R := R) a b hsum_ne
+    simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe] at hs hcorr
+    have hs_round := hcorr.symm.trans hs
+    have hs_le_a : (s_fp.toVal : R) ≤ a.toVal := by
+      have hab_le : (a.toVal : R) + b.toVal ≤ a.toVal := by linarith
+      have hmono : ○(a.toVal (R := R) + b.toVal) ≤ ○(a.toVal (R := R)) :=
+        RModeMono.round_mono (R := R) hab_le
+      have hround_a := RModeIdem.round_idempotent (R := R) a (Or.inr ha_nz)
+      rw [hround_a] at hmono; rw [hs_round] at hmono
+      exact FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff s_fp a).mp hmono)
+    -- Construct representable 2a (negative)
+    -- Use posProj a to get positive version, double it, then negate
+    have hpa_nz : 0 < (FiniteFp.posProj a).m := by simp [FiniteFp.posProj]; exact ha_nz
+    by_cases he : a.e + 1 ≤ FloatFormat.max_exp
+    · -- Case 1: 2|a| representable via exponent shift
+      obtain ⟨d, hds, hdv⟩ := mul_pow2_representable (R := R) (FiniteFp.posProj a) 1
+        hpa_nz rfl (by simp [FiniteFp.posProj]; have := a.valid.1; omega)
+          (by simp [FiniteFp.posProj]; exact he)
+      -- d.toVal = 2 * posProj(a).toVal = 2 * toVal_mag a
+      have hdv' : (d.toVal : R) = 2 * FiniteFp.toVal_mag a := by
+        rw [hdv, zpow_one, ← FiniteFp.toVal_mag_eq_toVal_posProj]; ring
+      -- (-d).toVal = -(2 * toVal_mag a) = 2 * a.toVal
+      have hnd_val : ((-d).toVal : R) = 2 * a.toVal := by
+        rw [FiniteFp.toVal_neg_eq_neg, hdv']
+        rw [FiniteFp.toVal_mag_toVal_abs, abs_of_nonpos ha_nonpos]; ring
+      have hd_m : 0 < d.m := by
+        have : (0 : R) < d.toVal := by rw [hdv']; linarith [FiniteFp.toVal_mag_pos a ha_nz (R := R)]
+        exact ((FiniteFp.toVal_pos_iff (R := R)).mpr this).2
+      have hnd_nnz : (-d).notNegZero := Or.inr (by rw [FiniteFp.neg_def]; exact hd_m)
+      have hmono : ○((-d).toVal (R := R)) ≤ ○(a.toVal (R := R) + b.toVal) :=
+        RModeMono.round_mono (R := R) (by rw [hnd_val]; exact hab_ge)
+      rw [RModeIdem.round_idempotent (R := R) (-d) hnd_nnz] at hmono
+      rw [hs_round] at hmono
+      have h2a_le := FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff (-d) s_fp).mp hmono)
+      -- |s_fp| = -s_fp.toVal ≤ -(2a) = 2|a| = 2 * toVal_mag a
+      rw [hnd_val] at h2a_le
+      simp only [FiniteFp.toVal_mag_toVal_abs]
+      rw [abs_of_nonpos (by linarith), abs_of_nonpos ha_nonpos]
+      linarith
+    · -- Case 2: a.e = max_exp
+      push_neg at he
+      have ha_e_eq : a.e = FloatFormat.max_exp := le_antisymm a.valid.2.1 (by omega)
+      by_cases ha_normal : _root_.isNormal a.m
+      · -- a is normal at max_exp: toVal_mag a ≥ 2^max_exp, so 2 * toVal_mag a ≥ 2^(max_exp+1)
+        have ha_lower := FiniteFp.toVal_mag_normal_lower (R := R) a ha_normal
+        have : (2 : R) ^ a.e ≤ FiniteFp.toVal_mag a := ha_lower
+        rw [ha_e_eq] at this
+        have : 2 * (2 : R) ^ FloatFormat.max_exp = (2 : R) ^ (FloatFormat.max_exp + 1) := by
+          zpow_norm
+        have hs_bound : FiniteFp.toVal_mag s_fp (R := R) < (2 : R) ^ (FloatFormat.max_exp + 1) :=
+          (FiniteFp.toVal_mag_lt_zpow_succ s_fp).trans_le
+            (zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2) (by have := s_fp.valid.2.1; omega))
+        linarith
+      · -- a is subnormal: min_exp = max_exp, 2*a.m < 2^prec, so 2a representable
+        have hsub := a.isNormal_or_isSubnormal.resolve_left ha_normal
+        have hm_sub : a.m < 2 ^ (prec - 1).toNat := by omega
+        have hprec := FloatFormat.valid_prec
+        have h2m_bound : 2 * a.m < 2 ^ precNat := by
+          calc 2 * a.m < 2 * 2 ^ (prec - 1).toNat := by omega
+            _ = 2 ^ precNat := by
+              rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
+              rw [show 2 * 2 ^ (precNat - 1) = 2 ^ (precNat - 1 + 1) from by ring]
+              congr 1; omega
+        -- Construct negative 2a using int_mul_zpow
+        have h2a_eq : 2 * (a.toVal : R) = (-(2 * a.m : ℤ) : R) * (2 : R) ^ (a.e - prec + 1) := by
+          have : (a.toVal : R) = -((a.m : R) * (2 : R) ^ (a.e - prec + 1)) := by
+            rw [FiniteFp.toVal_eq_sign_mul_mag, FiniteFp.sign', if_pos ha]
+            simp [FiniteFp.toVal_mag, FloatFormat.radix_val_eq_two]
+          rw [this]; push_cast; ring
+        obtain ⟨d, hd_nnz, hdv⟩ := exists_finiteFp_of_int_mul_zpow (R := R) (-(2 * a.m : ℤ))
+          (a.e - prec + 1) (by omega) (by simp [Int.natAbs_neg]; exact_mod_cast h2m_bound)
+          (by omega) (by omega)
+        have hdv' : (d.toVal : R) = 2 * a.toVal := by rw [hdv, h2a_eq]; push_cast; ring
+        have hmono : ○(d.toVal (R := R)) ≤ ○(a.toVal (R := R) + b.toVal) :=
+          RModeMono.round_mono (R := R) (by rw [hdv']; exact hab_ge)
+        rw [RModeIdem.round_idempotent (R := R) d hd_nnz] at hmono
+        rw [hs_round] at hmono
+        have h2a_le := FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff d s_fp).mp hmono)
+        rw [hdv'] at h2a_le
+        simp only [FiniteFp.toVal_mag_toVal_abs]
+        rw [abs_of_nonpos (by linarith), abs_of_nonpos ha_nonpos]
+        linarith
+  · -- a.s = false (positive)
+    have hb : b.s = false := hsame ▸ ha
+    -- Convert magnitude ordering to value ordering
+    have hab_val : (b.toVal : R) ≤ a.toVal := by
+      rw [FiniteFp.toVal_mag_toVal_abs, FiniteFp.toVal_mag_toVal_abs] at hab
+      rw [abs_of_nonneg (FiniteFp.toVal_nonneg b hb),
+          abs_of_nonneg (FiniteFp.toVal_nonneg a ha)] at hab
+      exact hab
+    have hle := round_sum_le_double (R := R) a b ha hb ha_nz hab_val hsum_ne s_fp hs
+    rw [FiniteFp.toVal_mag_toVal_abs, FiniteFp.toVal_mag_toVal_abs]
+    have hge := round_sum_ge_left (R := R) a b ha hb ha_nz hsum_ne s_fp hs
+    have ha_nn := FiniteFp.toVal_nonneg a ha (R := R)
+    rw [abs_of_nonneg ha_nn, abs_of_nonneg (by linarith)]
+    linarith
 
 /-! ## Error representability -/
 

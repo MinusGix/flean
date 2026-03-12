@@ -19,8 +19,11 @@ variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRin
 
 /-! ## Sterbenz conditions for `s - a`
 
-For positive same-sign operands with `a ≥ b`, the rounded sum `s` satisfies
-`a ≤ s ≤ 2a`, so Sterbenz applies to `s - a`. -/
+For same-sign operands with `|b| ≤ |a|`, the rounded sum `s` satisfies
+`|a| ≤ |s| ≤ 2|a|`, so Sterbenz applies to `s - a`.
+
+- `sterbenz_sub_sa`: positive-only version
+- `sterbenz_sub_sa_same_sign`: generalized to arbitrary same-sign operands -/
 
 /-- Sterbenz conditions hold for `(s_fp, a)` when `a, b` are positive with `a ≥ b`. -/
 theorem sterbenz_sub_sa (a b : FiniteFp)
@@ -43,6 +46,71 @@ theorem sterbenz_sub_sa (a b : FiniteFp)
     ((FiniteFp.toVal_pos_iff (R := R)).mpr (by linarith)).2
   obtain ⟨z_fp, hz_sub, hz_repr⟩ :=
     sterbenz (R := R) s_fp a hs_s ha hs_m ha_nz (by linarith) hs_le_2a
+  exact ⟨z_fp, hz_sub, by simpa [Fp.Represents] using hz_repr⟩
+
+/-- Sterbenz conditions hold for `(s_fp, a)` when `a, b` are same-sign with `|b| ≤ |a|`. -/
+theorem sterbenz_sub_sa_same_sign (a b : FiniteFp)
+    (hsame : a.s = b.s) (ha_nz : 0 < a.m) (_hb_nz : 0 < b.m)
+    (hab : FiniteFp.toVal_mag b (R := R) ≤ FiniteFp.toVal_mag a)
+    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
+    (s_fp : FiniteFp)
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeMono R] [RModeIdem R]
+    (hs : a + b = s_fp) :
+    ∃ z_fp : FiniteFp,
+      s_fp - a = z_fp ∧
+        z_fp.toVal (R := R) = s_fp.toVal - a.toVal := by
+  have hmag_ge := round_sum_ge_left_mag (R := R) a b hsame ha_nz hsum_ne s_fp hs
+  have hmag_le := round_sum_le_double_mag (R := R) a b hsame ha_nz hab hsum_ne s_fp hs
+  -- s_fp and a have the same sign: s_fp.toVal is on the same side of 0 as a.toVal
+  have ha_ne := FiniteFp.toVal_ne_zero_of_m_pos a ha_nz (R := R)
+  have hs_m : 0 < s_fp.m := by
+    by_contra hm; push_neg at hm
+    have : s_fp.m = 0 := by omega
+    have : FiniteFp.toVal_mag s_fp (R := R) = 0 := by
+      simp [FiniteFp.toVal_mag, FloatFormat.radix_val_eq_two, this]
+    linarith [FiniteFp.toVal_mag_pos a ha_nz (R := R)]
+  have hs_same : s_fp.s = a.s := by
+    -- Derive sign from correctness + monotonicity
+    have hcorr := fpAddFinite_correct (R := R) a b hsum_ne
+    simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe] at hs hcorr
+    have hs_round := hcorr.symm.trans hs
+    rcases Bool.eq_false_or_eq_true a.s with ha | ha
+    · -- a.s = true (negative): b.toVal ≤ 0, a+b ≤ a < 0
+      have hb : b.s = true := hsame ▸ ha
+      have ha_neg : (a.toVal : R) < 0 := by
+        rw [FiniteFp.toVal_eq_sign_mul_mag, FiniteFp.sign', if_pos ha]
+        linarith [FiniteFp.toVal_mag_pos a ha_nz (R := R)]
+      have hb_nonpos : (b.toVal : R) ≤ 0 := by
+        have : 0 ≤ ((-b).toVal : R) := FiniteFp.toVal_nonneg _ (by simp [FiniteFp.neg_def, hb])
+        rw [FiniteFp.toVal_neg_eq_neg] at this; linarith
+      -- round(a+b) ≤ round(a) = a < 0
+      have hmono : ○(a.toVal (R := R) + b.toVal) ≤ ○(a.toVal (R := R)) :=
+        RModeMono.round_mono (R := R) (by linarith)
+      rw [RModeIdem.round_idempotent (R := R) a (Or.inr ha_nz)] at hmono
+      rw [hs_round] at hmono
+      have hs_le := FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff s_fp a).mp hmono)
+      have hs_neg : (s_fp.toVal : R) < 0 := lt_of_le_of_lt hs_le ha_neg
+      have hs_sf : s_fp.s = true := by
+        -- Bool.eq_false_or_eq_true returns (= true) ∨ (= false)
+        rcases Bool.eq_false_or_eq_true s_fp.s with hsf | hsf
+        · exact hsf  -- s_fp.s = true
+        · exact absurd hs_neg (not_lt.mpr (FiniteFp.toVal_nonneg s_fp hsf))
+      rw [hs_sf, ha]
+    · -- a.s = false (positive): a.toVal > 0, round(a+b) ≥ round(a) = a > 0
+      have hb : b.s = false := hsame ▸ ha
+      have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
+      have hb_nonneg : (0 : R) ≤ b.toVal := FiniteFp.toVal_nonneg b hb
+      have hmono : ○(a.toVal (R := R)) ≤ ○(a.toVal (R := R) + b.toVal) :=
+        RModeMono.round_mono (R := R) (by linarith)
+      rw [RModeIdem.round_idempotent (R := R) a (Or.inl ha)] at hmono
+      rw [hs_round] at hmono
+      have hs_ge := FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff a s_fp).mp hmono)
+      have hs_pos : (0 : R) < s_fp.toVal := lt_of_lt_of_le ha_pos hs_ge
+      rw [((FiniteFp.toVal_pos_iff (R := R)).mpr hs_pos).1, ha]
+  obtain ⟨z_fp, hz_sub, hz_repr⟩ :=
+    sterbenz_same_sign (R := R) s_fp a hs_same hs_m ha_nz
+      (by linarith [FiniteFp.toVal_mag_pos a ha_nz (R := R)])
+      hmag_le
   exact ⟨z_fp, hz_sub, by simpa [Fp.Represents] using hz_repr⟩
 
 /-! ## Subtraction of equal-valued floats yields finite zero -/
