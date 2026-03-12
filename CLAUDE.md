@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Working with Lean
 - To check a specific file: `lake env lean <file.lean>`
 - To get diagnostics/errors: Use the `mcp__ide__getDiagnostics` tool
-- The project uses Lean 4.21.0-rc3 (specified in lean-toolchain)
+- The project uses Lean 4.27.0-rc1 (specified in lean-toolchain)
 
 ### Dependencies
 This project depends on:
@@ -27,15 +27,25 @@ This is a mathematical library focused on floating-point arithmetic formalizatio
 **Core Components:**
 - `Flean.lean` - Root module that imports all library components
 - `Flean/FloatFormat.lean` - Defines floating-point formats and their properties
-- `Flean/Encoding/` - Handles encoding/decoding of floating-point representations
-- `Flean/Rounding.lean` - Formalization of rounding operations
+- `Flean/Defs.lean` - Core types: `Fp`, `FiniteFp`
+- `Flean/ToVal.lean` - Conversion to real/rational values
+- `Flean/Order.lean` - Ordering and comparison
+- `Flean/Rounding/` - All 5 IEEE 754 rounding modes, monotonicity, idempotence, relative error bounds
+- `Flean/Operations/` - Arithmetic ops (Add, Sub, Mul, Div, Sqrt, FMA), error analysis (Sterbenz, Fast2Sum, TwoSum, TwoProduct, VeltkampSplit, KahanSum), verified computation (Exp, Log)
+- `Flean/Encoding/` - Bit-level floating-point representations and conversions
+- `Flean/StorageFormats/` - GPU/ML formats (E4M3, E5M2, E3M2, etc.), fromFp correctness, round-trip proofs
 - `Flean/RelativeError.lean` - Relative error analysis
 - `Flean/Ulp.lean` & `Flean/Ufp.lean` - Unit in last/first place definitions
+- `Flean/Linearize/` - Custom `linearize` tactic for FP inequality automation
+- `Flean/BoundCalc/` - Custom `bound_calc` tactic for multiplicative monotonicity
+- `Flean/ZpowNorm/` - Custom `zpow_norm` tactic for zpow normalization
 
 **Key Design Patterns:**
 1. Heavy use of mathlib4 for mathematical foundations
 2. Modular structure with clear separation between basic definitions and advanced properties
 3. Encoding functionality is split into multiple submodules for better organization
+4. Custom domain-specific tactics (`linearize`, `bound_calc`, `zpow_norm`) for proof automation
+5. ~47k lines of Lean across 112 files, entirely sorry-free (library code)
 
 **Important Notes:**
 - The project uses `autoImplicit = false` in lakefile.toml, so all implicit arguments must be explicit

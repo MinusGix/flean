@@ -12,6 +12,8 @@ Separately, the library aims to formalize GPU floating point formats as well, to
 
 ## What's Proved
 
+The entire library is **sorry-free** — all results are verified by Lean's proof checker. ~47k lines across 112 files.
+
 ### Rounding — all 5 IEEE 754 modes
 
 Each mode (`roundDown`, `roundUp`, `roundTowardZero`, `roundNearestTiesToEven`, `roundNearestTiesAwayFromZero`) has:
@@ -31,17 +33,53 @@ Each mode (`roundDown`, `roundUp`, `roundTowardZero`, `roundNearestTiesToEven`, 
 | Subtraction (`fpSub`) | `fpSubFinite_correct` | — |
 | Multiplication (`fpMul`) | `fpMulFinite_correct` | `fpMul_comm` |
 | Division (`fpDiv`) | `fpDivFinite_correct` | — |
+| Square root (`fpSqrt`) | `fpSqrtFinite_correct` | — |
+| Fused multiply-add (`fpFMA`) | `fpFMAFinite_correct` | `fpFMA_comm_ab` |
 
-Each correctness theorem states: the operation's result equals the rounding mode applied to the exact mathematical result.
+Each correctness theorem states: the operation's result equals the rounding mode applied to the exact mathematical result. Division and square root use a shared sticky-bit technique (`sticky_roundIntSig_eq_round`).
 
-### Division — odd interval theorem
+### Error-free transformations
 
-`round_eq_on_odd_interval` proves that any rounding mode is constant on intervals `((n-1)*E, (n+1)*E)` where `n` is odd and large enough. This is the key lemma for division correctness, establishing that rounding commutes with the division algorithm's approximation.
+- **Fast2Sum** — `fast2Sum_pos_exact`: `a + b = s + e` exactly when `|a| ≥ |b|`
+- **TwoSum** — `twoSum_exact`: `a + b = s + e` for arbitrary signs (6-op variant in `TwoSum6Op.lean`)
+- **TwoProduct** — `twoProduct_exact`: `a * b = p + e` using FMA
+- **Sterbenz lemma** — subtraction is exact when `y/2 ≤ x ≤ 2y`
+- **Veltkamp splitting** — `veltkampSplit_exact`: `a_hi + a_lo = a` exactly
+
+### Algorithm error analysis
+
+- **Kahan compensated summation** — Higham's Theorem 4.3: `|ŝₙ - Σxᵢ| ≤ (2η + nη²)·Σ|xᵢ|` (`kahan_higham_bound`). Two independent proof approaches (~1085 lines).
+
+### Verified computation
+
+- **Exp** — Correctly-rounded `exp(x)` via Taylor series + Padé-based irrationality gap termination argument. 5 files, sorry-free.
+- **Log** — Correctly-rounded `log(x)` via alternating series bounds + MVT irrationality gap. 5 files, sorry-free.
+
+### IEEE 754-2019 operations
+
+- **Min/Max** — `fpMin`, `fpMax` with basic theorems
+- **LogB/ScaleB** — `fpLogB`, `fpScaleB` (§5.3.3)
+- **RoundToIntegral** — `fpRoundToIntegral` (§5.9)
+- **Predecessor/Successor** — distance properties
+
+### Storage formats (GPU/ML)
+
+Concrete format definitions (E4M3, E5M2, E3M2, E2M3, E2M1, E8M0) with:
+
+- **`fromFp` correctness** — conversion computes the correctly-rounded value (`fromFp_val_eq_round`)
+- **Overflow handling** — saturation, infinity, and NaN overflow behaviors proved correct
+- **Round-trip** — structural `roundtrip_general` via bitvector extensionality
+- **Concrete values** — `one`, `maxFinite`, `minPos` with `toVal` proofs
+
+### Encoding
+
+- **Bit-level encoding/decoding** — `toBits_ofBits` + `ofBits_toBits` round-trip, sorry-free
+- **Common constants** — verified without `native_decide`
 
 ### Additional
 
-- **Encoding/decoding** — bit-level floating-point representations and conversions
-- **ULP** — unit in last place definitions and error bounds
+- **ULP/UFP** — unit in last/first place definitions and error bounds
+- **Odd interval theorem** — `round_eq_on_odd_interval`, key lemma for division correctness
 
 ## Building
 
@@ -55,29 +93,54 @@ lake build
 
 ```
 Flean/
-├── FloatFormat.lean       Floating-point format definitions (precision, exponent range)
-├── Defs.lean              Core types: Fp, FiniteFp
-├── ToVal.lean             Conversion to real/rational values
-├── Order.lean             Ordering and comparison
-├── CommonConstants.lean   Standard constants (largest finite, smallest subnormal)
+├── FloatFormat.lean         Floating-point format definitions (precision, exponent range)
+├── Defs.lean                Core types: Fp, FiniteFp
+├── ToVal.lean               Conversion to real/rational values
+├── Order.lean               Ordering and comparison
+├── CommonConstants.lean     Standard constants (largest finite, smallest subnormal)
 ├── Rounding/
-│   ├── RoundDown.lean     Round toward -∞
-│   ├── RoundUp.lean       Round toward +∞
+│   ├── RoundDown.lean       Round toward -∞
+│   ├── RoundUp.lean         Round toward +∞
 │   ├── RoundTowardZero.lean
-│   ├── RoundNearest.lean  Ties-to-even and ties-away-from-zero
+│   ├── RoundNearest.lean    Ties-to-even and ties-away-from-zero
 │   ├── RelativeErrorBounds.lean
 │   ├── Idempotence.lean
-│   └── OddInterval.lean   Odd interval analysis for division
+│   ├── OddInterval.lean     Odd interval analysis for division
+│   ├── ModeClass.lean       RMode/RModeGrid/RModeSplit typeclasses
+│   └── ...                  Neighbor/, GridInstance, PolicyInstances
 ├── Operations/
-│   ├── Add.lean           fpAdd with correctness and commutativity
-│   ├── Sub.lean           fpSub via fpAdd with negation
-│   ├── Mul.lean           fpMul with correctness and commutativity
-│   ├── Div.lean           fpDiv with odd interval correctness proof
-│   └── RoundIntSig.lean   Core rounding-via-integer-significand algorithm
-├── Encoding/              Bit-level representations and conversions
-├── Linearize/             Custom tactic for FP inequality automation
-├── ENNRat/                Extended nonnegative rationals
-└── ERat/                  Extended rationals
+│   ├── Add.lean             fpAdd with correctness and commutativity
+│   ├── Sub.lean             fpSub via fpAdd with negation
+│   ├── Mul.lean             fpMul with correctness and commutativity
+│   ├── Div.lean             fpDiv with odd interval correctness proof
+│   ├── Sqrt.lean            fpSqrt with sticky-bit correctness
+│   ├── FMA.lean             Fused multiply-add
+│   ├── Fast2Sum.lean        Error-free transformation (ordered inputs)
+│   ├── TwoSum.lean          Error-free transformation (arbitrary signs)
+│   ├── TwoProduct.lean      Error-free transformation for multiplication
+│   ├── VeltkampSplit.lean   Veltkamp splitting exactness
+│   ├── Sterbenz.lean        Sterbenz lemma
+│   ├── KahanSum.lean        Kahan compensated summation error analysis
+│   ├── Exp*.lean            Verified exp computation (5 files)
+│   ├── Log*.lean            Verified log computation (5 files)
+│   ├── MinMax.lean          IEEE 754-2019 min/max
+│   ├── LogBScaleB.lean      logB and scaleB operations
+│   ├── RoundToIntegral.lean roundToIntegral operation
+│   └── RoundIntSig.lean     Core rounding-via-integer-significand algorithm
+├── StorageFormats/           GPU/ML float formats (E4M3, E5M2, etc.)
+│   ├── Defs.lean            Format definitions and StorageFp type
+│   ├── Conversion.lean      StorageFp ↔ FiniteFp conversion
+│   ├── FromFp.lean          Fp → StorageFp conversion
+│   ├── FromFpCorrect.lean   fromFp correctness (correctly-rounded value)
+│   ├── Extensionality.lean  General round-trip theorem
+│   └── RoundRNEVerify.lean  RNE policy verification
+├── Encoding/                 Bit-level representations and conversions
+├── Linearize/                Custom linearize tactic (~356 sites)
+├── BoundCalc/                Custom bound_calc tactic (~144 sites)
+├── ZpowNorm/                 Custom zpow_norm tactic (46 sites)
+├── NumberTheory/             Padé approximants, irrationality bounds for exp
+├── ENNRat/                   Extended nonnegative rationals
+└── ERat/                     Extended rationals
 ```
 
 ## AI Assistance
@@ -89,6 +152,8 @@ The initial start of the library was myself writing proofs slowly and carefully,
 ## References
 
 - Jean-Michel Muller, Nicolas Brisebarre, Florent de Dinechin, Claude-Pierre Jeannerod, Vincent Lefevre, Guillaume Melquiond, Nathalie Revol, Damien Stehle, Serge Torres. *Handbook of Floating-Point Arithmetic*. Birkhauser, 2nd edition, 2018.
+- Nicholas J. Higham. *Accuracy and Stability of Numerical Algorithms*. SIAM, 2nd edition, 2002.
+- IEEE 754-2019. *IEEE Standard for Floating-Point Arithmetic*.
 - [Mathlib4](https://github.com/leanprover-community/mathlib4) — the mathematical library for Lean 4.
 
 ## License
