@@ -74,22 +74,30 @@ The addition error ρ₂ cancels — proven by `ring`. Second-order analysis giv
 `|ρ₃| ≤ η|y + ρ₂|` and `|ρ₄| ≤ η|ρ₂ + ρ₃|` (O(η²)). The bound
 `kahan_concrete_error_bound` telescopes these over a trace.
 
-### Approach B: TwoSum-based (the cleaner Higham path, future work)
+### Approach B: TwoSum-based (completed)
 
 The compensation step `(t, c) = TwoSum(sum, y)` is error-free by eq. (4.7), so
-`sum.toVal + y.toVal = t.toVal + c'.toVal` exactly. This reduces to ONE rounding
-error per step (from `y = fl(x - c)`), giving the clean recurrence:
+`sum.toVal + y.toVal = t.toVal + c'.toVal` exactly (`StepTwoSumExact`). This
+reduces to ONE rounding error per step (from `y = fl(x - c)`), yielding:
 
-  `σᵢ = σᵢ₋₁ + xᵢ + δᵢ(xᵢ + eᵢ₋₁)`,  `|δᵢ| ≤ u`
+  `|error| ≤ traceTwoSumBound + |cₙ|`
 
-where `σ = sum + e` and `e` is the TwoSum error (note: opposite sign convention
-from `c`). This yields Higham's `(2u + O(nu²))` constant directly.
+where `traceTwoSumBound = Σ η|xᵢ - cᵢ₋₁|`. Triangle inequality splits this into
+`η·Σ|xᵢ| + η·Σ|cᵢ₋₁|`, and the compensation induction (`traceCompSum_le_addMag`)
+bounds `Σ|cᵢ| ≤ η·traceAddMag`, giving:
 
-Formalizing Approach B requires connecting our `twoSum_exact` (TwoSum.lean) to the
-Kahan step witnesses. The infrastructure is in place; see TwoSum.lean for the
-exactness theorem.
+  `|error| ≤ η·Σ|xᵢ| + η²·traceAddMag + |cₙ|`  (`kahan_twosum_eta_squared_bound`)
 
-## Current Results (Approach A)
+Finally, `traceAddMag ≤ n·M` and `|cₙ| ≤ η·M` under a uniform bound `M` on
+`|sumᵢ + yᵢ|`, yielding the capstone:
+
+  **`|ŝₙ - Σxᵢ| ≤ (2η + nη²) · Σ|xᵢ|`**  (`kahan_higham_bound`)
+
+subject to the hypothesis `hM : ∀ step, |sumᵢ + yᵢ| ≤ Σ|xⱼ|`.
+
+## Results Summary
+
+### Approach A (four-ρ, general)
 
 **Main bound** (`kahan_error_bound` / `kahan_concrete_error_bound`): telescoping
 over a trace of `n` steps starting from zero:
@@ -98,6 +106,62 @@ over a trace of `n` steps starting from zero:
 
 The dominant term is `Σ η|xᵢ - cᵢ₋₁| ≈ η · Σ|xᵢ|` (since cᵢ is O(η)), giving
 the O(η) bound. The remaining terms are O(η²) per step.
+
+### Approach B (TwoSum-exact, Higham form)
+
+- `kahan_twosum_error_bound`: `|error| ≤ traceTwoSumBound + |cₙ|`
+- `kahan_twosum_eta_squared_bound`: `|error| ≤ η·Σ|xᵢ| + η²·traceAddMag + |cₙ|`
+- **`kahan_higham_bound`**: `|error| ≤ (2η + nη²) · Σ|xᵢ|` (Higham eq. 4.9)
+
+## The `hM` Hypothesis and Possible Extensions
+
+The capstone `kahan_higham_bound` requires `hM : ∀ step, |sumᵢ + yᵢ| ≤ Σ|xⱼ|`.
+This says the floating-point addition magnitudes don't exceed the sum of absolute
+values. Several approaches to discharging this:
+
+### A. Bootstrap from `nη < 1` (recommended next step)
+
+Assume `(xs.length : R) * η < 1`. Prove `|sumᵢ| ≤ (1 + O(iη))·Σⱼ≤ᵢ|xⱼ|` by
+simultaneous induction on `|sumᵢ|` and `|cᵢ|`, using the rounding bounds already
+in this file. This gives `|sumᵢ + yᵢ| ≤ (1 + O(nη))·Σ|xⱼ| ≤ 2·Σ|xⱼ|` when
+`nη ≤ 1/2`. Architecture: wrapper theorem `kahan_higham_bound'` taking `hsmall`
+instead of `hM`, deriving `hM` internally.
+
+For Float64 (`η ≈ 10⁻¹⁶`), `nη < 1` allows `n ≈ 10¹⁵` — far beyond any
+practical summation. The constant degrades from `(2η + nη²)` to roughly
+`(4η + 4nη²)` due to the bootstrap factor of 2.
+
+### B. Backward error form (Higham eq. 4.8)
+
+Prove the per-element multiplicative perturbation:
+
+  `ŝₙ = Σ(1 + μᵢ)xᵢ,  |μᵢ| ≤ 2u + O((n-i+1)u²)`
+
+This is strictly stronger than the forward bound (gives element-wise perturbation,
+not just total error). Requires tracking per-element perturbation factors through
+the trace — a different proof structure (backward error analysis rather than forward
+telescoping). Architecture: new theorem alongside the existing forward bounds.
+
+### C. Pairwise summation comparison
+
+Show that Kahan's `2η + O(nη²)` beats pairwise summation's `O(log(n)·η)` constant
+for sufficiently large `n`. Pure corollary of existing bounds plus a pairwise bound
+(not yet in the library).
+
+### D. Neumaier variant
+
+The improved Kahan-Babuška-Neumaier algorithm handles `|xᵢ| > |sumᵢ|` by
+conditionally swapping, removing the need for `StepNormalRange` in some cases.
+Would require a modified `StepWitness` with conditional logic. Architecture:
+new file `NeumaierSum.lean` reusing the trace infrastructure.
+
+### E. Connection to `twoSum_exact`
+
+Currently `StepTwoSumExact` is stated as a hypothesis. Connecting it to our
+proven `twoSum_exact` (TwoSum.lean) requires showing that the Kahan step's
+`(t, w, c') = (fl(sum+y), fl(t-sum), fl(w-y))` is indeed a 2Sum computation
+on `(sum, y)`. This would make the TwoSum-exactness automatic rather than
+hypothesized, eliminating `hexact` from all Approach B theorems.
 
 ## References
 
@@ -109,10 +173,13 @@ the O(η) bound. The remaining terms are O(η²) per step.
 
 ## File Contents
 
+### Infrastructure
 - `standard_error_model` / `standard_error_additive` — bridge to `(1+δ)` form
 - `fpAdd_error` / `fpSub_error` / `*_or_zero` — operation-level error bounds
 - `State`, `StepWitness`, `Trace` — algorithm definitions
 - `StepNormalRange` — precondition structure
+
+### Approach A (four-ρ)
 - `kahan_step_corrected_sum` — ρ₂ cancellation identity
 - `kahan_step_rounding_bounds` — |ρᵢ| ≤ η|operand|
 - `rho3_bound_via_y`, `rho4_bound_via_rhos` — second-order bounds
@@ -120,6 +187,20 @@ the O(η) bound. The remaining terms are O(η²) per step.
 - `kahan_trace_sigma_eq` — corrected sum telescoping
 - `kahan_error_bound` — abstract error bound
 - `kahan_concrete_error_bound` — concrete η-weighted bound
+
+### Approach B (TwoSum-exact → Higham)
+- `StepTwoSumExact` — TwoSum-exactness condition
+- `stepResidual_eq_rho1_of_twosum` — residual simplifies to ρ₁
+- `comp_le_rho2_of_twosum` — |c'| ≤ η|sum+y|
+- `traceTwoSumBound` / `traceCompSum` / `traceAddMag` — trace-level quantities
+- `traceTwoSumBound_le_split` — triangle inequality split
+- `traceCompSum_le_addMag` — compensation bounded by η·addition magnitudes
+- `kahan_twosum_error_bound` — η·traceTwoSumBound + |cₙ|
+- `kahan_twosum_split_error_bound` — η·Σ|xᵢ| + η·traceCompSum + |cₙ|
+- `kahan_twosum_eta_squared_bound` — η·Σ|xᵢ| + η²·traceAddMag + |cₙ|
+- `traceAddMag_le_mul_length` — traceAddMag ≤ n·M
+- `final_comp_le_eta_mul` — |cₙ| ≤ η·M (inductive invariant)
+- **`kahan_higham_bound`** — **(2η + nη²)·Σ|xᵢ|** (Higham Theorem 4.3)
 -/
 
 namespace KahanSum

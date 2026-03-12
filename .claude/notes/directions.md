@@ -162,6 +162,16 @@ Rounding/ files but narrow applicability.
   - Compensation induction: `traceCompSum ≤ |c₀| + η·traceAddMag`, `final_comp_le_eta_mul`
   - **Capstone**: `kahan_higham_bound` — `(2η + nη²)·Σ|xᵢ|` (Higham eq. 4.9)
   - ~1085 lines, sorry-free. Both approaches share `kahan_error_bound` base.
+  - **Extensions** (documented in KahanSum.lean module docstring):
+    - [ ] **A. Bootstrap `nη < 1`**: wrapper `kahan_higham_bound'` deriving `hM` from `hsmall : n*η < 1`
+      via simultaneous induction on `|sumᵢ|` and `|cᵢ|`. Eliminates `hM` hypothesis. Recommended next.
+    - [ ] **B. Backward error** (Higham eq. 4.8): `ŝₙ = Σ(1+μᵢ)xᵢ`, `|μᵢ| ≤ 2u + O(nu²)`.
+      Per-element multiplicative perturbation, strictly stronger. Different proof structure.
+    - [ ] **C. Pairwise comparison**: corollary showing Kahan beats pairwise for large n.
+    - [ ] **D. Neumaier variant**: handles `|xᵢ| > |sumᵢ|` via conditional swap.
+      New file `NeumaierSum.lean` reusing trace infrastructure.
+    - [ ] **E. Connect `twoSum_exact`**: make `StepTwoSumExact` automatic instead of hypothesized,
+      eliminating `hexact` from Approach B theorems.
 - [ ] **Dot product error bound** — `|fl(x·y) - x·y| ≤ γ_n · |x|·|y|` where `γ_n = nε/(1-nε)`. Uses fpAdd + fpMul.
 - [ ] **Newton reciprocal** — `x_{n+1} = x_n(2 - ax_n)`, quadratic convergence in floats.
 - [ ] **Newton sqrt** — Similar to reciprocal, used in hardware implementations.
