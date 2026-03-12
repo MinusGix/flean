@@ -155,7 +155,14 @@ Rounding/ files but narrow applicability.
 - **Note**: `hsigned : f.hasSigned = true` required everywhere — E8M0 (unsigned) is excluded from all FromFpCorrect theorems
 
 ## Mid-Term — Algorithm Error Analysis
-- [ ] **Kahan compensated summation** — Error bound O(ε·Σ|xᵢ|) instead of O(nε·Σ|xᵢ|). Builds on TwoSum.
+- [x] **Kahan compensated summation** — Error bound O(ε·Σ|xᵢ|) instead of O(nε·Σ|xᵢ|) ✓
+  - Standard error model bridge (`standard_error_model`, `standard_error_additive`)
+  - ρ₂ cancellation identity (`kahan_step_corrected_sum`) — proven by `ring`
+  - Second-order bounds: `|ρ₃| ≤ η|y+ρ₂|`, `|ρ₄| ≤ η|ρ₂+ρ₃|` (O(η²))
+  - Compensation bound: `|c'| ≤ η|sum+y| + η|y+ρ₂| + η|ρ₂+ρ₃|`
+  - Trace telescoping + concrete error bound (`kahan_concrete_error_bound`)
+  - ~680 lines, sorry-free. Follows Higham §4.3 / Theorem 4.3.
+  - Remaining: full `(2ε + O(nε²))·Σ|xᵢ|` needs inductive `|cᵢ|` bound + partial sum assumptions.
 - [ ] **Dot product error bound** — `|fl(x·y) - x·y| ≤ γ_n · |x|·|y|` where `γ_n = nε/(1-nε)`. Uses fpAdd + fpMul.
 - [ ] **Newton reciprocal** — `x_{n+1} = x_n(2 - ax_n)`, quadratic convergence in floats.
 - [ ] **Newton sqrt** — Similar to reciprocal, used in hardware implementations.

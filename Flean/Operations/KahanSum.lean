@@ -5,16 +5,15 @@ import Flean.Rounding.PolicyInstances
 /-!
 # Kahan Compensated Summation
 
-Defines Kahan's compensated summation algorithm and proves its error bound.
-
-The key result: the error of Kahan summation is `O(ε · Σ|xᵢ|)`, independent of `n`,
-compared to naive summation's `O(nε · Σ|xᵢ|)`.
+Formalizes Kahan's compensated summation algorithm (1965) and proves its error bound,
+following the analysis in Higham, *Accuracy and Stability of Numerical Algorithms*
+(2nd ed., SIAM 2002), §4.3.
 
 ## Algorithm
 
 ```
-sum = x[0]; c = 0
-for i = 1 to n-1:
+sum = 0; c = 0
+for i = 0 to n-1:
   y = x[i] - c        // compensated input
   t = sum + y          // new partial sum
   c = (t - sum) - y    // new compensation
@@ -22,13 +21,86 @@ for i = 1 to n-1:
 return sum
 ```
 
-## Approach
+## The Problem
 
-We use the standard error model: `fl(a ⊕ b) = (a + b)(1 + δ)` with `|δ| ≤ η`
-where `η = 2^(-prec)` (half machine epsilon), valid in the normal range.
+Naive left-to-right summation `s₁ = x₀, sᵢ₊₁ = fl(sᵢ + xᵢ₊₁)` satisfies
+(Higham, Theorem 4.1):
 
-The compensation `c ≈ -(rounding error of t)` captures the O(ε) error from
-each addition, so the accumulated error only grows as O(nε²) instead of O(nε).
+  `|ŝₙ - Σxᵢ| ≤ (n-1)ε · Σ|xᵢ| + O(nε²)`
+
+where `ε = 2^(-prec)` is half machine epsilon. The error grows linearly with `n`.
+
+Kahan summation uses a running compensation variable `c` to track the rounding
+error from each addition, feeding it back into the next step. The result
+(Higham, Theorem 4.3) is:
+
+  `|ŝₙ - Σxᵢ| ≤ (2ε + O(nε²)) · Σ|xᵢ|`
+
+The error is **independent of `n`** to first order — a dramatic improvement for
+large sums.
+
+## Proof Structure
+
+We define four rounding errors per step:
+- `ρ₁ = fl(x - c) - (x - c)` — from the compensation subtraction
+- `ρ₂ = fl(sum + y) - (sum + y)` — from the main addition
+- `ρ₃ = fl(t - sum) - (t - sum)` — from recovering the added value
+- `ρ₄ = fl(w - y) - (w - y)` — from computing the new compensation
+
+**Key algebraic identity** (`kahan_step_corrected_sum`): defining the "corrected sum"
+`σ = sum - c`, one Kahan step gives
+
+  `σ' = σ + x + (ρ₁ - ρ₃ - ρ₄)`
+
+The addition error ρ₂ cancels exactly — the compensation absorbs it. This is proven
+purely by `ring` with no appeal to rounding properties.
+
+**Second-order analysis**: using the algebraic identities `t - sum = y + ρ₂` and
+`w - y = ρ₂ + ρ₃`, we show:
+- `|ρ₃| ≤ η · |y + ρ₂|` — first-order in y, second-order correction
+- `|ρ₄| ≤ η · |ρ₂ + ρ₃|` — purely second-order (O(η²))
+- `|c'| ≤ η|sum + y| + η|y + ρ₂| + η|ρ₂ + ρ₃|` — compensation is O(η)
+
+**Main bound** (`kahan_error_bound` / `kahan_concrete_error_bound`): telescoping
+over a trace of `n` steps starting from zero:
+
+  `|sum_n - Σxᵢ| ≤ Σᵢ (η|xᵢ - cᵢ₋₁| + η|yᵢ + ρ₂ᵢ| + η|ρ₂ᵢ + ρ₃ᵢ|) + |cₙ|`
+
+The dominant term is `Σ η|xᵢ - cᵢ₋₁| ≈ η · Σ|xᵢ|` (since cᵢ is O(η)), giving
+the O(η) bound. The remaining terms are O(η²) per step.
+
+## What's Not Proven Here
+
+The full Higham `(2ε + O(nε²)) · Σ|xᵢ|` bound requires additionally:
+1. Bounding `|cᵢ| ≤ O(η · |partial_sum|)` inductively
+2. Bounding `|yᵢ + ρ₂ᵢ| = |tᵢ - sumᵢ₋₁|` in terms of inputs
+3. Summing the O(η²) terms to get the O(nε²) correction
+
+These depend on assumptions about partial sum magnitudes relative to inputs.
+All the building blocks (`comp_concrete_bound`, `stepResidual_concrete_bound`,
+`rho3_bound_via_y`, `rho4_bound_via_rhos`) are provided.
+
+## References
+
+- W. Kahan, "Further remarks on reducing truncation errors," CACM 8(1), 1965.
+- N.J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed.,
+  SIAM, 2002, §4.3 (Theorem 4.3, pp. 87–88).
+- J.-M. Muller et al., *Handbook of Floating-Point Arithmetic*, 2nd ed.,
+  Birkhäuser, 2018, §6.2.
+
+## File Contents
+
+- `standard_error_model` / `standard_error_additive` — bridge to `(1+δ)` form
+- `fpAdd_error` / `fpSub_error` / `*_or_zero` — operation-level error bounds
+- `State`, `StepWitness`, `Trace` — algorithm definitions
+- `StepNormalRange` — precondition structure
+- `kahan_step_corrected_sum` — ρ₂ cancellation identity
+- `kahan_step_rounding_bounds` — |ρᵢ| ≤ η|operand|
+- `rho3_bound_via_y`, `rho4_bound_via_rhos` — second-order bounds
+- `comp_abs_le_rounding_errors`, `comp_concrete_bound` — compensation bounds
+- `kahan_trace_sigma_eq` — corrected sum telescoping
+- `kahan_error_bound` — abstract error bound
+- `kahan_concrete_error_bound` — concrete η-weighted bound
 -/
 
 namespace KahanSum
