@@ -24,22 +24,41 @@ return sum
 ## The Problem
 
 Naive left-to-right summation `s₁ = x₀, sᵢ₊₁ = fl(sᵢ + xᵢ₊₁)` satisfies
-(Higham, Theorem 4.1):
+(Higham, eq. 4.4):
 
-  `|ŝₙ - Σxᵢ| ≤ (n-1)ε · Σ|xᵢ| + O(nε²)`
+  `|ŝₙ - Σxᵢ| ≤ (n-1)u · Σ|xᵢ| + O(u²)`
 
-where `ε = 2^(-prec)` is half machine epsilon. The error grows linearly with `n`.
+where `u = 2^(-prec)` is the unit roundoff (half machine epsilon). The error grows
+linearly with `n`.
 
 Kahan summation uses a running compensation variable `c` to track the rounding
-error from each addition, feeding it back into the next step. The result
-(Higham, Theorem 4.3) is:
+error from each addition, feeding it back into the next step.
 
-  `|ŝₙ - Σxᵢ| ≤ (2ε + O(nε²)) · Σ|xᵢ|`
+## Higham's Results (§4.3, pp. 83–86)
+
+**Backward error** (eq. 4.8, due to Knuth [1998, Ex. 19, §4.2.2]):
+
+  `ŝₙ = Σ(1 + μᵢ)xᵢ,  |μᵢ| ≤ 2u + O((n-i+1)u²)`
+
+**Forward error** (eq. 4.9):
+
+  `|Eₙ| ≤ (2u + O(nu²)) · Σ|xᵢ|`
 
 The error is **independent of `n`** to first order — a dramatic improvement for
-large sums.
+large sums. The condition `nu ≤ 1` ensures the O(nu²) term is small.
 
-## Proof Structure
+**Key identity** (eq. 4.7): for rounded base-2 arithmetic, the TwoSum correction
+is exact:
+
+  `a + b = fl(a + b) + fl(fl(a - fl(a + b)) + b)`
+
+This means the compensation step `c = (t - sum) - y` exactly captures the rounding
+error of the addition `t = sum + y`. We already proved this as `twoSum_exact` in
+TwoSum.lean.
+
+## Two Proof Approaches
+
+### Approach A: Four-ρ analysis (this file, completed)
 
 We define four rounding errors per step:
 - `ρ₁ = fl(x - c) - (x - c)` — from the compensation subtraction
@@ -47,19 +66,30 @@ We define four rounding errors per step:
 - `ρ₃ = fl(t - sum) - (t - sum)` — from recovering the added value
 - `ρ₄ = fl(w - y) - (w - y)` — from computing the new compensation
 
-**Key algebraic identity** (`kahan_step_corrected_sum`): defining the "corrected sum"
-`σ = sum - c`, one Kahan step gives
+**ρ₂ cancellation** (`kahan_step_corrected_sum`): defining `σ = sum - c`:
 
   `σ' = σ + x + (ρ₁ - ρ₃ - ρ₄)`
 
-The addition error ρ₂ cancels exactly — the compensation absorbs it. This is proven
-purely by `ring` with no appeal to rounding properties.
+The addition error ρ₂ cancels — proven by `ring`. Second-order analysis gives
+`|ρ₃| ≤ η|y + ρ₂|` and `|ρ₄| ≤ η|ρ₂ + ρ₃|` (O(η²)). The bound
+`kahan_concrete_error_bound` telescopes these over a trace.
 
-**Second-order analysis**: using the algebraic identities `t - sum = y + ρ₂` and
-`w - y = ρ₂ + ρ₃`, we show:
-- `|ρ₃| ≤ η · |y + ρ₂|` — first-order in y, second-order correction
-- `|ρ₄| ≤ η · |ρ₂ + ρ₃|` — purely second-order (O(η²))
-- `|c'| ≤ η|sum + y| + η|y + ρ₂| + η|ρ₂ + ρ₃|` — compensation is O(η)
+### Approach B: TwoSum-based (the cleaner Higham path, future work)
+
+The compensation step `(t, c) = TwoSum(sum, y)` is error-free by eq. (4.7), so
+`sum.toVal + y.toVal = t.toVal + c'.toVal` exactly. This reduces to ONE rounding
+error per step (from `y = fl(x - c)`), giving the clean recurrence:
+
+  `σᵢ = σᵢ₋₁ + xᵢ + δᵢ(xᵢ + eᵢ₋₁)`,  `|δᵢ| ≤ u`
+
+where `σ = sum + e` and `e` is the TwoSum error (note: opposite sign convention
+from `c`). This yields Higham's `(2u + O(nu²))` constant directly.
+
+Formalizing Approach B requires connecting our `twoSum_exact` (TwoSum.lean) to the
+Kahan step witnesses. The infrastructure is in place; see TwoSum.lean for the
+exactness theorem.
+
+## Current Results (Approach A)
 
 **Main bound** (`kahan_error_bound` / `kahan_concrete_error_bound`): telescoping
 over a trace of `n` steps starting from zero:
@@ -68,17 +98,6 @@ over a trace of `n` steps starting from zero:
 
 The dominant term is `Σ η|xᵢ - cᵢ₋₁| ≈ η · Σ|xᵢ|` (since cᵢ is O(η)), giving
 the O(η) bound. The remaining terms are O(η²) per step.
-
-## What's Not Proven Here
-
-The full Higham `(2ε + O(nε²)) · Σ|xᵢ|` bound requires additionally:
-1. Bounding `|cᵢ| ≤ O(η · |partial_sum|)` inductively
-2. Bounding `|yᵢ + ρ₂ᵢ| = |tᵢ - sumᵢ₋₁|` in terms of inputs
-3. Summing the O(η²) terms to get the O(nε²) correction
-
-These depend on assumptions about partial sum magnitudes relative to inputs.
-All the building blocks (`comp_concrete_bound`, `stepResidual_concrete_bound`,
-`rho3_bound_via_y`, `rho4_bound_via_rhos`) are provided.
 
 ## References
 
