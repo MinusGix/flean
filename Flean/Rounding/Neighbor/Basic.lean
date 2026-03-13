@@ -947,6 +947,32 @@ theorem findSuccessor_sub_findPredecessor_eq_ulp_of_normal_of_succ_gt
 
 end NormalRangeGap
 
+section SubnormalRangeGap
+
+/-- In subnormal range, the gap between `findSuccessorPos` and `findPredecessorPos`
+is bounded by the minimum ULP `2^(min_exp - prec + 1)`. Since this equals `Fp.ulp x`
+for subnormal x, this gives the subnormal analogue of
+`findSuccessor_sub_findPredecessor_le_ulp_of_normal`. -/
+theorem findSuccessorPos_sub_findPredecessorPos_le_ulp_of_subnormal
+    (x : R) (hpos : 0 < x) (hlt : x < (2 : R) ^ FloatFormat.min_exp)
+    (s : FiniteFp) (hs : findSuccessorPos x hpos = Fp.finite s) :
+    (s.toVal : R) - (findPredecessorPos x hpos).toVal ≤
+      (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) := by
+  have hsub : isSubnormalRange x := ⟨hpos, hlt⟩
+  -- Unfold findPredecessorPos in the subnormal branch
+  have hpred_eq : findPredecessorPos x hpos = roundSubnormalDown x hsub := by
+    unfold findPredecessorPos; simp [hlt]
+  -- Unfold findSuccessorPos in the subnormal branch
+  have hsucc_eq : findSuccessorPos x hpos = Fp.finite (roundSubnormalUp x hsub) := by
+    unfold findSuccessorPos; simp [hlt]
+  have hs_eq : s = roundSubnormalUp x hsub := by
+    rw [hsucc_eq] at hs; exact Fp.finite.inj hs.symm
+  subst hs_eq
+  rw [hpred_eq]
+  exact roundSubnormalUp_sub_roundSubnormalDown_le x hsub
+
+end SubnormalRangeGap
+
 section NextNeighbor
 
 /-- A fixed positive step used to move off an exactly representable finite value when

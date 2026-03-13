@@ -387,4 +387,88 @@ theorem roundSubnormalUp_toVal_mono {x y : R} (hx : isSubnormalRange x) (hy : is
       -- natAbs preserves order for positive integers
       omega
 
+/-- The gap between `roundSubnormalUp` and `roundSubnormalDown` is at most the
+subnormal ULP `2^(min_exp - prec + 1)`. This follows from `⌈x/u⌉ - ⌊x/u⌋ ≤ 1`. -/
+theorem roundSubnormalUp_sub_roundSubnormalDown_le (x : R) (h : isSubnormalRange x) :
+    (roundSubnormalUp x h).toVal (R := R) - (roundSubnormalDown x h).toVal ≤
+      (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) := by
+  -- Use the bracket: pred ≤ x ≤ succ, and succ - pred = (⌈x/u⌉ - ⌊x/u⌋) * u ≤ u
+  have hge : x ≤ (roundSubnormalUp x h).toVal (R := R) := roundSubnormalUp_ge x h _ rfl
+  have hle : (roundSubnormalDown x h).toVal (R := R) ≤ x := roundSubnormalDown_le x h
+  have hup_nn : (0 : R) ≤ (roundSubnormalUp x h).toVal := le_of_lt roundSubnormalUp_pos
+  have hdn_nn : (0 : R) ≤ (roundSubnormalDown x h).toVal := roundSubnormalDown_nonneg
+  -- Direct approach: both values bracket x, and both are multiples of u = 2^(min_exp - prec + 1).
+  -- The down value is ⌊x/u⌋ * u (or 0), the up value is ⌈x/u⌉ * u (or smallest normal).
+  -- In either case, the gap is at most u.
+  -- Strategy: show succ ≤ pred + u by working through the definitional cases.
+  suffices hsuff : (roundSubnormalUp x h).toVal (R := R) ≤
+      (roundSubnormalDown x h).toVal + (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) by
+    linarith
+  have hu_pos : (0 : R) < (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by positivity
+  have hxu_pos : 0 < x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) :=
+    div_pos h.left hu_pos
+  have hcf : ⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉ ≤
+      ⌊x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌋ + 1 :=
+    Int.ceil_le_floor_add_one _
+  have hf_nonneg : 0 ≤ ⌊x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌋ :=
+    Int.floor_nonneg.mpr (le_of_lt hxu_pos)
+  have hc_pos : 0 < ⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉ :=
+    Int.ceil_pos.mpr hxu_pos
+  -- Show: up.toVal ≤ ⌈x/u⌉ * u
+  have hup_bound : (roundSubnormalUp x h).toVal (R := R) ≤
+      ⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉ *
+        (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by
+    unfold roundSubnormalUp; simp only [ge_iff_le]
+    split_ifs with htrans
+    · -- Transition: value = smallestPosNormal, toVal = 2^min_exp
+      -- Need: 2^min_exp ≤ ⌈x/u⌉ * u. We have ⌈x/u⌉ ≥ 2^(prec-1).
+      -- 2^min_exp = 2^(prec-1) * u, so this follows.
+      have h2min : (2 : R) ^ FloatFormat.min_exp =
+          (2 : R) ^ (FloatFormat.prec - 1) *
+            (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by
+        conv_lhs => rw [show FloatFormat.min_exp = (FloatFormat.prec - 1) +
+          (FloatFormat.min_exp - FloatFormat.prec + 1) from by ring]
+        exact zpow_add₀ (by norm_num : (2 : R) ≠ 0) _ _
+      calc FiniteFp.smallestPosNormal.toVal (R := R)
+          = (2 : R) ^ FloatFormat.min_exp := FiniteFp.smallestPosNormal_toVal
+        _ = (2 : R) ^ (FloatFormat.prec - 1) *
+              (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := h2min
+        _ ≤ (⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉ : R) *
+              (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by
+            apply mul_le_mul_of_nonneg_right _ (le_of_lt hu_pos)
+            rw [show (FloatFormat.prec : ℤ) - 1 = ((FloatFormat.prec - 1).toNat : ℤ) from by
+              have := FloatFormat.prec_pos; omega, zpow_natCast]
+            exact_mod_cast htrans
+    · -- Non-transition: value = ⌈x/u⌉.natAbs * u with sign false
+      unfold FiniteFp.toVal FiniteFp.sign'
+      rw [FloatFormat.radix_val_eq_two]
+      simp only [Bool.false_eq_true, ↓reduceIte, one_mul, Int.cast_natAbs_pos hc_pos]
+      norm_cast
+  -- Show: ⌊x/u⌋ * u ≤ down.toVal (actually equality, but ≤ suffices)
+  have hdn_bound : ⌊x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌋ *
+      (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) ≤
+      (roundSubnormalDown x h).toVal (R := R) := by
+    unfold roundSubnormalDown
+    simp only []
+    split_ifs with hfz
+    · rw [hfz]; simp [FiniteFp.toVal_zero]
+    · have hf_pos : 0 < ⌊x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌋ := by
+        omega
+      unfold FiniteFp.toVal FiniteFp.sign'
+      rw [FloatFormat.radix_val_eq_two]
+      simp only [Bool.false_eq_true, ↓reduceIte, one_mul, Int.cast_natAbs_pos hf_pos]
+      norm_cast
+  -- Combine: up ≤ ⌈x/u⌉ * u ≤ (⌊x/u⌋ + 1) * u = ⌊x/u⌋ * u + u ≤ down + u
+  calc (roundSubnormalUp x h).toVal (R := R)
+      ≤ ⌈x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌉ *
+          (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := hup_bound
+    _ ≤ (⌊x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌋ + 1) *
+          (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by
+        exact mul_le_mul_of_nonneg_right (by exact_mod_cast hcf) (le_of_lt hu_pos)
+    _ = ⌊x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌋ *
+          (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) +
+          (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by push_cast; ring
+    _ ≤ (roundSubnormalDown x h).toVal (R := R) +
+          (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by linarith
+
 end Rounding

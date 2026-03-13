@@ -85,13 +85,14 @@ end ExecInstances
 
 private theorem rnEven_le_two_x_sub_pred {R : Type*}
     [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
-    (x : R) (hxpos : 0 < x) (hx : isNormalRange x)
+    (x : R) (hxpos : 0 < x)
     (f : FiniteFp) (hf : roundNearestTiesToEven x = Fp.finite f) :
     (f.toVal : R) ≤ 2 * x - (findPredecessorPos x hxpos).toVal := by
   have hrd : roundDown x = Fp.finite (findPredecessorPos x hxpos) := by
     simpa [roundDown] using (findPredecessor_pos_eq x hxpos)
-  rcases roundNearestTiesToEven_is_roundDown_or_roundUp x hx f hf with hdown | hup
-  · have hpred_eq : findPredecessorPos x hxpos = f := by
+  rcases rnTE_eq_roundDown_or_roundUp' x with hrd_eq | hup_eq
+  · have hdown : roundDown x = Fp.finite f := by rw [← hrd_eq]; exact hf
+    have hpred_eq : findPredecessorPos x hxpos = f := by
       apply Fp.finite.inj
       calc
         Fp.finite (findPredecessorPos x hxpos) = roundDown x := hrd.symm
@@ -101,7 +102,8 @@ private theorem rnEven_le_two_x_sub_pred {R : Type*}
     have hf_le : (f.toVal : R) ≤ x := by
       simpa [hpred_eq] using hpred_le
     linarith
-  · by_cases hpred_eq : findPredecessorPos x hxpos = f
+  · have hup : roundUp x = Fp.finite f := by rw [← hup_eq]; exact hf
+    by_cases hpred_eq : findPredecessorPos x hxpos = f
     · have hpred_le : ((findPredecessorPos x hxpos).toVal : R) ≤ x :=
         findPredecessorPos_le x hxpos
       have hf_le : (f.toVal : R) ≤ x := by
@@ -129,13 +131,14 @@ private theorem rnEven_le_two_x_sub_pred {R : Type*}
 
 private theorem rnAway_le_two_x_sub_pred {R : Type*}
     [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
-    (x : R) (hxpos : 0 < x) (hx : isNormalRange x)
+    (x : R) (hxpos : 0 < x)
     (f : FiniteFp) (hf : roundNearestTiesAwayFromZero x = Fp.finite f) :
     (f.toVal : R) ≤ 2 * x - (findPredecessorPos x hxpos).toVal := by
   have hrd : roundDown x = Fp.finite (findPredecessorPos x hxpos) := by
     simpa [roundDown] using (findPredecessor_pos_eq x hxpos)
-  rcases roundNearestTiesAwayFromZero_is_roundDown_or_roundUp x hx f hf with hdown | hup
-  · have hpred_eq : findPredecessorPos x hxpos = f := by
+  rcases rnTA_eq_roundDown_or_roundUp' x with hrd_eq | hup_eq
+  · have hdown : roundDown x = Fp.finite f := by rw [← hrd_eq]; exact hf
+    have hpred_eq : findPredecessorPos x hxpos = f := by
       apply Fp.finite.inj
       calc
         Fp.finite (findPredecessorPos x hxpos) = roundDown x := hrd.symm
@@ -145,7 +148,8 @@ private theorem rnAway_le_two_x_sub_pred {R : Type*}
     have hf_le : (f.toVal : R) ≤ x := by
       simpa [hpred_eq] using hpred_le
     linarith
-  · by_cases hpred_eq : findPredecessorPos x hxpos = f
+  · have hup : roundUp x = Fp.finite f := by rw [← hup_eq]; exact hf
+    by_cases hpred_eq : findPredecessorPos x hxpos = f
     · have hpred_le : ((findPredecessorPos x hxpos).toVal : R) ≤ x :=
         findPredecessorPos_le x hxpos
       have hf_le : (f.toVal : R) ≤ x := by
@@ -173,14 +177,15 @@ private theorem rnAway_le_two_x_sub_pred {R : Type*}
 
 private theorem rnEven_ge_two_x_sub_succ {R : Type*}
     [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
-    (x : R) (hxpos : 0 < x) (hx : isNormalRange x)
+    (x : R) (hxpos : 0 < x)
     (f : FiniteFp) (hf : roundNearestTiesToEven x = Fp.finite f)
     (succ : FiniteFp) (hsucc : findSuccessorPos x hxpos = Fp.finite succ) :
     (2 * x - succ.toVal : R) ≤ f.toVal := by
   have hru : roundUp x = Fp.finite succ := by
     rw [roundUp, findSuccessor_pos_eq x hxpos]; exact hsucc
-  rcases roundNearestTiesToEven_is_roundDown_or_roundUp x hx f hf with hdown | hup
-  · by_cases hsucc_eq : succ = f
+  rcases rnTE_eq_roundDown_or_roundUp' x with hrd_eq | hup_eq
+  · have hdown : roundDown x = Fp.finite f := by rw [← hrd_eq]; exact hf
+    by_cases hsucc_eq : succ = f
     · have hsucc_ge : x ≤ (succ.toVal : R) :=
         findSuccessorPos_ge x hxpos succ hsucc
       have hf_ge : x ≤ (f.toVal : R) := by
@@ -191,10 +196,9 @@ private theorem rnEven_ge_two_x_sub_succ {R : Type*}
       let mid : R := ((f.toVal : R) + succ.toVal) / 2
       have h_not_gt_mid : ¬mid < x := by
         intro hgt
-        have hrd : roundDown x = Fp.finite f := hdown
         have hnear_up : roundNearestTiesToEven x = roundUp x :=
           rnEven_above_mid_roundUp x mid f succ
-            hxpos hx_lt_thresh hrd hru (by simp [mid]) hgt
+            hxpos hx_lt_thresh hdown hru (by simp [mid]) hgt
         have hup_eq_hdown : roundUp x = roundDown x := by
           calc
             roundUp x = roundNearestTiesToEven x := hnear_up.symm
@@ -206,7 +210,8 @@ private theorem rnEven_ge_two_x_sub_succ {R : Type*}
       have hmid_ge : x ≤ ((f.toVal : R) + succ.toVal) / 2 := by
         simpa [mid] using (not_lt.mp h_not_gt_mid)
       linarith
-  · have hsucc_eq : succ = f := by
+  · have hup : roundUp x = Fp.finite f := by rw [← hup_eq]; exact hf
+    have hsucc_eq : succ = f := by
       apply Fp.finite.inj
       calc
         Fp.finite succ = roundUp x := hru.symm
@@ -219,14 +224,15 @@ private theorem rnEven_ge_two_x_sub_succ {R : Type*}
 
 private theorem rnAway_ge_two_x_sub_succ {R : Type*}
     [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
-    (x : R) (hxpos : 0 < x) (hx : isNormalRange x)
+    (x : R) (hxpos : 0 < x)
     (f : FiniteFp) (hf : roundNearestTiesAwayFromZero x = Fp.finite f)
     (succ : FiniteFp) (hsucc : findSuccessorPos x hxpos = Fp.finite succ) :
     (2 * x - succ.toVal : R) ≤ f.toVal := by
   have hru : roundUp x = Fp.finite succ := by
     rw [roundUp, findSuccessor_pos_eq x hxpos]; exact hsucc
-  rcases roundNearestTiesAwayFromZero_is_roundDown_or_roundUp x hx f hf with hdown | hup
-  · by_cases hsucc_eq : succ = f
+  rcases rnTA_eq_roundDown_or_roundUp' x with hrd_eq | hup_eq
+  · have hdown : roundDown x = Fp.finite f := by rw [← hrd_eq]; exact hf
+    by_cases hsucc_eq : succ = f
     · have hsucc_ge : x ≤ (succ.toVal : R) :=
         findSuccessorPos_ge x hxpos succ hsucc
       have hf_ge : x ≤ (f.toVal : R) := by
@@ -237,10 +243,9 @@ private theorem rnAway_ge_two_x_sub_succ {R : Type*}
       let mid : R := ((f.toVal : R) + succ.toVal) / 2
       have h_not_gt_mid : ¬mid < x := by
         intro hgt
-        have hrd : roundDown x = Fp.finite f := hdown
         have hnear_up : roundNearestTiesAwayFromZero x = roundUp x :=
           rnAway_ge_mid_roundUp x mid f succ
-            hxpos hx_lt_thresh hrd hru (by simp [mid]) hgt.le
+            hxpos hx_lt_thresh hdown hru (by simp [mid]) hgt.le
         have hup_eq_hdown : roundUp x = roundDown x := by
           calc
             roundUp x = roundNearestTiesAwayFromZero x := hnear_up.symm
@@ -252,7 +257,8 @@ private theorem rnAway_ge_two_x_sub_succ {R : Type*}
       have hmid_ge : x ≤ ((f.toVal : R) + succ.toVal) / 2 := by
         simpa [mid] using (not_lt.mp h_not_gt_mid)
       linarith
-  · have hsucc_eq : succ = f := by
+  · have hup : roundUp x = Fp.finite f := by rw [← hup_eq]; exact hf
+    have hsucc_eq : succ = f := by
       apply Fp.finite.inj
       calc
         Fp.finite succ = roundUp x := hru.symm
@@ -500,15 +506,15 @@ instance [UseRoundingPolicy RoundNearestEvenPolicy] : RModeNearest R where
     intro x hx
     simpa [RMode.round] using (rnEven_ge_inf (R := R) x hx)
   round_le_two_x_sub_pred := by
-    intro x hxpos hx f hf
+    intro x hxpos f hf
     have hf' : roundNearestTiesToEven x = Fp.finite f := by
       simpa [RMode.round] using hf
-    simpa [RMode.round] using (rnEven_le_two_x_sub_pred (R := R) x hxpos hx f hf')
+    simpa [RMode.round] using (rnEven_le_two_x_sub_pred (R := R) x hxpos f hf')
   round_ge_two_x_sub_succ := by
-    intro x hxpos hx f succ hf hsucc
+    intro x hxpos f succ hf hsucc
     have hf' : roundNearestTiesToEven x = Fp.finite f := by
       simpa [RMode.round] using hf
-    exact rnEven_ge_two_x_sub_succ (R := R) x hxpos hx f hf' succ hsucc
+    exact rnEven_ge_two_x_sub_succ (R := R) x hxpos f hf' succ hsucc
 
 instance [UseRoundingPolicy RoundNearestEvenPolicy] : RModeExecSound R where
   chooseUp_exact := by
@@ -588,15 +594,15 @@ instance [UseRoundingPolicy RoundNearestAwayPolicy] : RModeNearest R where
     intro x hx
     simpa [RMode.round] using (rnAway_ge_inf (R := R) x hx)
   round_le_two_x_sub_pred := by
-    intro x hxpos hx f hf
+    intro x hxpos f hf
     have hf' : roundNearestTiesAwayFromZero x = Fp.finite f := by
       simpa [RMode.round] using hf
-    simpa [RMode.round] using (rnAway_le_two_x_sub_pred (R := R) x hxpos hx f hf')
+    simpa [RMode.round] using (rnAway_le_two_x_sub_pred (R := R) x hxpos f hf')
   round_ge_two_x_sub_succ := by
-    intro x hxpos hx f succ hf hsucc
+    intro x hxpos f succ hf hsucc
     have hf' : roundNearestTiesAwayFromZero x = Fp.finite f := by
       simpa [RMode.round] using hf
-    exact rnAway_ge_two_x_sub_succ (R := R) x hxpos hx f hf' succ hsucc
+    exact rnAway_ge_two_x_sub_succ (R := R) x hxpos f hf' succ hsucc
 
 instance [UseRoundingPolicy RoundNearestAwayPolicy] : RModeExecSound R where
   chooseUp_exact := by
@@ -661,7 +667,7 @@ theorem RModeNearest_abs_error_le_ulp_half {R : Type*}
   have hpred_le : ((findPredecessorPos x hxpos).toVal : R) ≤ x :=
     findPredecessorPos_le x hxpos
   -- From round_le_two_x_sub_pred: f.toVal ≤ 2*x - pred.toVal, i.e. f.toVal - x ≤ x - pred.toVal
-  have hA := RModeNearest.round_le_two_x_sub_pred x hxpos hx f hf
+  have hA := RModeNearest.round_le_two_x_sub_pred x hxpos f hf
   -- Case split on findSuccessorPos
   match hsucc_eq : findSuccessorPos x hxpos with
   | .finite s =>
@@ -669,7 +675,7 @@ theorem RModeNearest_abs_error_le_ulp_half {R : Type*}
     -- Bracket: x ≤ s.toVal
     have hsucc_ge : x ≤ (s.toVal : R) := findSuccessorPos_ge x hxpos s hsucc_eq
     -- From round_ge_two_x_sub_succ: x - f.toVal ≤ s.toVal - x
-    have hB := RModeNearest.round_ge_two_x_sub_succ x hxpos hx f s hf hsucc_eq
+    have hB := RModeNearest.round_ge_two_x_sub_succ x hxpos f s hf hsucc_eq
     -- Gap bound: s.toVal - pred.toVal ≤ ulp(x)
     have hgap : (s.toVal : R) - (findPredecessorPos x hxpos).toVal ≤ Fp.ulp x := by
       apply findSuccessor_sub_findPredecessor_le_ulp_of_normal x hx s (findPredecessorPos x hxpos)
@@ -761,6 +767,75 @@ theorem RModeNearest_abs_error_le_ulp_half {R : Type*}
     have := findSuccessorPos_ne_nan x hxpos
     rw [hsucc_eq] at this
     exact this rfl
+
+/-- General half-ULP error bound for nearest rounding, valid for all `0 < x` with finite result.
+Unlike `RModeNearest_abs_error_le_ulp_half` which requires `isNormalRange x`, this covers
+subnormal inputs too. -/
+theorem RModeNearest_abs_error_le_ulp_half_pos {R : Type*}
+    [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    [RMode R] [RModeNearest R]
+    (x : R) (hxpos : 0 < x) (f : FiniteFp)
+    (hf : ○x = Fp.finite f) :
+    |x - (f.toVal : R)| ≤ Fp.ulp x / 2 := by
+  -- Dispatch to normal case if in normal range
+  by_cases hlt : x < (2 : R) ^ FloatFormat.min_exp
+  · -- Subnormal case: 0 < x < 2^min_exp
+    -- Establish roundDown / roundUp connections (same as normal case)
+    have hrd : roundDown x = Fp.finite (findPredecessorPos x hxpos) := by
+      unfold roundDown; rw [findPredecessor_pos_eq]
+    have hru : roundUp x = findSuccessorPos x hxpos := by
+      unfold roundUp; rw [findSuccessor_pos_eq]
+    have hpred_le : ((findPredecessorPos x hxpos).toVal : R) ≤ x :=
+      findPredecessorPos_le x hxpos
+    have hA := RModeNearest.round_le_two_x_sub_pred x hxpos f hf
+    match hsucc_eq : findSuccessorPos x hxpos with
+    | .finite s =>
+      have hsucc_ge : x ≤ (s.toVal : R) := findSuccessorPos_ge x hxpos s hsucc_eq
+      have hB := RModeNearest.round_ge_two_x_sub_succ x hxpos f s hf hsucc_eq
+      -- Subnormal gap bound
+      have hgap_sub : (s.toVal : R) - (findPredecessorPos x hxpos).toVal ≤
+          (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec + 1) :=
+        findSuccessorPos_sub_findPredecessorPos_le_ulp_of_subnormal x hxpos hlt s hsucc_eq
+      -- ulp(x) ≥ 2^(min_exp - prec + 1) for all x
+      have hulp_ge := Fp.ulp_ge (R := R) x
+      -- So gap ≤ ulp(x)
+      have hgap : (s.toVal : R) - (findPredecessorPos x hxpos).toVal ≤ Fp.ulp x := by
+        linarith
+      have hpred_le_f : ((findPredecessorPos x hxpos).toVal : R) ≤ (f.toVal : R) := by
+        have hle : roundDown x ≤ ○x := RModeNearest.roundDown_le_round x
+        rw [hrd, hf] at hle
+        exact FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff _ _).mp hle)
+      have hf_le_s : (f.toVal : R) ≤ (s.toVal : R) := by
+        have hle : ○x ≤ roundUp x := RModeNearest.round_le_roundUp x
+        rw [hf, hru, hsucc_eq] at hle
+        exact FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff _ _).mp hle)
+      rw [abs_le]
+      constructor <;> linarith
+    | .infinite false =>
+      -- findSuccessorPos can't return +∞ for subnormal x
+      exfalso
+      have hx_lt_lff : x < (FiniteFp.largestFiniteFloat.toVal : R) :=
+        lt_of_lt_of_le hlt (le_trans (le_of_lt (by linearize : (2 : R) ^ FloatFormat.min_exp <
+          (2 : R) ^ FloatFormat.max_exp)) FiniteFp.zpow_max_exp_le_largestFiniteFloat_toVal)
+      have hle : roundUp x ≤ Fp.finite FiniteFp.largestFiniteFloat :=
+        roundUp_le_of_fp_ge x FiniteFp.largestFiniteFloat (Or.inl rfl) (le_of_lt hx_lt_lff)
+      rw [hru, hsucc_eq] at hle
+      exact absurd ((Fp.pos_inf_le_iff _).mp hle) (by simp)
+    | .infinite true =>
+      exfalso; exact findSuccessorPos_ne_neg_inf x hxpos hsucc_eq
+    | .NaN =>
+      exfalso; exact findSuccessorPos_ne_nan x hxpos hsucc_eq
+  · -- Normal range or above: dispatch to existing theorem
+    push_neg at hlt
+    by_cases hlt2 : x < (2 : R) ^ (FloatFormat.max_exp + 1)
+    · exact RModeNearest_abs_error_le_ulp_half x ⟨hlt, hlt2⟩ f hf
+    · -- x ≥ 2^(max_exp+1) > overflowThreshold: round would give infinity, contradicting finite result
+      exfalso
+      push_neg at hlt2
+      have hge_ot : FloatFormat.overflowThreshold R ≤ x :=
+        le_trans (le_of_lt FloatFormat.overflowThreshold_lt_zpow_max_exp_succ) hlt2
+      have := RModeNearest.overflow_pos_inf x hge_ot
+      rw [this] at hf; cases hf
 
 /-- **Half Machine Epsilon for any Nearest Rounding Mode**: For positive x in the normal range,
 the relative error of any nearest rounding mode is at most `2^(-prec)` (half machine epsilon). -/

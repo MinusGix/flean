@@ -27,8 +27,8 @@ so the only rounding error per step is `ρ₁ = fl(x + err) - (x + err)`.
 - `cs_error_bound` — error bound: `|final_sum - Σxᵢ| ≤ |err| + Σ|ρ₁ᵢ|`
 - `cs_rho1_abs_le` — concrete η model: `|ρ₁| ≤ η · |x + err|` (normal range)
 - `cs_trace_residual_abs_le_eta` — trace-level: `Σ|ρ₁ᵢ| ≤ η · Σ|xᵢ + errᵢ|`
-- `bv_exact_of_same_sign_dekker` — discharges `hbv_exact` under Dekker conditions
 - `twoSum_6op_pos` — auto-derives split witnesses for positive operands
+- `twoSum_6op_same_sign` — auto-derives for same-sign operands
 -/
 
 namespace CompensatedSum
@@ -56,50 +56,43 @@ Given state `(sum, err)` and input `x`:
 1. `y = fl(x + err)` — compensated input
 2. `(t, err') = TwoSum₆(sum, y)` — error-free sum with recovery
 
-The 6-op TwoSum intermediates are `bv, av, br, ar`. -/
+The intermediate 6-op TwoSum values (bv, av, br, ar) are abstracted away;
+only the exactness result `twosum_exact` is stored. Prove it via one of:
+- `twoSum_6op` (with Dekker/Sterbenz path)
+- `twoSum_6op_pos` (positive operands + `RModeGrid`)
+- `twoSum_6op_same_sign` (same-sign + `RModeGrid`)
+- `twoSum_6op_of_witnesses` (explicit split witnesses) -/
 structure CSStep [RModeExec] (st : CSState) (x : FiniteFp) where
   /-- `y = fl(x + err)` — compensated input -/
   y : FiniteFp
   hy : x + st.err = Fp.finite y
-  /-- `t = fl(sum + y)` — new sum (= s in TwoSum) -/
+  /-- `t = fl(sum + y)` — new sum -/
   t : FiniteFp
   ht : st.sum + y = Fp.finite t
-  /-- `bv = fl(t - sum)` — virtual b -/
-  bv : FiniteFp
-  hbv : t - st.sum = Fp.finite bv
-  /-- Splitting property: when sum + y ≠ 0, bv exactly recovers t - sum.
-      This is automatically satisfied for round-to-nearest modes
-      (discharged via `split_s_sub_bv` theorems). -/
-  hbv_exact :
-    ((st.sum.toVal : R) + y.toVal ≠ 0) →
-    bv.toVal (R := R) = t.toVal - st.sum.toVal
-  /-- `av = fl(t - bv)` — virtual a -/
-  av : FiniteFp
-  hav : t - bv = Fp.finite av
-  /-- `br = fl(y - bv)` — b roundoff -/
-  br : FiniteFp
-  hbr : y - bv = Fp.finite br
-  /-- `ar = fl(sum - av)` — a roundoff -/
-  ar : FiniteFp
-  har : st.sum - av = Fp.finite ar
-  /-- `err' = fl(ar + br)` — error term -/
+  /-- `err' = TwoSum₆(sum, y).err` — recovered error -/
   err' : FiniteFp
-  herr : ar + br = Fp.finite err'
+  /-- The 6-op TwoSum gives `t + err' = sum + y` exactly. -/
+  twosum_exact : (t.toVal : R) + err'.toVal = st.sum.toVal + y.toVal
 
 /-- Next state after a compensated sum step. -/
 def CSStep.nextState [RModeExec] {st : CSState} {x : FiniteFp}
     (step : CSStep (R := R) st x) : CSState :=
   ⟨step.t, step.err'⟩
 
-/-! ## Discharging `hbv_exact`
+/-- The compensated input value: `x + err`. -/
+def CSStep.compInputVal [RModeExec] {st : CSState} {x : FiniteFp}
+    (_ : CSStep (R := R) st x) : R :=
+  x.toVal + st.err.toVal
 
-The `hbv_exact` field of `CSStep` requires proving that `fl(t - sum)` exactly
-recovers `t - sum` when the sum is nonzero. This holds under the Dekker
-condition (same-sign with `|y| ≤ |sum|`) via Sterbenz.
+/-! ## Proving `twosum_exact`
 
-Note: `hbv_exact` does NOT hold in general when the Dekker condition fails.
-For unrestricted magnitude ordering, use `twoSum_6op_of_witnesses` directly
-with split-representability witnesses from `split_s_sub_bv_pos` / `split_b_sub_bv_pos`. -/
+The `twosum_exact` field of `CSStep` can be proved via several strategies:
+- **Dekker path**: `bv_exact_of_same_sign_dekker` + `twoSum_6op` for same-sign
+  operands with `|y| ≤ |sum|` (uses Sterbenz)
+- **Grid path**: `twoSum_6op_pos` or `twoSum_6op_same_sign` for positive or
+  same-sign operands with `RModeGrid` (no magnitude ordering needed)
+- **Explicit witnesses**: `twoSum_6op_of_witnesses` with split-representability
+  witnesses from `split_s_sub_bv_pos` / `split_b_sub_bv_pos` -/
 
 /-- `fl(s - a) = s - a` when `a, b` are same-sign with `|b| ≤ |a|`.
 
@@ -187,17 +180,63 @@ theorem twoSum_6op_pos [RModeExec]
     exact twoSum_6op_of_witnesses (R := R) a b ha_nz hb_nz s hs'
       bv hbv' (fun _ => hs_sub) av hav (fun _ => hb_sub) br hbr ar har t ht
 
+/-- **6-op 2Sum for same-sign operands** — auto-derives split witnesses via `RModeGrid`.
+
+Like `twoSum_6op_pos` but handles both-positive and both-negative cases. -/
+theorem twoSum_6op_same_sign [RModeExec]
+    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R] [RModeGrid R]
+    (a b : FiniteFp) (hsame : a.s = b.s)
+    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
+    (s : FiniteFp) (hs : a + b = (s : Fp))
+    (bv : FiniteFp) (hbv : s - a = (bv : Fp))
+    (av : FiniteFp) (hav : s - bv = (av : Fp))
+    (br : FiniteFp) (hbr : b - bv = (br : Fp))
+    (ar : FiniteFp) (har : a - av = (ar : Fp))
+    (t : FiniteFp) (ht : ar + br = (t : Fp)) :
+    (s.toVal : R) + t.toVal = a.toVal + b.toVal := by
+  -- Bridge fpAdd/fpSub to rounding form
+  have hcorr := fpAddFinite_correct (R := R) a b hsum_ne
+  simp only [add_eq_fpAdd, fpAdd_coe_coe] at hcorr hs
+  have hs_round : ○((a.toVal : R) + b.toVal) = Fp.finite s := hcorr.symm.trans hs
+  by_cases hsa_ne : (s.toVal : R) - a.toVal = 0
+  · -- s.toVal = a.toVal: bv = fl(0) = 0
+    have hsa_eq : (s.toVal : R) = a.toVal := sub_eq_zero.mp hsa_ne
+    obtain ⟨bv', hbv'_eq, hbv'_val⟩ := fpSubFinite_zero_of_eq_toVal (R := R) s a hsa_eq
+    simp only [sub_finite_eq_fpSubFinite, sub_eq_fpSub, fpSub_coe_coe] at hbv hbv'_eq
+    have : bv = bv' := by cases hbv.symm.trans hbv'_eq; rfl
+    have hbv_exact : bv.toVal (R := R) = s.toVal - a.toVal := by
+      rw [this, hbv'_val, hsa_ne]
+    have hs' : (a : Fp) + b = s := by
+      simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe]; exact hs
+    have hbv' : (s : Fp) - a = bv := by
+      simp only [sub_finite_eq_fpSubFinite, sub_eq_fpSub, fpSub_coe_coe]; exact hbv
+    exact twoSum_6op (R := R) a b s hs' bv hbv'
+      (fun _ => hbv_exact) av hav br hbr ar har t ht
+  · -- s.toVal ≠ a.toVal: derive round form for bv
+    have hscorr := fpSubFinite_correct (R := R) s a hsa_ne
+    simp only [sub_eq_fpSub, fpSub_coe_coe] at hscorr hbv
+    have hbv_round : ○((s.toVal : R) - a.toVal) = Fp.finite bv := hscorr.symm.trans hbv
+    -- Get split witnesses from same-sign splits
+    have hs_sub := split_s_sub_bv_same_sign (R := R) a b s hsame ha_nz hb_nz hsum_ne
+      hs_round bv hbv_round
+    have hb_sub := split_b_sub_bv_same_sign (R := R) a b s hsame ha_nz hb_nz hsum_ne
+      hs_round bv hbv_round
+    have hs' : (a : Fp) + b = s := by
+      simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe]; exact hs
+    have hbv' : (s : Fp) - a = bv := by
+      simp only [sub_finite_eq_fpSubFinite, sub_eq_fpSub, fpSub_coe_coe]; exact hbv
+    exact twoSum_6op_of_witnesses (R := R) a b ha_nz hb_nz s hs'
+      bv hbv' (fun _ => hs_sub) av hav (fun _ => hb_sub) br hbr ar har t ht
+
 /-! ## TwoSum exactness -/
 
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
 /-- The 6-op TwoSum gives `t + err' = sum + y` exactly. -/
 theorem cs_twosum_exact [RModeExec]
-    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
     (st : CSState) (x : FiniteFp) (step : CSStep (R := R) st x) :
     (step.t.toVal : R) + step.err'.toVal = st.sum.toVal + step.y.toVal :=
-  twoSum_6op (R := R) st.sum step.y step.t step.ht
-    step.bv step.hbv step.hbv_exact
-    step.av step.hav step.br step.hbr step.ar step.har
-    step.err' step.herr
+  step.twosum_exact
 
 /-! ## Per-step corrected sum identity -/
 
@@ -206,12 +245,12 @@ def cs_rho1 [RModeExec] (st : CSState) (x : FiniteFp)
     (step : CSStep (R := R) st x) : R :=
   step.y.toVal - (x.toVal + st.err.toVal)
 
+omit [FloorRing R] in
 /-- **Corrected sum identity**: `σ' = σ + x + ρ₁`.
 
 Under TwoSum-exactness (which holds unconditionally for the 6-op algorithm),
 the only rounding error per step is `ρ₁` from `fl(x + err)`. -/
 theorem cs_step_corrected_sum [RModeExec]
-    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
     (st : CSState) (x : FiniteFp) (step : CSStep (R := R) st x) :
     (step.nextState (R := R)).sigma (R := R) =
       st.sigma + x.toVal + cs_rho1 (R := R) st x step := by
@@ -234,16 +273,15 @@ inductive CSTrace [RModeExec] :
 
 /-- Total rounding residual across a trace: Σρ₁ᵢ. -/
 def csTraceResidual [RModeExec]
-    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
     {xs : List FiniteFp} {init final : CSState}
     (trace : CSTrace (R := R) xs init final) : R :=
   match trace with
   | .nil _ => 0
   | .cons step rest => cs_rho1 (R := R) _ _ step + csTraceResidual rest
 
+omit [FloorRing R] in
 /-- **Corrected sum telescoping**: `σₙ = σ₀ + Σxᵢ + Σρ₁ᵢ`. -/
 theorem cs_trace_sigma_eq [RModeExec]
-    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
     {xs : List FiniteFp} {init final : CSState}
     (trace : CSTrace (R := R) xs init final) :
     final.sigma (R := R) =
@@ -265,15 +303,14 @@ theorem cs_trace_sigma_eq [RModeExec]
 
 /-- Absolute sum of rounding residuals. -/
 def csTraceResidualAbs [RModeExec]
-    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
     {xs : List FiniteFp} {init final : CSState}
     (trace : CSTrace (R := R) xs init final) : R :=
   match trace with
   | .nil _ => 0
   | .cons step rest => |cs_rho1 (R := R) _ _ step| + csTraceResidualAbs rest
 
+omit [FloorRing R] in
 theorem csTraceResidual_abs_le [RModeExec]
-    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
     {xs : List FiniteFp} {init final : CSState}
     (trace : CSTrace (R := R) xs init final) :
     |csTraceResidual trace| ≤ csTraceResidualAbs trace := by
@@ -285,13 +322,13 @@ theorem csTraceResidual_abs_le [RModeExec]
         ≤ |cs_rho1 (R := R) _ _ step| + |csTraceResidual rest| := abs_add_le _ _
       _ ≤ |cs_rho1 (R := R) _ _ step| + csTraceResidualAbs rest := by linarith
 
+omit [FloorRing R] in
 /-- **Error bound**: the final sum minus the true sum of inputs is bounded
 by the initial error plus the sum of per-step rounding residuals.
 
 Since each `|ρ₁ᵢ| ≤ η|xᵢ + errᵢ|` (standard error model), this gives
 the concrete bound `≤ |err₀| + η·Σ|xᵢ + errᵢ|`. -/
 theorem cs_error_bound [RModeExec]
-    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
     {xs : List FiniteFp} {init final : CSState}
     (trace : CSTrace (R := R) xs init final)
     (hinit_sum : init.sum.toVal (R := R) = 0)
@@ -301,8 +338,6 @@ theorem cs_error_bound [RModeExec]
   have hsigma := cs_trace_sigma_eq (R := R) trace
   unfold CSState.sigma at hsigma
   rw [hinit_sum, hinit_err] at hsigma
-  -- final.sum + final.err = 0 + 0 + Σxᵢ + Σρ₁ᵢ
-  -- final.sum - Σxᵢ = Σρ₁ᵢ - final.err
   have hresid : (final.sum.toVal : R) - (xs.map (fun x => x.toVal (R := R))).sum =
       csTraceResidual trace - final.err.toVal := by linarith
   calc |(final.sum.toVal : R) - (xs.map (fun x => x.toVal (R := R))).sum|
@@ -374,6 +409,41 @@ theorem cs_rho1_abs_le [RModeExec]
     rw [abs_div, div_le_iff₀ (abs_pos.mpr hval_ne)] at hrel
     exact hrel
 
+/-- The rounding error `ρ₁` satisfies the absolute ULP-based bound:
+`|ρ₁| ≤ ulp(|x + err|) / 2`, for any nonzero compensated input.
+
+Unlike `cs_rho1_abs_le`, this does **not** require normal range — it works
+for subnormal inputs too, using `RModeNearest_abs_error_le_ulp_half_pos`. -/
+theorem cs_rho1_abs_le_ulp_half [RModeExec]
+    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
+    (st : CSState) (x : FiniteFp) (step : CSStep (R := R) st x)
+    (hne : x.toVal (R := R) + st.err.toVal ≠ 0) :
+    |cs_rho1 (R := R) st x step| ≤ Fp.ulp (|x.toVal (R := R) + st.err.toVal|) / 2 := by
+  set val := (x.toVal : R) + st.err.toVal with val_def
+  -- ρ₁ = y.toVal - val = -(val - y.toVal)
+  unfold cs_rho1
+  rw [show step.y.toVal (R := R) - (x.toVal + st.err.toVal) =
+      -(val - step.y.toVal) from by ring]
+  rw [abs_neg]
+  -- Get ○val = Fp.finite y
+  have hround : ○val = Fp.finite step.y := by
+    have := fpAddFinite_correct (R := R) x st.err hne
+    simp only [add_eq_fpAdd, fpAdd_coe_coe] at this
+    rw [← this]; exact step.hy
+  -- Case split on sign of val
+  rcases le_or_gt val 0 with hle | hpos
+  · -- val < 0
+    have hlt : val < 0 := lt_of_le_of_ne hle hne
+    have hpos_neg : 0 < -val := neg_pos.mpr hlt
+    have hneg_round : ○(-val) = Fp.finite (-step.y) := by
+      rw [RModeConj.round_neg val (ne_of_lt hlt), hround, Fp.neg_finite]
+    have h := RModeNearest_abs_error_le_ulp_half_pos (-val) hpos_neg (-step.y) hneg_round
+    rw [FiniteFp.toVal_neg_eq_neg, neg_sub_neg, abs_sub_comm] at h
+    rwa [abs_of_neg hlt]
+  · -- val > 0
+    have h := RModeNearest_abs_error_le_ulp_half_pos val hpos step.y hround
+    rwa [abs_of_pos hpos]
+
 /-! ## Trace-level η bound
 
 Combines `cs_rho1_abs_le` across a full trace to get the textbook bound:
@@ -382,36 +452,30 @@ compensated inputs are in normal range. -/
 
 /-- Sum of compensated input magnitudes: `Σ|xᵢ + errᵢ|`. -/
 def csTraceCompInputAbs [RModeExec]
-    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
     {xs : List FiniteFp} {init final : CSState}
     (trace : CSTrace (R := R) xs init final) : R :=
   match trace with
   | .nil _ => 0
-  | @CSTrace.cons _ _ _ _ st x _ _ step rest =>
-      |x.toVal (R := R) + st.err.toVal| + csTraceCompInputAbs rest
+  | .cons step rest => |step.compInputVal| + csTraceCompInputAbs rest
 
 /-- All compensated inputs `|xᵢ + errᵢ|` are in normal range. -/
 def csTraceAllNormal [RModeExec]
-    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
     {xs : List FiniteFp} {init final : CSState}
     (trace : CSTrace (R := R) xs init final) : Prop :=
   match trace with
   | .nil _ => True
-  | @CSTrace.cons _ _ _ _ st x _ _ step rest =>
-      isNormalRange (|x.toVal (R := R) + st.err.toVal|) ∧ csTraceAllNormal rest
+  | .cons step rest => isNormalRange (|step.compInputVal|) ∧ csTraceAllNormal rest
 
+omit [FloorRing R] in
 theorem csTraceCompInputAbs_nonneg [RModeExec]
-    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
     {xs : List FiniteFp} {init final : CSState}
     (trace : CSTrace (R := R) xs init final) :
     0 ≤ csTraceCompInputAbs trace := by
   match trace with
   | .nil _ => simp [csTraceCompInputAbs]
-  | @CSTrace.cons _ _ _ _ st x _ _ step rest =>
-    have h1 : 0 ≤ |x.toVal (R := R) + st.err.toVal| := abs_nonneg _
-    have h2 := csTraceCompInputAbs_nonneg rest
-    show 0 ≤ |x.toVal (R := R) + st.err.toVal| + csTraceCompInputAbs rest
-    linarith
+  | .cons step rest =>
+    simp only [csTraceCompInputAbs]
+    linarith [abs_nonneg step.compInputVal, csTraceCompInputAbs_nonneg rest]
 
 /-- **Trace-level η bound**: when all compensated inputs are in normal range,
 `Σ|ρ₁ᵢ| ≤ η · Σ|xᵢ + errᵢ|` where `η = 2^(-prec)`.
@@ -427,16 +491,35 @@ theorem cs_trace_residual_abs_le_eta [RModeExec]
       (2 : R) ^ (-(FloatFormat.prec : ℤ)) * csTraceCompInputAbs trace := by
   match trace, hnr with
   | .nil _, _ => simp [csTraceResidualAbs, csTraceCompInputAbs]
-  | @CSTrace.cons _ _ _ _ st x _ _ step rest, hnr =>
-    have hnr' : isNormalRange (|x.toVal (R := R) + st.err.toVal|) ∧
-        csTraceAllNormal rest := hnr
-    have h1 := cs_rho1_abs_le (R := R) st x step hnr'.1
+  | .cons step rest, hnr =>
+    have hnr' : isNormalRange (|step.compInputVal|) ∧ csTraceAllNormal rest := hnr
+    simp only [CSStep.compInputVal] at hnr'
+    have h1 := cs_rho1_abs_le (R := R) _ _ step hnr'.1
     have h2 := cs_trace_residual_abs_le_eta rest hnr'.2
     have hη_pos : (0 : R) < (2 : R) ^ (-(FloatFormat.prec : ℤ)) := by linearize
     have hci_nonneg := csTraceCompInputAbs_nonneg rest
-    show |cs_rho1 (R := R) st x step| + csTraceResidualAbs rest ≤
-        (2 : R) ^ (-(FloatFormat.prec : ℤ)) *
-          (|x.toVal (R := R) + st.err.toVal| + csTraceCompInputAbs rest)
+    simp only [csTraceResidualAbs, csTraceCompInputAbs, CSStep.compInputVal]
     nlinarith
+
+/-- **End-to-end error bound**: starting from zero initial state and assuming
+all compensated inputs are in normal range:
+
+`|final_sum - Σxᵢ| ≤ |err_final| + η · Σ|xᵢ + errᵢ|`
+
+This is the textbook result combining `cs_error_bound` with
+`cs_trace_residual_abs_le_eta`. -/
+theorem cs_error_bound_eta [RModeExec]
+    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
+    {xs : List FiniteFp} {init final : CSState}
+    (trace : CSTrace (R := R) xs init final)
+    (hinit_sum : init.sum.toVal (R := R) = 0)
+    (hinit_err : init.err.toVal (R := R) = 0)
+    (hnr : csTraceAllNormal trace) :
+    |final.sum.toVal (R := R) - (xs.map (fun x => x.toVal (R := R))).sum| ≤
+      |final.err.toVal (R := R)| +
+        (2 : R) ^ (-(FloatFormat.prec : ℤ)) * csTraceCompInputAbs trace := by
+  have h1 := cs_error_bound (R := R) trace hinit_sum hinit_err
+  have h2 := cs_trace_residual_abs_le_eta trace hnr
+  linarith
 
 end CompensatedSum

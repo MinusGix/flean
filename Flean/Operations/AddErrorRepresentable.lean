@@ -286,21 +286,21 @@ theorem round_sum_le_double_mag (a b : FiniteFp)
     bound, i.e., the result + pred ≤ 2x. -/
 private theorem nearest_round_le_two_x_sub_pred
     [RMode R] [RModeNearest R]
-    (x : R) (hxpos : 0 < x) (hx : isNormalRange x)
+    (x : R) (hxpos : 0 < x)
     (f : FiniteFp) (hf : ○x = f) :
     (f.toVal : R) ≤ 2 * x - (findPredecessorPos x hxpos).toVal := by
-  exact RModeNearest.round_le_two_x_sub_pred (R := R) x hxpos hx f hf
+  exact RModeNearest.round_le_two_x_sub_pred (R := R) x hxpos f hf
 
 /-- For positive x in normal range, any nearest-mode finite result f satisfies
     `2x − succ.toVal ≤ f.toVal`, where succ is the ceiling (roundUp) of x.
     This is the dual of `nearest_round_le_two_x_sub_pred`. -/
 private theorem nearest_round_ge_two_x_sub_succ
     [RMode R] [RModeNearest R]
-    (x : R) (hxpos : 0 < x) (hx : isNormalRange x)
+    (x : R) (hxpos : 0 < x)
     (f : FiniteFp) (hf : ○x = f) (succ : FiniteFp)
     (hsucc : findSuccessorPos x hxpos = Fp.finite succ) :
     (2 * x - succ.toVal : R) ≤ f.toVal :=
-  RModeNearest.round_ge_two_x_sub_succ (R := R) x hxpos hx f succ hf hsucc
+  RModeNearest.round_ge_two_x_sub_succ (R := R) x hxpos f succ hf hsucc
 
 /-- The rounding error of a nearest-mode addition of positive floats with `|b| ≤ |a|`
 is representable as a float. -/
@@ -374,7 +374,7 @@ theorem add_error_representable (a b : FiniteFp)
       exact absurd (hs_correct.symm.trans hround_inf) (by simp)
   -- Step D: Error bound |error| ≤ b via helper + roundDown ≥ a
   set pred := findPredecessorPos ((a.toVal : R) + b.toVal) hval_pos with pred_def
-  have hhelper := nearest_round_le_two_x_sub_pred (R := R) _ hval_pos hNR s_fp hs_correct
+  have hhelper := nearest_round_le_two_x_sub_pred (R := R) _ hval_pos s_fp hs_correct
   have hD_eq : roundDown ((a.toVal : R) + b.toVal) = Fp.finite pred := by
     unfold roundDown; rw [findPredecessor_pos_eq _ hval_pos]
   have hpred_ge_a : (a.toVal : R) ≤ pred.toVal :=
@@ -631,7 +631,7 @@ private theorem add_error_representable_mixed (a b : FiniteFp)
     exact FiniteFp.le_toVal_le R ((Fp.finite_le_finite_iff succ a).mp this)
   -- Apply dual axiom
   have hdual := nearest_round_ge_two_x_sub_succ (R := R)
-    _ hval_pos hNR s_fp hs_correct succ hsucc_eq
+    _ hval_pos s_fp hs_correct succ hsucc_eq
   -- round(a+b) ≥ 2(a+b) - succ ≥ 2(a+b) - a
   have hs_ge : (a.toVal : R) + 2 * b.toVal ≤ s_fp.toVal := by linarith
   -- So error ≤ (a+b) - (a + 2b) = -b = |b|

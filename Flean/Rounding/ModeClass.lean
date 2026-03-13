@@ -120,11 +120,11 @@ class RModeNearest (R : Type*)
       FloatFormat.overflowThreshold R ≤ x →
       RMode.round (R := R) x = Fp.infinite false
   round_le_two_x_sub_pred :
-    ∀ (x : R) (hxpos : 0 < x) (_hx : isNormalRange x) (f : FiniteFp),
+    ∀ (x : R) (hxpos : 0 < x) (f : FiniteFp),
       RMode.round (R := R) x = Fp.finite f →
       (f.toVal : R) ≤ 2 * x - (findPredecessorPos x hxpos).toVal
   round_ge_two_x_sub_succ :
-    ∀ (x : R) (hxpos : 0 < x) (_hx : isNormalRange x)
+    ∀ (x : R) (hxpos : 0 < x)
       (f : FiniteFp) (succ : FiniteFp),
       RMode.round (R := R) x = Fp.finite f →
       findSuccessorPos x hxpos = Fp.finite succ →
