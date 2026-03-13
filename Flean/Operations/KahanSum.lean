@@ -215,6 +215,11 @@ Remaining: mixed-sign case (doesn't go through Sterbenz).
 - `trace_energy_bound` — energy invariant: F' ≤ (1+η)²·F propagated through trace
 - **`kahan_higham_bound_auto`** — self-contained bound eliminating hM hypothesis
 
+### Extension B (backward error interpretation)
+- `error_distributable` — generic: |E| ≤ ε·Σ|vᵢ| implies E = Σ μᵢ vᵢ with |μᵢ| ≤ ε
+- `kahan_weak_backward_error` — **ŝₙ = Σ(1+μᵢ)xᵢ, |μᵢ| ≤ 2η+nη²** (with hM)
+- `kahan_weak_backward_error_auto` — self-contained version (no hM)
+
 ### Extension E (TwoSum-exactness bridge)
 - `step_twosum_exact_of_sub_exact` — derives `StepTwoSumExact` from first-subtraction exactness
 - `step_twosum_exact_of_pos_dekker` — full Dekker chain for positive operands with `y ≤ sum`
@@ -1576,5 +1581,166 @@ theorem step_twosum_exact_of_dekker
   have hw_exact : step.w.toVal (R := R) = step.t.toVal - st.sum.toVal := by
     rw [hw_eq_z]; exact hz_val
   exact step_twosum_exact_of_sub_exact st x step hm_sum hw_exact
+
+/-! ## Extension B: Backward Error Interpretation
+
+The **backward error** says the computed sum is the exact sum of slightly perturbed
+inputs: `ŝₙ = Σ(1 + μᵢ)xᵢ` where each `|μᵢ| ≤ ε`. This is strictly more informative
+than the forward bound `|ŝₙ - Σxᵢ| ≤ ε·Σ|xᵢ|`, as it gives per-element perturbations.
+
+The weak form proven here follows from the forward bound via `error_distributable`:
+if a total error `E` satisfies `|E| ≤ ε·Σ|xᵢ|`, then `E` can be written as `Σ μᵢ xᵢ`
+with `|μᵢ| ≤ ε`, by distributing proportional to `|xᵢ|` with matching signs.
+
+Higham's eq. 4.8 gives a stronger *per-element* bound `|μᵢ| ≤ 2η + O((n-i+1)η²)`
+where earlier elements have tighter bounds. That requires per-element tracking through
+the trace and is deferred. -/
+
+end KahanSum
+
+/-! ## Extension B: Backward Error Interpretation
+
+The **backward error** says the computed sum is the exact sum of slightly perturbed
+inputs: `ŝₙ = Σ(1 + μᵢ)xᵢ` where each `|μᵢ| ≤ ε`. This is strictly more informative
+than the forward bound `|ŝₙ - Σxᵢ| ≤ ε·Σ|xᵢ|`, as it gives per-element perturbations.
+
+The weak form proven here follows from the forward bound via `error_distributable`:
+if a total error `E` satisfies `|E| ≤ ε·Σ|xᵢ|`, then `E` can be written as `Σ μᵢ xᵢ`
+with `|μᵢ| ≤ ε`, by distributing proportional to `|xᵢ|` with matching signs.
+
+Higham's eq. 4.8 gives a stronger *per-element* bound `|μᵢ| ≤ 2η + O((n-i+1)η²)`
+where earlier elements have tighter bounds. That requires per-element tracking through
+the trace and is deferred. -/
+
+section BackwardErrorInfrastructure
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+
+private lemma abs_div_mul_self (x : R) : abs x / x * x = abs x := by
+  by_cases hx : x = 0
+  · simp [hx]
+  · exact div_mul_cancel₀ _ hx
+
+private lemma abs_abs_div_self_le_one (x : R) : abs (abs x / x) ≤ 1 := by
+  by_cases hx : x = 0
+  · simp [hx]
+  · rcases le_or_gt 0 x with h | h
+    · rw [abs_of_nonneg h, div_self hx, abs_one]
+    · rw [abs_of_neg h, neg_div, abs_neg, div_self hx, abs_one]
+
+private lemma list_map_sum_eq_finset_sum {α : Type*} {M : Type*} [AddCommMonoid M]
+    (l : List α) (f : α → M) :
+    (l.map f).sum = ∑ i : Fin l.length, f (l.get i) := by
+  conv_lhs => rw [← List.ofFn_get l, List.map_ofFn]
+  simp [List.sum_ofFn, Function.comp]
+
+/-- **Error distribution lemma**: if a total error is bounded by `ε · Σ|vᵢ|`,
+    it can be written as `Σ μᵢ · vᵢ` with uniform `|μᵢ| ≤ ε`.
+
+    Construction: `μᵢ = (E/Σ|vⱼ|) · (|vᵢ|/vᵢ)`, distributing error proportionally
+    to magnitude with matching signs. -/
+theorem error_distributable {α : Type*} (xs : List α) (v : α → R) (E eps : R)
+    (heps : 0 ≤ eps)
+    (hbound : abs E ≤ eps * (xs.map (fun x => abs (v x))).sum) :
+    ∃ mu : Fin xs.length → R,
+      E = ∑ i : Fin xs.length, mu i * v (xs.get i) ∧
+      ∀ i, abs (mu i) ≤ eps := by
+  set S := (xs.map (fun x => abs (v x))).sum with hS_def
+  by_cases hS : S = 0
+  · exact ⟨fun _ => 0, by simp [abs_nonpos_iff.mp (by rw [hS, mul_zero] at hbound; exact hbound)],
+      fun _ => by simp [heps]⟩
+  · have hS_pos : 0 < S := lt_of_le_of_ne
+      (List.sum_nonneg (fun y hy => by
+        simp only [List.mem_map] at hy; obtain ⟨z, _, rfl⟩ := hy; exact abs_nonneg _))
+      (Ne.symm hS)
+    have hES : abs E / S ≤ eps := by rwa [div_le_iff₀ hS_pos]
+    have hES_nn : 0 ≤ abs E / S := div_nonneg (abs_nonneg E) (le_of_lt hS_pos)
+    refine ⟨fun i => E / S * (abs (v (xs.get i)) / v (xs.get i)), ?_, ?_⟩
+    · simp_rw [show ∀ i : Fin xs.length,
+        E / S * (abs (v (xs.get i)) / v (xs.get i)) * v (xs.get i) =
+        E / S * abs (v (xs.get i)) from fun i => by rw [mul_assoc, abs_div_mul_self]]
+      rw [← Finset.mul_sum, show ∑ i : Fin xs.length, abs (v (xs.get i)) = S from by
+        rw [hS_def, list_map_sum_eq_finset_sum]]
+      exact (div_mul_cancel₀ E (ne_of_gt hS_pos)).symm
+    · intro i
+      rw [abs_mul, abs_div, abs_of_pos hS_pos]
+      exact le_trans (mul_le_mul_of_nonneg_left (abs_abs_div_self_le_one _) hES_nn)
+        (by rw [mul_one]; exact hES)
+
+/-- Lifting a forward error bound to backward error form. -/
+private theorem backward_from_forward {α : Type*} (xs : List α) (v : α → R)
+    (result : R) (eps : R) (heps : 0 ≤ eps)
+    (hfwd : abs (result - (xs.map v).sum) ≤ eps * (xs.map (fun x => abs (v x))).sum) :
+    ∃ mu : Fin xs.length → R,
+      result = ∑ i : Fin xs.length, (1 + mu i) * v (xs.get i) ∧
+      ∀ i, abs (mu i) ≤ eps := by
+  obtain ⟨mu, hmu_eq, hmu_bnd⟩ := error_distributable xs v _ eps heps hfwd
+  refine ⟨mu, ?_, hmu_bnd⟩
+  rw [list_map_sum_eq_finset_sum] at hmu_eq
+  rw [show result = (xs.map v).sum + (result - (xs.map v).sum) from by ring,
+      list_map_sum_eq_finset_sum, hmu_eq, ← Finset.sum_add_distrib]
+  simp_rw [show ∀ i : Fin xs.length,
+    v (xs.get i) + mu i * v (xs.get i) = (1 + mu i) * v (xs.get i) from fun _ => by ring]
+
+end BackwardErrorInfrastructure
+
+namespace KahanSum
+
+variable [FloatFormat]
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+
+/-- **Weak backward error for Kahan summation** (with `hM` hypothesis).
+
+    The computed sum equals the exact sum of perturbed inputs:
+    **`ŝₙ = Σ(1 + μᵢ)xᵢ`** where **`|μᵢ| ≤ 2η + nη²`**.
+
+    This is the backward error interpretation of Higham's Theorem 4.3 (eq. 4.8).
+    Each input is perturbed by at most `2η + nη²` — the perturbation is independent
+    of `n` to first order, matching the forward bound. -/
+theorem kahan_weak_backward_error
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final)
+    (hinit_sum : init.sum.toVal (R := R) = 0)
+    (hinit_comp : init.comp.toVal (R := R) = 0)
+    (hexact : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepTwoSumExact (R := R) st x step)
+    (hnr : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepNormalRange (R := R) st x step)
+    (hM : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      |(st.sum.toVal : R) + step.y.toVal| ≤
+        (xs.map (fun x => |x.toVal (R := R)|)).sum) :
+    ∃ mu : Fin xs.length → R,
+      (final.sum.toVal : R) =
+        ∑ i : Fin xs.length, (1 + mu i) * (xs.get i).toVal ∧
+      ∀ i, abs (mu i) ≤ 2 * η + (xs.length : R) * η ^ 2 :=
+  backward_from_forward xs (fun x => x.toVal) _ _ (by positivity)
+    (kahan_higham_bound trace hinit_sum hinit_comp hexact hnr hM)
+
+/-- **Self-contained weak backward error** — eliminates `hM` via energy invariant.
+
+    **`ŝₙ = Σ(1 + μᵢ)xᵢ`** where **`|μᵢ| ≤ η(1+P) + nη²P`**,
+    `P = (1+η)^{2n}`.
+
+    For Float64 (`η ≈ 10⁻¹⁶`), `P ≈ 1` for any practical `n`, recovering
+    the `|μᵢ| ≤ 2η + nη²` bound from `kahan_weak_backward_error`. -/
+theorem kahan_weak_backward_error_auto
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : State}
+    (trace : Trace xs init final)
+    (hinit_sum : init.sum.toVal (R := R) = 0)
+    (hinit_comp : init.comp.toVal (R := R) = 0)
+    (hexact : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepTwoSumExact (R := R) st x step)
+    (hnr : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepNormalRange (R := R) st x step) :
+    let P := (1 + η) ^ (2 * xs.length)
+    let eps := η * (1 + P) + (xs.length : R) * η ^ 2 * P
+    ∃ mu : Fin xs.length → R,
+      (final.sum.toVal : R) =
+        ∑ i : Fin xs.length, (1 + mu i) * (xs.get i).toVal ∧
+      ∀ i, abs (mu i) ≤ eps := by
+  intro P eps
+  exact backward_from_forward xs (fun x => x.toVal) _ eps (by positivity)
+    (kahan_higham_bound_auto trace hinit_sum hinit_comp hexact hnr)
 
 end KahanSum
