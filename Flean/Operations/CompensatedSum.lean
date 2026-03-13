@@ -409,6 +409,23 @@ theorem cs_rho1_abs_le [RModeExec]
     rw [abs_div, div_le_iff₀ (abs_pos.mpr hval_ne)] at hrel
     exact hrel
 
+/-! ## Per-step ULP bound (subnormal-safe)
+
+`cs_rho1_abs_le` gives a *relative* bound `|ρ₁| ≤ η · |val|` but requires
+`val` to be in normal range. For subnormal `val`, the relative error can
+exceed `η` (ulp is constant `2^(min_exp - prec + 1)`, not proportional to `|val|`).
+
+`cs_rho1_abs_le_ulp_half` gives an *absolute* bound `|ρ₁| ≤ ulp(|val|) / 2`
+that works for all nonzero inputs. For normal inputs the two are equivalent
+(`ulp(x) = 2^(1-prec) · x` in normal range). For subnormal inputs, the ULP
+bound is a constant `2^(min_exp - prec)` — weaker than `η · |val|` relative
+to `|val|`, but always valid.
+
+**Trace-level implications**: a trace bound using the ULP version would be
+`Σ ulp(|xᵢ + errᵢ|) / 2` rather than `η · Σ|xᵢ + errᵢ|`. This is strictly
+more general but less tight for normal inputs. A mixed bound splitting normal
+and subnormal steps may be desirable. -/
+
 /-- The rounding error `ρ₁` satisfies the absolute ULP-based bound:
 `|ρ₁| ≤ ulp(|x + err|) / 2`, for any nonzero compensated input.
 
