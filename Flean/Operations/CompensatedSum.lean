@@ -84,6 +84,11 @@ def CSStep.compInputVal [RModeExec] {st : CSState} {x : FiniteFp}
     (_ : CSStep (R := R) st x) : R :=
   x.toVal + st.err.toVal
 
+/-- The addition value: `sum + y` (value being rounded in the main accumulation). -/
+def CSStep.addVal [RModeExec] {st : CSState} {x : FiniteFp}
+    (step : CSStep (R := R) st x) : R :=
+  st.sum.toVal + step.y.toVal
+
 /-! ## Proving `twosum_exact`
 
 The `twosum_exact` field of `CSStep` can be proved via several strategies:
@@ -461,6 +466,63 @@ theorem cs_rho1_abs_le_ulp_half [RModeExec]
     have h := RModeNearest_abs_error_le_ulp_half_pos val hpos step.y hround
     rwa [abs_of_pos hpos]
 
+/-! ## Recovered error bound
+
+The TwoSum-recovered error `err'` satisfies `|err'| ≤ ulp(|sum + y|) / 2`.
+This follows directly from TwoSum exactness: `err' = (sum + y) - t`
+where `t = ○(sum + y)`. -/
+
+/-- The recovered error `err'` satisfies `|err'| ≤ ulp(|sum + y|) / 2`.
+
+When `sum + y = 0`, both `t` and `err'` are zero and the bound is trivial.
+When `sum + y ≠ 0`, this is the half-ULP rounding error of `○(sum + y)`. -/
+theorem cs_err_abs_le_ulp_half [RModeExec]
+    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
+    (st : CSState) (x : FiniteFp) (step : CSStep (R := R) st x) :
+    |step.err'.toVal (R := R)| ≤
+      Fp.ulp (|step.addVal (R := R)|) / 2 := by
+  -- err'.toVal = addVal - t.toVal (from twosum_exact)
+  have herr_eq : step.err'.toVal (R := R) = step.addVal - step.t.toVal := by
+    unfold CSStep.addVal; linarith [step.twosum_exact]
+  rw [herr_eq]
+  set av := step.addVal
+  by_cases hav_ne : av = 0
+  · -- sum + y = 0: fpAdd produces a zero, so t.toVal = 0
+    have hav_eq : (st.sum.toVal : R) + step.y.toVal = 0 := hav_ne
+    have hexact := fpAddFinite_exact_sum R st.sum step.y
+    have hisum : addAlignedSumInt st.sum step.y = 0 := by
+      have h2pos : (0 : R) < (2 : R) ^ (min st.sum.e step.y.e - prec + 1) := by positivity
+      rw [hexact, mul_eq_zero] at hav_eq
+      exact_mod_cast hav_eq.resolve_right (ne_of_gt h2pos)
+    have hcancel := fpAddFinite_exact_cancel_sign st.sum step.y hisum
+    have ht_eq : fpAddFinite st.sum step.y = Fp.finite step.t := by
+      have := step.ht
+      simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe] at this
+      exact this
+    rw [hcancel] at ht_eq
+    have ht_zero : step.t.toVal (R := R) = 0 :=
+      FiniteFp.toVal_isZero (by rw [FiniteFp.isZero]; exact (Fp.finite.inj ht_eq) ▸ rfl)
+    rw [hav_ne, ht_zero, sub_self, abs_zero]
+    exact div_nonneg (le_of_lt (Fp.ulp_pos 0)) (by norm_num)
+  · -- sum + y ≠ 0: use half-ULP rounding bound
+    have ht_round : ○av = Fp.finite step.t := by
+      show ○((st.sum.toVal : R) + step.y.toVal) = Fp.finite step.t
+      have hcorr := fpAddFinite_correct (R := R) st.sum step.y hav_ne
+      simp only [add_eq_fpAdd, fpAdd_coe_coe] at hcorr
+      have := step.ht
+      simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe] at this
+      rw [← hcorr]; exact this
+    rcases le_or_gt av 0 with hle | hpos
+    · have hlt : av < 0 := lt_of_le_of_ne hle hav_ne
+      have hpos_neg : 0 < -av := neg_pos.mpr hlt
+      have hneg_round : ○(-av) = Fp.finite (-step.t) := by
+        rw [RModeConj.round_neg av (ne_of_lt hlt), ht_round, Fp.neg_finite]
+      have h := RModeNearest_abs_error_le_ulp_half_pos (-av) hpos_neg (-step.t) hneg_round
+      rw [FiniteFp.toVal_neg_eq_neg, neg_sub_neg, abs_sub_comm] at h
+      rwa [abs_of_neg hlt]
+    · have h := RModeNearest_abs_error_le_ulp_half_pos av hpos step.t ht_round
+      rwa [abs_of_pos hpos]
+
 /-! ## Trace-level η bound
 
 Combines `cs_rho1_abs_le` across a full trace to get the textbook bound:
@@ -537,6 +599,132 @@ theorem cs_error_bound_eta [RModeExec]
         (2 : R) ^ (-(FloatFormat.prec : ℤ)) * csTraceCompInputAbs trace := by
   have h1 := cs_error_bound (R := R) trace hinit_sum hinit_err
   have h2 := cs_trace_residual_abs_le_eta trace hnr
+  linarith
+
+/-! ## Trace-level ULP bound (subnormal-safe)
+
+The ULP-based bound `Σ|ρ₁ᵢ| ≤ Σ ulp(|xᵢ + errᵢ|) / 2` works for all
+nonzero compensated inputs — no normal range requirement. See the section
+docstring before `cs_rho1_abs_le_ulp_half` for the tradeoff with the η bound. -/
+
+/-- All compensated inputs `xᵢ + errᵢ` are nonzero. -/
+def csTraceAllNonzero [RModeExec]
+    {xs : List FiniteFp} {init final : CSState}
+    (trace : CSTrace (R := R) xs init final) : Prop :=
+  match trace with
+  | .nil _ => True
+  | .cons step rest => step.compInputVal ≠ 0 ∧ csTraceAllNonzero rest
+
+/-- Sum of per-step ULP half-bounds: `Σ ulp(|xᵢ + errᵢ|) / 2`. -/
+def csTraceUlpHalfSum [RModeExec]
+    {xs : List FiniteFp} {init final : CSState}
+    (trace : CSTrace (R := R) xs init final) : R :=
+  match trace with
+  | .nil _ => 0
+  | .cons step rest =>
+      Fp.ulp (|step.compInputVal|) / 2 + csTraceUlpHalfSum rest
+
+/-- **Trace-level ULP bound**: when all compensated inputs are nonzero,
+`Σ|ρ₁ᵢ| ≤ Σ ulp(|xᵢ + errᵢ|) / 2`.
+
+Unlike `cs_trace_residual_abs_le_eta`, this does not require normal range. -/
+theorem cs_trace_residual_abs_le_ulp [RModeExec]
+    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
+    {xs : List FiniteFp} {init final : CSState}
+    (trace : CSTrace (R := R) xs init final)
+    (hnz : csTraceAllNonzero trace) :
+    csTraceResidualAbs trace ≤ csTraceUlpHalfSum trace := by
+  match trace, hnz with
+  | .nil _, _ => simp [csTraceResidualAbs, csTraceUlpHalfSum]
+  | .cons step rest, hnz =>
+    have hnz' : step.compInputVal ≠ 0 ∧ csTraceAllNonzero rest := hnz
+    simp only [CSStep.compInputVal] at hnz'
+    have h1 := cs_rho1_abs_le_ulp_half (R := R) _ _ step hnz'.1
+    have h2 := cs_trace_residual_abs_le_ulp rest hnz'.2
+    simp only [csTraceResidualAbs, csTraceUlpHalfSum, CSStep.compInputVal]
+    linarith
+
+/-- **End-to-end ULP error bound**: starting from zero initial state and assuming
+all compensated inputs are nonzero:
+
+`|final_sum - Σxᵢ| ≤ |err_final| + Σ ulp(|xᵢ + errᵢ|) / 2`
+
+Unlike `cs_error_bound_eta`, this handles subnormal inputs. -/
+theorem cs_error_bound_ulp [RModeExec]
+    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
+    {xs : List FiniteFp} {init final : CSState}
+    (trace : CSTrace (R := R) xs init final)
+    (hinit_sum : init.sum.toVal (R := R) = 0)
+    (hinit_err : init.err.toVal (R := R) = 0)
+    (hnz : csTraceAllNonzero trace) :
+    |final.sum.toVal (R := R) - (xs.map (fun x => x.toVal (R := R))).sum| ≤
+      |final.err.toVal (R := R)| + csTraceUlpHalfSum trace := by
+  have h1 := cs_error_bound (R := R) trace hinit_sum hinit_err
+  have h2 := cs_trace_residual_abs_le_ulp trace hnz
+  linarith
+
+/-! ## Self-contained error bound
+
+Bounds both `|err_final|` and `Σ|ρ₁ᵢ|` to give a fully self-contained bound
+that doesn't mention `err_final` on the RHS. The key insight: `err_final` is
+the TwoSum-recovered rounding error of the last addition, so
+`|err_final| ≤ ulp(|sum_{n-1} + y_n|) / 2`.
+
+For a nonempty trace ending at step `(t_n, err_n)`:
+`|ŝ - Σxᵢ| ≤ ulp(|sum_{n-1} + y_n|) / 2 + Σ ulp(|xᵢ + errᵢ|) / 2` -/
+
+/-- Sum of per-step addition-value ULP half-bounds: `Σ ulp(|sumᵢ + yᵢ|) / 2`.
+
+This bounds `|errᵢ|` at each step (the TwoSum-recovered error), since
+`errᵢ = (sumᵢ₋₁ + yᵢ) - fl(sumᵢ₋₁ + yᵢ)`. -/
+def csTraceAddUlpHalfSum [RModeExec]
+    {xs : List FiniteFp} {init final : CSState}
+    (trace : CSTrace (R := R) xs init final) : R :=
+  match trace with
+  | .nil _ => 0
+  | .cons step rest =>
+      Fp.ulp (|step.addVal|) / 2 + csTraceAddUlpHalfSum rest
+
+/-- The final error `|err_final|` is bounded by the last step's addition ULP.
+
+For a nonempty trace, `|err_final| ≤ ulp(|sum_{last} + y_{last}|) / 2`.
+For the empty trace, `|err_final| = |init.err|`. -/
+theorem cs_final_err_le_add_ulp [RModeExec]
+    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
+    {xs : List FiniteFp} {init final : CSState}
+    (trace : CSTrace (R := R) xs init final) :
+    |final.err.toVal (R := R)| ≤
+      |init.err.toVal (R := R)| + csTraceAddUlpHalfSum trace := by
+  induction trace with
+  | nil => simp [csTraceAddUlpHalfSum]
+  | @cons st x _ _ step rest ih =>
+    simp only [csTraceAddUlpHalfSum]
+    have herr := cs_err_abs_le_ulp_half (R := R) st x step
+    -- step.nextState.err = step.err', and |step.err'| ≤ ulp(|addVal|)/2
+    -- By IH: |final.err| ≤ |step.err'| + csTraceAddUlpHalfSum(rest)
+    have hnext : (step.nextState (R := R)).err = step.err' := rfl
+    rw [hnext] at ih
+    linarith [abs_nonneg (st.err.toVal (R := R))]
+
+/-- **Self-contained ULP error bound**: starting from zero, the total error is
+bounded purely in terms of per-step ULP bounds:
+
+`|ŝ - Σxᵢ| ≤ Σ ulp(|sumᵢ + yᵢ|) / 2 + Σ ulp(|xᵢ + errᵢ|) / 2`
+
+No `|err_final|` on the RHS — it's absorbed into `csTraceAddUlpHalfSum`.
+Works for all nonzero compensated inputs (including subnormal). -/
+theorem cs_error_bound_self_contained [RModeExec]
+    [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
+    {xs : List FiniteFp} {init final : CSState}
+    (trace : CSTrace (R := R) xs init final)
+    (hinit_sum : init.sum.toVal (R := R) = 0)
+    (hinit_err : init.err.toVal (R := R) = 0)
+    (hnz : csTraceAllNonzero trace) :
+    |final.sum.toVal (R := R) - (xs.map (fun x => x.toVal (R := R))).sum| ≤
+      csTraceAddUlpHalfSum trace + csTraceUlpHalfSum trace := by
+  have h1 := cs_error_bound_ulp (R := R) trace hinit_sum hinit_err hnz
+  have h2 := cs_final_err_le_add_ulp (R := R) trace
+  rw [hinit_err, abs_zero, zero_add] at h2
   linarith
 
 end CompensatedSum
