@@ -168,7 +168,7 @@ Rounding/ files but narrow applicability.
     - [x] **B. Weak backward error**: `ŝₙ = Σ(1+μᵢ)xᵢ`, `|μᵢ| ≤ 2η + nη²` ✓
       `kahan_weak_backward_error` + `_auto` via `error_distributable` (proportional distribution).
       Strong per-element form (Higham eq. 4.8: `|μᵢ| ≤ 2η + O((n-i+1)η²)`) deferred.
-    - [ ] **C. Pairwise comparison**: corollary showing Kahan beats pairwise for large n.
+    - [x] **C. Pairwise comparison**: `pairwise_error_bound` + `kahan_eps_lt_pairwise_eps` in PairwiseSum.lean.
     - [ ] **D. Neumaier variant**: handles `|xᵢ| > |sumᵢ|` via conditional swap.
       New file `NeumaierSum.lean` reusing trace infrastructure.
     - [x] **E. Connect `twoSum_exact`**: `step_twosum_exact_of_dekker` — Dekker condition → Sterbenz → exact compensation ✓
