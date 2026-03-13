@@ -1582,35 +1582,60 @@ theorem step_twosum_exact_of_dekker
     rw [hw_eq_z]; exact hz_val
   exact step_twosum_exact_of_sub_exact st x step hm_sum hw_exact
 
-/-! ## Extension B: Backward Error Interpretation
-
-The **backward error** says the computed sum is the exact sum of slightly perturbed
-inputs: `ŝₙ = Σ(1 + μᵢ)xᵢ` where each `|μᵢ| ≤ ε`. This is strictly more informative
-than the forward bound `|ŝₙ - Σxᵢ| ≤ ε·Σ|xᵢ|`, as it gives per-element perturbations.
-
-The weak form proven here follows from the forward bound via `error_distributable`:
-if a total error `E` satisfies `|E| ≤ ε·Σ|xᵢ|`, then `E` can be written as `Σ μᵢ xᵢ`
-with `|μᵢ| ≤ ε`, by distributing proportional to `|xᵢ|` with matching signs.
-
-Higham's eq. 4.8 gives a stronger *per-element* bound `|μᵢ| ≤ 2η + O((n-i+1)η²)`
-where earlier elements have tighter bounds. That requires per-element tracking through
-the trace and is deferred. -/
-
 end KahanSum
 
 /-! ## Extension B: Backward Error Interpretation
 
-The **backward error** says the computed sum is the exact sum of slightly perturbed
-inputs: `ŝₙ = Σ(1 + μᵢ)xᵢ` where each `|μᵢ| ≤ ε`. This is strictly more informative
-than the forward bound `|ŝₙ - Σxᵢ| ≤ ε·Σ|xᵢ|`, as it gives per-element perturbations.
+### Weak form (implemented)
 
-The weak form proven here follows from the forward bound via `error_distributable`:
-if a total error `E` satisfies `|E| ≤ ε·Σ|xᵢ|`, then `E` can be written as `Σ μᵢ xᵢ`
-with `|μᵢ| ≤ ε`, by distributing proportional to `|xᵢ|` with matching signs.
+The **weak backward error** says: `ŝₙ = Σ(1 + μᵢ)xᵢ` with uniform `|μᵢ| ≤ 2η + nη²`.
+This follows from the forward bound via `error_distributable`: if `|E| ≤ ε·Σ|xᵢ|`,
+then `E = Σ μᵢ xᵢ` with `|μᵢ| ≤ ε`, by distributing proportionally to `|xᵢ|`.
 
-Higham's eq. 4.8 gives a stronger *per-element* bound `|μᵢ| ≤ 2η + O((n-i+1)η²)`
-where earlier elements have tighter bounds. That requires per-element tracking through
-the trace and is deferred. -/
+### Strong form (Higham eq. 4.8, deferred)
+
+Higham gives position-dependent bounds: `|μᵢ| ≤ 2η + (n - i + 1)η²` where element `i`
+is the i-th input processed. Earlier elements have tighter bounds because they've been
+through fewer compensation cycles.
+
+#### Proof sketch for the strong form
+
+The key identity under TwoSum-exactness: at step `i`, the corrected sum satisfies
+`σᵢ = σᵢ₋₁ + xᵢ + ρ₁ᵢ` where `ρ₁ᵢ = δᵢ(xᵢ - cᵢ₋₁)` and `|δᵢ| ≤ η` (standard
+error model on `y = fl(x - c)`). The final sum is `σₙ + cₙ = Σxⱼ + Σρ₁ⱼ + cₙ`.
+
+Expanding `ρ₁ᵢ = δᵢ xᵢ - δᵢ cᵢ₋₁` and `cᵢ = ρ₂ᵢ` (under TwoSum-exactness,
+`|cᵢ| ≤ η|sumᵢ + yᵢ|`), each element `xᵢ` picks up:
+- A direct perturbation `δᵢ xᵢ` with `|δᵢ| ≤ η`
+- Cross-terms from `δⱼ cⱼ₋₁` for `j > i`, where `cⱼ₋₁` depends on step `i` through
+  the compensation chain. The total cross-term contribution to element `i` is bounded
+  by `O((n-i)η²)|xᵢ|` since each compensation `cⱼ` is O(η).
+
+#### What's needed for the strong form
+
+1. **Per-element tracking**: Introduce `tracePerElementError : Fin xs.length → R`
+   that accumulates how each `xᵢ`'s perturbation grows through subsequent steps.
+
+2. **Compensation unrolling**: Express `cⱼ₋₁` in terms of earlier ρ₂ values to
+   bound the cross-terms `δⱼ cⱼ₋₁` that leak from step `j` back to element `i`.
+
+3. **Matrix-style bound**: The perturbation matrix has entry `(i,j)` = contribution
+   of step `j`'s rounding to element `i`'s effective μ. The diagonal entries give
+   the `2η` term; the upper triangle (j > i) gives the `O((n-i)η²)` correction.
+
+4. **Statement**:
+   ```
+   theorem kahan_strong_backward_error ... :
+       ∃ mu : Fin xs.length → R,
+         final.sum.toVal = ∑ i, (1 + mu i) * (xs.get i).toVal ∧
+         ∀ i, |mu i| ≤ 2 * η + (xs.length - i.val) * η ^ 2
+   ```
+
+The main difficulty is step 2: the compensation chain creates a lower-triangular
+dependency where `cⱼ` depends on all prior rounding errors. The existing trace
+infrastructure tracks scalar sums (traceResidual, traceCompSum) but not per-element
+contributions. A new inductive definition tracking `Fin n → R` vectors through the
+trace would be needed. -/
 
 section BackwardErrorInfrastructure
 variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
