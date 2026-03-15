@@ -243,21 +243,49 @@ theorem affineFold_error_uniform_bound (L : R → R)
     nlinarith [mul_nonneg hδ hκm, abs_nonneg (affineFold L es 0),
                abs_nonneg (affineProp L es.length e)]
 
-/-! ### Future: Per-Index Error Bound
+/-! ### Per-Index Error Bound -/
 
-The uniform bound `n·δ·κ^n` is loose because it uses `κ^{n-1-k} ≤ κ^n` for all k.
-The tighter per-index bound is:
+/-- Weighted error sum: `Σ |eₖ| · κ^{n-1-k}`, weighting each error by how many
+    propagation steps remain after it's introduced.
 
-  `|affineFold L errors 0| ≤ Σₖ |errₖ| · κ^{n-1-k}`
+    `weightedErrorSum κ [e₀, e₁, ..., eₙ₋₁] = |e₀|·κ^{n-1} + |e₁|·κ^{n-2} + ... + |eₙ₋₁|` -/
+def weightedErrorSum (κ : R) : List R → R
+  | [] => 0
+  | e :: es => κ ^ es.length * |e| + weightedErrorSum κ es
 
-where each error is weighted by how many steps it propagates through. This requires
-an indexed induction tracking position within the list. The uniform bound suffices
-when all errors are similar magnitude, but the per-index version is needed when
-errors vary significantly (e.g., early terms in compensated evaluation).
+theorem weightedErrorSum_nonneg (κ : R) (hκ : 0 ≤ κ) (errors : List R) :
+    0 ≤ weightedErrorSum κ errors := by
+  induction errors with
+  | nil => simp [weightedErrorSum]
+  | cons e es ih =>
+    simp only [weightedErrorSum]
+    exact add_nonneg (mul_nonneg (pow_nonneg hκ es.length) (abs_nonneg e)) ih
 
-The per-index bound would also enable deriving `((1+η)^n - 1)·Σ|aᵢ||x|^i` style
-bounds where the `|x|^i` factor comes from the propagation weight, not a uniform
-`|x|^n` bound. This is how `horner_error_bound` achieves its tight result. -/
+/-- **Per-index error bound**: `|affineFold L errors 0| ≤ Σ |eₖ| · κ^{n-1-k}`.
+
+    Tighter than the uniform bound `n·δ·κ^n` because each error is weighted by
+    its actual propagation distance, not the maximum. -/
+theorem affineFold_error_per_index (L : R → R)
+    (hL : ∀ a b, L (a + b) = L a + L b)
+    (κ : R) (hκ : 0 ≤ κ) (hLbound : ∀ e, |L e| ≤ κ * |e|)
+    (errors : List R) :
+    |affineFold L errors 0| ≤ weightedErrorSum κ errors := by
+  induction errors with
+  | nil => simp [affineFold, weightedErrorSum]
+  | cons e es ih =>
+    simp only [affineFold, weightedErrorSum]
+    -- L 0 = 0
+    have hL0 : L (0 : R) = 0 := by
+      have h := hL 0 0; rw [add_zero] at h
+      linarith
+    rw [hL0, zero_add]
+    -- affineFold L es e = affineFold L es 0 + affineProp L m e (by affine)
+    have haffine := affineFold_affine L hL es 0 e
+    rw [zero_add] at haffine; rw [haffine]
+    -- Triangle + bounds
+    have htri := abs_add_le (affineFold L es 0) (affineProp L es.length e)
+    have hprop := affineProp_abs_le L κ hκ hLbound es.length e
+    linarith
 
 end ScalarBounds
 
@@ -353,6 +381,37 @@ theorem affineFold_gauge_uniform_bound (L : S → S)
     push_cast
     nlinarith [ν.nonneg (affineFold L es 0), ν.nonneg (affineProp L es.length e),
                mul_nonneg hδ hκm]
+
+/-! ### Per-Index Gauge Bound -/
+
+/-- Weighted error sum for gauge: `Σ ν(eₖ) · κ^{n-1-k}`. -/
+def weightedGaugeSum (ν : Gauge S R) (κ : R) : List S → R
+  | [] => 0
+  | e :: es => κ ^ es.length * ν.val e + weightedGaugeSum ν κ es
+
+/-- **Per-index gauge bound**: `ν(affineFold L errors 0) ≤ Σ ν(eₖ) · κ^{n-1-k}`. -/
+theorem affineFold_gauge_per_index (L : S → S)
+    (hL : ∀ a b, L (a + b) = L a + L b)
+    (ν : Gauge S R) (κ : R) (hκ : 0 ≤ κ)
+    (hLν : ∀ s, ν.val (L s) ≤ κ * ν.val s)
+    (errors : List S) :
+    ν.val (affineFold L errors 0) ≤ weightedGaugeSum ν κ errors := by
+  induction errors with
+  | nil =>
+    simp only [affineFold, weightedGaugeSum]
+    linarith [ν.zero]
+  | cons e es ih =>
+    simp only [affineFold, weightedGaugeSum]
+    have hL0 : L (0 : S) = 0 := by
+      have h := hL 0 0; rw [add_zero] at h
+      have := congr_arg (· - L 0) h
+      simp only [sub_self, add_sub_cancel_right] at this; exact this.symm
+    rw [hL0, zero_add]
+    have haffine := affineFold_affine L hL es 0 e
+    rw [zero_add] at haffine; rw [haffine]
+    have htri := ν.triangle (affineFold L es 0) (affineProp L es.length e)
+    have hprop := affineProp_gauge_le L ν κ hκ hLν es.length e
+    linarith
 
 end GaugeBounds
 
