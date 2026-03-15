@@ -350,4 +350,303 @@ theorem delta_exact_branch_B
   have := add_of_representable_exact (R := R) w sum delta hdelta err_fp herr_nnz herr_eq
   rw [this, hw_exact]; ring
 
+/-! ## Compensation Growth -/
+
+/-- **Compensation growth bound**: `|comp_n| ≤ (1+η)^n · |comp_0| + (1+η)((1+η)^n - 1)·S`.
+
+    This captures how the compensation magnitude grows over n steps. When `comp_0 = 0`,
+    the bound simplifies to `(1+η)((1+η)^n - 1)·S`. -/
+theorem comp_growth [RModeExec]
+    [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : NState}
+    (trace : NTrace (R := R) xs init final)
+    (hnr : ∀ (st : NState) (x : FiniteFp) (step : NStepWitness (R := R) st x),
+      NStepNormalRange (R := R) st x step)
+    (S : R) (hS : 0 ≤ S)
+    (hM : ∀ (st : NState) (x : FiniteFp) (step : NStepWitness (R := R) st x),
+      |(st.sum.toVal : R) + x.toVal| ≤ S) :
+    |final.comp.toVal (R := R)| ≤
+      (1 + η) ^ xs.length * |init.comp.toVal (R := R)| +
+      (1 + η) * ((1 + η) ^ xs.length - 1) * S := by
+  induction trace with
+  | nil => simp
+  | cons step rest ih =>
+    rename_i st₀ xi xs_tail fin₁
+    have hη : (0 : R) ≤ η := by positivity
+    have h1η : (1 : R) ≤ 1 + η := by linarith
+    have hcd := compDelta_le_comp_eta_add st₀ _ step (hnr st₀ _ step)
+    have hρ := stepRho_abs_le st₀ _ step (hnr st₀ _ step)
+    have hM_step := hM st₀ _ step
+    have hdelta := delta_abs_le st₀ _ step (hnr st₀ _ step)
+    -- Bound |step.comp'| ≤ (1+η)(|comp₀| + ηS)
+    have hcomp' : |step.comp'.toVal (R := R)| ≤
+        (1 + η) * |st₀.comp.toVal (R := R)| + (1 + η) * η * S := by
+      have heq : step.comp'.toVal (R := R) =
+          (st₀.comp.toVal + step.delta.toVal) + stepRho (R := R) st₀ _ step := by
+        unfold stepRho; ring
+      rw [heq]
+      have h1 := abs_add_le (st₀.comp.toVal (R := R) + step.delta.toVal)
+        (stepRho (R := R) st₀ _ step)
+      have hcd_nn := abs_nonneg (st₀.comp.toVal (R := R) + step.delta.toVal)
+      have hrho_nn := abs_nonneg (stepRho (R := R) st₀ _ step)
+      -- |comp + delta + ρ| ≤ (1+η)|comp + delta| ≤ (1+η)(|comp₀| + ηS)
+      have hcd_bound : |(st₀.comp.toVal (R := R) + step.delta.toVal)| ≤
+          |st₀.comp.toVal (R := R)| + η * S := by
+        nlinarith [abs_nonneg (st₀.sum.toVal (R := R) + xi.toVal)]
+      nlinarith [mul_nonneg (show (0:R) ≤ 1 + η by linarith) hcd_nn,
+                 mul_le_mul_of_nonneg_left hcd_bound (show (0:R) ≤ 1 + η by linarith),
+                 mul_nonneg hη (abs_nonneg (st₀.comp.toVal (R := R)))]
+    -- IH for rest
+    simp only [List.length_cons]
+    have hpow : (1 + η : R) ^ (xs_tail.length + 1) = (1 + η) * (1 + η) ^ xs_tail.length := by
+      rw [pow_succ]; ring
+    -- ih rewrites: step.nextState.comp = step.comp'
+    -- ih has step.nextState.comp; definitionally this equals step.comp'
+    -- We rewrite ih to get the bound in terms of step.comp'
+    have ih' : |fin₁.comp.toVal (R := R)| ≤
+        (1 + η) ^ xs_tail.length * |step.comp'.toVal (R := R)| +
+        (1 + η) * ((1 + η) ^ xs_tail.length - 1) * S := by
+      have hns : (step.nextState (R := R)).comp.toVal (R := R) = step.comp'.toVal (R := R) := rfl
+      rw [hns] at ih; exact ih
+    rw [hpow]
+    have hpow_nn := pow_nonneg (show (0 : R) ≤ 1 + η by linarith) xs_tail.length
+    nlinarith [abs_nonneg (st₀.comp.toVal (R := R)),
+               abs_nonneg (step.comp'.toVal (R := R)),
+               mul_nonneg hpow_nn (abs_nonneg (step.comp'.toVal (R := R))),
+               mul_nonneg hpow_nn (abs_nonneg (st₀.comp.toVal (R := R))),
+               mul_nonneg (mul_nonneg (show (0:R) ≤ 1+η by linarith) hpow_nn)
+                          (abs_nonneg (st₀.comp.toVal (R := R)))]
+
+/-! ## Capstone -/
+
+/-- Generalized comp-delta sum bound: allows nonzero initial compensation.
+    `traceCompDeltaSum ≤ n·(1+η)^n·|init.comp| + n·(1+η)·((1+η)^n - 1)·S`. -/
+private theorem traceCompDeltaSum_bound_gen [RModeExec]
+    [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : NState}
+    (trace : NTrace (R := R) xs init final)
+    (hnr : ∀ (st : NState) (x : FiniteFp) (step : NStepWitness (R := R) st x),
+      NStepNormalRange (R := R) st x step)
+    (S : R) (hS : 0 ≤ S)
+    (hM : ∀ (st : NState) (x : FiniteFp) (step : NStepWitness (R := R) st x),
+      |(st.sum.toVal : R) + x.toVal| ≤ S) :
+    traceCompDeltaSum (R := R) trace ≤
+      (xs.length : R) * (1 + η) ^ xs.length * |init.comp.toVal (R := R)| +
+      (xs.length : R) * (1 + η) * ((1 + η) ^ xs.length - 1) * S := by
+  induction trace with
+  | nil => simp [traceCompDeltaSum]
+  | cons step rest ih =>
+    rename_i st₀ xi xs_tail fin₁
+    simp only [traceCompDeltaSum, List.length_cons, Nat.cast_add, Nat.cast_one]
+    have hη : (0 : R) ≤ η := by positivity
+    have h1η : (1 : R) ≤ 1 + η := by linarith
+    have hpow_nn := pow_nonneg (show (0 : R) ≤ 1 + η by linarith) xs_tail.length
+    have hS_nn := hS
+    -- Bound |comp₀ + delta₀|
+    have hcd := compDelta_le_comp_eta_add st₀ xi step (hnr st₀ xi step)
+    -- Bound |step.comp'| via comp_growth on a single step
+    have hcomp'_bound : |step.comp'.toVal (R := R)| ≤
+        (1 + η) * |st₀.comp.toVal (R := R)| + (1 + η) * η * S := by
+      have hM_step := hM st₀ xi step
+      have hdelta := delta_abs_le st₀ xi step (hnr st₀ xi step)
+      have hρ := stepRho_abs_le st₀ xi step (hnr st₀ xi step)
+      have hcd' := compDelta_le_comp_eta_add st₀ xi step (hnr st₀ xi step)
+      have heq : step.comp'.toVal (R := R) =
+          (st₀.comp.toVal + step.delta.toVal) + stepRho (R := R) st₀ xi step := by
+        unfold stepRho; ring
+      rw [heq]
+      have h1 := abs_add_le (st₀.comp.toVal (R := R) + step.delta.toVal)
+        (stepRho (R := R) st₀ xi step)
+      have hcd_bound : |(st₀.comp.toVal (R := R) + step.delta.toVal)| ≤
+          |st₀.comp.toVal (R := R)| + η * S := by
+        nlinarith [abs_nonneg (st₀.sum.toVal (R := R) + xi.toVal)]
+      nlinarith [abs_nonneg (st₀.comp.toVal (R := R) + step.delta.toVal),
+                 abs_nonneg (stepRho (R := R) st₀ xi step),
+                 mul_nonneg hη (abs_nonneg (st₀.comp.toVal (R := R) + step.delta.toVal)),
+                 mul_le_mul_of_nonneg_left hcd_bound (show (0:R) ≤ 1 + η by linarith)]
+    -- IH: rewrites step.nextState.comp = step.comp'
+    have ih' : traceCompDeltaSum (R := R) rest ≤
+        (xs_tail.length : R) * (1 + η) ^ xs_tail.length * |step.comp'.toVal (R := R)| +
+        (xs_tail.length : R) * (1 + η) * ((1 + η) ^ xs_tail.length - 1) * S := by
+      have hns : (step.nextState (R := R)).comp.toVal (R := R) = step.comp'.toVal (R := R) := rfl
+      rw [hns] at ih; exact ih
+    have hpow_succ : (1 + η : R) ^ (xs_tail.length + 1) =
+        (1 + η) * (1 + η) ^ xs_tail.length := by rw [pow_succ]; ring
+    have hM_step := hM st₀ xi step
+    -- Combine: |cd| + sum_rest ≤ target
+    -- |cd| ≤ |st₀.comp| + η·S
+    -- sum_rest ≤ n·(1+η)^n·|comp'| + n·(1+η)·((1+η)^n-1)·S
+    --         ≤ n·(1+η)^n·((1+η)|comp₀| + (1+η)ηS) + n·(1+η)·((1+η)^n-1)·S
+    have hcomp₀_nn := abs_nonneg (st₀.comp.toVal (R := R))
+    have hcomp'_nn := abs_nonneg (step.comp'.toVal (R := R))
+    have hn_nn : (0 : R) ≤ xs_tail.length := Nat.cast_nonneg' (n := xs_tail.length)
+    have h1η_pos : (0 : R) ≤ 1 + η := by linarith
+    -- rest ≤ n·(1+η)^{n+1}·|c₀| + n·(1+η)^{n+1}·η·S + n·(1+η)·((1+η)^n-1)·S
+    have hrest_bound : traceCompDeltaSum (R := R) rest ≤
+        (xs_tail.length : R) * (1 + η) ^ xs_tail.length *
+          ((1 + η) * |st₀.comp.toVal (R := R)| + (1 + η) * η * S) +
+        (xs_tail.length : R) * (1 + η) * ((1 + η) ^ xs_tail.length - 1) * S := by
+      calc traceCompDeltaSum (R := R) rest
+          ≤ (xs_tail.length : R) * (1 + η) ^ xs_tail.length * |step.comp'.toVal (R := R)| +
+            (xs_tail.length : R) * (1 + η) * ((1 + η) ^ xs_tail.length - 1) * S := ih'
+        _ ≤ (xs_tail.length : R) * (1 + η) ^ xs_tail.length *
+              ((1 + η) * |st₀.comp.toVal (R := R)| + (1 + η) * η * S) +
+            (xs_tail.length : R) * (1 + η) * ((1 + η) ^ xs_tail.length - 1) * S := by
+            have := mul_le_mul_of_nonneg_left hcomp'_bound (mul_nonneg hn_nn hpow_nn)
+            linarith
+    -- Now combine: |cd| + rest ≤ target = (n+1)·(1+η)^{n+1}·|c₀| + (n+1)·(1+η)·((1+η)^{n+1}-1)·S
+    -- Expand hrest_bound: rest ≤ n·(1+η)^{n+1}·|c₀| + n·(1+η)^{n+1}·η·S + n·(1+η)^{n+1}·S - n·(1+η)·S
+    -- Total: |c₀| + η·S + n·(1+η)^{n+1}·|c₀| + n·(1+η)^{n+1}·η·S + n·(1+η)^{n+1}·S - n·(1+η)·S
+    -- Target: (n+1)·(1+η)^{n+1}·|c₀| + (n+1)·(1+η)·((1+η)^{n+1}-1)·S
+    -- Let P = (1+η)^{n+1}. Suffice: |c₀| ≤ n·(P-1)·|c₀| + extra... actually need:
+    -- (n+1)·P·|c₀| ≥ |c₀| + n·(1+η)·P·|c₀| = |c₀|(1 + n·P·(1+η)/...) hmm
+    -- Break into |c₀| part and S part separately
+    have hP := hpow_succ  -- (1+η)^{n+1} = (1+η) * (1+η)^n
+    have hpow1 : (1 : R) ≤ (1 + η) ^ xs_tail.length :=
+      one_le_pow₀ h1η
+    -- For |c₀| part: (1 + n*(1+η)^{n+1}) ≤ (n+1)*(1+η)^{n+1}
+    -- iff 1 ≤ (1+η)^{n+1}, which holds
+    have hcomp₀_part : |st₀.comp.toVal (R := R)| +
+        (xs_tail.length : R) * (1 + η) ^ xs_tail.length * ((1 + η) * |st₀.comp.toVal (R := R)|) ≤
+        ((xs_tail.length : R) + 1) * (1 + η) ^ (xs_tail.length + 1) * |st₀.comp.toVal (R := R)| := by
+      rw [hP]; nlinarith [mul_nonneg hpow_nn hcomp₀_nn, mul_nonneg hn_nn hpow_nn,
+                           mul_nonneg (mul_nonneg hn_nn hpow_nn) hcomp₀_nn]
+    -- For S part: η·S + n·(1+η)^{n+1}·η·S + n·(1+η)^{n+1}·S - n·(1+η)·S
+    --           ≤ (n+1)·(1+η)·((1+η)^{n+1}-1)·S
+    -- = (n+1)·(1+η)^{n+2}·S - (n+1)·(1+η)·S
+    -- LHS = η·S + n·Q·η·S + n·Q·S - n·(1+η)·S where Q = (1+η)^{n+1}
+    --     = η·S(1 + n·Q) + n·Q·S - n·(1+η)·S
+    -- Need: η·S(1 + n·Q) + n·Q·S - n·(1+η)·S ≤ (n+1)·(1+η)·Q·S - (n+1)·(1+η)·S
+    -- i.e., η·(1 + n·Q) + n·Q - n·(1+η) ≤ (n+1)·(1+η)·Q - (n+1)·(1+η)
+    -- = (n+1)·Q·(1+η) - (n+1)·(1+η) - n·Q + n·(1+η) - η·(1+n·Q)
+    -- = Q·((n+1)·(1+η) - n) - (1+η) - η - η·n·Q
+    -- = Q·(n·η + 1) - (1 + 2η) - η·n·Q
+    -- = Q·(n·η + 1 - η·n) - (1+2η) = Q - (1+2η) ≥ 0 when Q ≥ 1+2η
+    -- Actually Q = (1+η)^{n+1} ≥ 1 + (n+1)η ≥ 1 + η ≥ 1+2η for n ≥ 1... not always
+    -- Key inequality: (1+η)*(1+η)*(1+η)^n ≥ 1+2η
+    -- From: (1+η)*(1+η) = 1+2η+η² ≥ 1+2η, and (1+η)^n ≥ 1
+    -- Break hS_part into linear steps using the identity:
+    -- RHS - LHS = S * ((1+η)*(1+η)*(1+η)^n - 1 - 2η)
+    -- Need: (1+η)*(1+η)*(1+η)^n ≥ 1 + 2η
+    -- Step 1: set a := (1+η)*(1+η)*(1+η)^n and b := (1+η)^n*(1+2η)
+    have heta_sq : (0 : R) ≤ (η : R) * η := mul_self_nonneg (η : R)
+    -- (1+η)*P ≥ P ≥ 1 where P = (1+η)^n
+    have hP1 := hpow1  -- 1 ≤ P
+    -- (1+η)*(1+η)*P - (1+2η) = (η*η)*P + (1+2η)*(P-1) + (1+2η) - (1+2η)
+    --                         = η²*P + (1+2η)*(P-1) ≥ 0
+    have h12eta : (0 : R) ≤ 1 + 2 * η := by linarith
+    -- (1+2η)*(P-1) ≥ 0 since P ≥ 1 and 1+2η ≥ 0
+    have h12eta_P1 : (0 : R) ≤ (1 + 2 * η) * ((1 + η) ^ xs_tail.length - 1) :=
+      mul_nonneg h12eta (by linarith)
+    -- (η*η)*P ≥ 0
+    have heta_sq_P : (0 : R) ≤ (η * η) * (1 + η) ^ xs_tail.length :=
+      mul_nonneg (mul_self_nonneg (η:R)) hpow_nn
+    -- Therefore (1+η)*(1+η)*(1+η)^n ≥ 1+2η:
+    have hpow2_ge : (1 + η : R) * (1 + η) * (1 + η) ^ xs_tail.length ≥ 1 + 2 * η := by
+      have : (1 + η : R) * (1 + η) * (1 + η) ^ xs_tail.length =
+          (1 + 2 * η) * (1 + η) ^ xs_tail.length + η * η * (1 + η) ^ xs_tail.length := by ring
+      linarith [mul_nonneg h12eta hpow_nn, le_mul_of_one_le_right h12eta hpow1]
+    -- hS_key: (1+η)*(1+η)*(1+η)^n - (1+2η) ≥ 0, so the S gap is ≥ 0
+    have hS_key_nn : (0 : R) ≤ (1 + η) * (1 + η) * (1 + η) ^ xs_tail.length - (1 + 2 * η) := by
+      linarith
+    -- Prove hS_part via explicit linear decomposition
+    -- Set Q := (1+η)^n for brevity
+    set Q := (1 + η : R) ^ xs_tail.length with hQ_def
+    -- We need:
+    -- η*S + n*Q*(1+η)*η*S + n*(1+η)*(Q-1)*S ≤ (n+1)*(1+η)*((1+η)^{n+1}-1)*S
+    -- = (n+1)*(1+η)*((1+η)*Q-1)*S  [after hpow_succ]
+    -- Let's compute RHS - LHS directly:
+    -- RHS - LHS = ((1+η)*(1+η)*Q - (1+2η)) * S  [ring identity]
+    -- And ((1+η)*(1+η)*Q - (1+2η)) = (1+2η)*(Q-1) + η*η*Q ≥ 0
+    have hS_part : η * S + (xs_tail.length : R) * Q * ((1 + η) * η * S) +
+        (xs_tail.length : R) * (1 + η) * (Q - 1) * S ≤
+        ((xs_tail.length : R) + 1) * (1 + η) * ((1 + η) ^ (xs_tail.length + 1) - 1) * S := by
+      rw [hpow_succ]
+      -- Introduce the gap term explicitly
+      have hgap_eq : ((xs_tail.length : R) + 1) * (1 + η) * ((1 + η) * Q - 1) * S -
+          (η * S + (xs_tail.length : R) * Q * ((1 + η) * η * S) +
+           (xs_tail.length : R) * (1 + η) * (Q - 1) * S) =
+          ((1 + η) * (1 + η) * Q - (1 + 2 * η)) * S := by ring
+      linarith [mul_nonneg hS_key_nn hS]
+    -- Simplify hcd: |comp₀+delta₀| ≤ |c₀| + η*S (using hM_step)
+    have hcd' : |(st₀.comp.toVal : R) + step.delta.toVal| ≤
+        |st₀.comp.toVal (R := R)| + η * S := by
+      have := mul_le_mul_of_nonneg_left hM_step hη
+      linarith
+    -- Combine: |cd| + rest ≤ target
+    -- |cd| ≤ |c₀| + η*S
+    -- hrest_bound: rest ≤ n*Q*[(1+η)*|c₀| + (1+η)*η*S] + n*(1+η)*(Q-1)*S
+    -- hcomp₀_part: |c₀| + n*Q*(1+η)*|c₀| ≤ (n+1)*(1+η)^{n+1}*|c₀|
+    -- hS_part: η*S + n*Q*(1+η)*η*S + n*(1+η)*(Q-1)*S ≤ (n+1)*(1+η)*((1+η)^{n+1}-1)*S
+    -- Total: (|c₀| + n*Q*(1+η)*|c₀|) + (η*S + n*Q*(1+η)*η*S + n*(1+η)*(Q-1)*S) ≤ target
+    -- Need to use hrest_bound by separating the |c₀| and S parts
+    -- The final combination step
+    -- hcd': |cd| ≤ |c₀| + η*S
+    -- hcomp₀_part: |c₀| + n*Q*(1+η)*|c₀| ≤ (n+1)*(1+η)^{n+1}*|c₀|
+    -- hS_part: η*S + n*Q*(1+η)*η*S + n*(1+η)*(Q-1)*S ≤ (n+1)*(1+η)*((1+η)^{n+1}-1)*S
+    -- hrest_bound: rest ≤ n*Q*(1+η)*|c₀| + n*Q*(1+η)*η*S + n*(1+η)*(Q-1)*S
+    --   (by expanding n*Q*(stuff) + n*(1+η)*(Q-1)*S from hrest_bound)
+    have h1eta_pos2 : (0 : R) ≤ (1+η)*η := mul_nonneg h1η_pos hη
+    have heta_S_nn : (0 : R) ≤ (1+η) * η * S := mul_nonneg h1eta_pos2 hS
+    have hrest_expand : traceCompDeltaSum (R := R) rest ≤
+        (xs_tail.length : R) * Q * ((1+η) * |st₀.comp.toVal (R := R)|) +
+        (xs_tail.length : R) * Q * ((1+η) * η * S) +
+        (xs_tail.length : R) * (1+η) * (Q - 1) * S := by
+      linarith [mul_nonneg (mul_nonneg hn_nn hpow_nn) heta_S_nn]
+    linarith
+
+/-- Bound `traceCompDeltaSum` using `comp_growth` to bound each step uniformly. -/
+private theorem traceCompDeltaSum_bound [RModeExec]
+    [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : NState}
+    (trace : NTrace (R := R) xs init final)
+    (hnr : ∀ (st : NState) (x : FiniteFp) (step : NStepWitness (R := R) st x),
+      NStepNormalRange (R := R) st x step)
+    (S : R) (hS : 0 ≤ S)
+    (hM : ∀ (st : NState) (x : FiniteFp) (step : NStepWitness (R := R) st x),
+      |(st.sum.toVal : R) + x.toVal| ≤ S)
+    (hinit_comp : init.comp.toVal (R := R) = 0) :
+    traceCompDeltaSum (R := R) trace ≤
+      (xs.length : R) * ((1 + η) ^ (xs.length + 1) - 1) * S := by
+  have hgen := traceCompDeltaSum_bound_gen trace hnr S hS hM
+  rw [hinit_comp, abs_zero, mul_zero, zero_add] at hgen
+  have hη : (0 : R) ≤ η := by positivity
+  have hpow_nn := pow_nonneg (show (0 : R) ≤ 1 + η by linarith) xs.length
+  have hpow_succ : (1 + η : R) ^ (xs.length + 1) = (1 + η) * (1 + η) ^ xs.length := by
+    rw [pow_succ]; ring
+  have hn_nn : (0 : R) ≤ xs.length := Nat.cast_nonneg' (n := xs.length)
+  have h1η : (1 : R) ≤ 1 + η := by linarith
+  -- Need: n*(1+η)*((1+η)^n - 1)*S ≤ n*((1+η)^{n+1} - 1)*S
+  -- Equivalently: n*(1+η)*S ≥ n*S since n*η*S ≥ 0
+  -- After rw [hpow_succ]: n*((1+η)*(1+η)^n - 1)*S = n*(1+η)^n*(1+η)*S - n*S
+  -- LHS: n*(1+η)*((1+η)^n-1)*S = n*(1+η)^n*(1+η)*S - n*(1+η)*S
+  -- Diff: n*(1+η)*S - n*S = n*η*S ≥ 0
+  rw [hpow_succ]
+  nlinarith [mul_nonneg hn_nn hS, mul_nonneg hn_nn hpow_nn,
+             mul_nonneg (mul_nonneg hn_nn hpow_nn) hS,
+             mul_nonneg (mul_nonneg hn_nn hη) hS]
+
+/-- **Neumaier concrete error bound**.
+
+    `|σₙ - Σxᵢ| ≤ n · η · ((1+η)^{n+1} - 1) · S`
+
+    where `S = Σ|xᵢ|` and `n = xs.length`. The bound is `O(n²η²S)` for small `nη`. -/
+theorem neumaier_concrete_bound [RModeExec]
+    [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : NState}
+    (trace : NTrace (R := R) xs init final)
+    (hinit_sum : init.sum.toVal (R := R) = 0)
+    (hinit_comp : init.comp.toVal (R := R) = 0)
+    (hnr : ∀ (st : NState) (x : FiniteFp) (step : NStepWitness (R := R) st x),
+      NStepNormalRange (R := R) st x step)
+    (S : R) (hS : 0 ≤ S)
+    (hM : ∀ (st : NState) (x : FiniteFp) (step : NStepWitness (R := R) st x),
+      |(st.sum.toVal : R) + x.toVal| ≤ S) :
+    |final.sigma (R := R) - (xs.map (fun x => x.toVal (R := R))).sum| ≤
+      (xs.length : R) * η * ((1 + η) ^ (xs.length + 1) - 1) * S := by
+  have habstract := neumaier_abstract_error_bound trace hinit_sum hinit_comp hnr
+  have hbound := traceCompDeltaSum_bound trace hnr S hS hM hinit_comp
+  have hη : (0 : R) ≤ η := by positivity
+  nlinarith
+
 end NeumaierSum
