@@ -1,5 +1,6 @@
 import Mathlib.Algebra.Group.Defs
 import Mathlib.Tactic.Abel
+import Flean.FloatFormat
 
 /-!
 # Affine Fold: Generic Error Propagation for Iterated Affine Maps
@@ -164,5 +165,84 @@ theorem affineFold_exact_decomposition (L : S → S) (hL : ∀ a b, L (a + b) = 
               (affineFold L es 0 + affineProp L es.length e)
           = affineFold L (List.zipWith (· - ·) vs es) (L s + v) + affineFold L es 0 := by abel
         _ = affineFold L vs (L s + v) := hih
+
+/-! ## Generic Propagation Bounds
+
+The propagation bound `|affineProp L n e| ≤ κ^n · |e|` when `|L(e)| ≤ κ · |e|`.
+This is the scalar (1D) version; for products, use component-wise bounds.
+
+The generic error bound for any affine fold:
+  `|final - exact| ≤ Σₖ |εₖ| · κ^{n-k}`
+where `εₖ` are per-step rounding errors and `κ` bounds `L`'s contraction/expansion. -/
+
+section ScalarBounds
+
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+
+/-- **Propagation bound**: if `|L(e)| ≤ κ · |e|` for all `e`, then
+    `|affineProp L n e| ≤ κ^n · |e|`. -/
+theorem affineProp_abs_le (L : R → R) (κ : R) (hκ : 0 ≤ κ)
+    (hL : ∀ e, |L e| ≤ κ * |e|)
+    (n : ℕ) (e : R) :
+    |affineProp L n e| ≤ κ ^ n * |e| := by
+  induction n generalizing e with
+  | zero => simp [affineProp]
+  | succ n ih =>
+    simp only [affineProp]
+    calc |affineProp L n (L e)|
+        ≤ κ ^ n * |L e| := ih (L e)
+      _ ≤ κ ^ n * (κ * |e|) := by
+          exact mul_le_mul_of_nonneg_left (hL e) (pow_nonneg hκ n)
+      _ = κ ^ (n + 1) * |e| := by rw [pow_succ]; ring
+
+/-- **Uniform error bound for scalar affine folds.**
+
+    If each per-step error satisfies `|εₖ| ≤ δ`, then:
+    `|affineFold L errors 0| ≤ δ · n · κ^{n-1}`
+
+    (using the uniform bound `κ^{n-1-k} ≤ κ^{n-1}` for all k). -/
+theorem affineFold_error_uniform_bound (L : R → R)
+    (hL : ∀ a b, L (a + b) = L a + L b)
+    (κ : R) (hκ : 1 ≤ κ) (hLbound : ∀ e, |L e| ≤ κ * |e|)
+    (errors : List R) (δ : R) (hδ : 0 ≤ δ)
+    (herr : ∀ e ∈ errors, |e| ≤ δ) :
+    |affineFold L errors 0| ≤ (errors.length : R) * δ * κ ^ errors.length := by
+  induction errors with
+  | nil => simp [affineFold]
+  | cons e es ih =>
+    simp only [affineFold, List.length_cons]
+    -- affineFold L (e :: es) 0 = affineFold L es (L 0 + e) = affineFold L es e
+    have hL0 : L (0 : R) = 0 := by
+      have h := hL 0 0; rw [add_zero] at h
+      have := congr_arg (· - L 0) h
+      simp only [sub_self, add_sub_cancel_right] at this; exact this.symm
+    rw [hL0, zero_add]
+    -- By affine: affineFold L es e = affineFold L es 0 + affineProp L es.length e
+    have haffine := affineFold_affine L hL es 0 e
+    rw [zero_add] at haffine
+    rw [haffine]
+    -- |fold(es, 0) + prop(m, e)| ≤ |fold(es, 0)| + |prop(m, e)|
+    have htri := abs_add_le (affineFold L es 0) (affineProp L es.length e)
+    -- |prop(m, e)| ≤ κ^m · |e| ≤ κ^m · δ
+    have hprop := affineProp_abs_le L κ (le_trans zero_le_one hκ) hLbound es.length e
+    have he : |e| ≤ δ := herr e List.mem_cons_self
+    -- |fold(es, 0)| ≤ m · δ · κ^m (IH)
+    have hih := ih (fun e' he' => herr e' (List.mem_cons_of_mem _ he'))
+    -- Total: m·δ·κ^m + κ^m·δ = (m+1)·δ·κ^m
+    -- Need: (m+1)·δ·κ^m ≤ (m+1)·δ·κ^{m+1} since κ ≥ 1
+    have hκ_nn : (0 : R) ≤ κ := le_trans zero_le_one hκ
+    have hκm : (0 : R) ≤ κ ^ es.length := pow_nonneg hκ_nn es.length
+    have hκm1 : κ ^ es.length ≤ κ ^ (es.length + 1) :=
+      pow_le_pow_right₀ hκ (Nat.le_succ _)
+    push_cast
+    have hpropδ : κ ^ es.length * |e| ≤ κ ^ es.length * δ :=
+      mul_le_mul_of_nonneg_left he hκm
+    have hstep : (es.length : R) * δ * κ ^ es.length ≤
+        (es.length : R) * δ * κ ^ (es.length + 1) :=
+      mul_le_mul_of_nonneg_left hκm1 (mul_nonneg (Nat.cast_nonneg' (n := es.length)) hδ)
+    nlinarith [mul_nonneg hδ hκm, abs_nonneg (affineFold L es 0),
+               abs_nonneg (affineProp L es.length e)]
+
+end ScalarBounds
 
 end AffineFold
