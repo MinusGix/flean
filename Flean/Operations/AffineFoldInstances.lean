@@ -114,4 +114,52 @@ theorem clenshawExact_affine_from_generic (cs : List R) (a b ea eb w : R) :
 
 end Clenshaw
 
+/-! ## Horner Error Bound from Generic Framework -/
+
+section HornerErrorBound
+
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+
+/-- `hornerL x` has contraction bound `|x|`: `|L(e)| = |x * e| = |x| · |e|`. -/
+theorem hornerL_bound (x : R) (e : R) : |hornerL x e| ≤ |x| * |e| := by
+  simp [hornerL, abs_mul]
+
+/-- **Propagation bound for Horner** (derived from generic `affineProp_abs_le`):
+    `|affineProp (hornerL x) n e| ≤ |x|^n · |e|`.
+
+    This is `|e · x^n| ≤ |x|^n · |e|` — obvious, but derived generically. -/
+theorem horner_prop_bound (x : R) (n : ℕ) (e : R) :
+    |affineProp (hornerL x) n e| ≤ |x| ^ n * |e| :=
+  affineProp_abs_le (hornerL x) |x| (abs_nonneg x) (hornerL_bound x) n e
+
+/-- **Horner uniform error bound from generic framework.**
+
+    If each per-step error satisfies `|εₖ| ≤ δ` and `|x| ≥ 1`, then:
+    `|hornerPoly(errors, 0, x)| ≤ n · δ · |x|^n`
+
+    Derived from `affineFold_error_uniform_bound` with `κ = |x|`. -/
+theorem horner_error_uniform_from_generic (x : R) (hx : 1 ≤ |x|)
+    (errors : List R) (δ : R) (hδ : 0 ≤ δ)
+    (herr : ∀ e ∈ errors, |e| ≤ δ) :
+    |hornerPoly errors 0 x| ≤ (errors.length : R) * δ * |x| ^ errors.length := by
+  rw [← affineFold_eq_hornerPoly]
+  exact affineFold_error_uniform_bound (hornerL x) (hornerL_additive x) |x| hx
+    (hornerL_bound x) errors δ hδ herr
+
+/-- **Exact decomposition for Horner from generic framework.**
+
+    `computed + hornerPoly(errors, 0, x) = hornerPoly(coeffs, init, x)`
+
+    Derived from `affineFold_exact_decomposition`. -/
+theorem horner_exact_decomposition_from_generic
+    (coeffs errors : List R) (init : R) (computed : R) (x : R)
+    (hlen : coeffs.length = errors.length)
+    (hcomputed : computed = hornerPoly (List.zipWith (· - ·) coeffs errors) init x) :
+    computed + hornerPoly errors 0 x = hornerPoly coeffs init x := by
+  simp only [← affineFold_eq_hornerPoly] at hcomputed ⊢
+  exact affineFold_exact_decomposition (hornerL x) (hornerL_additive x)
+    coeffs errors init computed hlen hcomputed
+
+end HornerErrorBound
+
 end AffineFoldInstances

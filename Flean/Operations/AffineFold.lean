@@ -243,6 +243,22 @@ theorem affineFold_error_uniform_bound (L : R → R)
     nlinarith [mul_nonneg hδ hκm, abs_nonneg (affineFold L es 0),
                abs_nonneg (affineProp L es.length e)]
 
+/-! ### Future: Per-Index Error Bound
+
+The uniform bound `n·δ·κ^n` is loose because it uses `κ^{n-1-k} ≤ κ^n` for all k.
+The tighter per-index bound is:
+
+  `|affineFold L errors 0| ≤ Σₖ |errₖ| · κ^{n-1-k}`
+
+where each error is weighted by how many steps it propagates through. This requires
+an indexed induction tracking position within the list. The uniform bound suffices
+when all errors are similar magnitude, but the per-index version is needed when
+errors vary significantly (e.g., early terms in compensated evaluation).
+
+The per-index bound would also enable deriving `((1+η)^n - 1)·Σ|aᵢ||x|^i` style
+bounds where the `|x|^i` factor comes from the propagation weight, not a uniform
+`|x|^n` bound. This is how `horner_error_bound` achieves its tight result. -/
+
 end ScalarBounds
 
 end AffineFold
