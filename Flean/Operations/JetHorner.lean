@@ -155,4 +155,22 @@ theorem polyDeriv_cons (c : R) (cs : List R) (init x : R) :
   simp only [jetHornerExact, mul_zero, zero_add]
   exact jetHorner_deriv_shift cs (x * init + c) init x
 
+/-! ## Future Work
+
+- **Connection to Mathlib calculus**: For `R = ℝ`, prove
+  `HasDerivAt (fun x => hornerPoly cs init x) (polyDeriv cs init x) x`.
+  This connects our algebraic `polyDeriv` to Mathlib's analytic `deriv`.
+  Proof: induction using `HasDerivAt.mul` + `hasDerivAt_id` for the
+  product rule at each step.
+
+- **FP trace + error bound**: Define `JetHornerStep`/`JetHornerTrace` with
+  4 fp operations per step (or 2 FMAs). The error propagation is 2D —
+  rounding errors in `v` affect future `d` values. The AffineFold gauge
+  bounds would give error bounds for BOTH components simultaneously.
+
+- **Higher-order jets**: Generalize from 1-jets `(v, d)` to k-jets
+  `(v, d, d², ..., d^k)` for simultaneous evaluation of polynomial + first
+  k derivatives. State is `R^{k+1}`, step is a `(k+1)×(k+1)` affine map.
+  The AffineFold framework handles this with `S = Fin (k+1) → R`. -/
+
 end JetHorner
