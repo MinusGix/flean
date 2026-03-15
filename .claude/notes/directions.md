@@ -181,6 +181,15 @@ Rounding/ files but narrow applicability.
   `|fl(p(x)) - p(x)| ≤ ((1+η)^n-1)·p̃(|x|) ≤ γ_n·p̃(|x|)`. Half the exponent of non-FMA. Sorry-free.
 - [x] **Compensated Horner** — `comp_horner_exact_decomposition` in CompensatedHorner.lean.
   `sₙ + hornerPoly(errors, 0, x) = p(x)` exact decomposition via `hornerPoly_affine`. Sorry-free.
+- [ ] **Reverse Horner** — standard Horner on `1/x` with reversed coefficients.
+  Same `γ_{2n}·p̃(|x|)` absolute bound (no improvement), but better conditioning for |x|>1.
+  Ref: Burrus et al. (Rice). Low priority — the advantage is conditioning, not the error bound.
+- [x] **Compensated Horner bound** — `comp_horner_bound` in CompensatedHorner.lean.
+  `|result - p(x)| ≤ η|sₙ+r̃ₙ| + γ_{2m}·hornerPoly(|ẽ|, 0, |x|)`. Sorry-free.
+  With exact EFTs: `O(η + n²η²)·p̃(|x|)`.
+- [ ] **Affine fold abstraction** — generalize `hornerPoly_affine` to generic affine state folds.
+  Would unify Horner, Clenshaw, de Casteljau, jet evaluation under one framework.
+  See memory/horner-extensions.md for detailed design notes.
 - [ ] **Newton reciprocal** — `x_{n+1} = x_n(2 - ax_n)`, quadratic convergence in floats.
 - [ ] **Newton sqrt** — Similar to reciprocal, used in hardware implementations.
 - [ ] **Mixed-precision accumulation** — Error of computing in FP16/BF16 and accumulating in FP32 (bridges StorageFormats + ML).

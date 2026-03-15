@@ -113,15 +113,93 @@ theorem comp_horner_exact_decomposition [RModeExec]
 
 /-! ## Compensated Error Bound
 
-The compensated algorithm evaluates `sₙ + r̃ₙ` where `r̃ₙ` is a second Horner pass
-on fp approximations of the error coefficients `eₖ`. The bound is:
+The compensated algorithm:
+1. Run Horner, collecting per-step errors `eₖ` via EFT (TwoProduct + TwoSum)
+2. Run a second (standard) Horner pass on the error coefficients: `r̃ₙ ≈ hornerPoly(errors, 0, x)`
+3. Return `fl(sₙ + r̃ₙ)` as the compensated result
 
-  `|fl(sₙ + r̃ₙ) - p(x)| ≤ η|sₙ + r̃ₙ| + γ_{2n} · Σ|ẽₖ - eₖ| · |x|^{n-k} + γ_{2n} · Σ|eₖ|·|x|^{n-k}`
+The bound follows from composing the exact decomposition with the correction error. -/
 
-When each `|eₖ| ≤ 2η · (|s_{k-1}||x| + |aₖ|)` (from the two rounding errors per step),
-this gives the compensated bound `O(η + n²η²) · p̃(|x|)`.
+/-- **Compensated Horner error bound.**
 
-The infrastructure for this (TwoProduct/TwoSum representations of `eₖ`) is in
-`MulErrorRepresentable.lean` and `AddErrorRepresentable.lean`. -/
+    Given:
+    - A Horner trace computing `sₙ`
+    - FP approximations `ẽₖ` of the per-step errors (e.g. from TwoProduct + TwoSum)
+    - A correction Horner trace computing `r̃ₙ = fl(Horner(ẽ, 0, x))`
+    - A final addition `result = fl(sₙ + r̃ₙ)`
+
+    The compensated result satisfies:
+    `|result - p(x)| ≤ η|sₙ + r̃ₙ| + correction_error`
+
+    where `correction_error ≤ γ_{2m} · hornerPoly(|ẽ|, 0, |x|)` (from `horner_error_bound`
+    on the correction pass, with `m = number of error coefficients`).
+
+    When EFTs give exact `ẽₖ = eₖ`, and each `|eₖ| ≤ (2η + η²)(|sₖ₋₁||x| + |aₖ|)`,
+    this yields the `O(η + n²η²) · p̃(|x|)` compensated bound. -/
+theorem comp_horner_bound
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {x init final : FiniteFp} {coeffs : List FiniteFp}
+    (trace : HornerTrace x coeffs init final)
+    -- Correction pass: r̃ₙ computed by standard Horner on error approximations
+    {corr_coeffs : List FiniteFp} {corr_init corr_final : FiniteFp}
+    (corr_trace : HornerTrace x corr_coeffs corr_init corr_final)
+    (corr_hnr : corr_trace.AllNormalRange (R := R))
+    (hcorr_init : corr_init.toVal (R := R) = 0)
+    -- The correction coefficients approximate the actual errors
+    (hlen : corr_coeffs.length = coeffs.length)
+    (herr_approx : ∀ i : Fin corr_coeffs.length,
+      corr_coeffs[i].toVal (R := R) =
+        (stepErrors (R := R) trace)[i]'(by rw [stepErrors_length]; omega))
+    -- Final addition: result = fl(sₙ + r̃ₙ)
+    {result : FiniteFp}
+    (hresult : final + corr_final = Fp.finite result)
+    (hresult_nr : isNormalRange ((final.toVal : R) + corr_final.toVal) ∨
+                  (final.toVal : R) + corr_final.toVal = 0) :
+    |(result.toVal : R) -
+      hornerPoly (coeffs.map (fun c => c.toVal (R := R))) (init.toVal) (x.toVal)| ≤
+      η * |(final.toVal : R) + corr_final.toVal| +
+      ((1 + η) ^ (2 * corr_coeffs.length) - 1) *
+        hornerPoly (corr_coeffs.map (fun c => |c.toVal (R := R)|))
+          0 |x.toVal (R := R)| := by
+  -- Step 1: |result - (sₙ + r̃ₙ)| ≤ η|sₙ + r̃ₙ|
+  have hfinal_round := KahanSum.fpAdd_error_or_zero (R := R)
+    final corr_final result hresult hresult_nr
+  -- Step 2: sₙ + r̃ₙ - p(x) = r̃ₙ - hornerPoly(errors, 0, x)  [by exact decomposition]
+  have hdecomp := comp_horner_exact_decomposition (R := R) trace
+  -- Step 3: |r̃ₙ - hornerPoly(errors, 0, x)| ≤ correction_error  [by horner_error_bound on corr]
+  have hcorr := horner_error_bound corr_trace corr_hnr
+  -- Step 4: r̃ₙ evaluates the same polynomial as errors (since ẽₖ = eₖ)
+  -- so the correction error uses |ẽₖ| = |eₖ|
+  -- Triangle: |result - p(x)| ≤ |result - (sₙ+r̃ₙ)| + |sₙ+r̃ₙ - p(x)|
+  -- = |result - (sₙ+r̃ₙ)| + |r̃ₙ - (p(x) - sₙ)|
+  -- = |result - (sₙ+r̃ₙ)| + |r̃ₙ - hornerPoly(errors, 0, x)|
+  have htri : |(result.toVal : R) -
+      hornerPoly (coeffs.map (fun c => c.toVal (R := R))) (init.toVal) (x.toVal)| ≤
+      |(result.toVal : R) - ((final.toVal : R) + corr_final.toVal)| +
+      |(corr_final.toVal : R) -
+        hornerPoly (stepErrors (R := R) trace) 0 (x.toVal)| := by
+    have heq : (result.toVal : R) -
+        hornerPoly (coeffs.map (fun c => c.toVal (R := R))) (init.toVal) (x.toVal) =
+        ((result.toVal : R) - (final.toVal + corr_final.toVal)) +
+        (corr_final.toVal - hornerPoly (stepErrors (R := R) trace) 0 (x.toVal)) := by
+      linarith
+    rw [heq]; exact abs_add_le _ _
+  -- The correction coefficients map to exactly the step errors (list equality)
+  have hmap_eq : corr_coeffs.map (fun c => c.toVal (R := R)) = stepErrors (R := R) trace := by
+    apply List.ext_getElem
+    · simp only [List.length_map, stepErrors_length, hlen]
+    · intro i hi1 hi2
+      simp only [List.getElem_map]
+      have hlen_err : (stepErrors (R := R) trace).length = corr_coeffs.length := by
+        rw [stepErrors_length]; exact hlen.symm
+      exact herr_approx ⟨i, by rwa [List.length_map] at hi1⟩
+  -- hcorr after substituting corr_init.toVal = 0:
+  -- |corr_final - hornerPoly(corr_map, 0, x)| ≤ ((1+η)^{2m}-1) * hornerPoly(|corr_map|, 0, |x|)
+  rw [hcorr_init, abs_zero] at hcorr
+  -- The correction map polynomial equals the error polynomial (by hmap_eq)
+  rw [hmap_eq] at hcorr
+  -- Now hcorr : |corr_final - hornerPoly(errors, 0, x)| ≤ ((1+η)^{2m}-1) * hornerPoly(|corr_map|, 0, |x|)
+  -- Combine via triangle inequality
+  linarith [htri, hfinal_round, hcorr]
 
 end CompensatedHorner
