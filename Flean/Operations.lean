@@ -39,3 +39,4 @@ import Flean.Operations.NeumaierSum
 import Flean.Operations.DotProduct
 import Flean.Operations.Horner
 import Flean.Operations.HornerFMA
+import Flean.Operations.DotProductFMA
