@@ -187,8 +187,11 @@ Rounding/ files but narrow applicability.
 - [x] **Compensated Horner bound** — `comp_horner_bound` in CompensatedHorner.lean.
   `|result - p(x)| ≤ η|sₙ+r̃ₙ| + γ_{2m}·hornerPoly(|ẽ|, 0, |x|)`. Sorry-free.
   With exact EFTs: `O(η + n²η²)·p̃(|x|)`.
-- [ ] **Affine fold abstraction** — generalize `hornerPoly_affine` to generic affine state folds.
-  Would unify Horner, Clenshaw, de Casteljau, jet evaluation under one framework.
+- [x] **Clenshaw's algorithm** — `clenshaw_exact_decomposition` in Clenshaw.lean.
+  2D affine structure: `clenshawExact_affine` + `clenshawProp` (linear propagation).
+  Exact decomposition: computed + error propagation = exact. Sorry-free.
+- [ ] **Affine fold abstraction** — generalize `hornerPoly_affine` / `clenshawExact_affine` to
+  generic affine state folds. Now have two concrete instances (1D Horner, 2D Clenshaw).
   See memory/horner-extensions.md for detailed design notes.
 - [ ] **Newton reciprocal** — `x_{n+1} = x_n(2 - ax_n)`, quadratic convergence in floats.
 - [ ] **Newton sqrt** — Similar to reciprocal, used in hardware implementations.

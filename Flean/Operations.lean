@@ -41,3 +41,4 @@ import Flean.Operations.Horner
 import Flean.Operations.HornerFMA
 import Flean.Operations.DotProductFMA
 import Flean.Operations.CompensatedHorner
+import Flean.Operations.Clenshaw
