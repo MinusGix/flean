@@ -118,7 +118,8 @@ end Clenshaw
 
 section HornerErrorBound
 
-variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+variable [FloatFormat]
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
 
 /-- `hornerL x` has contraction bound `|x|`: `|L(e)| = |x * e| = |x| · |e|`. -/
 theorem hornerL_bound (x : R) (e : R) : |hornerL x e| ≤ |x| * |e| := by
@@ -159,6 +160,58 @@ theorem horner_exact_decomposition_from_generic
   simp only [← affineFold_eq_hornerPoly] at hcomputed ⊢
   exact affineFold_exact_decomposition (hornerL x) (hornerL_additive x)
     coeffs errors init computed hlen hcomputed
+
+/-! ### Bridge: weightedErrorSum = hornerPoly of absolute errors -/
+
+/-- The weighted error sum `Σ|eₖ|·|x|^{n-1-k}` IS `hornerPoly(|errors|, 0, |x|)`.
+
+    This connects the AffineFold per-index bound to the Horner absolute polynomial. -/
+theorem weightedErrorSum_eq_hornerPoly (x : R) (errors : List R) :
+    weightedErrorSum |x| errors = hornerPoly (errors.map (|·|)) 0 |x| := by
+  induction errors with
+  | nil => simp [weightedErrorSum, hornerPoly]
+  | cons e es ih =>
+    simp only [weightedErrorSum, hornerPoly, List.map_cons, zero_mul, zero_add]
+    -- Goal: |x|^es.length * |e| + weightedErrorSum |x| es = hornerPoly(es.map|·|, |e|, |x|)
+    -- By IH: weightedErrorSum |x| es = hornerPoly(es.map|·|, 0, |x|)
+    -- By affine: hornerPoly(es.map|·|, |e|, |x|) = hornerPoly(es.map|·|, 0, |x|) + |e|*|x|^m
+    rw [ih]
+    have haffine := hornerPoly_affine (es.map (|·|)) 0 |e| |x|
+    simp only [zero_add, List.length_map] at haffine
+    linarith
+
+/-- **Horner error via per-index bound**: for any errors list,
+    `|hornerPoly(errors, 0, x)| ≤ hornerPoly(|errors|, 0, |x|)`.
+
+    Combines the AffineFold per-index bound with the structural bridge. -/
+theorem hornerPoly_abs_le_per_index (x : R) (errors : List R) :
+    |hornerPoly errors 0 x| ≤ hornerPoly (errors.map (|·|)) 0 |x| := by
+  rw [← affineFold_eq_hornerPoly, ← weightedErrorSum_eq_hornerPoly]
+  exact affineFold_error_per_index (hornerL x) (hornerL_additive x)
+    |x| (abs_nonneg x) (hornerL_bound x) errors
+
+/-- **Full Horner error chain from generic framework.**
+
+    Given per-step error bounds, derive the Horner error bound:
+    `|computed - exact| ≤ hornerPoly(|error_bounds|, 0, |x|)`
+
+    This composes: exact decomposition → per-index bound → hornerPoly bridge.
+
+    To get `((1+η)^n - 1)·p̃(|x|)`, instantiate with per-step bounds
+    `|eₖ| ≤ ((1+η)^2-1)·(|sₖ|·|x| + |cₖ|)` and use `hornerPoly_mono`. -/
+theorem horner_error_from_framework
+    (coeffs errors : List R) (init : R) (computed : R) (x : R)
+    (hlen : coeffs.length = errors.length)
+    (hcomputed : computed = hornerPoly (List.zipWith (· - ·) coeffs errors) init x) :
+    |computed - hornerPoly coeffs init x| ≤
+      hornerPoly (errors.map (|·|)) 0 |x| := by
+  -- From exact decomposition: computed + hornerPoly(errors, 0, x) = exact
+  have hdecomp := horner_exact_decomposition_from_generic coeffs errors init computed x
+    hlen hcomputed
+  -- So computed - exact = -hornerPoly(errors, 0, x)
+  have heq : computed - hornerPoly coeffs init x = -(hornerPoly errors 0 x) := by linarith
+  rw [heq, abs_neg]
+  exact hornerPoly_abs_le_per_index x errors
 
 end HornerErrorBound
 
