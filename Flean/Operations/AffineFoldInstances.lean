@@ -290,6 +290,17 @@ theorem horner_bound_from_decomposition
       simp only [List.getElem_map]
       exact hstep_bounds i (by rw [← hlen]; simp at hi ⊢; exact hi))
 
+/-! ### Note: Full `((1+η)^{2n}-1)·p̃(|x|)` instantiation
+
+To recover the classical bound from `horner_bound_from_decomposition`:
+1. Prove a "magnitude bound" by trace induction: `|accₖ| ≤ (1+η)^{2k}·p̃_k(|x|)`
+2. Derive per-step bounds: `|eₖ| ≤ ((1+η)²-1)·(1+η)^{2k}·p̃_{k+1}(|x|)`
+3. Feed into `horner_bound_from_decomposition` + `hornerPoly_mono_coeffs`
+
+The framework handles propagation generically; the magnitude tracking is the only
+trace-specific induction. This separates the two concerns that the original
+`horner_error_bound` proof mixes into one monolithic induction. -/
+
 end HornerErrorBound
 
 end AffineFoldInstances
