@@ -192,14 +192,21 @@ Rounding/ files but narrow applicability.
   Exact decomposition: computed + error propagation = exact. Sorry-free.
 - [x] **Affine fold abstraction** — `AffineFold.lean`: generic `affineFold`/`affineProp` over
   `AddCommGroup S`. Core theorem `affineFold_affine` + `affineFold_exact_decomposition`.
-  Unifies Horner (1D) and Clenshaw (2D). Sorry-free.
-  Next: instantiate for Horner/Clenshaw, add jet Horner (value+derivative) instance.
+  Unifies Horner (1D), Clenshaw (2D), Jet Horner (2D). Sorry-free.
+  Scalar + gauge bounds, per-index bounds, Horner instantiation.
+- [x] **Jet Horner** — `JetHorner.lean`: simultaneous value+derivative (S = R × R).
+  `polyDeriv` + recurrence + chain rule term. Third AffineFold instance. Sorry-free.
+- [ ] **Newton + jet Horner** — `x_{n+1} = x_n - p(x_n)/p'(x_n)` using jet Horner for p,p'.
+  Different proof structure (convergence/contraction, not error accumulation).
+  Jet Horner's 2D error bound chains into Newton's convergence analysis.
 - [ ] **Newton reciprocal** — `x_{n+1} = x_n(2 - ax_n)`, quadratic convergence in floats.
 - [ ] **Newton sqrt** — Similar to reciprocal, used in hardware implementations.
+- [ ] **Mathlib Polynomial connection** — `hornerPoly cs init x = Polynomial.eval x p`.
 - [ ] **Mixed-precision accumulation** — Error of computing in FP16/BF16 and accumulating in FP32 (bridges StorageFormats + ML).
 
 ## Long-Term
 - [ ] Error-minimizing tactic (reorder FP computations)
 - [ ] Verified computation examples (e.g. count of floats between 0 and 1)
 - [ ] Gradient descent error analysis for common functions
+- [ ] Higher-order jets (k-jets for k-th derivative, S = R^{k+1})
 - [ ] Prove approximation bounds on specific papers (e.g. arxiv 2410.00907)
