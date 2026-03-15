@@ -173,7 +173,8 @@ Rounding/ files but narrow applicability.
       State, step witness with `delta_exact`, trace, telescoping, abstract error bound `η·Σ|comp+delta|`.
     - [x] **E. Connect `twoSum_exact`**: `step_twosum_exact_of_dekker` — Dekker condition → Sterbenz → exact compensation ✓
       Also: `step_twosum_exact_of_sub_exact` for the general case (first subtraction exact → full TwoSum exact).
-- [ ] **Dot product error bound** — `|fl(x·y) - x·y| ≤ γ_n · |x|·|y|` where `γ_n = nε/(1-nε)`. Uses fpAdd + fpMul.
+- [x] **Dot product error bound** — `dp_error_bound` + `dp_error_bound_gamma` in DotProduct.lean.
+  `|sₙ - x·y| ≤ ((1+η)^{n+1}-1)·Σ|xᵢyᵢ| ≤ γ_{n+1}·Σ|xᵢyᵢ|`. One sorry: `fpMul_exact_zero`.
 - [ ] **Newton reciprocal** — `x_{n+1} = x_n(2 - ax_n)`, quadratic convergence in floats.
 - [ ] **Newton sqrt** — Similar to reciprocal, used in hardware implementations.
 - [ ] **Horner's method error analysis** — Polynomial evaluation running error bound.

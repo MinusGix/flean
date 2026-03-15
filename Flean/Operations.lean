@@ -36,3 +36,4 @@ import Flean.Operations.KahanSum
 import Flean.Operations.CompensatedSum
 import Flean.Operations.PairwiseSum
 import Flean.Operations.NeumaierSum
+import Flean.Operations.DotProduct
