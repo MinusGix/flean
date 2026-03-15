@@ -174,10 +174,11 @@ Rounding/ files but narrow applicability.
     - [x] **E. Connect `twoSum_exact`**: `step_twosum_exact_of_dekker` — Dekker condition → Sterbenz → exact compensation ✓
       Also: `step_twosum_exact_of_sub_exact` for the general case (first subtraction exact → full TwoSum exact).
 - [x] **Dot product error bound** — `dp_error_bound` + `dp_error_bound_gamma` in DotProduct.lean.
-  `|sₙ - x·y| ≤ ((1+η)^{n+1}-1)·Σ|xᵢyᵢ| ≤ γ_{n+1}·Σ|xᵢyᵢ|`. One sorry: `fpMul_exact_zero`.
+  `|sₙ - x·y| ≤ ((1+η)^n-1)·Σ|xᵢyᵢ| ≤ γ_n·Σ|xᵢyᵢ|`. Sorry-free.
+- [x] **Horner's method** — `horner_error_bound` + `_gamma` in Horner.lean.
+  `|fl(p(x)) - p(x)| ≤ ((1+η)^{2n}-1)·p̃(|x|) ≤ γ_{2n}·p̃(|x|)` (Higham Thm 5.1). Sorry-free.
 - [ ] **Newton reciprocal** — `x_{n+1} = x_n(2 - ax_n)`, quadratic convergence in floats.
 - [ ] **Newton sqrt** — Similar to reciprocal, used in hardware implementations.
-- [ ] **Horner's method error analysis** — Polynomial evaluation running error bound.
 - [ ] **Mixed-precision accumulation** — Error of computing in FP16/BF16 and accumulating in FP32 (bridges StorageFormats + ML).
 
 ## Long-Term
