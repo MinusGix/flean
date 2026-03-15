@@ -116,4 +116,45 @@ theorem prop_from_zero_sq_bound (n : ℕ) (ea w : R) (hw : |w| < 2) :
   rw [← Q_zero_snd w ea]
   exact prop_sq_bound n ea 0 w hw
 
+/-! ## Absolute Bound for ℝ
+
+Over the reals, the squared bound converts to an absolute bound via `Real.sqrt`. -/
+
+section RealBound
+
+open Real in
+/-- **Absolute component bound over ℝ**: `|prop(n, ea, 0, w).1| ≤ |ea| / √(1 - |w|/2)`.
+
+    Convenience corollary of `prop_fst_sq_bound` using `Real.sqrt`. -/
+theorem prop_fst_abs_bound_real (n : ℕ) (ea w : ℝ) (hw : |w| < 2) :
+    |(clenshawProp n ea 0 w).1| ≤ |ea| / sqrt (1 - |w| / 2) := by
+  have hpos := one_sub_half_w_pos w hw
+  have hpos_nn := le_of_lt hpos
+  -- Get fst² ≤ ea² / (1 - |w|/2)
+  have hsq := prop_fst_sq_bound (R := ℝ) n ea 0 w hw
+  rw [Q_zero_snd] at hsq
+  -- Apply abs_le_sqrt: |fst| ≤ √(ea²/(1-|w|/2))
+  -- Then rewrite √(ea²/(1-|w|/2)) = |ea| / √(1-|w|/2)
+  have h1 : |ea| / sqrt (1 - |w| / 2) = sqrt (ea ^ 2 / (1 - |w| / 2)) := by
+    rw [sqrt_div' _ hpos_nn, sqrt_sq_eq_abs]
+  rw [h1]
+  exact abs_le_sqrt hsq
+
+open Real in
+/-- **Both components bound over ℝ**: `√(fst² + snd²) ≤ |ea| / √(1 - |w|/2)`. -/
+theorem prop_norm_bound_real (n : ℕ) (ea w : ℝ) (hw : |w| < 2) :
+    sqrt ((clenshawProp n ea 0 w).1 ^ 2 + (clenshawProp n ea 0 w).2 ^ 2) ≤
+      |ea| / sqrt (1 - |w| / 2) := by
+  have hpos := one_sub_half_w_pos w hw
+  have hpos_nn := le_of_lt hpos
+  -- Get fst² + snd² ≤ ea² / (1 - |w|/2)
+  have hsq := prop_from_zero_sq_bound (R := ℝ) n ea w hw
+  -- Rewrite RHS as √(ea²/(1-|w|/2)) and apply sqrt_le_sqrt
+  have h1 : |ea| / sqrt (1 - |w| / 2) = sqrt (ea ^ 2 / (1 - |w| / 2)) := by
+    rw [sqrt_div' _ hpos_nn, sqrt_sq_eq_abs]
+  rw [h1]
+  exact sqrt_le_sqrt hsq
+
+end RealBound
+
 end ClenshawBound
