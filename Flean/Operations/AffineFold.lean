@@ -261,4 +261,99 @@ bounds where the `|x|^i` factor comes from the propagation weight, not a uniform
 
 end ScalarBounds
 
+/-! ## Gauge-Based Bounds (Generic over State Type)
+
+The scalar bounds above only work for `S = R`. For multi-dimensional state
+(e.g., Clenshaw with `S = R × R`), we parameterize by a **gauge function**
+`ν : S → R` satisfying:
+- Nonnegativity: `0 ≤ ν(s)`
+- Triangle inequality: `ν(a + b) ≤ ν(a) + ν(b)`
+- Contraction: `ν(L(s)) ≤ κ · ν(s)` for some `κ ≥ 0`
+
+The choice of gauge dramatically affects bound quality:
+- L1 norm `|a| + |b|`: easy to prove, but may give large κ
+- L∞ norm `max(|a|, |b|)`: similarly easy, similar κ
+- Energy/Lyapunov norms: can match spectral radius, giving tight bounds
+
+Example: Clenshaw with `w = 2x`, `|x| ≤ 1`:
+- L1/L∞ give κ = |2x| + 1 ≤ 3 → exponential growth 3^n (very loose)
+- Spectral radius is 1 → linear growth (tight, but requires eigenvalue analysis)
+- An energy norm matching the spectral radius would give κ = 1 generically -/
+
+section GaugeBounds
+
+variable {S : Type*} [AddCommGroup S]
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+
+/-- A gauge on `S` with values in `R`: nonnegative, sub-additive. -/
+structure Gauge (S : Type*) [AddCommGroup S] (R : Type*) [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] where
+  val : S → R
+  nonneg : ∀ s, 0 ≤ val s
+  zero : val 0 = 0
+  triangle : ∀ a b, val (a + b) ≤ val a + val b
+
+/-- **Propagation bound with gauge**: if `ν(L(s)) ≤ κ · ν(s)`, then
+    `ν(affineProp L n e) ≤ κ^n · ν(e)`. -/
+theorem affineProp_gauge_le (L : S → S) (ν : Gauge S R) (κ : R) (hκ : 0 ≤ κ)
+    (hL : ∀ s, ν.val (L s) ≤ κ * ν.val s)
+    (n : ℕ) (e : S) :
+    ν.val (affineProp L n e) ≤ κ ^ n * ν.val e := by
+  induction n generalizing e with
+  | zero => simp [affineProp]
+  | succ n ih =>
+    simp only [affineProp]
+    calc ν.val (affineProp L n (L e))
+        ≤ κ ^ n * ν.val (L e) := ih (L e)
+      _ ≤ κ ^ n * (κ * ν.val e) :=
+          mul_le_mul_of_nonneg_left (hL e) (pow_nonneg hκ n)
+      _ = κ ^ (n + 1) * ν.val e := by rw [pow_succ]; ring
+
+/-- **Uniform error bound with gauge**: if each `ν(eₖ) ≤ δ` and `κ ≥ 1`, then
+    `ν(affineFold L errors 0) ≤ n · δ · κ^n`. -/
+theorem affineFold_gauge_uniform_bound (L : S → S)
+    (hL : ∀ a b, L (a + b) = L a + L b)
+    (ν : Gauge S R) (κ : R) (hκ : 1 ≤ κ)
+    (hLν : ∀ s, ν.val (L s) ≤ κ * ν.val s)
+    (errors : List S) (δ : R) (hδ : 0 ≤ δ)
+    (herr : ∀ e ∈ errors, ν.val e ≤ δ) :
+    ν.val (affineFold L errors 0) ≤ (errors.length : R) * δ * κ ^ errors.length := by
+  induction errors with
+  | nil =>
+    simp only [affineFold, List.length_nil, Nat.cast_zero, zero_mul]
+    change ν.val 0 ≤ 0; linarith [ν.zero]
+  | cons e es ih =>
+    simp only [affineFold, List.length_cons]
+    have hL0 : L (0 : S) = 0 := by
+      have h := hL 0 0; rw [add_zero] at h
+      have := congr_arg (· - L 0) h
+      simp only [sub_self, add_sub_cancel_right] at this; exact this.symm
+    rw [hL0, zero_add]
+    -- affineFold L es e = affineFold L es 0 + affineProp L es.length e (by affine)
+    have haffine := affineFold_affine L hL es 0 e
+    rw [zero_add] at haffine; rw [haffine]
+    -- ν(fold + prop) ≤ ν(fold) + ν(prop)
+    have htri := ν.triangle (affineFold L es 0) (affineProp L es.length e)
+    -- ν(prop) ≤ κ^m · ν(e) ≤ κ^m · δ
+    have hprop := affineProp_gauge_le L ν κ (le_trans zero_le_one hκ) hLν es.length e
+    have he := herr e List.mem_cons_self
+    -- ν(fold) ≤ m · δ · κ^m (IH)
+    have hih := ih (fun e' he' => herr e' (List.mem_cons_of_mem _ he'))
+    -- κ^m ≤ κ^{m+1}
+    have hκ_nn : (0 : R) ≤ κ := le_trans zero_le_one hκ
+    have hκm : (0 : R) ≤ κ ^ es.length := pow_nonneg hκ_nn es.length
+    have hκm1 : κ ^ es.length ≤ κ ^ (es.length + 1) :=
+      pow_le_pow_right₀ hκ (Nat.le_succ _)
+    -- Combine
+    have hpropδ : κ ^ es.length * ν.val e ≤ κ ^ es.length * δ :=
+      mul_le_mul_of_nonneg_left he hκm
+    have hstep : (es.length : R) * δ * κ ^ es.length ≤
+        (es.length : R) * δ * κ ^ (es.length + 1) :=
+      mul_le_mul_of_nonneg_left hκm1 (mul_nonneg (Nat.cast_nonneg' (n := es.length)) hδ)
+    push_cast
+    nlinarith [ν.nonneg (affineFold L es 0), ν.nonneg (affineProp L es.length e),
+               mul_nonneg hδ hκm]
+
+end GaugeBounds
+
 end AffineFold
