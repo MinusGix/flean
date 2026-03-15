@@ -25,53 +25,6 @@ namespace DotProduct
 variable [FloatFormat]
 variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
 
-/-! ## Multiplication Error Bound -/
-
-/-- Multiplication error bound: `|fl(a·b) - a·b| ≤ η · |a·b|`. -/
-theorem fpMul_error
-    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R]
-    (a b : FiniteFp) (f : FiniteFp)
-    (hf : a * b = Fp.finite f)
-    (hnormal : isNormalRange ((a.toVal : R) * b.toVal)) :
-    |(f.toVal : R) - (a.toVal * b.toVal)| ≤ η * |(a.toVal : R) * b.toVal| := by
-  have hne : (a.toVal : R) * b.toVal ≠ 0 := ne_of_gt (isNormalRange_pos _ hnormal)
-  have hcorr := fpMulFinite_correct (R := R) a b hne
-  rw [hcorr] at hf
-  exact KahanSum.standard_error_additive ((a.toVal : R) * b.toVal) hnormal f hf
-
-/-- Unified multiplication error: handles both normal range and exact-zero.
-
-    For the zero case: if `a·b = 0` in R then at least one significand is 0,
-    so the fp product is also zero, and both sides are 0. -/
-theorem fpMul_error_or_zero
-    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R]
-    (a b : FiniteFp) (f : FiniteFp)
-    (hf : a * b = Fp.finite f)
-    (hnormal : isNormalRange ((a.toVal : R) * b.toVal) ∨ (a.toVal : R) * b.toVal = 0) :
-    |(f.toVal : R) - (a.toVal * b.toVal)| ≤ η * |(a.toVal : R) * b.toVal| := by
-  rcases hnormal with h | h
-  · exact fpMul_error a b f hf h
-  · rw [h]; simp
-    -- Goal: |f.toVal (R := R)| ≤ 0
-    -- Since a.toVal * b.toVal = 0, at least one significand is zero, so a.m * b.m = 0.
-    have hmul_zero : a.m * b.m = 0 := by
-      rcases mul_eq_zero.mp h with ha | hb
-      · have := (FiniteFp.toVal_significand_zero_iff (R := R)).mpr ha
-        simp [this]
-      · have := (FiniteFp.toVal_significand_zero_iff (R := R)).mpr hb
-        simp [this]
-    -- fpMulFinite with mag = 0 returns a signed zero float
-    have hfmul : fpMulFinite a b = Fp.finite (if a.s ^^ b.s then -0 else 0) := by
-      simp only [fpMulFinite, roundIntSigM, show a.m * b.m = 0 from hmul_zero, ↓reduceDIte]
-    -- Extract f's identity from hf
-    have hf' : fpMulFinite a b = Fp.finite f := hf
-    rw [hfmul] at hf'
-    have hfinj : f = if a.s ^^ b.s then -0 else 0 := (Fp.finite.inj hf'.symm)
-    -- Both cases give f.toVal = 0
-    have hfval : (f.toVal : R) = 0 := by
-      rw [hfinj]; split_ifs <;> simp
-    simp [hfval]
-
 /-! ## Dot Product Step and Trace -/
 
 /-- One step of dot product accumulation: multiply then add. -/
@@ -143,7 +96,7 @@ private theorem dp_error_bound_gen
     simp only [DPTrace.AllNormalRange] at hnr
     obtain ⟨hnr_step, hnr_rest⟩ := hnr
     -- Extract multiplication and addition error bounds
-    have hmul_err := fpMul_error_or_zero (R := R) x y step.prod step.hprod hnr_step.mul_normal
+    have hmul_err := KahanSum.fpMul_error_or_zero (R := R) x y step.prod step.hprod hnr_step.mul_normal
     have hadd_err := KahanSum.fpAdd_error_or_zero (R := R) acc step.prod step.next step.hnext
                       hnr_step.add_normal
     -- Abbreviations
@@ -279,7 +232,7 @@ theorem dp_error_bound
     simp only [DPTrace.AllNormalRange] at hnr
     obtain ⟨hnr_step, hnr_rest⟩ := hnr
     -- Extract multiplication error bound
-    have hmul_err := fpMul_error_or_zero (R := R) x y step.prod step.hprod hnr_step.mul_normal
+    have hmul_err := KahanSum.fpMul_error_or_zero (R := R) x y step.prod step.hprod hnr_step.mul_normal
     -- Key: fl(acc + prod) has the same value as prod (zero-add is exact)
     have hnext_val : (step.next.toVal : R) = step.prod.toVal :=
       fpAddFinite_zero_left_val acc step.prod hinit_m step.next step.hnext
@@ -344,48 +297,6 @@ theorem dp_error_bound
     -- Translate to list form
     simp only [List.length_cons, List.map_cons, List.sum_cons]
     linarith [htotal]
-
-/-! ## Gamma Bound -/
-
-/-- `γₙ = nη/(1-nη)`, the standard error constant. -/
-noncomputable def gamma_n (n : ℕ) : R := (n : R) * η / (1 - (n : R) * η)
-
-/-- Auxiliary: `((1+η)^n - 1) * (1 - n*η) ≤ n*η` for any `n` with `n*η < 1`. -/
-private lemma pow_sub_one_mul_one_sub_le (n : ℕ) (hsmall : (n : R) * η < 1) :
-    ((1 + η) ^ n - 1) * (1 - (n : R) * η) ≤ (n : R) * η := by
-  have hη : (0 : R) ≤ η := by positivity
-  induction n with
-  | zero => simp
-  | succ k ih =>
-    have hk_cast : (k : R) * η < 1 := by
-      have : ((k : R) + 1) * η < 1 := by exact_mod_cast hsmall
-      nlinarith
-    have ih' := ih hk_cast
-    -- Let P = (1+η)^k ≥ 1
-    have hP_ge : (1 : R) ≤ (1 + η) ^ k := one_le_pow₀ (by linarith)
-    -- Goal: ((1+η)^(k+1) - 1)(1 - (k+1)η) ≤ (k+1)η
-    rw [pow_succ]
-    -- Now goal involves: ((1+η)*(1+η)^k - 1)(1 - (k+1)*η) ≤ (k+1)*η
-    -- using ih': ((1+η)^k - 1)(1 - k*η) ≤ k*η
-    have hk_cast2 : (↑(k + 1) : R) = (k : R) + 1 := by push_cast; ring
-    rw [hk_cast2]
-    have hP_nn : (0 : R) ≤ (1 + η) ^ k := le_trans zero_le_one hP_ge
-    nlinarith [mul_nonneg hη (sub_nonneg.mpr hP_ge),
-               mul_nonneg hη (mul_nonneg hη hP_nn),
-               mul_nonneg (Nat.cast_nonneg k) hη,
-               mul_nonneg hP_nn (mul_nonneg hη hη),
-               hP_nn, mul_nonneg hη hη]
-
-/-- `(1+η)^n - 1 ≤ γₙ` when `nη < 1`. -/
-theorem pow_sub_one_le_gamma (n : ℕ) (hsmall : (n : R) * η < 1) :
-    (1 + η : R) ^ n - 1 ≤ gamma_n (R := R) n := by
-  have hη : (0 : R) ≤ η := by positivity
-  have h1_sub_pos : (0 : R) < 1 - (n : R) * η := by linarith
-  -- Goal: (1+η)^n - 1 ≤ nη/(1-nη)
-  -- Equivalently: ((1+η)^n - 1)(1 - nη) ≤ nη
-  rw [gamma_n]
-  rw [le_div_iff₀ h1_sub_pos]
-  exact pow_sub_one_mul_one_sub_le n hsmall
 
 /-- **Dot product error bound** (γₙ form, matching Higham's Theorem 3.1).
 

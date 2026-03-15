@@ -8,6 +8,7 @@ import Mathlib.Analysis.SpecialFunctions.Log.Base
 import Mathlib.Analysis.SpecialFunctions.Pow.Real
 import Mathlib.NumberTheory.Real.Irrational
 import Mathlib.Tactic.Polyrith
+import Flean.FloatFormat
 
 
 namespace Int
@@ -429,3 +430,54 @@ theorem two_mul_sq_lt_two_pow (ab : ℕ) (hab : 100 ≤ ab) : 2 * ab ^ 2 < 2 ^ a
   have h1 : 2 * ab ^ 2 ≤ ab ^ 3 := by nlinarith
   have h2 : ab ^ 3 < 2 ^ ab := cube_lt_two_pow ab (by omega)
   linarith
+
+/-! ## Gamma Error Constant -/
+
+section Gamma
+
+variable [FloatFormat]
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+
+/-- `γₙ = nη/(1-nη)`, the standard floating-point error constant (Higham §3.1). -/
+noncomputable def gamma_n (n : ℕ) : R := (n : R) * η / (1 - (n : R) * η)
+
+omit [FloorRing R] in
+/-- Auxiliary: `((1+η)^n - 1) * (1 - n*η) ≤ n*η` for any `n` with `n*η < 1`. -/
+private lemma pow_sub_one_mul_one_sub_le (n : ℕ) (hsmall : (n : R) * η < 1) :
+    ((1 + η) ^ n - 1) * (1 - (n : R) * η) ≤ (n : R) * η := by
+  have hη : (0 : R) ≤ η := by positivity
+  induction n with
+  | zero => simp
+  | succ k ih =>
+    have hk_cast : (k : R) * η < 1 := by
+      have : ((k : R) + 1) * η < 1 := by exact_mod_cast hsmall
+      nlinarith
+    have ih' := ih hk_cast
+    -- Let P = (1+η)^k ≥ 1
+    have hP_ge : (1 : R) ≤ (1 + η) ^ k := one_le_pow₀ (by linarith)
+    -- Goal: ((1+η)^(k+1) - 1)(1 - (k+1)η) ≤ (k+1)η
+    rw [pow_succ]
+    -- Now goal involves: ((1+η)*(1+η)^k - 1)(1 - (k+1)*η) ≤ (k+1)*η
+    -- using ih': ((1+η)^k - 1)(1 - k*η) ≤ k*η
+    have hk_cast2 : (↑(k + 1) : R) = (k : R) + 1 := by push_cast; ring
+    rw [hk_cast2]
+    have hP_nn : (0 : R) ≤ (1 + η) ^ k := le_trans zero_le_one hP_ge
+    nlinarith [mul_nonneg hη (sub_nonneg.mpr hP_ge),
+               mul_nonneg hη (mul_nonneg hη hP_nn),
+               mul_nonneg (Nat.cast_nonneg k) hη,
+               mul_nonneg hP_nn (mul_nonneg hη hη),
+               hP_nn, mul_nonneg hη hη]
+
+omit [FloorRing R] in
+/-- `(1+η)^n - 1 ≤ γₙ` when `nη < 1`. -/
+theorem pow_sub_one_le_gamma (n : ℕ) (hsmall : (n : R) * η < 1) :
+    (1 + η : R) ^ n - 1 ≤ gamma_n (R := R) n := by
+  have hη : (0 : R) ≤ η := by positivity
+  have h1_sub_pos : (0 : R) < 1 - (n : R) * η := by linarith
+  -- Goal: (1+η)^n - 1 ≤ nη/(1-nη)
+  -- Equivalently: ((1+η)^n - 1)(1 - nη) ≤ nη
+  rw [gamma_n]
+  rw [le_div_iff₀ h1_sub_pos]
+  exact pow_sub_one_mul_one_sub_le n hsmall
+
+end Gamma

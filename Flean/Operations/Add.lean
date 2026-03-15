@@ -268,6 +268,20 @@ theorem fpAddFinite_zero_left_val {R : Type*} [Field R] [LinearOrder R]
     -- Extract the equality f = b, hence f.toVal = b.toVal
     rw [Fp.finite.inj hf_eq_b]
 
+/-- Adding a zero float (significand = 0) on the right to any finite float is value-exact:
+    the floating-point result has the same value as the non-zero operand.
+
+    This follows from `fpAddFinite_zero_left_val` via commutativity of `fpAdd`. -/
+theorem fpAddFinite_zero_right_val {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] [FloorRing R]
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R]
+    (b z : FiniteFp) (hz : z.m = 0)
+    (f : FiniteFp) (hf : b + z = Fp.finite f) :
+    (f.toVal : R) = b.toVal := by
+  -- Reduce to the left version via commutativity
+  have hcomm : z + b = Fp.finite f := by rwa [fpAdd_comm]
+  exact fpAddFinite_zero_left_val (R := R) z b hz f hcomm
+
 /-- When both positive operands are subnormal and their significands fit in one word,
     rounding their sum under the contextual policy returns their exact sum. -/
 theorem subnormal_sum_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]

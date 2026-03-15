@@ -1,5 +1,6 @@
 import Flean.Operations.Add
 import Flean.Operations.Sub
+import Flean.Operations.Mul
 import Flean.Operations.AddErrorRepresentable
 import Flean.Operations.Fast2Sum
 import Flean.Rounding.PolicyInstances
@@ -183,6 +184,7 @@ Remaining: mixed-sign case (doesn't go through Sterbenz).
 ### Infrastructure
 - `standard_error_model` / `standard_error_additive` — bridge to `(1+δ)` form
 - `fpAdd_error` / `fpSub_error` / `*_or_zero` — operation-level error bounds
+- `fpMul_error` / `fpMul_error_or_zero` — multiplication error bound (used by DotProduct)
 - `State`, `StepWitness`, `Trace` — algorithm definitions
 - `StepNormalRange` — precondition structure
 
@@ -349,6 +351,51 @@ theorem fpAdd_error_or_zero
   rcases hnormal with h | h
   · exact fpAdd_error a b f hf h
   · rw [h, fpAdd_exact_zero (R := R) a b f hf h]; simp
+
+/-- Multiplication error bound: `|fl(a·b) - a·b| ≤ η · |a·b|`. -/
+theorem fpMul_error
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R]
+    (a b : FiniteFp) (f : FiniteFp)
+    (hf : a * b = Fp.finite f)
+    (hnormal : isNormalRange ((a.toVal : R) * b.toVal)) :
+    |(f.toVal : R) - (a.toVal * b.toVal)| ≤ η * |(a.toVal : R) * b.toVal| := by
+  have hne : (a.toVal : R) * b.toVal ≠ 0 := ne_of_gt (isNormalRange_pos _ hnormal)
+  have hcorr := fpMulFinite_correct (R := R) a b hne
+  rw [hcorr] at hf
+  exact standard_error_additive ((a.toVal : R) * b.toVal) hnormal f hf
+
+/-- Unified multiplication error: handles both normal range and exact-zero.
+
+    For the zero case: if `a·b = 0` in R then at least one significand is 0,
+    so the fp product is also zero, and both sides are 0. -/
+theorem fpMul_error_or_zero
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R]
+    (a b : FiniteFp) (f : FiniteFp)
+    (hf : a * b = Fp.finite f)
+    (hnormal : isNormalRange ((a.toVal : R) * b.toVal) ∨ (a.toVal : R) * b.toVal = 0) :
+    |(f.toVal : R) - (a.toVal * b.toVal)| ≤ η * |(a.toVal : R) * b.toVal| := by
+  rcases hnormal with h | h
+  · exact fpMul_error a b f hf h
+  · rw [h]; simp
+    -- Goal: |f.toVal (R := R)| ≤ 0
+    -- Since a.toVal * b.toVal = 0, at least one significand is zero, so a.m * b.m = 0.
+    have hmul_zero : a.m * b.m = 0 := by
+      rcases mul_eq_zero.mp h with ha | hb
+      · have := (FiniteFp.toVal_significand_zero_iff (R := R)).mpr ha
+        simp [this]
+      · have := (FiniteFp.toVal_significand_zero_iff (R := R)).mpr hb
+        simp [this]
+    -- fpMulFinite with mag = 0 returns a signed zero float
+    have hfmul : fpMulFinite a b = Fp.finite (if a.s ^^ b.s then -0 else 0) := by
+      simp only [fpMulFinite, roundIntSigM, show a.m * b.m = 0 from hmul_zero, ↓reduceDIte]
+    -- Extract f's identity from hf
+    have hf' : fpMulFinite a b = Fp.finite f := hf
+    rw [hfmul] at hf'
+    have hfinj : f = if a.s ^^ b.s then -0 else 0 := (Fp.finite.inj hf'.symm)
+    -- Both cases give f.toVal = 0
+    have hfval : (f.toVal : R) = 0 := by
+      rw [hfinj]; split_ifs <;> simp
+    simp [hfval]
 
 /-! ## Kahan State and Step
 
