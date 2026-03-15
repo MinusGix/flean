@@ -235,4 +235,119 @@ theorem traceAddMag_le_mul_length [RModeExec]
     have hmul : M * ((xs_tail.length : R) + 1) = M * ↑xs_tail.length + M := by ring
     linarith [add_le_add h ih]
 
+/-! ## Branch Construction
+
+These lemmas prove `delta_exact` for each branch of the Neumaier algorithm.
+The key chain: Sterbenz → reversed subtraction exact → representability → idempotence. -/
+
+/-- **Reversed subtraction is exact**: if `fl(t - a) = t - a` exactly, then
+    `fl(a - t) = a - t` exactly. -/
+theorem reversed_sub_exact
+    [RModeExec] [RMode R] [RoundIntSigMSound R] [RModeIdem R]
+    (a t w : FiniteFp)
+    (hw : a - t = Fp.finite w)
+    (z : FiniteFp) (hz_val : (z.toVal : R) = t.toVal - a.toVal) :
+    (w.toVal : R) = a.toVal - t.toVal := by
+  by_cases hat : (a.toVal : R) - t.toVal = 0
+  · exact (KahanSum.fpSub_exact_zero (R := R) a t w hw hat).symm ▸ hat.symm
+  · -- a - t ≠ 0, so z ≠ 0 and -z is representable
+    have hz_ne : (z.toVal : R) ≠ 0 := by rw [hz_val]; intro h; exact hat (by linarith)
+    have hm_pos : 0 < z.m := by
+      by_contra h; push_neg at h
+      exact hz_ne (FiniteFp.toVal_isZero (show z.isZero from by unfold FiniteFp.isZero; omega))
+    have hneg_nnz : (-z).notNegZero := Or.inr (by simp [hm_pos])
+    -- w.toVal = a.toVal - t.toVal = -(t.toVal - a.toVal) = (-z).toVal
+    have hval : (a.toVal : R) - t.toVal = (-z).toVal := by
+      rw [FiniteFp.toVal_neg_eq_neg, hz_val]; ring
+    -- fl(a - t) = round(a.toVal - t.toVal) = round((-z).toVal) = -z (idempotence)
+    have hsub := fpSubFinite_correct (R := R) a t hat
+    simp only [sub_eq_fpSub, fpSub_coe_coe] at hsub hw
+    rw [hsub, hval, RModeIdem.round_idempotent (R := R) (-z) hneg_nnz] at hw
+    rw [show w = -z from Fp.finite.inj hw.symm, FiniteFp.toVal_neg_eq_neg, hz_val]; ring
+
+/-- **Addition of representable error is exact**: if `w.toVal + x.toVal` equals a
+    representable value, then `fl(w + x)` computes it exactly. -/
+private theorem add_of_representable_exact
+    [RModeExec] [RMode R] [RoundIntSigMSound R] [RModeIdem R]
+    (w x delta : FiniteFp) (hdelta : w + x = Fp.finite delta)
+    (err : FiniteFp) (herr_nnz : err.notNegZero)
+    (herr_val : (err.toVal : R) = w.toVal + x.toVal) :
+    (delta.toVal : R) = w.toVal + x.toVal := by
+  by_cases hwx : (w.toVal : R) + x.toVal = 0
+  · exact (KahanSum.fpAdd_exact_zero (R := R) w x delta hdelta hwx).symm ▸ hwx.symm
+  · have hadd := fpAddFinite_correct (R := R) w x hwx
+    simp only [add_eq_fpAdd, fpAdd_coe_coe] at hadd hdelta
+    rw [hadd, ← herr_val, RModeIdem.round_idempotent (R := R) err herr_nnz] at hdelta
+    rw [show delta = err from Fp.finite.inj hdelta.symm, herr_val]
+
+/-- **Branch A construction**: when `|sum| ≥ |x|` (same sign, both nonzero),
+    the compensation `delta = fl(fl(sum - t) + x)` captures the rounding error exactly.
+
+    Requires intermediate fp witnesses: `w = fl(sum - t)` and `delta = fl(w + x)`. -/
+theorem delta_exact_branch_A
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    [RModeConj R] [RModeIdem R] [RModeMono R]
+    (sum x t : FiniteFp)
+    (ht : sum + x = Fp.finite t)
+    (hsame : sum.s = x.s) (hsum_nz : 0 < sum.m) (hx_nz : 0 < x.m)
+    (hge : FiniteFp.toVal_mag x (R := R) ≤ FiniteFp.toVal_mag sum)
+    (hne : (sum.toVal : R) + x.toVal ≠ 0)
+    (w : FiniteFp) (hw : sum - t = Fp.finite w)
+    (delta : FiniteFp) (hdelta : w + x = Fp.finite delta) :
+    (delta.toVal : R) = sum.toVal + x.toVal - t.toVal := by
+  -- Step 1: fl(t - sum) is exact by Sterbenz (via sterbenz_sub_sa_same_sign)
+  obtain ⟨z_fp, _hz_sub, hz_val⟩ :=
+    sterbenz_sub_sa_same_sign (R := R) sum x hsame hsum_nz hx_nz hge hne t ht
+  -- Step 2: fl(sum - t) is exact (reversed)
+  have hw_exact : (w.toVal : R) = sum.toVal - t.toVal :=
+    reversed_sub_exact (R := R) sum t w hw z_fp hz_val
+  -- Step 3: sum + x - t is representable
+  obtain ⟨err_fp, herr_nnz, herr_val⟩ :=
+    add_error_representable_general_left_nz (R := R) sum x hsum_nz hne t ht
+  -- Step 4: w + x is representable (= -err_fp or similar)
+  have hwx_repr : (err_fp.toVal : R) = sum.toVal + x.toVal - t.toVal := herr_val
+  -- Need: err.toVal = w.toVal + x.toVal
+  have herr_eq : (err_fp.toVal : R) = w.toVal + x.toVal := by
+    rw [herr_val, hw_exact]; ring
+  -- Step 5: fl(w + x) = w + x
+  have := add_of_representable_exact (R := R) w x delta hdelta err_fp herr_nnz herr_eq
+  rw [this, hw_exact]; ring
+
+/-- **Branch B construction**: when `|x| > |sum|` (same sign, both nonzero),
+    the compensation `delta = fl(fl(x - t) + sum)` captures the rounding error exactly.
+
+    Requires intermediate fp witnesses: `w = fl(x - t)` and `delta = fl(w + sum)`. -/
+theorem delta_exact_branch_B
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    [RModeConj R] [RModeIdem R] [RModeMono R]
+    (sum x t : FiniteFp)
+    (ht : sum + x = Fp.finite t)
+    (hsame : sum.s = x.s) (hsum_nz : 0 < sum.m) (hx_nz : 0 < x.m)
+    (hgt : FiniteFp.toVal_mag sum (R := R) ≤ FiniteFp.toVal_mag x)
+    (hne : (sum.toVal : R) + x.toVal ≠ 0)
+    (w : FiniteFp) (hw : x - t = Fp.finite w)
+    (delta : FiniteFp) (hdelta : w + sum = Fp.finite delta) :
+    (delta.toVal : R) = sum.toVal + x.toVal - t.toVal := by
+  -- Use commutativity: sum + x = x + sum
+  have ht' : x + sum = Fp.finite t := by
+    rw [show (x : Fp) + sum = sum + x from fpAdd_comm x sum]; exact ht
+  -- Step 1: fl(t - x) is exact by Sterbenz (x is the larger operand)
+  have hsame' : x.s = sum.s := hsame.symm
+  obtain ⟨z_fp, _hz_sub, hz_val⟩ :=
+    sterbenz_sub_sa_same_sign (R := R) x sum hsame' hx_nz hsum_nz hgt
+      (show (x.toVal : R) + sum.toVal ≠ 0 by rwa [add_comm]) t ht'
+  -- Step 2: fl(x - t) is exact (reversed)
+  have hw_exact : (w.toVal : R) = x.toVal - t.toVal :=
+    reversed_sub_exact (R := R) x t w hw z_fp hz_val
+  -- Step 3: x + sum - t is representable
+  obtain ⟨err_fp, herr_nnz, herr_val⟩ :=
+    add_error_representable_general_left_nz (R := R) x sum hx_nz
+      (show (x.toVal : R) + sum.toVal ≠ 0 by rwa [add_comm]) t ht'
+  -- err.toVal = x + sum - t = w + sum
+  have herr_eq : (err_fp.toVal : R) = w.toVal + sum.toVal := by
+    rw [herr_val, hw_exact]; ring
+  -- Step 4: fl(w + sum) = w + sum
+  have := add_of_representable_exact (R := R) w sum delta hdelta err_fp herr_nnz herr_eq
+  rw [this, hw_exact]; ring
+
 end NeumaierSum
