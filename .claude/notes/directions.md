@@ -190,9 +190,10 @@ Rounding/ files but narrow applicability.
 - [x] **Clenshaw's algorithm** — `clenshaw_exact_decomposition` in Clenshaw.lean.
   2D affine structure: `clenshawExact_affine` + `clenshawProp` (linear propagation).
   Exact decomposition: computed + error propagation = exact. Sorry-free.
-- [ ] **Affine fold abstraction** — generalize `hornerPoly_affine` / `clenshawExact_affine` to
-  generic affine state folds. Now have two concrete instances (1D Horner, 2D Clenshaw).
-  See memory/horner-extensions.md for detailed design notes.
+- [x] **Affine fold abstraction** — `AffineFold.lean`: generic `affineFold`/`affineProp` over
+  `AddCommGroup S`. Core theorem `affineFold_affine` + `affineFold_exact_decomposition`.
+  Unifies Horner (1D) and Clenshaw (2D). Sorry-free.
+  Next: instantiate for Horner/Clenshaw, add jet Horner (value+derivative) instance.
 - [ ] **Newton reciprocal** — `x_{n+1} = x_n(2 - ax_n)`, quadratic convergence in floats.
 - [ ] **Newton sqrt** — Similar to reciprocal, used in hardware implementations.
 - [ ] **Mixed-precision accumulation** — Error of computing in FP16/BF16 and accumulating in FP32 (bridges StorageFormats + ML).
