@@ -44,3 +44,4 @@ import Flean.Operations.CompensatedHorner
 import Flean.Operations.Clenshaw
 import Flean.Operations.AffineFold
 import Flean.Operations.AffineFoldInstances
+import Flean.Operations.ClenshawBound
