@@ -1,6 +1,7 @@
 import Flean.Operations.AffineFold
 import Flean.Operations.Horner
 import Flean.Operations.Clenshaw
+import Flean.Operations.CompensatedHorner
 
 /-!
 # AffineFold Instances: Horner and Clenshaw
@@ -212,6 +213,82 @@ theorem horner_error_from_framework
   have heq : computed - hornerPoly coeffs init x = -(hornerPoly errors 0 x) := by linarith
   rw [heq, abs_neg]
   exact hornerPoly_abs_le_per_index x errors
+
+/-- **Coefficient-list monotonicity for hornerPoly**: if `aᵢ ≤ bᵢ` element-wise,
+    `acc_a ≤ acc_b`, and `x ≥ 0`, then `hornerPoly(as, acc_a, x) ≤ hornerPoly(bs, acc_b, x)`. -/
+theorem hornerPoly_mono_coeffs (as bs : List R) (acc_a acc_b xv : R)
+    (hlen : as.length = bs.length) (hacc : acc_a ≤ acc_b) (hx : 0 ≤ xv)
+    (hcoeffs : ∀ i (hi : i < as.length), as[i] ≤ bs[i]'(by omega)) :
+    hornerPoly as acc_a xv ≤ hornerPoly bs acc_b xv := by
+  induction as generalizing bs acc_a acc_b with
+  | nil =>
+    match bs with
+    | [] => exact hacc
+    | _ :: _ => simp at hlen
+  | cons a as ih =>
+    match bs, hlen with
+    | b :: bs, hlen =>
+      simp only [hornerPoly]
+      have hlen' : as.length = bs.length := by
+        simp only [List.length_cons] at hlen; omega
+      have ha_le : a ≤ b := by
+        have := hcoeffs 0 (List.length_pos_of_ne_nil (by intro h; simp [h] at hlen))
+        simpa using this
+      apply ih bs (acc_a * xv + a) (acc_b * xv + b) hlen' <;> try assumption
+      · nlinarith [mul_le_mul_of_nonneg_right hacc hx]
+      · intro i hi; have := hcoeffs (i + 1) (by simp; omega); simpa using this
+
+/-! ### Standard `((1+η)^{2n}-1)·p̃(|x|)` from Framework
+
+The full derivation composes:
+1. Exact decomposition: `final + hornerPoly(errors, 0, x) = exact`
+2. Per-index bound: `|hornerPoly(errors, 0, x)| ≤ hornerPoly(|errors|, 0, |x|)`
+3. Monotonicity: bound `hornerPoly(|errors|, 0, |x|)` using per-step bounds
+4. Result: `|final - exact| ≤ hornerPoly(bounds, 0, |x|)` -/
+
+/-- **Horner bound from exact decomposition + per-index + monotonicity.**
+
+    Given per-step error bounds `|eₖ| ≤ bₖ`:
+    `|final - exact| ≤ hornerPoly(bounds, 0, |x|)`
+
+    To get `((1+η)^{2n}-1)·p̃(|x|)`, instantiate each `bₖ` with the
+    per-step FP error bound and use `hornerPoly_mono`. -/
+theorem horner_bound_from_decomposition
+    [RModeExec]
+    {x init final : FiniteFp} {coeffs : List FiniteFp}
+    (trace : Horner.HornerTrace x coeffs init final)
+    (bounds : List R)
+    (hlen : (CompensatedHorner.stepErrors trace (R := R)).length = bounds.length)
+    (hbounds_nn : ∀ b ∈ bounds, 0 ≤ b)
+    (hstep_bounds : ∀ i (hi : i < bounds.length),
+      |(CompensatedHorner.stepErrors trace (R := R))[i]'(by omega)| ≤ bounds[i]) :
+    |(final.toVal : R) -
+      hornerPoly (coeffs.map (fun c => c.toVal (R := R))) (init.toVal) (x.toVal)| ≤
+      hornerPoly bounds 0 |x.toVal (R := R)| := by
+  -- Step 1: exact decomposition gives final + hornerPoly(errors, 0, x) = exact
+  have hdecomp := CompensatedHorner.comp_horner_exact_decomposition (R := R) trace
+  -- So |final - exact| = |hornerPoly(errors, 0, x)|
+  have herr : |(final.toVal : R) -
+      hornerPoly (coeffs.map (fun c => c.toVal (R := R))) (init.toVal) (x.toVal)| =
+      |hornerPoly (CompensatedHorner.stepErrors trace (R := R)) 0 (x.toVal)| := by
+    have : (final.toVal : R) -
+        hornerPoly (coeffs.map (fun c => c.toVal (R := R))) (init.toVal) (x.toVal) =
+        -(hornerPoly (CompensatedHorner.stepErrors trace (R := R)) 0 (x.toVal)) := by linarith
+    rw [this, abs_neg]
+  rw [herr]
+  -- Step 2: per-index bound gives |hornerPoly(errors, 0, x)| ≤ hornerPoly(|errors|, 0, |x|)
+  have hpi := hornerPoly_abs_le_per_index (x.toVal (R := R)) (CompensatedHorner.stepErrors trace (R := R))
+  -- Step 3: monotonicity — bound |errors| by bounds element-wise
+  -- hornerPoly(|errors|, 0, |x|) ≤ hornerPoly(bounds, 0, |x|) since |eₖ| ≤ bₖ
+  suffices hmono : hornerPoly ((CompensatedHorner.stepErrors trace (R := R)).map (|·|)) 0 |x.toVal (R := R)| ≤
+      hornerPoly bounds 0 |x.toVal (R := R)| from le_trans hpi hmono
+  have hlen_map : ((CompensatedHorner.stepErrors trace (R := R)).map (|·|)).length =
+      bounds.length := by simp [hlen]
+  exact hornerPoly_mono_coeffs _ bounds 0 0 |x.toVal| hlen_map
+    le_rfl (abs_nonneg _)
+    (fun i hi => by
+      simp only [List.getElem_map]
+      exact hstep_bounds i (by rw [← hlen]; simp at hi ⊢; exact hi))
 
 end HornerErrorBound
 
