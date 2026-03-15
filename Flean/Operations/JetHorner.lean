@@ -97,4 +97,62 @@ theorem jetHorner_exact_decomposition
   affineFold_exact_decomposition (jetHornerL x) (jetHornerL_additive x)
     cs errors (v, d) (computed_v, computed_d) hlen hcomputed
 
+/-! ## Derivative Correctness
+
+The second component of `jetHornerExact` computes the formal derivative.
+We prove this algebraically via the product rule identity
+`d/dx[x·f(x) + c] = f(x) + x·f'(x)`. -/
+
+/-- The formal derivative of a polynomial in Horner form, evaluated at `x`.
+    Defined via the jet: `polyDeriv cs init x = (jetHornerExact cs init 0 x).2`. -/
+def polyDeriv (cs : List R) (init x : R) : R :=
+  (jetHornerExact cs init 0 x).2
+
+/-- The propagation of `(0, d)` through `jetHornerL`: second component is `d * x^n`. -/
+private theorem jetHornerProp_zero_d_snd (n : ℕ) (d x : R) :
+    (affineProp (jetHornerL x) n (0, d)).2 = d * x ^ n := by
+  induction n generalizing d with
+  | zero => simp [affineProp]
+  | succ n ih => simp only [affineProp, jetHornerL, mul_zero, zero_add]; rw [ih]; ring
+
+theorem jetHorner_deriv_shift (cs : List R) (init d x : R) :
+    (jetHornerExact cs init d x).2 = polyDeriv cs init x + d * x ^ cs.length := by
+  unfold polyDeriv
+  have h := jetHornerExact_affine cs init 0 0 d x
+  simp only [add_zero, zero_add] at h
+  have h2 := congr_arg Prod.snd h
+  simp only at h2
+  rw [h2, jetHornerProp_zero_d_snd]
+
+/-- The propagation of `(0, d)` through `jetHornerL`: first component is 0. -/
+private theorem jetHornerProp_zero_d_fst (n : ℕ) (d x : R) :
+    (affineProp (jetHornerL x) n (0, d)).1 = 0 := by
+  induction n generalizing d with
+  | zero => simp [affineProp]
+  | succ n ih => simp only [affineProp, jetHornerL, mul_zero]; exact ih _
+
+theorem jetHorner_value_indep_of_deriv (cs : List R) (init d x : R) :
+    (jetHornerExact cs init d x).1 = (jetHornerExact cs init 0 x).1 := by
+  have h := jetHornerExact_affine cs init 0 0 d x
+  simp only [add_zero, zero_add] at h
+  have h1 := congr_arg Prod.fst h; simp only [] at h1
+  rw [h1, jetHornerProp_zero_d_fst, add_zero]
+
+/-- `polyDeriv` of a constant is 0. -/
+theorem polyDeriv_nil (init x : R) : polyDeriv [] init x = 0 := by
+  simp [polyDeriv, jetHornerExact]
+
+/-- `polyDeriv` step: unfold one level of the recurrence.
+
+    `polyDeriv(c::cs, init, x) = polyDeriv(cs, x·init+c, x) + init · x^{cs.length}`
+
+    The `init · x^m` term comes from the chain rule: the accumulator `x·init + c`
+    depends on `x`, contributing `init` to the derivative via `d/da[p] · da/dx`. -/
+theorem polyDeriv_cons (c : R) (cs : List R) (init x : R) :
+    polyDeriv (c :: cs) init x =
+      polyDeriv cs (x * init + c) x + init * x ^ cs.length := by
+  unfold polyDeriv
+  simp only [jetHornerExact, mul_zero, zero_add]
+  exact jetHorner_deriv_shift cs (x * init + c) init x
+
 end JetHorner
