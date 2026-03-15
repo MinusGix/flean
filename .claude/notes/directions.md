@@ -169,8 +169,8 @@ Rounding/ files but narrow applicability.
       `kahan_weak_backward_error` + `_auto` via `error_distributable` (proportional distribution).
       Strong per-element form (Higham eq. 4.8: `|μᵢ| ≤ 2η + O((n-i+1)η²)`) deferred.
     - [x] **C. Pairwise comparison**: `pairwise_error_bound` + `kahan_eps_lt_pairwise_eps` in PairwiseSum.lean.
-    - [ ] **D. Neumaier variant**: handles `|xᵢ| > |sumᵢ|` via conditional swap.
-      New file `NeumaierSum.lean` reusing trace infrastructure.
+    - [x] **D. Neumaier variant**: `neumaier_abstract_error_bound` in NeumaierSum.lean.
+      State, step witness with `delta_exact`, trace, telescoping, abstract error bound `η·Σ|comp+delta|`.
     - [x] **E. Connect `twoSum_exact`**: `step_twosum_exact_of_dekker` — Dekker condition → Sterbenz → exact compensation ✓
       Also: `step_twosum_exact_of_sub_exact` for the general case (first subtraction exact → full TwoSum exact).
 - [ ] **Dot product error bound** — `|fl(x·y) - x·y| ≤ γ_n · |x|·|y|` where `γ_n = nε/(1-nε)`. Uses fpAdd + fpMul.
