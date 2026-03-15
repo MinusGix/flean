@@ -177,6 +177,8 @@ Rounding/ files but narrow applicability.
   `|sₙ - x·y| ≤ ((1+η)^n-1)·Σ|xᵢyᵢ| ≤ γ_n·Σ|xᵢyᵢ|`. Sorry-free.
 - [x] **Horner's method** — `horner_error_bound` + `_gamma` in Horner.lean.
   `|fl(p(x)) - p(x)| ≤ ((1+η)^{2n}-1)·p̃(|x|) ≤ γ_{2n}·p̃(|x|)` (Higham Thm 5.1). Sorry-free.
+- [x] **FMA Horner** — `fma_horner_error_bound` + `_gamma` in HornerFMA.lean.
+  `|fl(p(x)) - p(x)| ≤ ((1+η)^n-1)·p̃(|x|) ≤ γ_n·p̃(|x|)`. Half the exponent of non-FMA. Sorry-free.
 - [ ] **Newton reciprocal** — `x_{n+1} = x_n(2 - ax_n)`, quadratic convergence in floats.
 - [ ] **Newton sqrt** — Similar to reciprocal, used in hardware implementations.
 - [ ] **Mixed-precision accumulation** — Error of computing in FP16/BF16 and accumulating in FP32 (bridges StorageFormats + ML).

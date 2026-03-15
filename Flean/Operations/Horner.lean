@@ -16,6 +16,20 @@ sₖ = fl(s_{k-1} * x + a_{n-k})   for k = 1, ..., n
 - `horner_error_bound_gamma`: `|fl(p(x)) - p(x)| ≤ γ_{2n} · p̃(|x|)`
 
 where `p̃(|x|) = Σ|aᵢ|·|x|^i` is the polynomial evaluated with absolute values (Higham Thm 5.1).
+
+## Extensions
+
+- **FMA-based Horner** (`HornerFMA.lean`): If `fl(s*x + c)` is computed as a single FMA,
+  the error per step is one `(1+η)` factor instead of two, tightening the bound from
+  `γ_{2n}` to `γ_n`. Uses `fpFMA` from `FMA.lean`.
+
+- **Running error bound** (Higham Thm 5.3): a tighter per-coefficient running error bound
+  that tracks contributions separately rather than the uniform `γ_{2n}`. Would use
+  `hornerPoly_affine` recursively at each step.
+
+- **Compensated Horner**: Use TwoProduct + TwoSum at each step to capture rounding errors,
+  then correct. Combines Horner trace with TwoProduct infrastructure from
+  `MulErrorRepresentable.lean`.
 -/
 
 namespace Horner
@@ -50,7 +64,7 @@ theorem hornerPoly_nonneg (coeffs : List R) (acc x : R)
 
     This is the key structural lemma: shifting the initial accumulator by `e`
     shifts the output by exactly `e * x^n`. -/
-private theorem hornerPoly_affine (cs : List R) (a e x : R) :
+theorem hornerPoly_affine (cs : List R) (a e x : R) :
     hornerPoly cs (a + e) x = hornerPoly cs a x + e * x ^ cs.length := by
   induction cs generalizing a e with
   | nil => simp [hornerPoly]
@@ -62,7 +76,7 @@ private theorem hornerPoly_affine (cs : List R) (a e x : R) :
 
 /-- Horner polynomial is monotone in the accumulator when `x ≥ 0`
     and all coefficients are nonneg. -/
-private theorem hornerPoly_mono (cs : List R) (a b x : R)
+theorem hornerPoly_mono (cs : List R) (a b x : R)
     (hab : a ≤ b) (hx : 0 ≤ x) (hcs : ∀ c ∈ cs, 0 ≤ c) :
     hornerPoly cs a x ≤ hornerPoly cs b x := by
   induction cs generalizing a b with
