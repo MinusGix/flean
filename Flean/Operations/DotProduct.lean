@@ -12,8 +12,12 @@ sₖ = fl(s_{k-1} + fl(xₖ * yₖ))   for k = 1, ..., n
 
 ## Main Results
 
-- `dp_error_bound`: `|sₙ - x·y| ≤ ((1+η)^(n+1) - 1) · Σ|xᵢyᵢ|`
-- `dp_error_bound_gamma`: `|sₙ - x·y| ≤ γ_{n+1} · Σ|xᵢyᵢ|` where `γₙ = nη/(1-nη)`
+- `dp_error_bound`: `|sₙ - x·y| ≤ ((1+η)^n - 1) · Σ|xᵢyᵢ|` (Higham's Theorem 3.1)
+- `dp_error_bound_gamma`: `|sₙ - x·y| ≤ γₙ · Σ|xᵢyᵢ|` where `γₙ = nη/(1-nη)`
+
+The tight `(1+η)^n` bound (rather than `(1+η)^{n+1}`) exploits that the first
+addition `fl(0 + fl(x₁y₁)) = fl(x₁y₁)` is exact: adding a zero accumulator
+introduces no rounding error, saving one factor.
 -/
 
 namespace DotProduct
@@ -48,8 +52,25 @@ theorem fpMul_error_or_zero
   rcases hnormal with h | h
   · exact fpMul_error a b f hf h
   · rw [h]; simp
-    -- fl(a*b) = 0 when a*b = 0
-    sorry
+    -- Goal: |f.toVal (R := R)| ≤ 0
+    -- Since a.toVal * b.toVal = 0, at least one significand is zero, so a.m * b.m = 0.
+    have hmul_zero : a.m * b.m = 0 := by
+      rcases mul_eq_zero.mp h with ha | hb
+      · have := (FiniteFp.toVal_significand_zero_iff (R := R)).mpr ha
+        simp [this]
+      · have := (FiniteFp.toVal_significand_zero_iff (R := R)).mpr hb
+        simp [this]
+    -- fpMulFinite with mag = 0 returns a signed zero float
+    have hfmul : fpMulFinite a b = Fp.finite (if a.s ^^ b.s then -0 else 0) := by
+      simp only [fpMulFinite, roundIntSigM, show a.m * b.m = 0 from hmul_zero, ↓reduceDIte]
+    -- Extract f's identity from hf
+    have hf' : fpMulFinite a b = Fp.finite f := hf
+    rw [hfmul] at hf'
+    have hfinj : f = if a.s ^^ b.s then -0 else 0 := (Fp.finite.inj hf'.symm)
+    -- Both cases give f.toVal = 0
+    have hfval : (f.toVal : R) = 0 := by
+      rw [hfinj]; split_ifs <;> simp
+    simp [hfval]
 
 /-! ## Dot Product Step and Trace -/
 
@@ -230,25 +251,99 @@ private theorem dp_error_bound_gen
     simp only [List.length_cons, List.map_cons, List.sum_cons]
     linarith [htotal]
 
-/-- **Dot product error bound** (inductive `(1+η)^(n+1)` form).
+/-- **Dot product error bound** (tight `(1+η)^n` form, matching Higham's Theorem 3.1).
 
-    `|sₙ - Σxᵢyᵢ| ≤ ((1+η)^(n+1) - 1) · Σ|xᵢyᵢ|`
+    `|sₙ - Σxᵢyᵢ| ≤ ((1+η)^n - 1) · Σ|xᵢyᵢ|`
 
-    Each term picks up one multiplication error and one addition error per step,
-    giving at most `n+1` factors of `(1+η)` for `n` pairs. -/
+    The bound is tighter than the naive `(1+η)^{n+1}` form: the first addition
+    `fl(0 + fl(x₁y₁)) = fl(x₁y₁)` is exact (adding zero is free), so we save
+    one factor of `(1+η)`.  This requires `RModeIdem` to show that rounding
+    an already-representable value is idempotent. -/
 theorem dp_error_bound
-    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeIdem R]
     {pairs : List (FiniteFp × FiniteFp)} {init final : FiniteFp}
     (trace : DPTrace pairs init final)
     (hinit : init.toVal (R := R) = 0)
     (hnr : trace.AllNormalRange (R := R)) :
     |(final.toVal : R) -
       (pairs.map (fun p => p.1.toVal (R := R) * p.2.toVal)).sum| ≤
-      ((1 + η) ^ (pairs.length + 1) - 1) *
+      ((1 + η) ^ pairs.length - 1) *
       (pairs.map (fun p => |p.1.toVal (R := R) * p.2.toVal|)).sum := by
-  have hgen := dp_error_bound_gen (R := R) trace hnr
-  simp only [hinit, abs_zero, mul_zero, zero_add] at hgen
-  exact hgen
+  -- Recover init.m = 0 from init.toVal = 0
+  have hinit_m : init.m = 0 := (FiniteFp.toVal_significand_zero_iff (R := R)).mpr hinit
+  induction trace with
+  | nil acc =>
+    simp only [List.map_nil, List.sum_nil, sub_zero, List.length_nil, pow_zero, sub_self, zero_mul]
+    simp [hinit]
+  | @cons acc x y pairs final step rest ih =>
+    simp only [DPTrace.AllNormalRange] at hnr
+    obtain ⟨hnr_step, hnr_rest⟩ := hnr
+    -- Extract multiplication error bound
+    have hmul_err := fpMul_error_or_zero (R := R) x y step.prod step.hprod hnr_step.mul_normal
+    -- Key: fl(acc + prod) has the same value as prod (zero-add is exact)
+    have hnext_val : (step.next.toVal : R) = step.prod.toVal :=
+      fpAddFinite_zero_left_val acc step.prod hinit_m step.next step.hnext
+    -- η ≥ 0
+    have hη : (0 : R) ≤ η := by positivity
+    have h1η : (1 : R) ≤ 1 + η := by linarith
+    -- Abbreviations
+    set n := pairs.length with hn_def
+    set S := (pairs.map (fun p => p.1.toVal (R := R) * p.2.toVal)).sum with hS_def
+    set T := (pairs.map (fun p => |p.1.toVal (R := R) * p.2.toVal|)).sum with hT_def
+    set xy := (x.toVal : R) * y.toVal with hxy_def
+    set prod_v := (step.prod.toVal : R) with hprod_def
+    set next_v := (step.next.toVal : R) with hnext_def
+    -- next_v = prod_v (exact zero-add)
+    have hnext_eq : next_v = prod_v := hnext_val
+    -- prod error: |prod_v - xy| ≤ η|xy|
+    have hmul : |prod_v - xy| ≤ η * |xy| := hmul_err
+    -- prod bound: |prod_v| ≤ (1+η)|xy|
+    have hprod_bound : |prod_v| ≤ (1 + η) * |xy| := by
+      have h1 : |prod_v| - |xy| ≤ η * |xy| := le_trans (abs_sub_abs_le_abs_sub prod_v xy) hmul
+      linarith
+    -- next_v = prod_v, so same bound
+    have hnext_bound : |next_v| ≤ (1 + η) * |xy| := hnext_eq ▸ hprod_bound
+    -- Apply general bound to rest: |final - (next + S)| ≤ ((1+η)^n - 1)*|next| + ((1+η)^{n+1} - 1)*T
+    have hgen_rest := dp_error_bound_gen (R := R) rest hnr_rest
+    -- Powers
+    have hpow_n : (1 : R) ≤ (1 + η) ^ n := one_le_pow₀ h1η
+    have hpow_n1 : (1 : R) ≤ (1 + η) ^ (n + 1) := one_le_pow₀ h1η
+    have hpow_n_nn : (0 : R) ≤ (1 + η) ^ n := le_trans zero_le_one hpow_n
+    have hpow_n1_nn : (0 : R) ≤ (1 + η) ^ (n + 1) := le_trans zero_le_one hpow_n1
+    have hxy_nn : (0 : R) ≤ |xy| := abs_nonneg _
+    have hT_nn : (0 : R) ≤ T := List.sum_nonneg (fun y hy => by
+      simp only [List.mem_map] at hy; obtain ⟨_, _, rfl⟩ := hy; exact abs_nonneg _)
+    -- IH for rest: |final - (next + S)| ≤ ((1+η)^n - 1)*|next| + ((1+η)^{n+1} - 1)*T
+    -- (dp_error_bound_gen applied with init = step.next)
+    -- Note: hnext_def = next_v
+    -- Triangle inequality
+    have htri : |(final.toVal : R) - (xy + S)| ≤
+        |(final.toVal : R) - (next_v + S)| + |next_v - xy| := by
+      have : (final.toVal : R) - (xy + S) =
+          ((final.toVal : R) - (next_v + S)) + (next_v - xy) := by ring
+      rw [this]; exact abs_add_le _ _
+    -- next_v - xy = prod_v - xy (since next_v = prod_v), so |next_v - xy| ≤ η|xy|
+    have hnext_err : |next_v - xy| ≤ η * |xy| := hnext_eq ▸ hmul
+    -- IH bound with next_v ≤ (1+η)|xy|
+    have hih_expanded : |(final.toVal : R) - (next_v + S)| ≤
+        ((1 + η) ^ n - 1) * ((1 + η) * |xy|) + ((1 + η) ^ (n + 1) - 1) * T := by
+      have h1 : ((1 + η) ^ n - 1) * |next_v| ≤
+          ((1 + η) ^ n - 1) * ((1 + η) * |xy|) :=
+        mul_le_mul_of_nonneg_left hnext_bound (by linarith [hpow_n])
+      linarith [hgen_rest]
+    -- Algebra: ((1+η)^n - 1)*(1+η)*|xy| + η*|xy| = ((1+η)^{n+1} - 1)*|xy|
+    have hstep_xy : ((1 + η) ^ n - 1) * ((1 + η) * |xy|) + η * |xy| =
+        ((1 + η) ^ (n + 1) - 1) * |xy| := by
+      rw [pow_succ]; ring
+    -- Monotonicity: ((1+η)^{n+1} - 1)*T ≤ ((1+η)^{n+1} - 1)*T (trivial, just for shape)
+    -- Combined bound
+    have htotal : |(final.toVal : R) - (xy + S)| ≤
+        ((1 + η) ^ (n + 1) - 1) * (|xy| + T) := by
+      linarith [htri, hih_expanded, hnext_err, hstep_xy,
+                mul_nonneg (by linarith : (0:R) ≤ (1+η)^(n+1) - 1) hT_nn]
+    -- Translate to list form
+    simp only [List.length_cons, List.map_cons, List.sum_cons]
+    linarith [htotal]
 
 /-! ## Gamma Bound -/
 
@@ -292,22 +387,24 @@ theorem pow_sub_one_le_gamma (n : ℕ) (hsmall : (n : R) * η < 1) :
   rw [le_div_iff₀ h1_sub_pos]
   exact pow_sub_one_mul_one_sub_le n hsmall
 
-/-- **Dot product error bound** (γₙ form).
+/-- **Dot product error bound** (γₙ form, matching Higham's Theorem 3.1).
 
-    `|sₙ - x·y| ≤ γ_{n+1} · Σ|xᵢyᵢ|` -/
+    `|sₙ - x·y| ≤ γₙ · Σ|xᵢyᵢ|`
+
+    Uses the tight `(1+η)^n` bound. -/
 theorem dp_error_bound_gamma
-    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeIdem R]
     {pairs : List (FiniteFp × FiniteFp)} {init final : FiniteFp}
     (trace : DPTrace pairs init final)
     (hinit : init.toVal (R := R) = 0)
     (hnr : trace.AllNormalRange (R := R))
-    (hsmall : ((pairs.length + 1 : ℕ) : R) * η < 1) :
+    (hsmall : (pairs.length : R) * η < 1) :
     |(final.toVal : R) -
       (pairs.map (fun p => p.1.toVal (R := R) * p.2.toVal)).sum| ≤
-      gamma_n (R := R) (pairs.length + 1) *
+      gamma_n (R := R) pairs.length *
       (pairs.map (fun p => |p.1.toVal (R := R) * p.2.toVal|)).sum := by
-  have h1 := dp_error_bound trace hinit hnr
-  have h2 := pow_sub_one_le_gamma (R := R) (pairs.length + 1) hsmall
+  have h1 := dp_error_bound (R := R) trace hinit hnr
+  have h2 := pow_sub_one_le_gamma (R := R) pairs.length hsmall
   have habs_nn : (0 : R) ≤ (pairs.map (fun p => |p.1.toVal (R := R) * p.2.toVal|)).sum :=
     List.sum_nonneg (fun y hy => by
       simp only [List.mem_map] at hy; obtain ⟨_, _, rfl⟩ := hy; exact abs_nonneg _)

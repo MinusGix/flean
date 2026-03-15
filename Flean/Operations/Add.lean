@@ -221,6 +221,53 @@ theorem fpAddFinite_correct {R : Type*} [Field R] [LinearOrder R] [IsStrictOrder
   congr 1
   rw [intSigVal_eq_int_mul (R := R) hsum_ne, hexact]
 
+/-- Adding a zero float (significand = 0) to any finite float is value-exact:
+    the floating-point result has the same value as the non-zero operand.
+
+    This is used to tighten the dot product error bound: when the accumulator
+    starts at zero, the first addition `fl(0 + fl(x₁·y₁))` is exact, saving
+    one factor of `(1+η)`. -/
+theorem fpAddFinite_zero_left_val {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] [FloorRing R]
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R]
+    (z b : FiniteFp) (hz : z.m = 0)
+    (f : FiniteFp) (hf : z + b = Fp.finite f) :
+    (f.toVal : R) = b.toVal := by
+  -- z.toVal = 0 since its significand is 0
+  have hz_val : (z.toVal : R) = 0 := (FiniteFp.toVal_significand_zero_iff (R := R)).mp hz
+  -- The exact sum equals b.toVal
+  have hsum_val : (z.toVal : R) + b.toVal = b.toVal := by rw [hz_val, zero_add]
+  -- Case split on whether b.m = 0
+  by_cases hb : b.m = 0
+  · -- Both z and b are zero: result is a zero float with toVal = 0 = b.toVal
+    have hb_val : (b.toVal : R) = 0 := (FiniteFp.toVal_significand_zero_iff (R := R)).mp hb
+    -- The integer sum is 0 since both significands are 0
+    have hsum_zero_int : addAlignedSumInt z b = 0 := by
+      simp [addAlignedSumInt, addAlignedIntA, addAlignedIntB, alignedSignedInt,
+            finiteSignedInt, condNeg, hz, hb]
+    have hcancel := fpAddFinite_exact_cancel_sign z b hsum_zero_int
+    have hf' : fpAddFinite z b = Fp.finite f := hf
+    rw [hcancel] at hf'
+    have hfinj : f = ⟨exactCancelSign z.s b.s, FloatFormat.min_exp, 0, IsValidFiniteVal.zero⟩ :=
+      (Fp.finite.inj hf').symm
+    have hfm : f.m = 0 := by rw [hfinj]
+    rw [(FiniteFp.toVal_significand_zero_iff (R := R)).mp hfm, hb_val]
+  · -- b.m ≠ 0: b.toVal ≠ 0, the sum is nonzero
+    have hb_val_ne : (b.toVal : R) ≠ 0 :=
+      FiniteFp.toVal_ne_zero_of_m_pos b (Nat.pos_of_ne_zero hb)
+    have hsum_ne : (z.toVal : R) + b.toVal ≠ 0 := by rw [hsum_val]; exact hb_val_ne
+    -- By correctness: fl(z + b) = ○(b.toVal)
+    have hcorr := fpAddFinite_correct (R := R) z b hsum_ne
+    rw [hsum_val] at hcorr
+    -- By idempotence: ○(b.toVal) = Fp.finite b (since b.m ≠ 0 implies b.notNegZero)
+    have hb_nnz : b.notNegZero := Or.inr (Nat.pos_of_ne_zero hb)
+    have hidem := RModeIdem.round_idempotent (R := R) b hb_nnz
+    -- Combine: fl(z + b) = Fp.finite b
+    have hf_eq_b : Fp.finite f = Fp.finite b := by
+      rw [← hidem, ← hcorr, hf]
+    -- Extract the equality f = b, hence f.toVal = b.toVal
+    rw [Fp.finite.inj hf_eq_b]
+
 /-- When both positive operands are subnormal and their significands fit in one word,
     rounding their sum under the contextual policy returns their exact sum. -/
 theorem subnormal_sum_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
