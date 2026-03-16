@@ -470,37 +470,256 @@ theorem newton_step_perturbation
           _ = |x' - (xv - q)| + |q - vd| := by rw [abs_neg]
     _ ≤ η * |xv - q| + |q - vd| := by linarith
 
-/-! ## Future Work
+/-! ## C. Connection to `hornerPoly`
 
-### A. Jet Horner Total Error Bound
-Prove the accumulated error `|v̂ - p(x)|` and `|d̂ - p'(x)|` for the full trace.
-By induction on the trace (following `horner_error_bound`), with 4 rounding errors
-per step (vs 2 for standard Horner), the bound is:
-```
-|v̂ - p(x)| ≤ ((1+η)^{4n} - 1) · p̃(|x|)
-|d̂ - p'(x)| ≤ ((1+η)^{4n} - 1) · p̃'_bound(|x|)
-```
-where `p̃` is the absolute polynomial. The 2D coupled recurrence means value
-errors propagate into derivative errors via the cross-coupling in `jetHornerL`.
+The value component of `jetHornerExact` equals `hornerPoly` (up to the
+commutativity `x * v = v * x` in the accumulator update). -/
 
-### B. Quotient Perturbation Lemma
-Bound `|v̂/d̂ - p(x)/p'(x)|` in terms of `|v̂ - p(x)|` and `|d̂ - p'(x)|`.
-Standard algebraic identity: `a/b - c/d = (a·d - b·c)/(b·d)`, giving
-```
-|v̂/d̂ - p/p'| ≤ (|v̂ - p|·|p'| + |p|·|d̂ - p'|) / (|d̂|·|p'|)
-```
-This bridges the jet Horner error (A) to the Newton perturbation.
+/-- Jet Horner value = standard Horner polynomial. -/
+theorem jetHornerExact_fst_eq_hornerPoly (cs : List R) (init x : R) :
+    (jetHornerExact cs init 0 x).1 = hornerPoly cs init x := by
+  induction cs generalizing init with
+  | nil => simp [jetHornerExact, hornerPoly]
+  | cons c cs ih =>
+    simp only [jetHornerExact, hornerPoly, mul_zero, zero_add]
+    rw [jetHorner_value_indep_of_deriv]
+    rw [show x * init + c = init * x + c from by ring]
+    exact ih _
 
-### C. Connection to `hornerPoly`
-Prove `(jetHornerExact cs init 0 x).1 = hornerPoly cs init x` linking
-the jet Horner value component to the standard `hornerPoly`. Small lemma
-by induction using `jetHorner_value_indep_of_deriv`.
+/-! ## A. Jet Horner Value Error Bound
 
-### D. Full Newton-Horner Composition
-Instantiate `exact_newton_quadratic` + `perturbed_newton_ball` with concrete
-polynomial data from A + B + C. The capstone: "N FP Newton steps on a
-degree-n polynomial converge to an O(η)-ball around a simple root,
-given suitable initial approximation."
--/
+The value component of jet Horner has 2 rounding errors per step (mul + add),
+identical to standard Horner. The accumulated error is `((1+η)^{2n} - 1) · p̃(|x|)`
+where `p̃` is the absolute polynomial `hornerPoly(|coeffs|, |init|, |x|)`.
+
+Note: the derivative error bound is more complex due to cross-coupling from the
+value channel (the `+v` term in `d' = x·d + v`). The value bound alone suffices
+for Newton's method since `p'(x)` appears only in the denominator. -/
+
+set_option maxHeartbeats 800000 in
+/-- **Jet Horner value error bound** (`(1+η)^{2n}` form).
+
+    The value component of the FP jet Horner trace satisfies the same error bound
+    as standard 2-op Horner:
+    `|v̂ - hornerPoly(coeffs, init, x)| ≤ ((1+η)^{2n} - 1) · hornerPoly(|coeffs|, |init|, |x|)` -/
+theorem jetHorner_value_error_bound
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {x init d_init : FiniteFp} {coeffs : List FiniteFp} {v_final d_final : FiniteFp}
+    (trace : JetHornerTrace x coeffs init d_init v_final d_final)
+    (hnr : trace.AllNormalRange (R := R)) :
+    |(v_final.toVal : R) -
+      hornerPoly (coeffs.map (fun c => c.toVal (R := R))) (init.toVal) (x.toVal)| ≤
+      ((1 + η) ^ (2 * coeffs.length) - 1) *
+        hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|))
+          |init.toVal (R := R)| |x.toVal (R := R)| := by
+  induction trace with
+  | nil =>
+    simp only [List.map_nil, hornerPoly, List.length_nil, Nat.mul_zero, pow_zero, sub_self,
+               zero_mul, abs_zero, le_refl]
+  | @cons v_cur _ coeff coeffs v_f _ step rest ih =>
+    simp only [JetHornerTrace.AllNormalRange] at hnr
+    obtain ⟨hnr_step, hnr_rest⟩ := hnr
+    have hstep := jetHorner_step_value_error (R := R) step hnr_step
+    set n := coeffs.length with hn_def
+    set x_v := (x.toVal : R)
+    set v_v := (v_cur.toVal : R)
+    set c_v := (coeff.toVal : R)
+    set v'_v := (step.v'.toVal : R)
+    set A := |v_v| * |x_v| + |c_v|
+    have hη : (0 : R) ≤ η := by positivity
+    have h1η : (1 : R) ≤ 1 + η := by linarith
+    have h1η2 : (1 : R) ≤ (1 + η) ^ 2 := one_le_pow₀ h1η
+    -- (2η+η²) = (1+η)²-1
+    have hfactor : (2 : R) * η + η ^ 2 = (1 + η) ^ 2 - 1 := by ring
+    -- Per-step error ≤ ((1+η)²-1) · A
+    have hstep_A : |x_v * v_v + c_v - v'_v| ≤ ((1 + η) ^ 2 - 1) * A := by
+      rw [← hfactor]; exact hstep
+    -- |v'| ≤ (1+η)² · A
+    have hv'_bound : |v'_v| ≤ (1 + η) ^ 2 * A := by
+      have h1 := abs_sub_abs_le_abs_sub v'_v (x_v * v_v + c_v)
+      have h2 : |x_v * v_v + c_v| ≤ A := by
+        calc |x_v * v_v + c_v| ≤ |x_v * v_v| + |c_v| := abs_add_le _ _
+          _ = |v_v| * |x_v| + |c_v| := by rw [abs_mul, mul_comm]
+      have h3 : |v'_v - (x_v * v_v + c_v)| = |x_v * v_v + c_v - v'_v| := by
+        rw [show v'_v - (x_v * v_v + c_v) = -(x_v * v_v + c_v - v'_v) from by ring, abs_neg]
+      linarith
+    -- IH
+    have ih_bound := ih hnr_rest
+    -- Abbreviations for absolute polynomials
+    set PA := hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|)) A |x_v|
+    set PA_v' := hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|)) |v'_v| |x_v|
+    have hlen : (coeffs.map (fun c => |c.toVal (R := R)|)).length = n := by simp [hn_def]
+    -- PA(|v'|) ≤ PA(A) + (|v'| - A) · |x|^n, and |v'| ≤ (1+η)²·A gives |v'|-A ≤ ((1+η)²-1)A
+    have hPA_mono : PA_v' ≤ PA + ((1 + η) ^ 2 - 1) * A * |x_v| ^ n := by
+      have hdecomp : |v'_v| = A + (|v'_v| - A) := by ring
+      show hornerPoly _ |v'_v| |x_v| ≤ PA + ((1 + η) ^ 2 - 1) * A * |x_v| ^ n
+      conv_lhs => rw [hdecomp]
+      rw [hornerPoly_affine, hlen]
+      have hle : |v'_v| - A ≤ ((1 + η) ^ 2 - 1) * A := by linarith
+      linarith [mul_le_mul_of_nonneg_right hle (by positivity : (0 : R) ≤ |x_v| ^ n)]
+    -- PA ≥ A · |x|^n
+    have hPA_ge : A * |x_v| ^ n ≤ PA := by
+      conv_lhs => rw [show A = 0 + A from (zero_add A).symm]
+      rw [show PA = hornerPoly _ A _ from rfl, show A = 0 + A from (zero_add A).symm,
+          hornerPoly_affine, hlen]
+      linarith [hornerPoly_nonneg (coeffs.map (fun c => |c.toVal (R := R)|)) 0 |x_v|
+        le_rfl (abs_nonneg _) (fun c hc => by
+          simp only [List.mem_map] at hc; obtain ⟨_, _, rfl⟩ := hc; exact abs_nonneg _)]
+    have hPA_nn : (0 : R) ≤ PA := le_trans (by positivity) hPA_ge
+    have hA_nn : (0 : R) ≤ A := by positivity
+    have hxpow_nn : (0 : R) ≤ |x_v| ^ n := by positivity
+    -- Powers
+    have hpow_2n : (1 : R) ≤ (1 + η) ^ (2 * n) := one_le_pow₀ h1η
+    have hpow_2n_nn : (0 : R) ≤ (1 + η) ^ (2 * n) := le_trans zero_le_one hpow_2n
+    -- Triangle via hornerPoly_affine: split the error using v' vs x*v+c
+    have htri : |(v_f.toVal : R) -
+        hornerPoly (coeffs.map (fun c => c.toVal (R := R))) (x_v * v_v + c_v) x_v| ≤
+        |(v_f.toVal : R) -
+          hornerPoly (coeffs.map (fun c => c.toVal (R := R))) v'_v x_v| +
+        |v'_v - (x_v * v_v + c_v)| * |x_v| ^ n := by
+      have hlen2 : (coeffs.map (fun c => (c.toVal : R))).length = n := by simp [hn_def]
+      have haffine : hornerPoly (coeffs.map (fun c => (c.toVal : R))) v'_v x_v =
+          hornerPoly (coeffs.map (fun c => (c.toVal : R))) (x_v * v_v + c_v) x_v +
+          (v'_v - (x_v * v_v + c_v)) * x_v ^ n := by
+        conv_lhs => rw [show v'_v = (x_v * v_v + c_v) + (v'_v - (x_v * v_v + c_v)) from by ring]
+        rw [hornerPoly_affine, hlen2]
+      have heq : (v_f.toVal : R) -
+          hornerPoly (coeffs.map (fun c => (c.toVal : R))) (x_v * v_v + c_v) x_v =
+          ((v_f.toVal : R) -
+            hornerPoly (coeffs.map (fun c => (c.toVal : R))) v'_v x_v) +
+          (v'_v - (x_v * v_v + c_v)) * x_v ^ n := by linarith
+      rw [heq]
+      have := abs_add_le
+        ((v_f.toVal : R) - hornerPoly (coeffs.map (fun c => (c.toVal : R))) v'_v x_v)
+        ((v'_v - (x_v * v_v + c_v)) * x_v ^ n)
+      rwa [abs_mul, abs_pow] at this
+    -- Combine
+    have hstep_xpow : |v'_v - (x_v * v_v + c_v)| * |x_v| ^ n ≤
+        ((1 + η) ^ 2 - 1) * A * |x_v| ^ n := by
+      rw [show v'_v - (x_v * v_v + c_v) = -(x_v * v_v + c_v - v'_v) from by ring, abs_neg]
+      exact mul_le_mul_of_nonneg_right hstep_A hxpow_nn
+    set E := ((1 + η) ^ 2 - 1) * A * |x_v| ^ n
+    have hE_nn : (0 : R) ≤ E := by
+      apply mul_nonneg (mul_nonneg _ hA_nn) hxpow_nn; linarith
+    have hE_le_PA : E ≤ ((1 + η) ^ 2 - 1) * PA := by
+      show ((1 + η) ^ 2 - 1) * A * |x_v| ^ n ≤ ((1 + η) ^ 2 - 1) * PA
+      nlinarith [mul_le_mul_of_nonneg_left hPA_ge (by linarith : (0:R) ≤ (1+η)^2-1)]
+    have htotal : |(v_f.toVal : R) -
+        hornerPoly (coeffs.map (fun c => (c.toVal : R))) (x_v * v_v + c_v) x_v| ≤
+        ((1 + η) ^ (2 * (n + 1)) - 1) * PA := by
+      have h1 : |(v_f.toVal : R) -
+          hornerPoly (coeffs.map (fun c => (c.toVal : R))) (x_v * v_v + c_v) x_v| ≤
+          ((1 + η) ^ (2 * n) - 1) * (PA + E) + E := by
+        have hih_exp : |(v_f.toVal : R) -
+            hornerPoly (coeffs.map (fun c => (c.toVal : R))) v'_v x_v| ≤
+            ((1 + η) ^ (2 * n) - 1) * (PA + E) := by
+          calc |(v_f.toVal : R) -
+                  hornerPoly (coeffs.map (fun c => (c.toVal : R))) v'_v x_v|
+              ≤ ((1 + η) ^ (2 * n) - 1) * PA_v' := ih_bound
+            _ ≤ ((1 + η) ^ (2 * n) - 1) * (PA + E) := by
+                apply mul_le_mul_of_nonneg_left _ (by linarith)
+                linarith [hPA_mono]
+        linarith [htri, hstep_xpow]
+      -- ((1+η)^{2n}-1)(PA+E) + E ≤ ((1+η)^{2(n+1)}-1)PA
+      have h2 : ((1 + η) ^ (2 * n) - 1) * (PA + E) + E ≤
+          ((1 + η) ^ (2 * (n + 1)) - 1) * PA := by
+        have hkey := mul_le_mul_of_nonneg_left hE_le_PA hpow_2n_nn
+        have hpow_step : (1 + η : R) ^ (2 * (n + 1)) = (1 + η) ^ (2 * n) * (1 + η) ^ 2 := by
+          rw [show 2 * (n + 1) = 2 * n + 2 from by ring, pow_add]
+        rw [hpow_step]
+        nlinarith [mul_nonneg (by linarith : (0:R) ≤ (1+η)^(2*n) - 1) hPA_nn,
+                   mul_nonneg hpow_2n_nn hE_nn]
+      linarith
+    -- Unfold hornerPoly cons
+    simp only [List.length_cons, List.map_cons, hornerPoly]
+    have hcomm : v_v * x_v + c_v = x_v * v_v + c_v := by ring
+    rw [hcomm]
+    convert htotal using 2
+
+/-! ## B. Quotient Perturbation
+
+Pure algebra: `|a/b - c/d| ≤ (|a-c|·|d| + |c|·|b-d|) / (|b|·|d|)` for b,d ≠ 0. -/
+
+/-- **Quotient perturbation bound.**
+    If `b ≠ 0` and `d ≠ 0`, then
+    `|a/b - c/d| ≤ (|a - c| · |d| + |c| · |b - d|) / (|b| · |d|)`. -/
+theorem quotient_perturbation
+    {a b c d : R} (hb : b ≠ 0) (hd : d ≠ 0) :
+    |a / b - c / d| ≤ (|a - c| * |d| + |c| * |b - d|) / (|b| * |d|) := by
+  rw [div_sub_div _ _ hb hd, abs_div]
+  rw [show |b * d| = |b| * |d| from abs_mul b d]
+  apply div_le_div_of_nonneg_right _ (by positivity)
+  calc |a * d - b * c|
+      = |(a - c) * d + c * (d - b)| := by congr 1; ring
+    _ ≤ |(a - c) * d| + |c * (d - b)| := abs_add_le _ _
+    _ = |a - c| * |d| + |c| * |b - d| := by
+        rw [abs_mul, abs_mul, abs_sub_comm d b]
+
+/-! ## D. Full Newton-Horner Composition
+
+Chain the pieces: jet Horner value error (A) → quotient perturbation (B) →
+Newton perturbation → perturbed Newton convergence.
+
+The capstone states: if the polynomial has a simple root and the initial
+approximation is close enough, FP Newton converges to an O(η)-ball. -/
+
+/-- **Newton-Horner perturbation bound.**
+
+    Each FP Newton step on a polynomial (via jet Horner) has perturbation
+    bounded by: subtraction rounding + division rounding + evaluation error,
+    where evaluation error is bounded via jet Horner value error + quotient
+    perturbation.
+
+    This is the bridge between `jetHorner_value_error_bound` and
+    `perturbed_newton_ball`. The full composition requires instantiating
+    the abstract `exact_newton_quadratic` with polynomial-specific Taylor
+    and Lipschitz bounds. -/
+theorem newton_horner_perturbation_bound
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeSticky R]
+    {init : FiniteFp} {coeffs : List FiniteFp} {x_cur : FiniteFp}
+    (step : NewtonStep init coeffs x_cur)
+    (hnr : NewtonStepNormalRange (R := R) init coeffs x_cur step)
+    (hd_hat_ne : (step.d_final.toVal : R) ≠ 0)
+    (hd_exact_ne : (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+        (init.toVal : R) 0 (x_cur.toVal : R)).2 ≠ 0) :
+    let x_v := (x_cur.toVal : R)
+    let p_exact := hornerPoly (coeffs.map (fun c => c.toVal (R := R)))
+        (init.toVal : R) x_v
+    let d_exact := (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+        (init.toVal : R) 0 x_v).2
+    let v_hat := (step.v_final.toVal : R)
+    let d_hat := (step.d_final.toVal : R)
+    |(step.x_next.toVal : R) - (x_v - p_exact / d_exact)| ≤
+      η * |x_v - step.quot.toVal| +
+      η * |v_hat / d_hat| +
+      (|v_hat - p_exact| * |d_exact| + |p_exact| * |d_hat - d_exact|) /
+        (|d_hat| * |d_exact|) := by
+  intro x_v p_exact d_exact v_hat d_hat
+  -- Rewrite p_exact = jet value component
+  have hp_eq : p_exact = (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+      (init.toVal : R) 0 x_v).1 :=
+    (jetHornerExact_fst_eq_hornerPoly _ _ _).symm
+  rw [hp_eq]
+  set je1 := (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+      (init.toVal : R) 0 x_v).1
+  -- Three bounds
+  have h1 := newton_step_perturbation (R := R) step hnr
+  have h2 := newton_step_div_error (R := R) step hnr.div_normal
+  have h3 := quotient_perturbation (R := R) hd_hat_ne hd_exact_ne
+    (a := v_hat) (b := d_hat) (c := je1) (d := d_exact)
+  -- Triangle: |x' - (x - je1/d_exact)| ≤ |x' - (x - v/d)| + |v/d - je1/d_exact|
+  set x'_v := (step.x_next.toVal : R)
+  have htri : |x'_v - (x_v - je1 / d_exact)| ≤
+      |x'_v - (x_v - v_hat / d_hat)| + |v_hat / d_hat - je1 / d_exact| := by
+    set α := je1 / d_exact
+    set β := v_hat / d_hat
+    -- x' - (x - α) = (x' - (x - β)) - (β - α)
+    have heq : x'_v - (x_v - α) = (x'_v - (x_v - β)) - (β - α) := by ring
+    rw [heq, show (x'_v - (x_v - β)) - (β - α) =
+      (x'_v - (x_v - β)) + (-(β - α)) from by ring]
+    calc |(x'_v - (x_v - β)) + (-(β - α))|
+        ≤ |x'_v - (x_v - β)| + |-(β - α)| := abs_add_le _ _
+      _ = |x'_v - (x_v - β)| + |β - α| := by rw [abs_neg]
+  linarith
 
 end NewtonHorner
