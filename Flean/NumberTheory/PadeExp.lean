@@ -140,7 +140,7 @@ theorem pade_scaled_remainder_small (a : ℤ) (b : ℕ) (hb : 0 < b) (s : ℕ) :
           rw [mul_div_assoc']
           exact (div_eq_div_iff (ne_of_gt (sq_pos_of_pos hNf_pos)) hNf_ne).mpr (by
             rw [sq]; linear_combination ↑N.factorial * ↑N.factorial * hkey)
-  -- d^N / N! < ε from tendsto
+  -- d^N / N! < eps from tendsto
   have hsmall := hN₁ N hNN₁
   rw [dist_zero_right, Real.norm_of_nonneg (div_nonneg (pow_nonneg hd_nn _)
     (Nat.cast_nonneg _))] at hsmall
@@ -790,35 +790,35 @@ theorem pade_effective_delta (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0) (s 
   set v := exp x * 2 ^ s - (m : ℝ)
   -- From Padé identity: K * exp(x) - J = D_N * R_N(x)
   -- So K * v = (K * exp(x) * 2^s - K * m) = (J * 2^s - K * m) + D_N * R_N(x) * 2^s
-  --         = G + ε where ε = D_N * R_N(x) * 2^s
-  set ε := (N.factorial : ℝ) * (b : ℝ) ^ N * padeR N x * 2 ^ s
-  have hK_v_eq : K * v = (G : ℝ) + ε := by
+  --         = G + eps where eps = D_N * R_N(x) * 2^s
+  set eps := (N.factorial : ℝ) * (b : ℝ) ^ N * padeR N x * 2 ^ s
+  have hK_v_eq : K * v = (G : ℝ) + eps := by
     -- Padé identity: padeR N x = padeP N x * exp x - padeQ N x (by definition)
     have hid : padeR N x = padeP N x * exp x - padeQ N x := rfl
-    -- K * v = K * exp(x) * 2^s - K * m = (J + D*R) * 2^s - K * m = G + ε
+    -- K * v = K * exp(x) * 2^s - K * m = (J + D*R) * 2^s - K * m = G + eps
     linarith [show K * v = K * exp x * 2 ^ s - K * (m : ℝ) from by rw [hK_def]; ring,
               show K * exp x * 2 ^ s = ((N.factorial : ℝ) * (b : ℝ) ^ N * padeQ N x * 2 ^ s +
-                ε) from by rw [hK_def, show ε = (N.factorial : ℝ) * (b : ℝ) ^ N *
+                eps) from by rw [hK_def, show eps = (N.factorial : ℝ) * (b : ℝ) ^ N *
                   padeR N x * 2 ^ s from rfl, hid]; ring]
-  -- |ε| < 1/2
-  have hε_bound : |ε| < 1 / 2 := by
+  -- |eps| < 1/2
+  have heps_bound : |eps| < 1 / 2 := by
     show |(N.factorial : ℝ) * (b : ℝ) ^ N * padeR N x * 2 ^ s| < 1 / 2
     rw [show (N.factorial : ℝ) * (b : ℝ) ^ N * padeR N x * 2 ^ s =
         (N.factorial : ℝ) * (b : ℝ) ^ N * 2 ^ s * padeR N x from by ring,
         abs_mul,
         abs_of_nonneg (by positivity : 0 ≤ (N.factorial : ℝ) * (b : ℝ) ^ N * 2 ^ s)]
     exact hR_bound
-  -- |K|·|v| = |K*v| = |G + ε| ≥ |G| - |ε| ≥ 1 - 1/2 = 1/2
+  -- |K|·|v| = |K*v| = |G + eps| ≥ |G| - |eps| ≥ 1 - 1/2 = 1/2
   have hKv : |K| * |v| ≥ 1 / 2 := by
     rw [← abs_mul, hK_v_eq]
     have hG_ge : (1 : ℝ) ≤ |(G : ℝ)| := by
       rw [← Int.cast_abs]; exact_mod_cast Int.one_le_abs hG_ne
-    -- Use: |G| = |(G + ε) - ε| ≤ |G + ε| + |ε|, so |G + ε| ≥ |G| - |ε|
-    have : |(↑G : ℝ) + ε| ≥ |(↑G : ℝ)| - |ε| := by
-      have := abs_add_le ((↑G : ℝ) + ε) (-ε)
+    -- Use: |G| = |(G + eps) - eps| ≤ |G + eps| + |eps|, so |G + eps| ≥ |G| - |eps|
+    have : |(↑G : ℝ) + eps| ≥ |(↑G : ℝ)| - |eps| := by
+      have := abs_add_le ((↑G : ℝ) + eps) (-eps)
       rw [add_neg_cancel_right] at this
-      linarith [abs_neg ε]
-    linarith [le_of_lt hε_bound]
+      linarith [abs_neg eps]
+    linarith [le_of_lt heps_bound]
   -- |v| ≥ 1/(2|K|)
   have hK_pos : 0 < |K| := abs_pos.mpr hK_ne
   rw [ge_iff_le]
@@ -1169,15 +1169,15 @@ theorem pade_effective_delta_nat (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0)
   intro N hN_pos hR_bound hK_ne G hG_ne hG_eq
   set K := (N.factorial : ℝ) * (b : ℝ) ^ N * padeP N x with hK_def
   set v := exp x * (c : ℝ) - (m : ℝ)
-  set ε := (N.factorial : ℝ) * (b : ℝ) ^ N * padeR N x * (c : ℝ)
-  have hK_v_eq : K * v = (G : ℝ) + ε := by
+  set eps := (N.factorial : ℝ) * (b : ℝ) ^ N * padeR N x * (c : ℝ)
+  have hK_v_eq : K * v = (G : ℝ) + eps := by
     have hid : padeR N x = padeP N x * exp x - padeQ N x := rfl
     linarith [show K * v = K * exp x * (c : ℝ) - K * (m : ℝ) from by rw [hK_def]; ring,
               show K * exp x * (c : ℝ) = ((N.factorial : ℝ) * (b : ℝ) ^ N *
-                padeQ N x * (c : ℝ) + ε) from by
-                rw [hK_def, show ε = (N.factorial : ℝ) * (b : ℝ) ^ N *
+                padeQ N x * (c : ℝ) + eps) from by
+                rw [hK_def, show eps = (N.factorial : ℝ) * (b : ℝ) ^ N *
                   padeR N x * (c : ℝ) from rfl, hid]; ring]
-  have hε_bound : |ε| < 1 / 2 := by
+  have heps_bound : |eps| < 1 / 2 := by
     show |(N.factorial : ℝ) * (b : ℝ) ^ N * padeR N x * (c : ℝ)| < 1 / 2
     rw [show (N.factorial : ℝ) * (b : ℝ) ^ N * padeR N x * (c : ℝ) =
         (N.factorial : ℝ) * (b : ℝ) ^ N * (c : ℝ) * padeR N x from by ring,
@@ -1188,11 +1188,11 @@ theorem pade_effective_delta_nat (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0)
     rw [← abs_mul, hK_v_eq]
     have hG_ge : (1 : ℝ) ≤ |(G : ℝ)| := by
       rw [← Int.cast_abs]; exact_mod_cast Int.one_le_abs hG_ne
-    have : |(↑G : ℝ) + ε| ≥ |(↑G : ℝ)| - |ε| := by
-      have := abs_add_le ((↑G : ℝ) + ε) (-ε)
+    have : |(↑G : ℝ) + eps| ≥ |(↑G : ℝ)| - |eps| := by
+      have := abs_add_le ((↑G : ℝ) + eps) (-eps)
       rw [add_neg_cancel_right] at this
-      linarith [abs_neg ε]
-    linarith [le_of_lt hε_bound]
+      linarith [abs_neg eps]
+    linarith [le_of_lt heps_bound]
   have hK_pos : 0 < |K| := abs_pos.mpr hK_ne
   rw [ge_iff_le]
   calc 1 / (2 * ((N.factorial : ℝ) * (b : ℝ) ^ N * |padeP N x|))
