@@ -89,6 +89,15 @@ instance [RModeExec] : HDiv Fp Fp Fp where
 
 @[simp] theorem div_eq_fpDiv [RModeExec] (x y : Fp) : x / y = fpDiv x y := rfl
 
+/-- Reduce `Fp.finite a / Fp.finite b` to `fpDivFinite a b` when `b.m ≠ 0`.
+
+    When `a b : FiniteFp`, Lean may elaborate `a / b : Fp` as `Fp.finite a / Fp.finite b`
+    (using `HDiv Fp Fp Fp`), which goes through `fpDiv`. This lemma simplifies it back
+    to `fpDivFinite a b` (the `HDiv FiniteFp FiniteFp Fp` instance). -/
+@[simp] theorem fpDiv_finite_finite [RModeExec] (a b : FiniteFp) (hb : b.m ≠ 0) :
+    Fp.finite a / Fp.finite b = fpDivFinite a b := by
+  simp only [div_eq_fpDiv, fpDiv, hb, ↓reduceDIte, ↓reduceIte, div_finite_eq_fpDivFinite]
+
 variable [RModeExec]
 
 /-! ## Exact Quotient Representation -/

@@ -196,9 +196,19 @@ Rounding/ files but narrow applicability.
   Scalar + gauge bounds, per-index bounds, Horner instantiation.
 - [x] **Jet Horner** — `JetHorner.lean`: simultaneous value+derivative (S = R × R).
   `polyDeriv` + recurrence + chain rule term. Third AffineFold instance. Sorry-free.
-- [ ] **Newton + jet Horner** — `x_{n+1} = x_n - p(x_n)/p'(x_n)` using jet Horner for p,p'.
-  Different proof structure (convergence/contraction, not error accumulation).
-  Jet Horner's 2D error bound chains into Newton's convergence analysis.
+- [x] **Newton + jet Horner** — `NewtonHorner.lean`: sorry-free, ~725 lines.
+  JetHornerStep/Trace, exact decomposition, value error bound ((1+η)^{2n}-1),
+  exact Newton quadratic convergence, perturbed Newton ball invariance,
+  NewtonStep structure, perturbation bounds, quotient perturbation, full composition.
+- [ ] **Newton-Horner concrete instantiation** — Compute explicit convergence radii for
+  common formats (binary32, binary64, binary16). Given polynomial degree `n`, compute
+  the concrete `ρ` and `δ` for `perturbed_newton_ball`: `ρ` from the polynomial's
+  root separation and conditioning, `δ = O(η · |p(x)/p'(x)|)` from the perturbation bound.
+  For binary64 (η ≈ 1.1e-16), a degree-10 polynomial with well-separated roots would
+  converge to ~1e-15 in 4-5 steps. Would demonstrate the library's end-to-end capability.
+- [ ] **Jet Horner derivative error bound** — `|d̂ - p'(x)|` bound for the derivative channel.
+  More complex than value due to cross-coupling (`d' = x·d + v` uses FP value `v`).
+  Needed for tighter Newton analysis but value bound suffices for basic convergence.
 - [ ] **Newton reciprocal** — `x_{n+1} = x_n(2 - ax_n)`, quadratic convergence in floats.
 - [ ] **Newton sqrt** — Similar to reciprocal, used in hardware implementations.
 - [ ] **Mathlib Polynomial connection** — `hornerPoly cs init x = Polynomial.eval x p`.

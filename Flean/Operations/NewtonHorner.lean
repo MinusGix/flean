@@ -31,7 +31,7 @@ where `p̂` and `p̂'` are computed simultaneously via jet Horner.
 
 - `JetHorner.jetHornerExact`, `jetHornerL`, `jetHornerExact_affine` — exact 2D recurrence
 - `AffineFold.affineFold_affine` — affine splitting for error propagation
-- `KahanSum.fpMul_error_or_zero`, `fpAdd_error_or_zero`, `fpDiv_error_or_zero` — per-operation error bounds
+- `KahanSum.fpMul_error_or_zero`, `KahanSum.fpAdd_error_or_zero`, `KahanSum.fpDiv_error_or_zero` — per-operation error bounds
 -/
 
 namespace NewtonHorner
@@ -341,45 +341,6 @@ theorem perturbed_newton_n_steps
 The FP Newton step chains jet Horner → division → subtraction:
 `x' = fl(x - fl(p̂(x) / p̂'(x)))` -/
 
-/-- Division error bound: `|fl(a/b) - a/b| ≤ η · |a/b|`.
-    Handles both normal-range and exact-zero cases. -/
-theorem fpDiv_error_or_zero
-    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeSticky R]
-    (a b : FiniteFp) (f : FiniteFp)
-    (hb : b.m ≠ 0)
-    (hf : a / b = Fp.finite f)
-    (hnormal : isNormalRange ((a.toVal : R) / b.toVal) ∨ (a.toVal : R) / b.toVal = 0) :
-    |(f.toVal : R) - (a.toVal / b.toVal)| ≤ η * |(a.toVal : R) / b.toVal| := by
-  rcases hnormal with h | h
-  · have hne : (a.toVal : R) / b.toVal ≠ 0 := ne_of_gt (isNormalRange_pos _ h)
-    have hcorr := fpDivFinite_correct (R := R) a b hb hne
-    rw [hcorr] at hf
-    exact KahanSum.standard_error_additive _ h f hf
-  · rw [h]; simp
-    have hb_ne : (b.toVal : R) ≠ 0 :=
-      FiniteFp.toVal_ne_zero_of_m_pos b (Nat.pos_of_ne_zero hb)
-    have ha_zero : (a.toVal : R) = 0 := by
-      rcases div_eq_zero_iff.mp h with h' | h'
-      · exact h'
-      · exact absurd h' hb_ne
-    have ham : a.m = 0 := (FiniteFp.toVal_significand_zero_iff (R := R)).mpr ha_zero
-    have hscaled : a.m * 2 ^ divShift = 0 := by simp [ham]
-    -- hf : Fp.finite a / Fp.finite b = Fp.finite f (uses HDiv Fp Fp Fp)
-    -- Reduce to fpDivFinite since b.m ≠ 0
-    have hf' : fpDivFinite a b = Fp.finite f := by
-      simp only [div_eq_fpDiv, fpDiv, hb, ↓reduceDIte, div_finite_eq_fpDivFinite] at hf
-      exact hf
-    simp only [fpDivFinite, hscaled, Nat.zero_div, Nat.zero_mod,
-               ↓reduceDIte, roundIntSigM] at hf'
-    -- hf' identifies f with ±0 → f.m = 0 → f.toVal = 0
-    -- Extract: Fp.finite f = Fp.finite (±0) → f = ±0 → f.m = 0
-    have hfm : f.m = 0 := by
-      rcases Bool.eq_false_or_eq_true (a.s ^^ b.s) with hs | hs <;>
-        simp only [hs, ↓reduceIte] at hf' <;>
-        cases (Fp.finite.inj hf') <;> rfl
-    have hfv : (f.toVal : R) = 0 := FiniteFp.toVal_significand_zero_iff.mp hfm
-    simp [hfv]
-
 /-- One step of floating-point Newton's method.
     Evaluates `(p̂, p̂')` via jet Horner, divides, subtracts. -/
 structure NewtonStep [RModeExec]
@@ -438,7 +399,7 @@ theorem newton_step_div_error
                (step.v_final.toVal : R) / step.d_final.toVal = 0) :
     |(step.quot.toVal : R) - (step.v_final.toVal : R) / step.d_final.toVal| ≤
       η * |(step.v_final.toVal : R) / step.d_final.toVal| := by
-  have hdiv := fpDiv_error_or_zero (R := R) step.v_final step.d_final step.quot
+  have hdiv := KahanSum.fpDiv_error_or_zero (R := R) step.v_final step.d_final step.quot
     step.hd_nonzero step.hquot hnr_div
   -- hdiv: |quot - v/d| ≤ η|v/d|, which is the same as our goal (same sign)
   exact hdiv
