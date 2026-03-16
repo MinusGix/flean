@@ -18,14 +18,20 @@ where `p̂` and `p̂'` are computed simultaneously via jet Horner.
    coefficient (mul+add for value, mul+add for derivative). Proves the exact decomposition:
    `(v̂, d̂) + error_propagation = (p(x), p'(x))`.
 
-2. **Jet Horner error bound**: Using the 2D AffineFold gauge framework with
-   `ν(v,d) = |v| + |d|` and contraction factor `κ = |x| + 1`.
+2. **Per-step error bounds**: Each step has error `≤ (2η + η²)(|accumulator|·|x| + |offset|)`,
+   proved separately for value and derivative channels.
+
+3. **Exact Newton convergence**: Abstract quadratic convergence with Taylor remainder +
+   derivative Lipschitz hypotheses. Perturbed Newton ball invariance by induction.
+
+4. **FP Newton step**: `NewtonStep` chains jet Horner → division → subtraction.
+   Per-operation perturbation bounds decompose the total error.
 
 ## Key Infrastructure Used
 
-- `JetHorner.jetHornerExact`, `jetHornerL`, `jetHorner_exact_decomposition` — exact 2D recurrence
-- `AffineFold.affineFold_gauge_per_index` — per-index weighted error bound with gauges
-- `KahanSum.fpMul_error_or_zero`, `fpAdd_error_or_zero` — per-operation error bounds
+- `JetHorner.jetHornerExact`, `jetHornerL`, `jetHornerExact_affine` — exact 2D recurrence
+- `AffineFold.affineFold_affine` — affine splitting for error propagation
+- `KahanSum.fpMul_error_or_zero`, `fpAdd_error_or_zero`, `fpDiv_error_or_zero` — per-operation error bounds
 -/
 
 namespace NewtonHorner
@@ -163,115 +169,74 @@ theorem jetHorner_fp_exact_decomposition [RModeExec]
 /-! ## Per-Step Error Bounds
 
 Each of the 4 FP operations has error ≤ η times the exact result.
-The value channel error satisfies `|e_v| ≤ (2η + η²)|x·v + c|`
-(two operations: multiply then add), and similarly for derivative. -/
+A mul-then-add pair `z = fl(fl(a·b) + c)` has total error
+`|a·b + c - z| ≤ (2η + η²)(|b|·|a| + |c|)`. -/
 
-/-- Value channel per-step error: bounded in terms of `|v|·|x| + |c|`. -/
+/-- **Mul-then-add compound error**: `|a·b + c - fl(fl(a·b) + c)| ≤ (2η+η²)(|b|·|a| + |c|)`.
+
+    Shared helper for both value and derivative channels of jet Horner. -/
+private theorem mul_add_compound_error
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {a b c : FiniteFp} {ab_fp result : FiniteFp}
+    (hmul_fp : a * b = Fp.finite ab_fp)
+    (hadd_fp : ab_fp + c = Fp.finite result)
+    (hmul_nr : isNormalRange ((a.toVal : R) * b.toVal) ∨ (a.toVal : R) * b.toVal = 0)
+    (hadd_nr : isNormalRange ((ab_fp.toVal : R) + c.toVal) ∨
+               (ab_fp.toVal : R) + c.toVal = 0) :
+    |(a.toVal : R) * b.toVal + c.toVal - result.toVal| ≤
+      (2 * η + η ^ 2) * (|(b.toVal : R)| * |(a.toVal : R)| + |(c.toVal : R)|) := by
+  set a_v := (a.toVal : R); set b_v := (b.toVal : R); set c_v := (c.toVal : R)
+  set ab_v := (ab_fp.toVal : R); set z_v := (result.toVal : R)
+  have hη : (0 : R) ≤ η := by positivity
+  have hmul := KahanSum.fpMul_error_or_zero (R := R) a b ab_fp hmul_fp hmul_nr
+  have hadd := KahanSum.fpAdd_error_or_zero (R := R) ab_fp c result hadd_fp hadd_nr
+  -- |a*b - ab_fp| ≤ η|a*b|, |ab_fp + c - result| ≤ η|ab_fp + c|
+  have hmul' : |a_v * b_v - ab_v| ≤ η * |a_v * b_v| := by
+    rw [show a_v * b_v - ab_v = -(ab_v - a_v * b_v) from by ring, abs_neg]; exact hmul
+  have hadd' : |ab_v + c_v - z_v| ≤ η * |ab_v + c_v| := by
+    rw [show ab_v + c_v - z_v = -(z_v - (ab_v + c_v)) from by ring, abs_neg]; exact hadd
+  -- Triangle: |a*b + c - z| ≤ |a*b - ab| + |ab + c - z|
+  have htri : |a_v * b_v + c_v - z_v| ≤ |a_v * b_v - ab_v| + |ab_v + c_v - z_v| := by
+    rw [show a_v * b_v + c_v - z_v = (a_v * b_v - ab_v) + (ab_v + c_v - z_v) from by ring]
+    exact abs_add_le _ _
+  -- |ab + c| ≤ |a*b + c| + η|a*b|
+  have hintermed : |ab_v + c_v| ≤ |a_v * b_v + c_v| + η * |a_v * b_v| := by
+    rw [show ab_v + c_v = (a_v * b_v + c_v) + (ab_v - a_v * b_v) from by ring]
+    linarith [abs_add_le (a_v * b_v + c_v) (ab_v - a_v * b_v)]
+  set A := |b_v| * |a_v| + |c_v|
+  have hprod_le : |a_v * b_v| ≤ A := by
+    calc |a_v * b_v| = |b_v| * |a_v| := by rw [abs_mul, mul_comm]
+      _ ≤ A := le_add_of_nonneg_right (abs_nonneg _)
+  have hsum_le : |a_v * b_v + c_v| ≤ A := by
+    calc |a_v * b_v + c_v| ≤ |a_v * b_v| + |c_v| := abs_add_le _ _
+      _ = |b_v| * |a_v| + |c_v| := by rw [abs_mul, mul_comm]
+  calc |a_v * b_v + c_v - z_v|
+      ≤ η * |a_v * b_v| + η * |ab_v + c_v| := by linarith [htri, hmul', hadd']
+    _ ≤ η * |a_v * b_v| + η * (|a_v * b_v + c_v| + η * |a_v * b_v|) := by
+        linarith [mul_le_mul_of_nonneg_left hintermed hη]
+    _ = η * (1 + η) * |a_v * b_v| + η * |a_v * b_v + c_v| := by ring
+    _ ≤ η * (1 + η) * A + η * A := by
+        nlinarith [mul_le_mul_of_nonneg_left hprod_le (mul_nonneg hη (by linarith : (0:R) ≤ 1+η)),
+                   mul_le_mul_of_nonneg_left hsum_le hη]
+    _ = (2 * η + η ^ 2) * A := by ring
+
+/-- Value channel per-step error: `|x·v + c - v'| ≤ (2η+η²)(|v|·|x| + |c|)`. -/
 theorem jetHorner_step_value_error
     [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
     {v d x coeff : FiniteFp} (step : JetHornerStep v d x coeff)
     (hnr : JetHornerStepNormalRange (R := R) v d x coeff step) :
     |(x.toVal : R) * v.toVal + coeff.toVal - step.v'.toVal| ≤
-      (2 * η + η ^ 2) * (|(v.toVal : R)| * |(x.toVal : R)| + |(coeff.toVal : R)|) := by
-  set x_v := (x.toVal : R)
-  set v_v := (v.toVal : R)
-  set c_v := (coeff.toVal : R)
-  set xv_v := (step.xv.toVal : R)
-  set v'_v := (step.v'.toVal : R)
-  have hη : (0 : R) ≤ η := by positivity
-  -- Mul error: |xv - x*v| ≤ η|x*v|
-  have hmul := KahanSum.fpMul_error_or_zero (R := R) x v step.xv step.hxv hnr.mul_v_normal
-  -- Add error: |v' - (xv + c)| ≤ η|xv + c|
-  have hadd := KahanSum.fpAdd_error_or_zero (R := R) step.xv coeff step.v' step.hv' hnr.add_v_normal
-  -- Triangle
-  have htri : |x_v * v_v + c_v - v'_v| ≤ |x_v * v_v - xv_v| + |xv_v + c_v - v'_v| := by
-    have : x_v * v_v + c_v - v'_v = (x_v * v_v - xv_v) + (xv_v + c_v - v'_v) := by ring
-    rw [this]; exact abs_add_le _ _
-  have hmul' : |x_v * v_v - xv_v| ≤ η * |x_v * v_v| := by
-    rw [show x_v * v_v - xv_v = -(xv_v - x_v * v_v) from by ring, abs_neg]; exact hmul
-  have hadd' : |xv_v + c_v - v'_v| ≤ η * |xv_v + c_v| := by
-    rw [show xv_v + c_v - v'_v = -(v'_v - (xv_v + c_v)) from by ring, abs_neg]; exact hadd
-  -- |xv + c| ≤ |x*v + c| + η|x*v| (from mul error)
-  have hxvc : |xv_v + c_v| ≤ |x_v * v_v + c_v| + η * |x_v * v_v| := by
-    have : xv_v + c_v = (x_v * v_v + c_v) + (xv_v - x_v * v_v) := by ring
-    rw [this]
-    calc |x_v * v_v + c_v + (xv_v - x_v * v_v)|
-        ≤ |x_v * v_v + c_v| + |xv_v - x_v * v_v| := abs_add_le _ _
-      _ ≤ |x_v * v_v + c_v| + η * |x_v * v_v| := by linarith [hmul']
-  -- Set A = |v|·|x| + |c|
-  set A := |v_v| * |x_v| + |c_v|
-  -- |x*v + c| ≤ A and |x*v| ≤ A
-  have hxv_le_A : |x_v * v_v| ≤ A := by
-    calc |x_v * v_v| = |v_v| * |x_v| := by rw [abs_mul, mul_comm]
-      _ ≤ A := le_add_of_nonneg_right (abs_nonneg _)
-  have hxvc_le_A : |x_v * v_v + c_v| ≤ A := by
-    calc |x_v * v_v + c_v| ≤ |x_v * v_v| + |c_v| := abs_add_le _ _
-      _ = |v_v| * |x_v| + |c_v| := by rw [abs_mul, mul_comm]
-      _ ≤ A := le_refl _
-  -- Combine: error ≤ η|x*v| + η(|x*v+c| + η|x*v|) = η(1+η)|x*v| + η|x*v+c|
-  --                ≤ η(1+η)A + ηA = (2η + η²)A
-  calc |x_v * v_v + c_v - v'_v|
-      ≤ η * |x_v * v_v| + η * |xv_v + c_v| := by linarith [htri, hmul', hadd']
-    _ ≤ η * |x_v * v_v| + η * (|x_v * v_v + c_v| + η * |x_v * v_v|) := by
-        linarith [mul_le_mul_of_nonneg_left hxvc hη]
-    _ = η * (1 + η) * |x_v * v_v| + η * |x_v * v_v + c_v| := by ring
-    _ ≤ η * (1 + η) * A + η * A := by
-        have h1η : (0 : R) ≤ 1 + η := by linarith
-        nlinarith [mul_le_mul_of_nonneg_left hxv_le_A (mul_nonneg hη h1η),
-                   mul_le_mul_of_nonneg_left hxvc_le_A hη]
-    _ = (2 * η + η ^ 2) * A := by ring
+      (2 * η + η ^ 2) * (|(v.toVal : R)| * |(x.toVal : R)| + |(coeff.toVal : R)|) :=
+  mul_add_compound_error step.hxv step.hv' hnr.mul_v_normal hnr.add_v_normal
 
-/-- Derivative channel per-step error: bounded in terms of `|d|·|x| + |v|`. -/
+/-- Derivative channel per-step error: `|x·d + v - d'| ≤ (2η+η²)(|d|·|x| + |v|)`. -/
 theorem jetHorner_step_deriv_error
     [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
     {v d x coeff : FiniteFp} (step : JetHornerStep v d x coeff)
     (hnr : JetHornerStepNormalRange (R := R) v d x coeff step) :
     |(x.toVal : R) * d.toVal + v.toVal - step.d'.toVal| ≤
-      (2 * η + η ^ 2) * (|(d.toVal : R)| * |(x.toVal : R)| + |(v.toVal : R)|) := by
-  set x_v := (x.toVal : R)
-  set d_v := (d.toVal : R)
-  set v_v := (v.toVal : R)
-  set xd_v := (step.xd.toVal : R)
-  set d'_v := (step.d'.toVal : R)
-  have hη : (0 : R) ≤ η := by positivity
-  -- Mul error: |xd - x*d| ≤ η|x*d|
-  have hmul := KahanSum.fpMul_error_or_zero (R := R) x d step.xd step.hxd hnr.mul_d_normal
-  -- Add error: |d' - (xd + v)| ≤ η|xd + v|
-  have hadd := KahanSum.fpAdd_error_or_zero (R := R) step.xd v step.d' step.hd' hnr.add_d_normal
-  -- Triangle
-  have htri : |x_v * d_v + v_v - d'_v| ≤ |x_v * d_v - xd_v| + |xd_v + v_v - d'_v| := by
-    have : x_v * d_v + v_v - d'_v = (x_v * d_v - xd_v) + (xd_v + v_v - d'_v) := by ring
-    rw [this]; exact abs_add_le _ _
-  have hmul' : |x_v * d_v - xd_v| ≤ η * |x_v * d_v| := by
-    rw [show x_v * d_v - xd_v = -(xd_v - x_v * d_v) from by ring, abs_neg]; exact hmul
-  have hadd' : |xd_v + v_v - d'_v| ≤ η * |xd_v + v_v| := by
-    rw [show xd_v + v_v - d'_v = -(d'_v - (xd_v + v_v)) from by ring, abs_neg]; exact hadd
-  -- |xd + v| ≤ |x*d + v| + η|x*d|
-  have hxdv : |xd_v + v_v| ≤ |x_v * d_v + v_v| + η * |x_v * d_v| := by
-    have : xd_v + v_v = (x_v * d_v + v_v) + (xd_v - x_v * d_v) := by ring
-    rw [this]
-    calc |x_v * d_v + v_v + (xd_v - x_v * d_v)|
-        ≤ |x_v * d_v + v_v| + |xd_v - x_v * d_v| := abs_add_le _ _
-      _ ≤ |x_v * d_v + v_v| + η * |x_v * d_v| := by linarith [hmul']
-  -- Set B = |d|·|x| + |v|
-  set B := |d_v| * |x_v| + |v_v|
-  have hxd_le_B : |x_v * d_v| ≤ B := by
-    calc |x_v * d_v| = |d_v| * |x_v| := by rw [abs_mul, mul_comm]
-      _ ≤ B := le_add_of_nonneg_right (abs_nonneg _)
-  have hxdv_le_B : |x_v * d_v + v_v| ≤ B := by
-    calc |x_v * d_v + v_v| ≤ |x_v * d_v| + |v_v| := abs_add_le _ _
-      _ = |d_v| * |x_v| + |v_v| := by rw [abs_mul, mul_comm]
-      _ ≤ B := le_refl _
-  calc |x_v * d_v + v_v - d'_v|
-      ≤ η * |x_v * d_v| + η * |xd_v + v_v| := by linarith [htri, hmul', hadd']
-    _ ≤ η * |x_v * d_v| + η * (|x_v * d_v + v_v| + η * |x_v * d_v|) := by
-        linarith [mul_le_mul_of_nonneg_left hxdv hη]
-    _ = η * (1 + η) * |x_v * d_v| + η * |x_v * d_v + v_v| := by ring
-    _ ≤ η * (1 + η) * B + η * B := by
-        have h1η : (0 : R) ≤ 1 + η := by linarith
-        nlinarith [mul_le_mul_of_nonneg_left hxd_le_B (mul_nonneg hη h1η),
-                   mul_le_mul_of_nonneg_left hxdv_le_B hη]
-    _ = (2 * η + η ^ 2) * B := by ring
+      (2 * η + η ^ 2) * (|(d.toVal : R)| * |(x.toVal : R)| + |(v.toVal : R)|) :=
+  mul_add_compound_error step.hxd step.hd' hnr.mul_d_normal hnr.add_d_normal
 
 /-! ## Exact Newton Quadratic Convergence
 
@@ -290,7 +255,6 @@ not derived from `hornerPoly`, making the theorem reusable for any function. -/
     then `|x - p(x)/p'(x) - r| ≤ (L + M)·|x-r|² / |p'(x)|`. -/
 theorem exact_newton_quadratic
     {p p' : R → R} {r x : R}
-    (hroot : p r = 0)
     (hp'x_ne : p' x ≠ 0)
     {M : R} (hM : 0 ≤ M)
     (hTaylor : |p x - p' r * (x - r)| ≤ M * |x - r| ^ 2)
