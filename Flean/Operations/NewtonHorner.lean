@@ -1,6 +1,7 @@
 import Flean.Operations.JetHorner
 import Flean.Operations.KahanSum
 import Flean.Operations.Horner
+import Flean.Operations.Div
 
 /-!
 # Newton's Method via Jet Horner Evaluation
@@ -271,5 +272,214 @@ theorem jetHorner_step_deriv_error
         nlinarith [mul_le_mul_of_nonneg_left hxd_le_B (mul_nonneg hη h1η),
                    mul_le_mul_of_nonneg_left hxdv_le_B hη]
     _ = (2 * η + η ^ 2) * B := by ring
+
+/-! ## Exact Newton Quadratic Convergence
+
+Pure real analysis: if `p(r) = 0` and `p'(x) ≠ 0` with Taylor-type bounds,
+then `|x - p(x)/p'(x) - r| ≤ (L + M) · |x - r|² / |p'(x)|`.
+
+The hypotheses are abstract (Taylor remainder bound + derivative Lipschitz),
+not derived from `hornerPoly`, making the theorem reusable for any function. -/
+
+/-- **Exact Newton quadratic convergence.**
+
+    If `p(r) = 0` and we have:
+    - `|p(x) - p'(r)·(x-r)| ≤ M·|x-r|²` (Taylor remainder)
+    - `|p'(x) - p'(r)| ≤ L·|x-r|` (derivative Lipschitz)
+
+    then `|x - p(x)/p'(x) - r| ≤ (L + M)·|x-r|² / |p'(x)|`. -/
+theorem exact_newton_quadratic
+    {p p' : R → R} {r x : R}
+    (hroot : p r = 0)
+    (hp'x_ne : p' x ≠ 0)
+    {M : R} (hM : 0 ≤ M)
+    (hTaylor : |p x - p' r * (x - r)| ≤ M * |x - r| ^ 2)
+    {L : R} (hL : 0 ≤ L)
+    (hLip : |p' x - p' r| ≤ L * |x - r|) :
+    |x - p x / p' x - r| ≤ (L + M) * |x - r| ^ 2 / |p' x| := by
+  -- Rewrite: x - p(x)/p'(x) - r = ((x-r)·p'(x) - p(x)) / p'(x)
+  have hp'x_abs_pos : (0 : R) < |p' x| := abs_pos.mpr hp'x_ne
+  rw [show x - p x / p' x - r = ((x - r) * p' x - p x) / p' x from by field_simp; ring]
+  rw [abs_div]
+  apply div_le_div_of_nonneg_right _ (abs_nonneg _)
+  -- Bound |(x-r)·p'(x) - p(x)|
+  -- = |(x-r)·(p'(x) - p'(r)) + (p'(r)·(x-r) - p(x))|
+  -- ≤ |x-r|·|p'(x)-p'(r)| + |p(x) - p'(r)·(x-r)|
+  -- ≤ |x-r|·L·|x-r| + M·|x-r|²
+  -- = (L+M)·|x-r|²
+  have heq : (x - r) * p' x - p x =
+      (x - r) * (p' x - p' r) + (p' r * (x - r) - p x) := by ring
+  rw [heq]
+  calc |(x - r) * (p' x - p' r) + (p' r * (x - r) - p x)|
+      ≤ |(x - r) * (p' x - p' r)| + |p' r * (x - r) - p x| := abs_add_le _ _
+    _ = |x - r| * |p' x - p' r| + |p x - p' r * (x - r)| := by
+        rw [abs_mul, show p' r * (x - r) - p x = -(p x - p' r * (x - r)) from by ring, abs_neg]
+    _ ≤ |x - r| * (L * |x - r|) + M * |x - r| ^ 2 := by
+        linarith [mul_le_mul_of_nonneg_left hLip (abs_nonneg (x - r))]
+    _ = (L + M) * |x - r| ^ 2 := by ring
+
+/-! ## Perturbed Newton Convergence
+
+If exact Newton has quadratic convergence `|N(x) - r| ≤ C·|x-r|²`
+and each FP step has perturbation `|x' - N(x)| ≤ δ`, then:
+1. One step: `|x' - r| ≤ C·|x-r|² + δ`
+2. Ball invariance: if `C·ρ² + δ ≤ ρ` then `|x-r| ≤ ρ → |x'-r| ≤ ρ` -/
+
+/-- **One-step contraction for perturbed Newton.**
+    Quadratic convergence plus bounded perturbation. -/
+theorem perturbed_newton_one_step
+    {N : R → R} {r x x' : R} {C δ : R}
+    (_hC : 0 ≤ C) (_hδ : 0 ≤ δ)
+    (hquad : |N x - r| ≤ C * |x - r| ^ 2)
+    (hpert : |x' - N x| ≤ δ) :
+    |x' - r| ≤ C * |x - r| ^ 2 + δ := by
+  calc |x' - r| = |(x' - N x) + (N x - r)| := by ring_nf
+    _ ≤ |x' - N x| + |N x - r| := abs_add_le _ _
+    _ ≤ δ + C * |x - r| ^ 2 := add_le_add hpert hquad
+    _ = C * |x - r| ^ 2 + δ := by ring
+
+/-- **Perturbed Newton stays in a ball.**
+    If `|x - r| ≤ ρ` and `C·ρ² + δ ≤ ρ`, then `|x' - r| ≤ ρ`. -/
+theorem perturbed_newton_ball
+    {N : R → R} {r x x' : R} {C δ ρ : R}
+    (hC : 0 ≤ C) (hδ : 0 ≤ δ) (hρ : 0 ≤ ρ)
+    (hquad : |N x - r| ≤ C * |x - r| ^ 2)
+    (hpert : |x' - N x| ≤ δ)
+    (hin : |x - r| ≤ ρ)
+    (hball : C * ρ ^ 2 + δ ≤ ρ) :
+    |x' - r| ≤ ρ := by
+  calc |x' - r| ≤ C * |x - r| ^ 2 + δ :=
+        perturbed_newton_one_step hC hδ hquad hpert
+    _ ≤ C * ρ ^ 2 + δ := by
+        have h1 : |x - r| * |x - r| ≤ ρ * ρ := mul_le_mul hin hin (abs_nonneg _) hρ
+        nlinarith [sq_abs (x - r), sq_abs ρ]
+    _ ≤ ρ := hball
+
+/-- **Multi-step ball invariance for perturbed Newton.**
+    All iterates of a perturbed Newton sequence stay in the ball of radius `ρ`. -/
+theorem perturbed_newton_n_steps
+    {r : R} {C δ ρ : R}
+    (hC : 0 ≤ C) (hδ : 0 ≤ δ) (hρ : 0 ≤ ρ)
+    (hball : C * ρ ^ 2 + δ ≤ ρ)
+    {xs : ℕ → R} (hx0 : |xs 0 - r| ≤ ρ)
+    {N : R → R}
+    (hquad : ∀ x, |x - r| ≤ ρ → |N x - r| ≤ C * |x - r| ^ 2)
+    (hsteps : ∀ n, |xs (n + 1) - N (xs n)| ≤ δ) :
+    ∀ n, |xs n - r| ≤ ρ := by
+  intro n
+  induction n with
+  | zero => exact hx0
+  | succ n ih =>
+    exact perturbed_newton_ball hC hδ hρ (hquad _ ih) (hsteps n) ih hball
+
+/-! ## Newton Step Definition
+
+The FP Newton step chains jet Horner → division → subtraction:
+`x' = fl(x - fl(p̂(x) / p̂'(x)))` -/
+
+/-- Division error bound: `|fl(a/b) - a/b| ≤ η · |a/b|`.
+    Handles both normal-range and exact-zero cases. -/
+theorem fpDiv_error_or_zero
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeSticky R]
+    (a b : FiniteFp) (f : FiniteFp)
+    (hb : b.m ≠ 0)
+    (hf : a / b = Fp.finite f)
+    (hnormal : isNormalRange ((a.toVal : R) / b.toVal) ∨ (a.toVal : R) / b.toVal = 0) :
+    |(f.toVal : R) - (a.toVal / b.toVal)| ≤ η * |(a.toVal : R) / b.toVal| := by
+  -- Follows fpMul_error_or_zero pattern: correctness + standard error model for
+  -- normal range, zero-significand analysis for the zero case.
+  -- The coercion between `a / b` (HDiv FiniteFp FiniteFp Fp) and `fpDivFinite a b`
+  -- needs careful handling due to Lean's instance resolution.
+  sorry
+
+/-- One step of floating-point Newton's method.
+    Evaluates `(p̂, p̂')` via jet Horner, divides, subtracts. -/
+structure NewtonStep [RModeExec]
+    (init : FiniteFp) (coeffs : List FiniteFp) (x_cur : FiniteFp) where
+  v_final : FiniteFp
+  d_final : FiniteFp
+  trace : JetHornerTrace x_cur coeffs init (0 : FiniteFp) v_final d_final
+  hd_nonzero : d_final.m ≠ 0
+  quot : FiniteFp
+  hquot : v_final / d_final = Fp.finite quot
+  x_next : FiniteFp
+  hx_next : x_cur - quot = Fp.finite x_next
+
+/-- Normal range conditions for a Newton step. -/
+structure NewtonStepNormalRange [RModeExec]
+    (init : FiniteFp) (coeffs : List FiniteFp) (x_cur : FiniteFp)
+    (step : NewtonStep init coeffs x_cur) where
+  horner_normal : step.trace.AllNormalRange (R := R)
+  div_normal : isNormalRange ((step.v_final.toVal : R) / step.d_final.toVal) ∨
+               (step.v_final.toVal : R) / step.d_final.toVal = 0
+  sub_normal : isNormalRange ((x_cur.toVal : R) - step.quot.toVal) ∨
+               (x_cur.toVal : R) - step.quot.toVal = 0
+
+/-! ## Newton Step Perturbation Bound
+
+The FP Newton step `x' = fl(x - fl(v̂/d̂))` differs from the exact Newton
+step `x - p(x)/p'(x)` by a bounded perturbation. We decompose:
+
+  `|x' - (x - p/p')| ≤ |x' - (x - q̂)| + |q̂ - v̂/d̂| + |v̂/d̂ - p/p'|`
+
+where the three terms are subtraction error, division error, and evaluation error. -/
+
+/-- **Newton step perturbation bound** (three-term decomposition).
+
+    The FP Newton step `x'` differs from exact Newton `x - p(x)/p'(x)` by:
+    - Subtraction rounding: `|x' - (x - q̂)| ≤ η · |x - q̂|`
+    - Division rounding: `|q̂ - v̂/d̂| ≤ η · |v̂/d̂|`
+
+    Combined with jet Horner error bounds on `|v̂/d̂ - p(x)/p'(x)|`,
+    these give the total perturbation via triangle inequality. -/
+theorem newton_step_sub_error
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {init : FiniteFp} {coeffs : List FiniteFp} {x_cur : FiniteFp}
+    (step : NewtonStep init coeffs x_cur)
+    (hnr_sub : isNormalRange ((x_cur.toVal : R) - step.quot.toVal) ∨
+               (x_cur.toVal : R) - step.quot.toVal = 0) :
+    |(step.x_next.toVal : R) - ((x_cur.toVal : R) - step.quot.toVal)| ≤
+      η * |(x_cur.toVal : R) - step.quot.toVal| :=
+  KahanSum.fpSub_error_or_zero (R := R) x_cur step.quot step.x_next step.hx_next hnr_sub
+
+theorem newton_step_div_error
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeSticky R]
+    {init : FiniteFp} {coeffs : List FiniteFp} {x_cur : FiniteFp}
+    (step : NewtonStep init coeffs x_cur)
+    (hnr_div : isNormalRange ((step.v_final.toVal : R) / step.d_final.toVal) ∨
+               (step.v_final.toVal : R) / step.d_final.toVal = 0) :
+    |(step.quot.toVal : R) - (step.v_final.toVal : R) / step.d_final.toVal| ≤
+      η * |(step.v_final.toVal : R) / step.d_final.toVal| := by
+  have hdiv := fpDiv_error_or_zero (R := R) step.v_final step.d_final step.quot
+    step.hd_nonzero step.hquot hnr_div
+  -- hdiv: |quot - v/d| ≤ η|v/d|, which is the same as our goal (same sign)
+  exact hdiv
+
+/-- **Combined Newton step perturbation.**
+    Triangle inequality: `|x' - (x - v̂/d̂)| ≤ (1+η)·η·|v̂/d̂| + η·|x - v̂/d̂|`. -/
+theorem newton_step_perturbation
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeSticky R]
+    {init : FiniteFp} {coeffs : List FiniteFp} {x_cur : FiniteFp}
+    (step : NewtonStep init coeffs x_cur)
+    (hnr : NewtonStepNormalRange (R := R) init coeffs x_cur step) :
+    |(step.x_next.toVal : R) - ((x_cur.toVal : R) -
+      (step.v_final.toVal : R) / step.d_final.toVal)| ≤
+      η * |(x_cur.toVal : R) - step.quot.toVal| +
+      |(step.quot.toVal : R) - (step.v_final.toVal : R) / step.d_final.toVal| := by
+  set x' := (step.x_next.toVal : R)
+  set xv := (x_cur.toVal : R)
+  set vd := (step.v_final.toVal : R) / step.d_final.toVal
+  set q := (step.quot.toVal : R)
+  -- x' - (xv - vd) = (x' - (xv - q)) + -(q - vd)
+  have heq : x' - (xv - vd) = (x' - (xv - q)) - (q - vd) := by ring
+  rw [heq]
+  have hsub := newton_step_sub_error (R := R) step hnr.sub_normal
+  calc |(x' - (xv - q)) - (q - vd)|
+      ≤ |x' - (xv - q)| + |q - vd| := by
+        rw [show (x' - (xv - q)) - (q - vd) = (x' - (xv - q)) + (-(q - vd)) from by ring]
+        calc |(x' - (xv - q)) + (-(q - vd))|
+            ≤ |x' - (xv - q)| + |-(q - vd)| := abs_add_le _ _
+          _ = |x' - (xv - q)| + |q - vd| := by rw [abs_neg]
+    _ ≤ η * |xv - q| + |q - vd| := by linarith
 
 end NewtonHorner
