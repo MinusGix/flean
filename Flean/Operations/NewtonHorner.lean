@@ -470,4 +470,37 @@ theorem newton_step_perturbation
           _ = |x' - (xv - q)| + |q - vd| := by rw [abs_neg]
     _ ≤ η * |xv - q| + |q - vd| := by linarith
 
+/-! ## Future Work
+
+### A. Jet Horner Total Error Bound
+Prove the accumulated error `|v̂ - p(x)|` and `|d̂ - p'(x)|` for the full trace.
+By induction on the trace (following `horner_error_bound`), with 4 rounding errors
+per step (vs 2 for standard Horner), the bound is:
+```
+|v̂ - p(x)| ≤ ((1+η)^{4n} - 1) · p̃(|x|)
+|d̂ - p'(x)| ≤ ((1+η)^{4n} - 1) · p̃'_bound(|x|)
+```
+where `p̃` is the absolute polynomial. The 2D coupled recurrence means value
+errors propagate into derivative errors via the cross-coupling in `jetHornerL`.
+
+### B. Quotient Perturbation Lemma
+Bound `|v̂/d̂ - p(x)/p'(x)|` in terms of `|v̂ - p(x)|` and `|d̂ - p'(x)|`.
+Standard algebraic identity: `a/b - c/d = (a·d - b·c)/(b·d)`, giving
+```
+|v̂/d̂ - p/p'| ≤ (|v̂ - p|·|p'| + |p|·|d̂ - p'|) / (|d̂|·|p'|)
+```
+This bridges the jet Horner error (A) to the Newton perturbation.
+
+### C. Connection to `hornerPoly`
+Prove `(jetHornerExact cs init 0 x).1 = hornerPoly cs init x` linking
+the jet Horner value component to the standard `hornerPoly`. Small lemma
+by induction using `jetHorner_value_indep_of_deriv`.
+
+### D. Full Newton-Horner Composition
+Instantiate `exact_newton_quadratic` + `perturbed_newton_ball` with concrete
+polynomial data from A + B + C. The capstone: "N FP Newton steps on a
+degree-n polynomial converge to an O(η)-ball around a simple root,
+given suitable initial approximation."
+-/
+
 end NewtonHorner
