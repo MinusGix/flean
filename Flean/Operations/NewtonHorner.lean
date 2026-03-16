@@ -386,11 +386,35 @@ theorem fpDiv_error_or_zero
     (hf : a / b = Fp.finite f)
     (hnormal : isNormalRange ((a.toVal : R) / b.toVal) ∨ (a.toVal : R) / b.toVal = 0) :
     |(f.toVal : R) - (a.toVal / b.toVal)| ≤ η * |(a.toVal : R) / b.toVal| := by
-  -- Follows fpMul_error_or_zero pattern: correctness + standard error model for
-  -- normal range, zero-significand analysis for the zero case.
-  -- The coercion between `a / b` (HDiv FiniteFp FiniteFp Fp) and `fpDivFinite a b`
-  -- needs careful handling due to Lean's instance resolution.
-  sorry
+  rcases hnormal with h | h
+  · have hne : (a.toVal : R) / b.toVal ≠ 0 := ne_of_gt (isNormalRange_pos _ h)
+    have hcorr := fpDivFinite_correct (R := R) a b hb hne
+    rw [hcorr] at hf
+    exact KahanSum.standard_error_additive _ h f hf
+  · rw [h]; simp
+    have hb_ne : (b.toVal : R) ≠ 0 :=
+      FiniteFp.toVal_ne_zero_of_m_pos b (Nat.pos_of_ne_zero hb)
+    have ha_zero : (a.toVal : R) = 0 := by
+      rcases div_eq_zero_iff.mp h with h' | h'
+      · exact h'
+      · exact absurd h' hb_ne
+    have ham : a.m = 0 := (FiniteFp.toVal_significand_zero_iff (R := R)).mpr ha_zero
+    have hscaled : a.m * 2 ^ divShift = 0 := by simp [ham]
+    -- hf : Fp.finite a / Fp.finite b = Fp.finite f (uses HDiv Fp Fp Fp)
+    -- Reduce to fpDivFinite since b.m ≠ 0
+    have hf' : fpDivFinite a b = Fp.finite f := by
+      simp only [div_eq_fpDiv, fpDiv, hb, ↓reduceDIte, div_finite_eq_fpDivFinite] at hf
+      exact hf
+    simp only [fpDivFinite, hscaled, Nat.zero_div, Nat.zero_mod,
+               ↓reduceDIte, roundIntSigM] at hf'
+    -- hf' identifies f with ±0 → f.m = 0 → f.toVal = 0
+    -- Extract: Fp.finite f = Fp.finite (±0) → f = ±0 → f.m = 0
+    have hfm : f.m = 0 := by
+      rcases Bool.eq_false_or_eq_true (a.s ^^ b.s) with hs | hs <;>
+        simp only [hs, ↓reduceIte] at hf' <;>
+        cases (Fp.finite.inj hf') <;> rfl
+    have hfv : (f.toVal : R) = 0 := FiniteFp.toVal_significand_zero_iff.mp hfm
+    simp [hfv]
 
 /-- One step of floating-point Newton's method.
     Evaluates `(p̂, p̂')` via jet Horner, divides, subtracts. -/
