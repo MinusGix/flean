@@ -597,6 +597,91 @@ theorem jetHorner_value_error_bound
     rw [hcomm]
     convert htotal using 2
 
+/-! ## A'. Jet Horner Derivative Error Bound (Gauge Form)
+
+The derivative error is bounded via the L1 gauge `ν(v,d) = |v| + |d|` on
+the 2D error state. The linear map `jetHornerL x` contracts under this gauge
+with rate `κ = |x| + 1`, so `affineFold_gauge_per_index` gives a per-step
+weighted bound. This captures both direct derivative errors and cross-coupling
+from value rounding in a single framework.
+
+The bound: `|d̂ - exact.2| ≤ Σ_k (|x|+1)^{n-1-k} · (|e_v^k| + |e_d^k|)`
+where each per-step error pair is bounded by `jetHorner_step_{value,deriv}_error`. -/
+
+-- Gauge definition and contraction for jetHornerL
+
+/-- L1 gauge on `R × R`: `ν(v, d) = |v| + |d|`. -/
+def jetHornerL1Gauge : Gauge (R × R) R where
+  val := fun (v, d) => |v| + |d|
+  nonneg := fun (v, d) => by positivity
+  zero := by simp
+  triangle := fun (v₁, d₁) (v₂, d₂) => by
+    simp only [Prod.add_def]
+    calc |v₁ + v₂| + |d₁ + d₂|
+        ≤ (|v₁| + |v₂|) + (|d₁| + |d₂|) := by linarith [abs_add_le v₁ v₂, abs_add_le d₁ d₂]
+      _ = (|v₁| + |d₁|) + (|v₂| + |d₂|) := by ring
+
+/-- `jetHornerL x` contracts under the L1 gauge with rate `|x| + 1`. -/
+theorem jetHornerL1Gauge_contraction (x_v : R) (p : R × R) :
+    (jetHornerL1Gauge (R := R)).val (jetHornerL x_v p) ≤
+      (|x_v| + 1) * (jetHornerL1Gauge (R := R)).val p := by
+  obtain ⟨v, d⟩ := p
+  simp only [jetHornerL1Gauge, jetHornerL]
+  calc |x_v * v| + |x_v * d + v|
+      ≤ |x_v| * |v| + (|x_v| * |d| + |v|) := by
+        linarith [abs_mul x_v v, abs_add_le (x_v * d) v, abs_mul x_v d]
+    _ = (|x_v| + 1) * |v| + |x_v| * |d| := by ring
+    _ ≤ (|x_v| + 1) * |v| + (|x_v| + 1) * |d| := by linarith [abs_nonneg d]
+    _ = (|x_v| + 1) * (|v| + |d|) := by ring
+
+set_option maxHeartbeats 1600000 in
+/-- **Jet Horner derivative error bound** (gauge per-index form).
+
+    The derivative error of the FP jet Horner trace is bounded by a weighted
+    sum of per-step 2D errors under the L1 gauge `ν(v,d) = |v| + |d|`
+    with contraction `κ = |x| + 1`:
+
+    `|d̂ - exact.2| ≤ Σ_k (|x|+1)^{n-1-k} · (|e_v^k| + |e_d^k|)`
+
+    Each `|e_v^k| + |e_d^k|` is bounded by `(2η+η²)·((|x|+1)·|v̂_k| + |c_k| + |x|·|d̂_k|)`
+    via `jetHorner_step_{value,deriv}_error`. Combined with the value bound
+    `jetHorner_value_error_bound`, this gives the complete 2D error analysis. -/
+theorem jetHorner_deriv_error_bound
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {x init d_init : FiniteFp} {coeffs : List FiniteFp} {v_final d_final : FiniteFp}
+    (trace : JetHornerTrace x coeffs init d_init v_final d_final)
+    (hnr : trace.AllNormalRange (R := R)) :
+    |(d_final.toVal : R) -
+      (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+        (init.toVal) (d_init.toVal) (x.toVal)).2| ≤
+      weightedGaugeSum (jetHornerL1Gauge (R := R)) (|x.toVal (R := R)| + 1)
+        (jetStepErrors (R := R) trace) := by
+  -- Use the exact decomposition: (v_f, d_f) + affineFold(L, errors, 0) = exact
+  -- So d_f - exact.2 = -(affineFold L errors 0).2
+  -- Then |(v,d).2| ≤ ν(v,d) for the L1 gauge, and affineFold_gauge_per_index closes.
+  have hdecomp := jetHorner_fp_exact_decomposition (R := R) trace
+  have hd_eq : (d_final.toVal : R) -
+      (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+        (init.toVal) (d_init.toVal) (x.toVal)).2 =
+      -(affineFold (jetHornerL (x.toVal : R))
+        (jetStepErrors (R := R) trace) ((0 : R), (0 : R))).2 := by
+    have h2 := congr_arg Prod.snd hdecomp
+    simp only [Prod.add_def] at h2; linarith
+  rw [hd_eq, abs_neg]
+  set errors := jetStepErrors (R := R) trace
+  set fold := affineFold (jetHornerL (x.toVal : R)) errors ((0 : R), (0 : R))
+  have hsnd_le : |fold.2| ≤ (jetHornerL1Gauge (R := R)).val fold := by
+    obtain ⟨v, d⟩ := fold; simp only [jetHornerL1Gauge]; linarith [abs_nonneg v]
+  have hgauge := affineFold_gauge_per_index (jetHornerL (x.toVal : R))
+    (jetHornerL_additive (x.toVal : R))
+    (jetHornerL1Gauge (R := R)) (|x.toVal (R := R)| + 1)
+    (by linarith [abs_nonneg (x.toVal : R)])
+    (jetHornerL1Gauge_contraction (R := R) (x.toVal : R))
+    errors
+  calc |fold.2|
+      ≤ (jetHornerL1Gauge (R := R)).val fold := hsnd_le
+    _ ≤ weightedGaugeSum (jetHornerL1Gauge (R := R)) (|x.toVal (R := R)| + 1) errors := hgauge
+
 /-! ## B. Quotient Perturbation
 
 Pure algebra: `|a/b - c/d| ≤ (|a-c|·|d| + |c|·|b-d|) / (|b|·|d|)` for b,d ≠ 0. -/

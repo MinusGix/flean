@@ -155,6 +155,96 @@ theorem polyDeriv_cons (c : R) (cs : List R) (init x : R) :
   simp only [jetHornerExact, mul_zero, zero_add]
   exact jetHorner_deriv_shift cs (x * init + c) init x
 
+/-! ## Propagation Formulas for `affineProp (jetHornerL x)`
+
+The matrix power `[[x,0],[1,x]]^n` applied to `(ev, ed)` gives:
+- First component: `x^n * ev`
+- Second component: `x^n * ed + n * x^{n-1} * ev`
+
+The cross-coupling term `n * x^{n-1} * ev` is the derivative of the value
+propagation `x^n * ev`, reflecting the Leibniz rule structure.
+These formulas are essential for the jet Horner derivative error bound. -/
+
+variable [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+
+/-- **Full propagation formula for `affineProp (jetHornerL x)`.**
+
+    `(affineProp L n (ev, ed)).2 = x^n * ed + ↑n * x^{n-1} * ev`
+
+    This is the `(2,·)` entry of the matrix power `[[x,0],[1,x]]^n`
+    applied to the vector `(ev, ed)`. -/
+theorem affineProp_jetHornerL_snd (n : ℕ) (x ev ed : R) :
+    (affineProp (jetHornerL x) n (ev, ed)).2 =
+      x ^ n * ed + ↑n * x ^ (n - 1) * ev := by
+  induction n generalizing ev ed with
+  | zero => simp [affineProp]
+  | succ n ih =>
+    -- affineProp L (n+1) (ev, ed) = affineProp L n (L(ev, ed))
+    --   = affineProp L n (x*ev, x*ed + ev)
+    show (affineProp (jetHornerL x) n (jetHornerL x (ev, ed))).2 = _
+    simp only [jetHornerL]
+    rw [ih (x * ev) (x * ed + ev)]
+    cases n with
+    | zero => simp
+    | succ n => push_cast; ring
+
+/-- Absolute bound on the second component of propagation. -/
+theorem affineProp_jetHornerL_snd_abs_le (n : ℕ) (x ev ed : R) :
+    |(affineProp (jetHornerL x) n (ev, ed)).2| ≤
+      |x| ^ n * |ed| + ↑n * |x| ^ (n - 1) * |ev| := by
+  rw [affineProp_jetHornerL_snd]
+  calc |x ^ n * ed + ↑n * x ^ (n - 1) * ev|
+      ≤ |x ^ n * ed| + |↑n * x ^ (n - 1) * ev| := abs_add_le _ _
+    _ = |x| ^ n * |ed| + ↑n * |x| ^ (n - 1) * |ev| := by
+        rw [abs_mul, abs_mul, abs_mul, abs_pow, abs_pow,
+            abs_of_nonneg (Nat.cast_nonneg (α := R) n)]
+
+/-- **`polyDeriv` is affine in its initial value.**
+
+    Shifting the initial accumulator by `e` shifts the derivative by
+    `n * x^{n-1} * e` — the derivative of the value shift `e * x^n`. -/
+theorem polyDeriv_affine (cs : List R) (init e x : R) :
+    polyDeriv cs (init + e) x =
+      polyDeriv cs init x + ↑cs.length * x ^ (cs.length - 1) * e := by
+  unfold polyDeriv
+  have h := jetHornerExact_affine cs init 0 e 0 x
+  simp only [add_zero] at h
+  have h2 := congr_arg Prod.snd h
+  simp only at h2
+  rw [h2, affineProp_jetHornerL_snd]
+  ring
+
+omit [FloorRing R] in
+/-- `polyDeriv` is nonneg when computed on nonneg inputs. -/
+theorem polyDeriv_nonneg (cs : List R) (init x : R)
+    (hinit : 0 ≤ init) (hx : 0 ≤ x) (hcs : ∀ c ∈ cs, 0 ≤ c) :
+    0 ≤ polyDeriv cs init x := by
+  induction cs generalizing init with
+  | nil => simp [polyDeriv_nil]
+  | cons c cs ih =>
+    rw [polyDeriv_cons]
+    have hc : 0 ≤ c := hcs c List.mem_cons_self
+    have hrest : ∀ c' ∈ cs, 0 ≤ c' := fun c' hc' => hcs c' (List.mem_cons_of_mem _ hc')
+    have hinit' : 0 ≤ x * init + c := by positivity
+    linarith [ih (x * init + c) hinit' hrest, mul_nonneg hinit (pow_nonneg hx cs.length)]
+
+/-- `polyDeriv` is monotone in the initial value (for nonneg coefficients and x). -/
+theorem polyDeriv_mono (cs : List R) (a b x : R)
+    (hab : a ≤ b) (hx : 0 ≤ x) :
+    polyDeriv cs a x ≤ polyDeriv cs b x := by
+  have hb_eq : b = a + (b - a) := by ring
+  rw [hb_eq, polyDeriv_affine]
+  linarith [mul_nonneg (mul_nonneg (Nat.cast_nonneg' (n := cs.length))
+    (pow_nonneg hx (cs.length - 1))) (by linarith : (0 : R) ≤ b - a)]
+
+/-- For nonempty coefficient list, `polyDeriv` is at least `init * x^{cs.length}`.
+    This is the chain-rule term from the first unfolding of `polyDeriv_cons`. -/
+theorem polyDeriv_ge_init_mul_xpow (c : R) (cs : List R) (init x : R)
+    (hinit : 0 ≤ init) (hx : 0 ≤ x) (hc : 0 ≤ c) (hcs : ∀ c' ∈ cs, 0 ≤ c') :
+    init * x ^ cs.length ≤ polyDeriv (c :: cs) init x := by
+  rw [polyDeriv_cons]
+  linarith [polyDeriv_nonneg cs (x * init + c) x (by positivity) hx hcs]
+
 /-! ## Future Work
 
 - **Connection to Mathlib calculus**: For `R = ℝ`, prove
