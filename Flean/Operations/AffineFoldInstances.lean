@@ -290,16 +290,306 @@ theorem horner_bound_from_decomposition
       simp only [List.getElem_map]
       exact hstep_bounds i (by rw [← hlen]; simp at hi ⊢; exact hi))
 
-/-! ### Note: Full `((1+η)^{2n}-1)·p̃(|x|)` instantiation
+/-- `acc · x^n ≤ hornerPoly(cs, acc, x)` when all inputs are nonneg. -/
+theorem hornerPoly_ge_acc_xpow (cs : List R) (acc xv : R)
+    (hacc : 0 ≤ acc) (hx : 0 ≤ xv) (hcs : ∀ c ∈ cs, 0 ≤ c) :
+    acc * xv ^ cs.length ≤ hornerPoly cs acc xv := by
+  have h := hornerPoly_affine cs 0 acc xv
+  simp only [zero_add] at h; rw [h]
+  linarith [hornerPoly_nonneg cs 0 xv le_rfl hx hcs]
 
-To recover the classical bound from `horner_bound_from_decomposition`:
-1. Prove a "magnitude bound" by trace induction: `|accₖ| ≤ (1+η)^{2k}·p̃_k(|x|)`
-2. Derive per-step bounds: `|eₖ| ≤ ((1+η)²-1)·(1+η)^{2k}·p̃_{k+1}(|x|)`
-3. Feed into `horner_bound_from_decomposition` + `hornerPoly_mono_coeffs`
+/-! ### Generic Weighted Error Sum Bound
 
-The framework handles propagation generically; the magnitude tracking is the only
-trace-specific induction. This separates the two concerns that the original
-`horner_error_bound` proof mixes into one monolithic induction. -/
+The core algebraic lemma for accumulator algorithms with relative per-step
+errors. Given:
+- Per-step error: `|e_k| ≤ α · (κ · mag_k + offset_k)`
+- Magnitude recurrence: `mag_{k+1} ≤ (1+α) · (κ · mag_k + offset_k)`
+
+Then: `weightedErrorSum κ errors ≤ ((1+α)^n - 1) · hornerPoly(offsets, mag₀, κ)`
+
+This captures Horner (κ=|x|, α=(1+η)²-1), HornerFMA (κ=|x|, α=η),
+DotProduct (κ=1, α=(1+η)²-1), DotProductFMA (κ=1, α=η). -/
+
+set_option maxHeartbeats 800000 in
+/-- **Generic weighted error sum bound for accumulator algorithms.**
+
+    Given errors, offsets, and per-step magnitudes satisfying a relative error
+    model and magnitude recurrence, the weighted error sum is bounded by
+    `((1+α)^n - 1) · hornerPoly(offsets, mag₀, κ)`.
+
+    The algebraic core: at each step, the per-step error `α · M` weighted by
+    `κ^{remaining}` is absorbed into the growing polynomial bound via the
+    identity `(1+α)^n · α + ((1+α)^n - 1) = (1+α)^{n+1} - 1`. -/
+theorem weightedErrorSum_le_of_relative_errors
+    (κ α : R) (hκ : 0 ≤ κ) (hα : 0 ≤ α)
+    (errors offsets : List R) (mags : ℕ → R)
+    (hlen : errors.length = offsets.length)
+    (hoffsets : ∀ c ∈ offsets, 0 ≤ c)
+    (hmags_nn : ∀ k, 0 ≤ mags k)
+    (herr : ∀ k (hk : k < errors.length),
+        |errors[k]| ≤ α * (κ * mags k + offsets[k]'(by omega)))
+    (hrecur : ∀ k (hk : k < errors.length),
+        mags (k + 1) ≤ (1 + α) * (κ * mags k + offsets[k]'(by omega))) :
+    weightedErrorSum κ errors ≤
+      ((1 + α) ^ errors.length - 1) * hornerPoly offsets (mags 0) κ := by
+  induction errors generalizing offsets mags with
+  | nil => simp [weightedErrorSum]
+  | cons e es ih =>
+    match offsets, hlen with
+    | c :: cs, hlen' =>
+    simp only [weightedErrorSum, List.length_cons, hornerPoly]
+    set n := es.length
+    -- M matches hornerPoly's unfolding: acc * x + c
+    set M := mags 0 * κ + c with hM_def
+    set P := hornerPoly cs M κ
+    -- Per-step error: |e| ≤ α * M (note κ * mags 0 + c = mags 0 * κ + c)
+    have hMcomm : κ * mags 0 + c = M := by rw [hM_def, mul_comm]
+    have he : |e| ≤ α * M := by rw [← hMcomm]; exact herr 0 (by simp)
+    -- Magnitude recurrence: mags 1 ≤ (1+α) * M
+    have hm1 : mags 1 ≤ (1 + α) * M := by rw [← hMcomm]; exact hrecur 0 (by simp)
+    -- IH with shifted indices
+    have hlen_tail : es.length = cs.length := by simpa using hlen'
+    have hcs_nn : ∀ c' ∈ cs, 0 ≤ c' := fun c' hc' => hoffsets c' (List.mem_cons_of_mem _ hc')
+    have ih_bound := ih cs (fun k => mags (k + 1)) hlen_tail hcs_nn
+      (fun k => hmags_nn (k + 1))
+      (fun k hk => herr (k + 1) (by simp; omega))
+      (fun k hk => hrecur (k + 1) (by simp; omega))
+    -- Positivity
+    have hc_nn : (0 : R) ≤ c := hoffsets c List.mem_cons_self
+    have hM_nn : (0 : R) ≤ M := add_nonneg (mul_nonneg (hmags_nn 0) hκ) hc_nn
+    have hκn : (0 : R) ≤ κ ^ n := pow_nonneg hκ n
+    have h1α : (1 : R) ≤ 1 + α := by linarith
+    have h1αn : (0 : R) ≤ (1 + α) ^ n := pow_nonneg (by linarith) n
+    have h1αn_sub : (0 : R) ≤ (1 + α) ^ n - 1 := by linarith [one_le_pow₀ h1α (n := n)]
+    -- Monotonicity: hornerPoly cs (mags 1) κ ≤ hornerPoly cs ((1+α)*M) κ
+    have hP_mono : hornerPoly cs (mags 1) κ ≤ hornerPoly cs ((1 + α) * M) κ :=
+      hornerPoly_mono cs _ _ κ hm1 hκ hcs_nn
+    -- Affine: hornerPoly cs ((1+α)*M) κ = P + α*M*κ^n
+    have hP_affine : hornerPoly cs ((1 + α) * M) κ = P + α * M * κ ^ n := by
+      have h := hornerPoly_affine cs M (α * M) κ
+      rw [show M + α * M = (1 + α) * M from by ring] at h
+      simp only [List.length_cons] at hlen'
+      rw [show cs.length = n from by omega] at h
+      exact h
+    -- Dominance: M * κ^n ≤ P
+    have hMκn_le : M * κ ^ n ≤ P := by
+      have := hornerPoly_ge_acc_xpow cs M κ hM_nn hκ hcs_nn
+      rw [show cs.length = n from by omega] at this; exact this
+    have hP_nn : (0 : R) ≤ P := le_trans (mul_nonneg hM_nn hκn) hMκn_le
+    -- Power identity: (1+α)^{n+1} - 1 = (1+α)^n · α + ((1+α)^n - 1)
+    have hpow_split : (1 + α) ^ (n + 1) - 1 =
+        (1 + α) ^ n * α + ((1 + α) ^ n - 1) := by rw [pow_succ]; ring
+    -- Main algebra:
+    -- κ^n·|e| + wes(es) ≤ κ^n·α·M + ((1+α)^n-1)·(P + α·M·κ^n)
+    --   = ((1+α)^n·α)·M·κ^n + ((1+α)^n-1)·P
+    --   ≤ ((1+α)^n·α)·P + ((1+α)^n-1)·P = ((1+α)^{n+1}-1)·P
+    rw [hpow_split]
+    nlinarith [mul_le_mul_of_nonneg_right he hκn,
+               mul_le_mul_of_nonneg_left (le_trans hP_mono (le_of_eq hP_affine)) h1αn_sub,
+               mul_le_mul_of_nonneg_left hMκn_le (mul_nonneg h1αn hα)]
+
+/-! ### Full `((1+η)^{2n}-1)·p̃(|x|)` via AffineFold Framework
+
+The full derivation composes:
+1. Per-step combined error: `|acc·x + c - next| ≤ ((1+η)²-1)·(|acc|·|x| + |c|)`
+2. Per-step magnitude: `|next| ≤ (1+η)²·(|acc|·|x| + |c|)`
+3. Weighted error sum bound via generic `weightedErrorSum_le_of_relative_errors`
+4. Composition via exact decomposition + per-index bound -/
+
+/-- Per-step combined FP error for one Horner step: the combined error from
+    multiplication followed by addition is at most `((1+η)²-1)` times the
+    absolute magnitude of the exact operation on FP inputs. -/
+theorem horner_step_combined_error
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {acc x coeff : FiniteFp}
+    (step : HornerStep acc x coeff)
+    (hnr : HornerStepNormalRange (R := R) acc x coeff step) :
+    |(acc.toVal : R) * x.toVal + coeff.toVal - step.next.toVal| ≤
+      ((1 + η) ^ 2 - 1) * (|(acc.toVal : R)| * |x.toVal| + |coeff.toVal|) := by
+  set av := (acc.toVal : R); set xv := (x.toVal : R); set cv := (coeff.toVal : R)
+  set pv := (step.prod.toVal : R); set nv := (step.next.toVal : R)
+  have hη : (0 : R) ≤ η := by positivity
+  have hmul := KahanSum.fpMul_error_or_zero (R := R) acc x step.prod step.hprod hnr.mul_normal
+  have hadd := KahanSum.fpAdd_error_or_zero (R := R) step.prod coeff step.next step.hnext
+    hnr.add_normal
+  have hprod : |pv| ≤ (1 + η) * (|av| * |xv|) := by
+    have := le_trans (abs_sub_abs_le_abs_sub pv (av * xv)) hmul; rw [abs_mul] at this; linarith
+  have hpc : |pv + cv| ≤ (1 + η) * (|av| * |xv|) + |cv| :=
+    le_trans (abs_add_le pv cv) (by linarith)
+  have htri : |av * xv + cv - nv| ≤ |nv - (pv + cv)| + |pv - av * xv| := by
+    have : av * xv + cv - nv = -(nv - (pv + cv)) + -(pv - av * xv) := by ring
+    rw [this]; linarith [abs_add_le (-(nv - (pv + cv))) (-(pv - av * xv)),
+      abs_neg (nv - (pv + cv)), abs_neg (pv - av * xv)]
+  have hmul_rw : |pv - av * xv| ≤ η * (|av| * |xv|) := by rwa [abs_mul] at hmul
+  nlinarith [mul_le_mul_of_nonneg_left hpc hη, abs_nonneg cv,
+             mul_nonneg hη (abs_nonneg cv)]
+
+/-- One-step magnitude bound: `|next| ≤ (1+η)²·(|acc|·|x| + |c|)`. -/
+theorem horner_step_magnitude
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {acc x coeff : FiniteFp}
+    (step : HornerStep acc x coeff)
+    (hnr : HornerStepNormalRange (R := R) acc x coeff step) :
+    |step.next.toVal (R := R)| ≤
+      (1 + η) ^ 2 * (|(acc.toVal : R)| * |x.toVal| + |coeff.toVal|) := by
+  have hstep := horner_step_combined_error (R := R) step hnr
+  set av := (acc.toVal : R); set xv := (x.toVal : R); set cv := (coeff.toVal : R)
+  set nv := (step.next.toVal : R)
+  -- |nv| ≤ |exact| + |error|, and |error| ≤ ((1+η)²-1)·A, so |nv| ≤ (1+η)²·A
+  have htri : |nv| ≤ |av * xv + cv| + |av * xv + cv - nv| := by
+    calc |nv| = |(av * xv + cv) + (-(av * xv + cv - nv))| := by congr 1; ring
+      _ ≤ |av * xv + cv| + |-(av * xv + cv - nv)| := abs_add_le _ _
+      _ = |av * xv + cv| + |av * xv + cv - nv| := by rw [abs_neg]
+  have hexact : |av * xv + cv| ≤ |av| * |xv| + |cv| :=
+    le_trans (abs_add_le _ _) (by rw [abs_mul])
+  nlinarith
+
+/-- Extract accumulator magnitudes from a Horner trace: `|acc_k|` at each step. -/
+def hornerTraceMags [RModeExec] {x : FiniteFp} :
+    {coeffs : List FiniteFp} → {acc final : FiniteFp} →
+    HornerTrace x coeffs acc final → ℕ → R
+  | _, acc, _, .nil _, _ => |(acc.toVal : R)|
+  | _, acc, _, .cons _ _, 0 => |(acc.toVal : R)|
+  | _, _, _, .cons _ rest, n + 1 => hornerTraceMags rest n
+
+@[simp] theorem hornerTraceMags_zero [RModeExec] {x : FiniteFp}
+    {coeffs : List FiniteFp} {acc final : FiniteFp}
+    (trace : HornerTrace x coeffs acc final) :
+    hornerTraceMags (R := R) trace 0 = |(acc.toVal : R)| := by
+  cases trace <;> rfl
+
+theorem hornerTraceMags_nonneg [RModeExec] {x : FiniteFp}
+    {coeffs : List FiniteFp} {acc final : FiniteFp}
+    (trace : HornerTrace x coeffs acc final) (k : ℕ) :
+    0 ≤ hornerTraceMags (R := R) trace k := by
+  match trace, k with
+  | .nil _, _ => exact abs_nonneg _
+  | .cons _ _, 0 => exact abs_nonneg _
+  | .cons _ rest, k + 1 => exact hornerTraceMags_nonneg rest k
+
+/-- The per-step error bound holds for each step of the trace. -/
+theorem horner_trace_step_error
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {x : FiniteFp} {coeffs : List FiniteFp} {acc final : FiniteFp}
+    (trace : HornerTrace x coeffs acc final)
+    (hnr : trace.AllNormalRange (R := R))
+    (k : ℕ) (hk : k < coeffs.length) :
+    |(CompensatedHorner.stepErrors trace (R := R))[k]'(by rw [CompensatedHorner.stepErrors_length]; exact hk)| ≤
+      ((1 + η) ^ 2 - 1) *
+        (|x.toVal (R := R)| * hornerTraceMags trace k +
+         |(coeffs[k]'hk).toVal (R := R)|) := by
+  match trace, hnr, k, hk with
+  | .cons (acc := a) step rest, hnr, 0, hk =>
+    simp only [HornerTrace.AllNormalRange] at hnr
+    simp only [CompensatedHorner.stepErrors, List.getElem_cons_zero, hornerTraceMags]
+    have h := horner_step_combined_error (R := R) step hnr.1
+    linarith [abs_mul (a.toVal : R) (x.toVal : R)]
+  | .cons (coeffs := cs) step rest, hnr, k + 1, hk =>
+    simp only [HornerTrace.AllNormalRange] at hnr
+    simp only [CompensatedHorner.stepErrors, List.getElem_cons_succ, hornerTraceMags]
+    exact horner_trace_step_error rest hnr.2 k (by simp at hk; omega)
+
+/-- The magnitude recurrence holds for each step of the trace. -/
+theorem horner_trace_mag_recur
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {x : FiniteFp} {coeffs : List FiniteFp} {acc final : FiniteFp}
+    (trace : HornerTrace x coeffs acc final)
+    (hnr : trace.AllNormalRange (R := R))
+    (k : ℕ) (hk : k < coeffs.length) :
+    hornerTraceMags trace (k + 1) ≤
+      (1 + ((1 + η) ^ 2 - 1)) *
+        (|x.toVal (R := R)| * hornerTraceMags trace k +
+         |(coeffs[k]'hk).toVal (R := R)|) := by
+  match trace, hnr, k, hk with
+  | .cons (acc := a) step rest, hnr, 0, hk =>
+    simp only [HornerTrace.AllNormalRange] at hnr
+    show hornerTraceMags rest 0 ≤ _
+    rw [hornerTraceMags_zero]
+    simp only [List.getElem_cons_zero, hornerTraceMags_zero (R := R)]
+    have h := horner_step_magnitude (R := R) step hnr.1
+    have : (1 : R) + ((1 + η) ^ 2 - 1) = (1 + η) ^ 2 := by ring
+    rw [this]; linarith [abs_mul (a.toVal : R) (x.toVal : R)]
+  | .cons (coeffs := cs) step rest, hnr, k + 1, hk =>
+    simp only [HornerTrace.AllNormalRange] at hnr
+    simp only [hornerTraceMags, List.getElem_cons_succ]
+    exact horner_trace_mag_recur rest hnr.2 k (by simp at hk; omega)
+
+set_option maxHeartbeats 800000 in
+/-- **Weighted error sum bound** via the generic `weightedErrorSum_le_of_relative_errors`.
+
+    Instantiates the generic theorem with `κ = |x|`, `α = (1+η)²-1`,
+    `mags k = |acc_at_step_k|`, `offsets = |coeffs|`. -/
+theorem horner_weighted_error_bound
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {x : FiniteFp} {coeffs : List FiniteFp} {acc final : FiniteFp}
+    (trace : HornerTrace x coeffs acc final)
+    (hnr : trace.AllNormalRange (R := R)) :
+    weightedErrorSum |x.toVal (R := R)| (CompensatedHorner.stepErrors trace (R := R)) ≤
+      ((1 + η) ^ (2 * coeffs.length) - 1) *
+        hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|))
+          |acc.toVal (R := R)| |x.toVal (R := R)| := by
+  have hη : (0 : R) ≤ η := by positivity
+  have hα : (0 : R) ≤ (1 + (η : R)) ^ 2 - 1 := by
+    nlinarith [one_le_pow₀ (show (1 : R) ≤ 1 + η by linarith) (n := 2)]
+  -- Generic theorem gives bound with (1 + α)^n where α = (1+η)²-1
+  have hgen := weightedErrorSum_le_of_relative_errors
+    |x.toVal (R := R)| ((1 + (η : R)) ^ 2 - 1)
+    (abs_nonneg _) hα
+    (CompensatedHorner.stepErrors trace (R := R))
+    (coeffs.map (fun c => |c.toVal (R := R)|))
+    (hornerTraceMags trace)
+    (by rw [CompensatedHorner.stepErrors_length]; simp)
+    (fun c hc => by simp at hc; obtain ⟨_, _, rfl⟩ := hc; exact abs_nonneg _)
+    (fun k => hornerTraceMags_nonneg (R := R) trace k)
+    (fun k hk => by
+      rw [CompensatedHorner.stepErrors_length] at hk
+      simp only [List.getElem_map]
+      exact horner_trace_step_error (R := R) trace hnr k hk)
+    (fun k hk => by
+      rw [CompensatedHorner.stepErrors_length] at hk
+      simp only [List.getElem_map]
+      exact horner_trace_mag_recur (R := R) trace hnr k hk)
+  -- Bridge: (1 + ((1+η)²-1))^n = (1+η)^{2n}
+  have hpow : (1 + ((1 + (η : R)) ^ 2 - 1)) ^ (CompensatedHorner.stepErrors trace (R := R)).length =
+      (1 + η) ^ (2 * coeffs.length) := by
+    rw [show (1 : R) + ((1 + η) ^ 2 - 1) = (1 + η) ^ 2 from by ring,
+        ← pow_mul, CompensatedHorner.stepErrors_length]
+  rw [hornerTraceMags_zero] at hgen
+  linarith [hpow ▸ hgen]
+
+/-- **Horner error bound via AffineFold framework** (`(1+η)^{2n}` form).
+
+    Derives the same `((1+η)^{2n}-1)·p̃(|x|)` bound as `horner_error_bound`,
+    but by composing:
+    1. Exact decomposition (from `comp_horner_exact_decomposition`)
+    2. Per-index bound (from `affineFold_error_per_index` via `hornerPoly_abs_le_per_index`)
+    3. Weighted error sum bound (from `horner_weighted_error_bound`)
+
+    This separates error propagation (generic) from per-step analysis (algorithm-specific). -/
+theorem horner_error_bound_via_affineFold
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {x init final : FiniteFp} {coeffs : List FiniteFp}
+    (trace : HornerTrace x coeffs init final)
+    (hnr : trace.AllNormalRange (R := R)) :
+    |(final.toVal : R) -
+      hornerPoly (coeffs.map (fun c => c.toVal (R := R))) (init.toVal) (x.toVal)| ≤
+      ((1 + η) ^ (2 * coeffs.length) - 1) *
+        hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|))
+          |init.toVal (R := R)| |x.toVal (R := R)| := by
+  -- Step 1: exact decomposition gives |final - exact| = |hornerPoly(errors, 0, x)|
+  have hdecomp := CompensatedHorner.comp_horner_exact_decomposition (R := R) trace
+  have herr_eq : (final.toVal : R) -
+      hornerPoly (coeffs.map (fun c => c.toVal (R := R))) (init.toVal) (x.toVal) =
+      -(hornerPoly (CompensatedHorner.stepErrors trace (R := R)) 0 (x.toVal)) := by linarith
+  rw [herr_eq, abs_neg]
+  -- Step 2: per-index bound gives |error_poly| ≤ weightedErrorSum
+  have hpi := hornerPoly_abs_le_per_index (x.toVal (R := R))
+    (CompensatedHorner.stepErrors trace (R := R))
+  -- Step 3: weighted error sum ≤ ((1+η)^{2n}-1) · P
+  have hwes := horner_weighted_error_bound (R := R) trace hnr
+  -- Step 4: compose via weightedErrorSum_eq_hornerPoly bridge
+  rw [← weightedErrorSum_eq_hornerPoly] at hpi
+  linarith
 
 end HornerErrorBound
 

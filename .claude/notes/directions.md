@@ -206,17 +206,112 @@ Rounding/ files but narrow applicability.
   root separation and conditioning, `δ = O(η · |p(x)/p'(x)|)` from the perturbation bound.
   For binary64 (η ≈ 1.1e-16), a degree-10 polynomial with well-separated roots would
   converge to ~1e-15 in 4-5 steps. Would demonstrate the library's end-to-end capability.
-- [ ] **Jet Horner derivative error bound** — `|d̂ - p'(x)|` bound for the derivative channel.
-  More complex than value due to cross-coupling (`d' = x·d + v` uses FP value `v`).
-  Needed for tighter Newton analysis but value bound suffices for basic convergence.
+- [x] **Jet Horner derivative error bound** — `jetHorner_deriv_error_bound` in NewtonHorner.lean.
+  L1 gauge `ν(v,d)=|v|+|d|` with contraction `κ=|x|+1`. Per-index weighted sum form.
+  Cross-coupling handled via gauge framework rather than tight closed-form.
 - [ ] **Newton reciprocal** — `x_{n+1} = x_n(2 - ax_n)`, quadratic convergence in floats.
-- [ ] **Newton sqrt** — Similar to reciprocal, used in hardware implementations.
+  Two FP multiplications per step. Used in hardware division (Goldschmidt). The perturbed
+  Newton framework applies directly with `p(x) = 1/a - x` (trivial Horner, degree 1).
+- [ ] **Newton sqrt** — `x_{n+1} = (x_n + a/x_n)/2` or reciprocal form `y_{n+1} = y_n(3 - ay_n²)/2`.
+  Reciprocal form avoids division. Used in hardware sqrt implementations (e.g. x86 FSQRT
+  initial approximation + Newton refinement). Similar to Newton reciprocal framework.
 - [ ] **Mathlib Polynomial connection** — `hornerPoly cs init x = Polynomial.eval x p`.
-- [ ] **Mixed-precision accumulation** — Error of computing in FP16/BF16 and accumulating in FP32 (bridges StorageFormats + ML).
+  Would let us state error bounds in terms of Mathlib polynomials, enabling access to
+  Mathlib's polynomial algebra (degree, roots, derivative via `Polynomial.derivative`).
+  Also: `polyDeriv cs 0 x = Polynomial.eval x (Polynomial.derivative p)`.
+- [ ] **Estrin's method** — parallel polynomial evaluation: group pairs of Horner steps,
+  evaluate sub-polynomials independently, combine. Error bound `γ_{2⌈log₂n⌉}·p̃(|x|)`
+  (better than Horner's `γ_{2n}` for large n). Tree-structured variant of AffineFold,
+  or direct analysis. Practically important for SIMD/pipelining.
+  Ref: Muller et al., Handbook of FP Arithmetic, §5.3.
+- [ ] **Compensated dot product** (Ogita-Rump-Oishi) — TwoSum/TwoProduct-based accurate
+  dot product achieving `|d̂ - x·y| ≤ η|x·y| + γ_n²·Σ|xᵢyᵢ|` (nearly full precision).
+  All building blocks exist (TwoSum, TwoProduct, compensated summation). Classic result
+  that completes the "compensated algorithms" story.
+  Ref: Ogita, Rump, Oishi, "Accurate Sum and Dot Product" (2005).
+- [ ] **Running error bounds** — computable error estimates alongside computation:
+  `r_i = (1+η)|x·r_{i-1}| + |v_i|·η` for Horner, etc. Prove `actual_error ≤ running_bound`
+  at each step. Practically important: user can check at runtime if answer is good enough
+  without knowing condition number a priori. Would be a verified implementation, not just
+  a bound theorem.
+- [ ] **Compensated Newton** — compensated Horner *inside* Newton iteration. Compensated
+  Horner gives `O(η)` evaluation error instead of `O(nη)`, so Newton converges to a tighter
+  ball: `O(η·|x*/p'(x*)|)` instead of `O(nη·|x*/p'(x*)|)`. Natural composition of
+  CompensatedHorner + NewtonHorner. The exact decomposition `s + Σerrors = p(x)` from
+  CompensatedHorner feeds directly into the perturbation framework.
+
+## Mid-Term — Backward Error & Conditioning
+- [ ] **Backward error for summation/dot product** — prove "the computed sum equals the exact
+  sum of slightly perturbed inputs": `ŝ = Σ(1+δᵢ)xᵢ` with `|δᵢ| ≤ γ_n`.
+  We partly have this for Kahan (`kahan_weak_backward_error`) but not for plain summation
+  or dot product. Would unify with condition number analysis.
+  Ref: Higham, "Accuracy and Stability of Numerical Algorithms", Ch. 3-4.
+- [ ] **Condition numbers** — formalize `cond(f, x) = ‖J_f(x)‖·‖x‖/‖f(x)‖` and prove the
+  fundamental relation `forward_error ≤ cond · backward_error · (1 + O(η))`.
+  For summation: `cond = Σ|xᵢ|/|Σxᵢ|`. For polynomial evaluation: standard Wilkinson-type
+  bounds. Would give a clean "is this problem hard or is our algorithm bad?" decomposition.
+- [ ] **Wilkinson polynomial root conditioning** — root sensitivity bound:
+  `|Δx_k| ≈ |Δaⱼ| · Πᵢ≠ₖ |x_k - x_i|⁻¹`. Connects to Newton-Horner convergence radius:
+  ill-conditioned roots → smaller convergence basin → more Newton steps needed.
+  Would need Mathlib Polynomial connection first.
+
+## Mid-Term — Mixed-Precision & ML
+- [ ] **Mixed-precision accumulation** — error of computing in FP16/BF16 and accumulating
+  in FP32 (bridges StorageFormats + Operations). Key theorem: if `x_i : StorageFp E4M3`
+  and accumulation is in `FloatFormat.Binary32`, bound the additional error from the
+  format conversion at each step. Needs `fromFp_correct` composed with operation error bounds.
+- [ ] **Quantization error bounds** — given `fromFp : Fp fmt₁ → StorageFp fmt₂`, bound
+  `|fromFp(x).toVal - x.toVal|` in terms of the target format's machine epsilon.
+  Machinery exists (fromFp_correct + relative error bounds), needs composition theorem.
+  Concrete instances: Binary32→E4M3, Binary16→E5M2, Binary32→BF16.
+- [ ] **Stochastic rounding** — probabilistic rounding mode used in ML training where
+  `E[round(x)] = x` (unbiased). Would need: new rounding mode definition, proof of
+  unbiasedness, probabilistic error analysis (`E[|error|] ≤ η/2` vs worst-case `η`),
+  and convergence-in-expectation for summation/SGD. Significant new direction.
+- [ ] **Block floating point** — shared-exponent formats (e.g., Microsoft MSFP, used in
+  ML accelerators). Group of values shares one exponent, each has reduced mantissa.
+  Would need new `BlockFormat` structure + conversion correctness + error bounds.
+
+## Mid-Term — Infrastructure & Automation
+- [ ] **Straight-line program verifier** — given a sequence of FP ops as a `List FpOp`
+  (where `FpOp = add | mul | fma | ...`), auto-derive the error bound by chaining
+  per-op lemmas. Could be a tactic (`fp_bound`) or a verified interpreter. We have all
+  the per-op error lemmas; the gap is chaining them. Would subsume manual error proofs
+  for simple programs.
+- [ ] **Overflow condition formalization** — formalize sufficient no-overflow conditions.
+  E.g., "if all inputs ≤ B and polynomial degree ≤ n, then Horner doesn't overflow in
+  binary64". Currently we assume `hno_ov` everywhere; could derive it from input bounds
+  and format parameters. Would make end-to-end theorems more self-contained.
+- [ ] **Faithful rounding** — result within 1 ulp of exact (weaker than correct rounding).
+  Some hardware ops and libm functions only guarantee this. Formalize as
+  `|round(x) - x| ≤ ulp(round(x))` and adapt error bounds. The relative error becomes
+  `2η` instead of `η`, so all our bounds would have "faithful" variants with doubled constants.
+
+## Mid-Term — Mathlib Connections
+- [ ] **Power series connection** — our exp/log Taylor bounds are about truncated power series.
+  Connect to Mathlib's `PowerSeries` or `HasSum` for formal manipulation. Would let us
+  state remainder bounds in terms of Mathlib's analytic function theory.
+- [ ] **Gauge → Seminorm** — our `Gauge` is an `AddGroupSeminorm` minus the `neg'` axiom
+  (no negation symmetry requirement), with generic codomain `R` instead of `ℝ`.
+  Our L1 gauge does satisfy `neg'` and homogeneity, so it *is* a seminorm.
+  Could add `neg'` to `Gauge` (all instances satisfy it) and provide a coercion
+  `Gauge → AddGroupSeminorm` for access to Mathlib's functional analysis lemmas.
+  Low priority — current framework is self-contained and sufficient.
 
 ## Long-Term
-- [ ] Error-minimizing tactic (reorder FP computations)
+- [ ] Error-minimizing tactic (reorder FP computations to minimize error bound)
 - [ ] Verified computation examples (e.g. count of floats between 0 and 1)
-- [ ] Gradient descent error analysis for common functions
-- [ ] Higher-order jets (k-jets for k-th derivative, S = R^{k+1})
+- [ ] Gradient descent error analysis — bound `|x_{k+1} - x*|` under FP arithmetic for
+  common loss functions. Connects mixed-precision + Newton-like convergence analysis.
+- [ ] Higher-order jets (k-jets for k-th derivative, `S = Fin (k+1) → R` or `R^{k+1}`)
+  — generalizes jet Horner to compute `p(x), p'(x), ..., p^{(k)}(x)` simultaneously.
+  The linear map becomes a `(k+1)×(k+1)` lower-triangular Toeplitz matrix.
+  AffineFold framework applies directly with appropriate gauge.
 - [ ] Prove approximation bounds on specific papers (e.g. arxiv 2410.00907)
+- [ ] **Interval arithmetic** — connection between our error bounds and interval methods.
+  Formalize `[a, b]` arithmetic and prove that our rounding model produces valid intervals.
+  Would enable verified numerical integration, ODE solvers, etc.
+- [ ] **Automatic differentiation error** — FP error in forward-mode AD. The jet Horner
+  framework is essentially forward-mode AD for polynomials; generalize to arbitrary
+  composition of elementary ops. Each op introduces rounding in both value and derivative
+  channels (cross-coupling, as in jet Horner).
