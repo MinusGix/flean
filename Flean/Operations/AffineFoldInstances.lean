@@ -1,5 +1,6 @@
 import Flean.Operations.AffineFold
 import Flean.Operations.Horner
+import Flean.Operations.HornerFMA
 import Flean.Operations.Clenshaw
 import Flean.Operations.CompensatedHorner
 
@@ -592,5 +593,194 @@ theorem horner_error_bound_via_affineFold
   linarith
 
 end HornerErrorBound
+
+/-! ## FMA Horner Error Bound via Generic Framework
+
+Same structure as the Horner case, but with `α = η` (single FMA per step)
+instead of `α = (1+η)²-1` (mul + add). The exponent is `n` instead of `2n`. -/
+
+section FMAHornerErrorBound
+
+variable [FloatFormat]
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+
+open HornerFMA Horner
+
+/-- Extract accumulator magnitudes from an FMA Horner trace. -/
+def fmaTraceMags [RModeExec] {x : FiniteFp} :
+    {coeffs : List FiniteFp} → {acc final : FiniteFp} →
+    FMATrace x coeffs acc final → ℕ → R
+  | _, acc, _, .nil _, _ => |(acc.toVal : R)|
+  | _, acc, _, .cons _ _, 0 => |(acc.toVal : R)|
+  | _, _, _, .cons _ rest, n + 1 => fmaTraceMags rest n
+
+@[simp] theorem fmaTraceMags_zero [RModeExec] {x : FiniteFp}
+    {coeffs : List FiniteFp} {acc final : FiniteFp}
+    (trace : FMATrace x coeffs acc final) :
+    fmaTraceMags (R := R) trace 0 = |(acc.toVal : R)| := by
+  cases trace <;> rfl
+
+theorem fmaTraceMags_nonneg [RModeExec] {x : FiniteFp}
+    {coeffs : List FiniteFp} {acc final : FiniteFp}
+    (trace : FMATrace x coeffs acc final) (k : ℕ) :
+    0 ≤ fmaTraceMags (R := R) trace k := by
+  match trace, k with
+  | .nil _, _ => exact abs_nonneg _
+  | .cons _ _, 0 => exact abs_nonneg _
+  | .cons _ rest, k + 1 => exact fmaTraceMags_nonneg rest k
+
+/-- Step errors for an FMA Horner trace (correct definition). -/
+def fmaHornerStepErrors [RModeExec] {x : FiniteFp} :
+    {coeffs : List FiniteFp} → {acc final : FiniteFp} →
+    FMATrace x coeffs acc final → List R
+  | _, _, _, .nil _ => []
+  | _, acc, _, .cons (coeff := coeff) step rest =>
+    ((acc.toVal : R) * x.toVal + coeff.toVal - step.next.toVal) ::
+      fmaHornerStepErrors rest
+
+theorem fmaHornerStepErrors_length [RModeExec] {x : FiniteFp}
+    {coeffs : List FiniteFp} {acc final : FiniteFp}
+    (trace : FMATrace x coeffs acc final) :
+    (fmaHornerStepErrors (R := R) trace).length = coeffs.length := by
+  match trace with
+  | .nil _ => simp [fmaHornerStepErrors]
+  | .cons _ rest => simp [fmaHornerStepErrors, fmaHornerStepErrors_length rest]
+
+/-- FMA exact decomposition: `final + hornerPoly(errors, 0, x) = hornerPoly(coeffs, init, x)`. -/
+theorem fma_horner_exact_decomposition [RModeExec] {x : FiniteFp}
+    {coeffs : List FiniteFp} {acc final : FiniteFp}
+    (trace : FMATrace x coeffs acc final) :
+    (final.toVal : R) +
+      hornerPoly (fmaHornerStepErrors (R := R) trace) 0 (x.toVal) =
+      hornerPoly (coeffs.map (fun c => c.toVal (R := R))) (acc.toVal) (x.toVal) := by
+  induction trace with
+  | nil _ => simp [fmaHornerStepErrors, hornerPoly]
+  | @cons acc coeff coeffs final step rest ih =>
+    -- Unfold one step on each side
+    show (final.toVal : R) + hornerPoly _ (0 * (x.toVal : R) + _) (x.toVal) =
+        hornerPoly _ ((acc.toVal : R) * x.toVal + coeff.toVal) (x.toVal)
+    -- Use affine on both sides to factor out the per-step error e
+    set e := (acc.toVal : R) * x.toVal + coeff.toVal - step.next.toVal
+    -- LHS: P(errors, 0 + e) = P(errors, 0) + e * x^n by affine
+    rw [show (0 : R) * (x.toVal : R) + e = 0 + e from by ring]
+    rw [hornerPoly_affine (fmaHornerStepErrors (R := R) rest) 0 e (x.toVal)]
+    -- RHS: P(coeffs, acc*x+c) = P(coeffs, next + e) = P(coeffs, next) + e * x^n
+    rw [show (acc.toVal : R) * x.toVal + coeff.toVal = (step.next.toVal : R) + e from by
+      simp only [e]; ring]
+    rw [hornerPoly_affine (coeffs.map (fun c => c.toVal (R := R))) (step.next.toVal : R) e (x.toVal)]
+    -- Now: final + (P_err(0) + e * x^n1) = P_coeff(next) + e * x^n2
+    -- where n1, n2 are the respective lengths
+    rw [fmaHornerStepErrors_length, List.length_map]
+    -- Now: final + P_err(0) + e*x^n = P_coeff(next) + e*x^n, cancel, get ih
+    linarith
+
+set_option maxHeartbeats 400000 in
+/-- Per-step FMA error bound: `|error_k| ≤ η · (|x| · mag_k + |coeff_k|)`. -/
+theorem fma_trace_step_error
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {x : FiniteFp} {coeffs : List FiniteFp} {acc final : FiniteFp}
+    (trace : FMATrace x coeffs acc final)
+    (hnr : trace.AllNormalRange (R := R))
+    (k : ℕ) (hk : k < coeffs.length) :
+    |(fmaHornerStepErrors trace (R := R))[k]'(by rw [fmaHornerStepErrors_length]; exact hk)| ≤
+      η * (|x.toVal (R := R)| * fmaTraceMags trace k +
+           |(coeffs[k]'hk).toVal (R := R)|) := by
+  match trace, hnr, k, hk with
+  | .cons (acc := a) (coeff := c) step rest, hnr, 0, hk =>
+    simp only [FMATrace.AllNormalRange] at hnr
+    simp only [fmaHornerStepErrors, List.getElem_cons_zero, fmaTraceMags]
+    have hfma := fpFMA_error_or_zero (R := R) a x c step.next step.hnext hnr.1.fma_normal
+    have hη : (0 : R) ≤ η := by positivity
+    have hab : |(a.toVal : R) * x.toVal + c.toVal - step.next.toVal| =
+        |step.next.toVal - (a.toVal * x.toVal + c.toVal)| := by
+      rw [show (a.toVal : R) * x.toVal + c.toVal - step.next.toVal =
+          -(step.next.toVal - (a.toVal * x.toVal + c.toVal)) from by ring, abs_neg]
+    rw [hab]
+    calc |step.next.toVal - ((a.toVal : R) * x.toVal + c.toVal)|
+        ≤ η * |(a.toVal : R) * x.toVal + c.toVal| := hfma
+      _ ≤ η * (|(a.toVal : R)| * |x.toVal| + |c.toVal|) := by
+          apply mul_le_mul_of_nonneg_left _ hη
+          exact le_trans (abs_add_le _ _) (by rw [abs_mul])
+      _ = η * (|x.toVal| * |(a.toVal : R)| + |c.toVal|) := by rw [mul_comm |(a.toVal : R)|]
+  | .cons step rest, hnr, k + 1, hk =>
+    simp only [FMATrace.AllNormalRange] at hnr
+    simp only [fmaHornerStepErrors, List.getElem_cons_succ, fmaTraceMags]
+    exact fma_trace_step_error rest hnr.2 k (by simp at hk; omega)
+
+/-- Per-step FMA magnitude recurrence: `mag_{k+1} ≤ (1+η) · (|x| · mag_k + |coeff_k|)`. -/
+theorem fma_trace_mag_recur
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {x : FiniteFp} {coeffs : List FiniteFp} {acc final : FiniteFp}
+    (trace : FMATrace x coeffs acc final)
+    (hnr : trace.AllNormalRange (R := R))
+    (k : ℕ) (hk : k < coeffs.length) :
+    fmaTraceMags trace (k + 1) ≤
+      (1 + η) * (|x.toVal (R := R)| * fmaTraceMags trace k +
+                  |(coeffs[k]'hk).toVal (R := R)|) := by
+  match trace, hnr, k, hk with
+  | .cons (acc := a) (coeff := c) step rest, hnr, 0, hk =>
+    simp only [FMATrace.AllNormalRange] at hnr
+    show fmaTraceMags rest 0 ≤ _
+    rw [fmaTraceMags_zero]
+    simp only [List.getElem_cons_zero, fmaTraceMags_zero (R := R)]
+    have hfma := fpFMA_error_or_zero (R := R) a x c step.next step.hnext hnr.1.fma_normal
+    have htri := abs_sub_abs_le_abs_sub (step.next.toVal : R) (a.toVal * x.toVal + c.toVal)
+    have hexact : |(a.toVal : R) * x.toVal + c.toVal| ≤
+        |x.toVal| * |(a.toVal : R)| + |c.toVal| :=
+      le_trans (abs_add_le _ _) (by rw [abs_mul, mul_comm])
+    have hη : (0 : R) ≤ η := by positivity
+    -- |next| ≤ |exact| + |error| ≤ |exact| + η * |exact| = (1+η) * |exact| ≤ (1+η) * bound
+    nlinarith [htri, hfma, hexact, mul_nonneg hη (abs_nonneg ((a.toVal : R) * x.toVal + c.toVal))]
+  | .cons step rest, hnr, k + 1, hk =>
+    simp only [FMATrace.AllNormalRange] at hnr
+    simp only [fmaTraceMags, List.getElem_cons_succ]
+    exact fma_trace_mag_recur rest hnr.2 k (by simp at hk; omega)
+
+/-- **FMA Horner error bound via generic framework** (`(1+η)^n` form).
+
+    Derives the same `((1+η)^n - 1) · p̃(|x|)` bound as `fma_horner_error_bound`
+    using the generic `weightedErrorSum_le_of_relative_errors` with `α = η`. -/
+theorem fma_horner_error_bound_via_affineFold
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {x init final : FiniteFp} {coeffs : List FiniteFp}
+    (trace : FMATrace x coeffs init final)
+    (hnr : trace.AllNormalRange (R := R)) :
+    |(final.toVal : R) -
+      hornerPoly (coeffs.map (fun c => c.toVal (R := R))) (init.toVal) (x.toVal)| ≤
+      ((1 + η) ^ coeffs.length - 1) *
+        hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|))
+          |init.toVal (R := R)| |x.toVal (R := R)| := by
+  -- Step 1: exact decomposition
+  have hdecomp := fma_horner_exact_decomposition (R := R) trace
+  have herr_eq : (final.toVal : R) -
+      hornerPoly (coeffs.map (fun c => c.toVal (R := R))) (init.toVal) (x.toVal) =
+      -(hornerPoly (fmaHornerStepErrors trace (R := R)) 0 (x.toVal)) := by linarith
+  rw [herr_eq, abs_neg]
+  -- Step 2: per-index bound
+  have hpi := hornerPoly_abs_le_per_index (x.toVal (R := R)) (fmaHornerStepErrors trace (R := R))
+  -- Step 3: generic weighted error sum bound with α = η
+  have hη : (0 : R) ≤ η := by positivity
+  have hgen := weightedErrorSum_le_of_relative_errors
+    |x.toVal (R := R)| (η : R) (abs_nonneg _) hη
+    (fmaHornerStepErrors trace (R := R))
+    (coeffs.map (fun c => |c.toVal (R := R)|))
+    (fmaTraceMags trace)
+    (by rw [fmaHornerStepErrors_length]; simp)
+    (fun c hc => by simp at hc; obtain ⟨_, _, rfl⟩ := hc; exact abs_nonneg _)
+    (fun k => fmaTraceMags_nonneg (R := R) trace k)
+    (fun k hk => by
+      rw [fmaHornerStepErrors_length] at hk
+      simp only [List.getElem_map]
+      exact fma_trace_step_error (R := R) trace hnr k hk)
+    (fun k hk => by
+      rw [fmaHornerStepErrors_length] at hk
+      simp only [List.getElem_map]
+      exact fma_trace_mag_recur (R := R) trace hnr k hk)
+  rw [fmaTraceMags_zero] at hgen
+  rw [fmaHornerStepErrors_length] at hgen
+  rw [← weightedErrorSum_eq_hornerPoly] at hpi
+  linarith
+
+end FMAHornerErrorBound
 
 end AffineFoldInstances
