@@ -5,6 +5,7 @@ import Flean.Operations.Div
 import Flean.Operations.AddErrorRepresentable
 import Flean.Operations.Fast2Sum
 import Flean.Rounding.PolicyInstances
+import Flean.Operations.BackwardErrorCore
 
 /-!
 # Kahan Compensated Summation
@@ -1724,76 +1725,8 @@ infrastructure tracks scalar sums (traceResidual, traceCompSum) but not per-elem
 contributions. A new inductive definition tracking `Fin n → R` vectors through the
 trace would be needed. -/
 
-section BackwardErrorInfrastructure
-variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
-
-private lemma abs_div_mul_self (x : R) : abs x / x * x = abs x := by
-  by_cases hx : x = 0
-  · simp [hx]
-  · exact div_mul_cancel₀ _ hx
-
-private lemma abs_abs_div_self_le_one (x : R) : abs (abs x / x) ≤ 1 := by
-  by_cases hx : x = 0
-  · simp [hx]
-  · rcases le_or_gt 0 x with h | h
-    · rw [abs_of_nonneg h, div_self hx, abs_one]
-    · rw [abs_of_neg h, neg_div, abs_neg, div_self hx, abs_one]
-
-private lemma list_map_sum_eq_finset_sum {α : Type*} {M : Type*} [AddCommMonoid M]
-    (l : List α) (f : α → M) :
-    (l.map f).sum = ∑ i : Fin l.length, f (l.get i) := by
-  conv_lhs => rw [← List.ofFn_get l, List.map_ofFn]
-  simp [List.sum_ofFn, Function.comp]
-
-/-- **Error distribution lemma**: if a total error is bounded by `ε · Σ|vᵢ|`,
-    it can be written as `Σ μᵢ · vᵢ` with uniform `|μᵢ| ≤ ε`.
-
-    Construction: `μᵢ = (E/Σ|vⱼ|) · (|vᵢ|/vᵢ)`, distributing error proportionally
-    to magnitude with matching signs. -/
-theorem error_distributable {α : Type*} (xs : List α) (v : α → R) (E eps : R)
-    (heps : 0 ≤ eps)
-    (hbound : abs E ≤ eps * (xs.map (fun x => abs (v x))).sum) :
-    ∃ mu : Fin xs.length → R,
-      E = ∑ i : Fin xs.length, mu i * v (xs.get i) ∧
-      ∀ i, abs (mu i) ≤ eps := by
-  set S := (xs.map (fun x => abs (v x))).sum with hS_def
-  by_cases hS : S = 0
-  · exact ⟨fun _ => 0, by simp [abs_nonpos_iff.mp (by rw [hS, mul_zero] at hbound; exact hbound)],
-      fun _ => by simp [heps]⟩
-  · have hS_pos : 0 < S := lt_of_le_of_ne
-      (List.sum_nonneg (fun y hy => by
-        simp only [List.mem_map] at hy; obtain ⟨z, _, rfl⟩ := hy; exact abs_nonneg _))
-      (Ne.symm hS)
-    have hES : abs E / S ≤ eps := by rwa [div_le_iff₀ hS_pos]
-    have hES_nn : 0 ≤ abs E / S := div_nonneg (abs_nonneg E) (le_of_lt hS_pos)
-    refine ⟨fun i => E / S * (abs (v (xs.get i)) / v (xs.get i)), ?_, ?_⟩
-    · simp_rw [show ∀ i : Fin xs.length,
-        E / S * (abs (v (xs.get i)) / v (xs.get i)) * v (xs.get i) =
-        E / S * abs (v (xs.get i)) from fun i => by rw [mul_assoc, abs_div_mul_self]]
-      rw [← Finset.mul_sum, show ∑ i : Fin xs.length, abs (v (xs.get i)) = S from by
-        rw [hS_def, list_map_sum_eq_finset_sum]]
-      exact (div_mul_cancel₀ E (ne_of_gt hS_pos)).symm
-    · intro i
-      rw [abs_mul, abs_div, abs_of_pos hS_pos]
-      exact le_trans (mul_le_mul_of_nonneg_left (abs_abs_div_self_le_one _) hES_nn)
-        (by rw [mul_one]; exact hES)
-
-/-- Lifting a forward error bound to backward error form. -/
-private theorem backward_from_forward {α : Type*} (xs : List α) (v : α → R)
-    (result : R) (eps : R) (heps : 0 ≤ eps)
-    (hfwd : abs (result - (xs.map v).sum) ≤ eps * (xs.map (fun x => abs (v x))).sum) :
-    ∃ mu : Fin xs.length → R,
-      result = ∑ i : Fin xs.length, (1 + mu i) * v (xs.get i) ∧
-      ∀ i, abs (mu i) ≤ eps := by
-  obtain ⟨mu, hmu_eq, hmu_bnd⟩ := error_distributable xs v _ eps heps hfwd
-  refine ⟨mu, ?_, hmu_bnd⟩
-  rw [list_map_sum_eq_finset_sum] at hmu_eq
-  rw [show result = (xs.map v).sum + (result - (xs.map v).sum) from by ring,
-      list_map_sum_eq_finset_sum, hmu_eq, ← Finset.sum_add_distrib]
-  simp_rw [show ∀ i : Fin xs.length,
-    v (xs.get i) + mu i * v (xs.get i) = (1 + mu i) * v (xs.get i) from fun _ => by ring]
-
-end BackwardErrorInfrastructure
+-- Backward error infrastructure is now in BackwardErrorCore.lean.
+-- KahanSum uses `BackwardError.backwardResult_of_forward_sum_bound` below.
 
 namespace KahanSum
 
@@ -1825,7 +1758,7 @@ theorem kahan_weak_backward_error
       (final.sum.toVal : R) =
         ∑ i : Fin xs.length, (1 + mu i) * (xs.get i).toVal ∧
       ∀ i, abs (mu i) ≤ 2 * η + (xs.length : R) * η ^ 2 :=
-  backward_from_forward xs (fun x => x.toVal) _ _ (by positivity)
+  BackwardError.backwardResult_of_forward_sum_bound xs (fun x => x.toVal) _ _ (by positivity)
     (kahan_higham_bound trace hinit_sum hinit_comp hexact hnr hM)
 
 /-- **Self-contained weak backward error** — eliminates `hM` via energy invariant.
@@ -1852,7 +1785,7 @@ theorem kahan_weak_backward_error_auto
         ∑ i : Fin xs.length, (1 + mu i) * (xs.get i).toVal ∧
       ∀ i, abs (mu i) ≤ eps := by
   intro P eps
-  exact backward_from_forward xs (fun x => x.toVal) _ eps (by positivity)
+  exact BackwardError.backwardResult_of_forward_sum_bound xs (fun x => x.toVal) _ eps (by positivity)
     (kahan_higham_bound_auto trace hinit_sum hinit_comp hexact hnr)
 
 end KahanSum

@@ -297,51 +297,49 @@ They measure different things (distance vs. size). The output residual in
 `BackwardResult` for summation/dot product/Horner is immediately useful — it's
 the standard way these results are stated in numerical analysis textbooks.
 
-## Phase 1 Status — DONE
+## Phase 1+2 Status — DONE
 
-Phase 1 delivered (377 lines, sorry-free). Items completed:
+~550 lines, fully sorry-free. All items completed:
 - `PerturbationGauge`, `uniformGauge`, `trivialGauge`
 - `BackwardResult`, `MixedResult`, `BackwardResult.toMixed`
 - `error_distributable`, `backwardResult_of_forward_sum_bound`,
-  `backwardResult_of_forward_bilinear_bound`
+  `backwardResult_of_forward_bilinear_bound`, `backwardResult_of_forward_fin_bound`
 - `componentwiseCondNumber`, `forward_le_cond_mul_backward`,
   `forward_rel_le_cond_mul_backward`
 - `dp_backward_error`, `dp_backward_error_gamma`
+- `backward_compose_one_round` (scalar composition)
+- `hornerPoly_eq_fin_sum`, `hornerPoly_abs_eq_fin_sum`, `abs_horner_sum_eq`
+- `horner_backward_error` (coefficient perturbation form)
 
-## Known Debt / Phase 2+ Notes
+## Known Debt (ordered by priority)
 
 ### D1. `error_distributable` duplication
 KahanSum.lean has its own `error_distributable` + `backward_from_forward`.
-BackwardError.lean has generalized versions. Eventually KahanSum should import
-BackwardError and delegate. Not urgent — existing code works.
+BackwardError.lean has generalized versions. KahanSum should import
+BackwardError and delegate, then `kahan_weak_backward_error` uses the framework.
 
 ### D2. `MixedResult` missing residual gauge
-The design proposed using AffineFold's `Gauge` to measure the residual, but
-the current `MixedResult` has a bare `fwd_bound : R` with no formal connection
+The current `MixedResult` has a bare `fwd_bound : R` with no formal connection
 to `|residual|`. Needs a `residual_bound : gauge.val residual ≤ fwd_bound`
-field or similar. Important for Phase 4 (AffineFold integration).
+field or similar. Important for AffineFold integration.
 
-### D3. Horner backward error linking lemma
-Horner's forward bound uses `hornerPoly(|coeffs|, 0, |x|)` (weighted by `|cᵢ|·|x|^i`).
-To get coefficient backward error, need `result = Σ(1+μᵢ)·cᵢ·x^i`, distributing
-proportional to `|cᵢ·x^i|`. The `error_distributable` machinery handles the
-distribution, but a linking lemma `hornerPoly → Fin-indexed sum` is missing.
+### D3. AffineFold → MixedResult bridge
+Every `affineFold_exact_decomposition` gives a `MixedResult` directly
+(`computed = exact - error_fold`). Need a generic theorem that packages this.
 
 ### D4. Condition number section disconnected
 `componentwiseCondNumber` is defined but not connected to `BackwardResult`.
-The full bridge (given `BackwardResult` with bound `ε`, derive forward relative
-error `ε·κ`) works for summation via `forward_rel_le_cond_mul_backward` but
-not for general `f`. Generalizing needs partial derivatives / Jacobian framework.
-
-### D6. `hornerPoly_eq_fin_sum` — 1 sorry
-The Fin-indexed linking lemma `hornerPoly cs 0 x = Σ cs[i]·x^{n-1-i}` has 1 sorry
-in the cons case: need to show `Σ (c::cs)[succ i]·x^{...} = Σ cs[i]·x^{...}` after
-`Fin.sum_univ_succ`. The helper `hornerPoly_acc_eq` is proved. The sorry is pure
-`List.get`/`Fin.succ`/`Nat` subtraction arithmetic.
+The full bridge works for summation but not general `f`. Generalizing needs
+partial derivatives / Jacobian framework.
 
 ### D5. Gauge hierarchy minimal
-Only `uniformGauge` and `trivialGauge` exist. No componentwise relative gauge
-(which divides by `|xᵢ|`) — `Finset.sup'` with division-by-zero handling was
-fragile. The actual backward error theorems (`dp_backward_error`) don't use
-gauges at all; they directly state `|μᵢ| ≤ ε`. Gauges become important for
-composition (Phase 3), where perturbation tracking through pipelines is needed.
+Only `uniformGauge` and `trivialGauge`. No componentwise relative gauge.
+Gauges become important for composition (needs `PerturbationMetric` with
+triangle inequality).
+
+### D6. Full gauge-based composition
+`PerturbationLift` + `BackwardResult.compose` require triangle inequality
+on `PerturbationGauge`. Need `PerturbationMetric` structure extending gauge.
+
+### D7. Port `kahan_weak_backward_error` to framework
+Once D1 is done, restate Kahan backward error using `BackwardResult` structure.

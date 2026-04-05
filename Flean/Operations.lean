@@ -49,4 +49,5 @@ import Flean.Operations.GeneralAccum
 import Flean.Operations.ClenshawBound
 import Flean.Operations.JetHorner
 import Flean.Operations.NewtonHorner
+import Flean.Operations.BackwardErrorCore
 import Flean.Operations.BackwardError
