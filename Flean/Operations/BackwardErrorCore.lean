@@ -449,6 +449,72 @@ theorem forward_rel_le_cond_mul_backward (n : ℕ)
         exact div_le_div_of_nonneg_right h habsS.le
     _ = eps * ((∑ i, |v i|) / |∑ i, v i|) := by rw [mul_div_assoc]
 
+/-! ### BackwardResult → Forward Error Bridge -/
+
+/-- Extract per-component bound from `componentwiseRelGauge`: for nonzero `v i`,
+    `|x' i - v i| ≤ eps * |v i|`. -/
+theorem componentwiseRelGauge_component_bound {n : ℕ} (hn : 0 < n)
+    {v x' : Fin n → R} {eps : R}
+    (hbound : (componentwiseRelGauge n hn).dist v x' ≤ eps)
+    (i : Fin n) (hvi : v i ≠ 0) :
+    |x' i - v i| ≤ eps * |v i| := by
+  have hle : |x' i - v i| / |v i| ≤ eps := by
+    have := le_trans (Finset.le_sup' (fun j => if v j = 0 then 0
+      else |x' j - v j| / |v j|) (Finset.mem_univ i)) hbound
+    simp only [componentwiseRelGauge] at this
+    rwa [if_neg hvi] at this
+  rwa [div_le_iff₀ (abs_pos.mpr hvi)] at hle
+
+/-- **Forward error from structured backward result** (summation).
+
+    Given a `BackwardResult` with `componentwiseRelGauge` for `f = Σ`,
+    the forward error is `|computed - Σvᵢ| ≤ ε · Σ|vᵢ|`.
+
+    The `hzero` hypothesis ensures zero inputs have zero perturbation;
+    this holds for all results constructed via
+    `backwardResult_struct_of_forward_fin_bound`. -/
+theorem forward_from_sum_backward {n : ℕ} (hn : 0 < n)
+    {v : Fin n → R} {computed : R}
+    (br : BackwardResult (componentwiseRelGauge n hn) (fun w => ∑ i : Fin n, w i)
+      v computed)
+    (hzero : ∀ i, v i = 0 → br.x' i = 0) :
+    |computed - ∑ i : Fin n, v i| ≤ br.eps * ∑ i : Fin n, |v i| := by
+  have hexact : computed = ∑ i : Fin n, br.x' i := br.exact.symm
+  calc |computed - ∑ i, v i|
+      = |(∑ i, br.x' i) - ∑ i, v i| := by conv_lhs => rw [hexact]
+    _ = |∑ i, (br.x' i - v i)| := by rw [← Finset.sum_sub_distrib]
+    _ ≤ ∑ i, |br.x' i - v i| := Finset.abs_sum_le_sum_abs _ _
+    _ ≤ ∑ i, br.eps * |v i| := by
+        apply Finset.sum_le_sum; intro i _
+        by_cases hvi : v i = 0
+        · simp [hvi, hzero i hvi]
+        · exact componentwiseRelGauge_component_bound hn br.bound i hvi
+    _ = br.eps * ∑ i, |v i| := (Finset.mul_sum ..).symm
+
+/-- **Relative forward error from backward result** (summation + condition number).
+
+    `|computed - Σvᵢ| / |Σvᵢ| ≤ ε · κ` where `κ = Σ|vᵢ|/|Σvᵢ|`
+    is the componentwise condition number for summation.
+
+    This is Higham's fundamental relation: backward stability + conditioning
+    → forward error. -/
+theorem forward_rel_from_sum_backward {n : ℕ} (hn : 0 < n)
+    {v : Fin n → R} {computed : R}
+    (br : BackwardResult (componentwiseRelGauge n hn) (fun w => ∑ i : Fin n, w i)
+      v computed)
+    (hzero : ∀ i, v i = 0 → br.x' i = 0)
+    (hS : (∑ i : Fin n, v i) ≠ 0) :
+    |computed - ∑ i : Fin n, v i| / |∑ i : Fin n, v i| ≤
+    br.eps * componentwiseCondNumber n (fun w => ∑ i : Fin n, w i) (fun _ => 1) v := by
+  have habsS : (0 : R) < |∑ i : Fin n, v i| := abs_pos.mpr hS
+  have hfwd := forward_from_sum_backward hn br hzero
+  rw [componentwiseCondNumber, if_neg hS]
+  simp only [mul_one]
+  calc |computed - ∑ i, v i| / |∑ i, v i|
+      ≤ (br.eps * ∑ i, |v i|) / |∑ i, v i| :=
+        div_le_div_of_nonneg_right hfwd habsS.le
+    _ = br.eps * ((∑ i, |v i|) / |∑ i, v i|) := mul_div_assoc _ _ _
+
 end ConditionNumber
 
 /-! ## Composition -/

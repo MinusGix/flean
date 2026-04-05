@@ -328,10 +328,11 @@ BackwardErrorCore.lean. Given `computed + error_fold = exact`, produces
 `MixedResult` with zero backward error and gauge-bounded residual.
 Also added `weightedGaugeSum_nonneg` to AffineFold.lean.
 
-### D4. Condition number section disconnected
-`componentwiseCondNumber` is defined but not connected to `BackwardResult`.
-The full bridge works for summation but not general `f`. Generalizing needs
-partial derivatives / Jacobian framework.
+### D4. Condition number ↔ BackwardResult bridge — DONE (summation)
+`componentwiseRelGauge_component_bound` extracts per-component bounds.
+`forward_from_sum_backward` and `forward_rel_from_sum_backward` connect
+`BackwardResult` to forward error and condition number for summation.
+General `f` still needs partial derivatives / Jacobian framework.
 
 ### D5. Gauge hierarchy — partially done
 `componentwiseRelGauge` added (max_i |x'_i - x_i|/|x_i|). Still missing:
