@@ -3,12 +3,14 @@ import Flean.Operations.Horner
 import Flean.Operations.HornerFMA
 import Flean.Operations.Clenshaw
 import Flean.Operations.CompensatedHorner
+import Flean.Operations.DotProduct
+import Flean.Operations.DotProductFMA
 
 /-!
-# AffineFold Instances: Horner and Clenshaw
+# AffineFold Instances: Horner, Clenshaw, and Dot Product
 
-Shows that Horner (1D) and Clenshaw (2D) are instances of the generic `AffineFold`
-framework, validating the abstraction.
+Shows that Horner (1D), Clenshaw (2D), and dot product (κ=1) are instances of
+the generic `AffineFold` framework, validating the abstraction.
 
 For each algorithm:
 1. The linear map `L` is additive
@@ -19,7 +21,7 @@ For each algorithm:
 
 namespace AffineFoldInstances
 
-open AffineFold Horner Clenshaw
+open AffineFold Horner Clenshaw DotProduct DotProductFMA
 
 /-! ## Horner Instance -/
 
@@ -845,5 +847,443 @@ theorem fma_horner_error_bound_via_affineFold
     (fma_horner_weighted_error_bound (R := R) trace hnr)
 
 end FMAHornerErrorBound
+
+/-! ## Dot Product Error Bound via Framework
+
+The sequential dot product `sₖ = fl(s_{k-1} + fl(xₖ·yₖ))` is an accumulator fold
+with `κ = 1` (identity linear map) and `α = (1+η)²-1` (two roundings per step).
+The framework gives `((1+η)^{2n}-1) · (|init| + Σ|xᵢyᵢ|)`, which is looser than
+the manually-proved `((1+η)^n-1)` bound in `DotProduct.lean` (which exploits the
+zero-init trick and tracks mul/add errors separately). This section validates
+that the generic framework applies to κ=1 algorithms. -/
+
+section DotProductErrorBound
+
+variable [FloatFormat]
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+
+/-- Extract per-step rounding errors from a dot product trace.
+    `eₖ = (s_{k-1} + xₖ·yₖ) - sₖ` (exact minus computed). -/
+def dpStepErrors [RModeExec] :
+    {pairs : List (FiniteFp × FiniteFp)} → {acc final : FiniteFp} →
+    DPTrace pairs acc final → List R
+  | _, _, _, .nil _ => []
+  | _, _, _, .cons (acc := acc) (x := x) (y := y) step rest =>
+    ((acc.toVal : R) + x.toVal * y.toVal - step.next.toVal) :: dpStepErrors rest
+
+theorem dpStepErrors_length [RModeExec]
+    {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
+    (trace : DPTrace pairs acc final) :
+    (dpStepErrors (R := R) trace).length = pairs.length := by
+  induction trace with
+  | nil => simp [dpStepErrors]
+  | cons _ _ ih => simp [dpStepErrors, ih]
+
+/-- Exact decomposition for dot product: `final + hornerPoly(errors, 0, 1) = init + Σ(xᵢyᵢ)`. -/
+theorem dp_exact_decomposition [RModeExec]
+    {pairs : List (FiniteFp × FiniteFp)} {init final : FiniteFp}
+    (trace : DPTrace pairs init final) :
+    (final.toVal : R) +
+      hornerPoly (dpStepErrors trace (R := R)) 0 1 =
+      hornerPoly (pairs.map (fun p => p.1.toVal (R := R) * p.2.toVal)) (init.toVal) 1 := by
+  induction trace with
+  | nil => simp [dpStepErrors, hornerPoly]
+  | @cons acc x y pairs final step rest ih =>
+    simp only [dpStepErrors, hornerPoly, List.map_cons, mul_one, zero_add]
+    set e := (acc.toVal : R) + x.toVal * y.toVal - step.next.toVal
+    have haffine_err := hornerPoly_affine (dpStepErrors (R := R) rest) 0 e 1
+    simp only [zero_add, one_pow, mul_one] at haffine_err
+    have hnext_sub : (step.next.toVal : R) =
+        (acc.toVal : R) + x.toVal * y.toVal + -e := by simp only [e]; ring
+    rw [hnext_sub] at ih
+    have haffine_main := hornerPoly_affine
+      (pairs.map (fun p => p.1.toVal (R := R) * p.2.toVal))
+      ((acc.toVal : R) + x.toVal * y.toVal)
+      (-e) 1
+    simp only [one_pow, mul_one] at haffine_main
+    linarith
+
+/-- Per-step combined FP error for one dot product step:
+    `|acc + x·y - next| ≤ ((1+η)²-1) · (|acc| + |x·y|)`. -/
+theorem dp_step_combined_error
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {acc x y : FiniteFp} (step : DPStep acc x y)
+    (hnr : DPStepNormalRange (R := R) acc x y step) :
+    |(acc.toVal : R) + x.toVal * y.toVal - step.next.toVal| ≤
+      ((1 + η) ^ 2 - 1) * (|(acc.toVal : R)| + |x.toVal * y.toVal|) := by
+  set av := (acc.toVal : R); set xv := (x.toVal : R); set yv := (y.toVal : R)
+  set pv := (step.prod.toVal : R); set nv := (step.next.toVal : R)
+  have hη : (0 : R) ≤ η := by positivity
+  have hmul := KahanSum.fpMul_error_or_zero (R := R) x y step.prod step.hprod hnr.mul_normal
+  have hadd := KahanSum.fpAdd_error_or_zero (R := R) acc step.prod step.next step.hnext
+    hnr.add_normal
+  have hprod : |pv| ≤ (1 + η) * |xv * yv| := by
+    have := le_trans (abs_sub_abs_le_abs_sub pv (xv * yv)) hmul
+    linarith
+  have hap : |av + pv| ≤ |av| + (1 + η) * |xv * yv| :=
+    le_trans (abs_add_le av pv) (by linarith)
+  have htri : |av + xv * yv - nv| ≤ |nv - (av + pv)| + |pv - xv * yv| := by
+    have : av + xv * yv - nv = -(nv - (av + pv)) + -(pv - xv * yv) := by ring
+    rw [this]; linarith [abs_add_le (-(nv - (av + pv))) (-(pv - xv * yv)),
+      abs_neg (nv - (av + pv)), abs_neg (pv - xv * yv)]
+  nlinarith [htri, hadd, hmul, mul_le_mul_of_nonneg_left hap hη,
+             abs_nonneg av, abs_nonneg (xv * yv),
+             mul_nonneg hη (abs_nonneg av),
+             mul_nonneg hη (abs_nonneg (xv * yv))]
+
+/-- One-step magnitude bound: `|next| ≤ (1+η)² · (|acc| + |x·y|)`. -/
+theorem dp_step_magnitude
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {acc x y : FiniteFp} (step : DPStep acc x y)
+    (hnr : DPStepNormalRange (R := R) acc x y step) :
+    |step.next.toVal (R := R)| ≤
+      (1 + η) ^ 2 * (|(acc.toVal : R)| + |x.toVal * y.toVal|) := by
+  have herr := dp_step_combined_error (R := R) step hnr
+  have hexact : |(acc.toVal : R) + x.toVal * y.toVal| ≤
+      |(acc.toVal : R)| + |x.toVal * y.toVal| := abs_add_le _ _
+  have hα : (0 : R) ≤ (1 + η) ^ 2 - 1 := by nlinarith [show (0 : R) ≤ η from by positivity]
+  have hmag := magnitude_of_relative_error _ _ _ _ (by positivity) hexact herr hα
+  linarith [show (1 : R) + ((1 + η) ^ 2 - 1) = (1 + η) ^ 2 from by ring]
+
+/-- Extract accumulator magnitudes from a dot product trace. -/
+def dpTraceMags [RModeExec] :
+    {pairs : List (FiniteFp × FiniteFp)} → {acc final : FiniteFp} →
+    DPTrace pairs acc final → ℕ → R
+  | _, acc, _, .nil _, _ => |(acc.toVal : R)|
+  | _, acc, _, .cons _ _, 0 => |(acc.toVal : R)|
+  | _, _, _, .cons _ rest, n + 1 => dpTraceMags rest n
+
+theorem dpTraceMags_nonneg [RModeExec]
+    {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
+    (trace : DPTrace pairs acc final) (k : ℕ) :
+    0 ≤ dpTraceMags (R := R) trace k := by
+  match trace, k with
+  | .nil _, _ | .cons _ _, 0 => exact abs_nonneg _
+  | .cons _ rest, k + 1 => exact dpTraceMags_nonneg rest k
+
+@[simp] theorem dpTraceMags_zero [RModeExec]
+    {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
+    (trace : DPTrace pairs acc final) :
+    dpTraceMags (R := R) trace 0 = |(acc.toVal : R)| := by
+  cases trace <;> rfl
+
+/-- Per-step error bound for each step of the dot product trace. -/
+theorem dp_trace_step_error
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
+    (trace : DPTrace pairs acc final)
+    (hnr : trace.AllNormalRange (R := R))
+    (k : ℕ) (hk : k < pairs.length) :
+    |(dpStepErrors trace (R := R))[k]'(by rw [dpStepErrors_length]; exact hk)| ≤
+      ((1 + η) ^ 2 - 1) *
+        (1 * dpTraceMags trace k +
+         |(pairs[k]'hk).1.toVal (R := R) * (pairs[k]'hk).2.toVal|) := by
+  match trace, hnr, k, hk with
+  | .cons (acc := a) (x := x) (y := y) step rest, hnr, 0, hk =>
+    simp only [DPTrace.AllNormalRange] at hnr
+    simp only [dpStepErrors, List.getElem_cons_zero, dpTraceMags, one_mul]
+    exact dp_step_combined_error (R := R) step hnr.1
+  | .cons step rest, hnr, k + 1, hk =>
+    simp only [DPTrace.AllNormalRange] at hnr
+    simp only [dpStepErrors, List.getElem_cons_succ, dpTraceMags]
+    exact dp_trace_step_error rest hnr.2 k (by simp at hk; omega)
+
+/-- Magnitude recurrence for each step of the dot product trace. -/
+theorem dp_trace_mag_recur
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
+    (trace : DPTrace pairs acc final)
+    (hnr : trace.AllNormalRange (R := R))
+    (k : ℕ) (hk : k < pairs.length) :
+    dpTraceMags trace (k + 1) ≤
+      (1 + ((1 + η) ^ 2 - 1)) *
+        (1 * dpTraceMags trace k +
+         |(pairs[k]'hk).1.toVal (R := R) * (pairs[k]'hk).2.toVal|) := by
+  match trace, hnr, k, hk with
+  | .cons (acc := a) (x := x) (y := y) step rest, hnr, 0, hk =>
+    simp only [DPTrace.AllNormalRange] at hnr
+    show dpTraceMags rest 0 ≤ _
+    rw [dpTraceMags_zero]
+    simp only [List.getElem_cons_zero, dpTraceMags_zero (R := R), one_mul]
+    have h := dp_step_magnitude (R := R) step hnr.1
+    linarith [show (1 : R) + ((1 + η) ^ 2 - 1) = (1 + η) ^ 2 from by ring]
+  | .cons step rest, hnr, k + 1, hk =>
+    simp only [DPTrace.AllNormalRange] at hnr
+    simp only [dpTraceMags, List.getElem_cons_succ]
+    exact dp_trace_mag_recur rest hnr.2 k (by simp at hk; omega)
+
+set_option maxHeartbeats 800000 in
+/-- **Weighted error sum bound for dot product** via `weightedErrorSum_le_of_step_errors`.
+    Instantiates with `κ = 1`, `α = (1+η)²-1`. -/
+theorem dp_weighted_error_bound
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
+    (trace : DPTrace pairs acc final)
+    (hnr : trace.AllNormalRange (R := R)) :
+    weightedErrorSum 1 (dpStepErrors trace (R := R)) ≤
+      ((1 + η) ^ (2 * pairs.length) - 1) *
+        hornerPoly (pairs.map (fun p => |p.1.toVal (R := R) * p.2.toVal|))
+          |acc.toVal (R := R)| 1 := by
+  have hη : (0 : R) ≤ η := by positivity
+  have hα : (0 : R) ≤ (1 + (η : R)) ^ 2 - 1 := by
+    nlinarith [one_le_pow₀ (show (1 : R) ≤ 1 + η by linarith) (n := 2)]
+  have hgen := weightedErrorSum_le_of_step_errors
+    1 ((1 + (η : R)) ^ 2 - 1)
+    zero_le_one hα
+    (dpStepErrors trace (R := R))
+    (pairs.map (fun p => |p.1.toVal (R := R) * p.2.toVal|))
+    (dpTraceMags trace)
+    |acc.toVal (R := R)|
+    (by rw [dpStepErrors_length]; simp)
+    (fun c hc => by simp only [List.mem_map] at hc; obtain ⟨_, _, rfl⟩ := hc; positivity)
+    (abs_nonneg _)
+    (by rw [dpTraceMags_zero])
+    (dpTraceMags_nonneg (R := R) trace)
+    (fun k hk => by
+      rw [dpStepErrors_length] at hk
+      simp only [List.getElem_map]
+      exact dp_trace_step_error (R := R) trace hnr k hk)
+    (fun k hk => by
+      rw [dpStepErrors_length] at hk
+      simp only [List.getElem_map]
+      exact dp_trace_mag_recur (R := R) trace hnr k hk)
+  have hpow : (1 + ((1 + (η : R)) ^ 2 - 1)) ^ (dpStepErrors trace (R := R)).length =
+      (1 + η) ^ (2 * pairs.length) := by
+    rw [show (1 : R) + ((1 + η) ^ 2 - 1) = (1 + η) ^ 2 from by ring,
+        ← pow_mul, dpStepErrors_length]
+  linarith [hpow ▸ hgen]
+
+/-- **Dot product error bound via AffineFold framework** (`(1+η)^{2n}` form).
+
+    `|final - (init + Σxᵢyᵢ)| ≤ ((1+η)^{2n}-1) · (|init| + Σ|xᵢyᵢ|)`
+
+    Note: this is looser than the manually-proved `((1+η)^n-1)` bound in
+    `DotProduct.dp_error_bound`, which exploits zero-init and separate mul/add
+    tracking. This bound applies to arbitrary initial accumulators. -/
+theorem dp_error_bound_via_affineFold
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {pairs : List (FiniteFp × FiniteFp)} {init final : FiniteFp}
+    (trace : DPTrace pairs init final)
+    (hnr : trace.AllNormalRange (R := R)) :
+    |(final.toVal : R) -
+      hornerPoly (pairs.map (fun p => p.1.toVal (R := R) * p.2.toVal)) (init.toVal) 1| ≤
+      ((1 + η) ^ (2 * pairs.length) - 1) *
+        hornerPoly (pairs.map (fun p => |p.1.toVal (R := R) * p.2.toVal|))
+          |init.toVal (R := R)| 1 := by
+  refine accumulator_error_bound _ _ (1 : R) _ _
+    (dp_exact_decomposition (R := R) trace) ?_
+  simp only [abs_one]
+  exact dp_weighted_error_bound (R := R) trace hnr
+
+end DotProductErrorBound
+
+/-! ## FMA Dot Product Error Bound via Framework
+
+The FMA dot product `sₖ = fma(xₖ, yₖ, s_{k-1})` is an accumulator fold with
+`κ = 1` and `α = η` (single rounding per step). The framework gives
+`((1+η)^n-1) · (|init| + Σ|xᵢyᵢ|)`, which matches the manually-proved bound
+in `DotProductFMA.lean` (with zero init). -/
+
+section FMADotProductErrorBound
+
+variable [FloatFormat]
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+
+/-- Extract per-step rounding errors from an FMA dot product trace.
+    `eₖ = (xₖ·yₖ + s_{k-1}) - sₖ`. -/
+def fmaDPStepErrors [RModeExec] :
+    {pairs : List (FiniteFp × FiniteFp)} → {acc final : FiniteFp} →
+    FMADPTrace pairs acc final → List R
+  | _, _, _, .nil _ => []
+  | _, _, _, .cons (acc := acc) (x := x) (y := y) step rest =>
+    ((acc.toVal : R) + x.toVal * y.toVal - step.next.toVal) :: fmaDPStepErrors rest
+
+theorem fmaDPStepErrors_length [RModeExec]
+    {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
+    (trace : FMADPTrace pairs acc final) :
+    (fmaDPStepErrors (R := R) trace).length = pairs.length := by
+  induction trace with
+  | nil => simp [fmaDPStepErrors]
+  | cons _ _ ih => simp [fmaDPStepErrors, ih]
+
+/-- Exact decomposition for FMA dot product. -/
+theorem fma_dp_exact_decomposition [RModeExec]
+    {pairs : List (FiniteFp × FiniteFp)} {init final : FiniteFp}
+    (trace : FMADPTrace pairs init final) :
+    (final.toVal : R) +
+      hornerPoly (fmaDPStepErrors trace (R := R)) 0 1 =
+      hornerPoly (pairs.map (fun p => p.1.toVal (R := R) * p.2.toVal)) (init.toVal) 1 := by
+  induction trace with
+  | nil => simp [fmaDPStepErrors, hornerPoly]
+  | @cons acc x y pairs final step rest ih =>
+    simp only [fmaDPStepErrors, hornerPoly, List.map_cons, mul_one, zero_add]
+    set e := (acc.toVal : R) + x.toVal * y.toVal - step.next.toVal
+    have haffine_err := hornerPoly_affine (fmaDPStepErrors (R := R) rest) 0 e 1
+    simp only [zero_add, one_pow, mul_one] at haffine_err
+    have hnext_sub : (step.next.toVal : R) =
+        (acc.toVal : R) + x.toVal * y.toVal + -e := by simp only [e]; ring
+    rw [hnext_sub] at ih
+    have haffine_main := hornerPoly_affine
+      (pairs.map (fun p => p.1.toVal (R := R) * p.2.toVal))
+      ((acc.toVal : R) + x.toVal * y.toVal)
+      (-e) 1
+    simp only [one_pow, mul_one] at haffine_main
+    linarith
+
+/-- Per-step FMA error: `|acc + x·y - next| ≤ η · (|acc| + |x·y|)`. -/
+theorem fma_dp_step_error
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {acc x y : FiniteFp} (step : FMADPStep acc x y)
+    (hnr : FMADPStepNormalRange (R := R) acc x y step) :
+    |(acc.toVal : R) + x.toVal * y.toVal - step.next.toVal| ≤
+      η * (|(acc.toVal : R)| + |x.toVal * y.toVal|) := by
+  have hfma := HornerFMA.fpFMA_error_or_zero (R := R) x y acc step.next step.hnext
+    hnr.fma_normal
+  have hη : (0 : R) ≤ η := by positivity
+  calc |(acc.toVal : R) + x.toVal * y.toVal - step.next.toVal|
+      = |step.next.toVal - (x.toVal * y.toVal + acc.toVal)| := by
+        rw [abs_sub_comm]; ring_nf
+    _ ≤ η * |x.toVal * y.toVal + acc.toVal| := hfma
+    _ ≤ η * (|x.toVal * y.toVal| + |acc.toVal|) := by
+        apply mul_le_mul_of_nonneg_left (abs_add_le _ _) hη
+    _ = η * (|(acc.toVal : R)| + |x.toVal * y.toVal|) := by ring
+
+/-- One-step magnitude: `|next| ≤ (1+η) · (|acc| + |x·y|)`. -/
+theorem fma_dp_step_magnitude
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {acc x y : FiniteFp} (step : FMADPStep acc x y)
+    (hnr : FMADPStepNormalRange (R := R) acc x y step) :
+    |step.next.toVal (R := R)| ≤
+      (1 + η) * (|(acc.toVal : R)| + |x.toVal * y.toVal|) := by
+  have herr := fma_dp_step_error (R := R) step hnr
+  have hexact : |(acc.toVal : R) + x.toVal * y.toVal| ≤
+      |(acc.toVal : R)| + |x.toVal * y.toVal| := abs_add_le _ _
+  have hα : (0 : R) ≤ η := by positivity
+  have hmag := magnitude_of_relative_error _ _ _ _ (by positivity) hexact herr hα
+  linarith
+
+/-- Extract accumulator magnitudes from an FMA dot product trace. -/
+def fmaDPTraceMags [RModeExec] :
+    {pairs : List (FiniteFp × FiniteFp)} → {acc final : FiniteFp} →
+    FMADPTrace pairs acc final → ℕ → R
+  | _, acc, _, .nil _, _ => |(acc.toVal : R)|
+  | _, acc, _, .cons _ _, 0 => |(acc.toVal : R)|
+  | _, _, _, .cons _ rest, n + 1 => fmaDPTraceMags rest n
+
+theorem fmaDPTraceMags_nonneg [RModeExec]
+    {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
+    (trace : FMADPTrace pairs acc final) (k : ℕ) :
+    0 ≤ fmaDPTraceMags (R := R) trace k := by
+  match trace, k with
+  | .nil _, _ | .cons _ _, 0 => exact abs_nonneg _
+  | .cons _ rest, k + 1 => exact fmaDPTraceMags_nonneg rest k
+
+@[simp] theorem fmaDPTraceMags_zero [RModeExec]
+    {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
+    (trace : FMADPTrace pairs acc final) :
+    fmaDPTraceMags (R := R) trace 0 = |(acc.toVal : R)| := by
+  cases trace <;> rfl
+
+/-- Per-step error bound for each step of the FMA dot product trace. -/
+theorem fma_dp_trace_step_error
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
+    (trace : FMADPTrace pairs acc final)
+    (hnr : trace.AllNormalRange (R := R))
+    (k : ℕ) (hk : k < pairs.length) :
+    |(fmaDPStepErrors trace (R := R))[k]'(by rw [fmaDPStepErrors_length]; exact hk)| ≤
+      η *
+        (1 * fmaDPTraceMags trace k +
+         |(pairs[k]'hk).1.toVal (R := R) * (pairs[k]'hk).2.toVal|) := by
+  match trace, hnr, k, hk with
+  | .cons (acc := a) (x := x) (y := y) step rest, hnr, 0, hk =>
+    simp only [FMADPTrace.AllNormalRange] at hnr
+    simp only [fmaDPStepErrors, List.getElem_cons_zero, fmaDPTraceMags, one_mul]
+    exact fma_dp_step_error (R := R) step hnr.1
+  | .cons step rest, hnr, k + 1, hk =>
+    simp only [FMADPTrace.AllNormalRange] at hnr
+    simp only [fmaDPStepErrors, List.getElem_cons_succ, fmaDPTraceMags]
+    exact fma_dp_trace_step_error rest hnr.2 k (by simp at hk; omega)
+
+/-- Magnitude recurrence for each step of the FMA dot product trace. -/
+theorem fma_dp_trace_mag_recur
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
+    (trace : FMADPTrace pairs acc final)
+    (hnr : trace.AllNormalRange (R := R))
+    (k : ℕ) (hk : k < pairs.length) :
+    fmaDPTraceMags trace (k + 1) ≤
+      (1 + η) *
+        (1 * fmaDPTraceMags trace k +
+         |(pairs[k]'hk).1.toVal (R := R) * (pairs[k]'hk).2.toVal|) := by
+  match trace, hnr, k, hk with
+  | .cons (acc := a) (x := x) (y := y) step rest, hnr, 0, hk =>
+    simp only [FMADPTrace.AllNormalRange] at hnr
+    show fmaDPTraceMags rest 0 ≤ _
+    rw [fmaDPTraceMags_zero]
+    simp only [List.getElem_cons_zero, fmaDPTraceMags_zero (R := R), one_mul]
+    exact fma_dp_step_magnitude (R := R) step hnr.1
+  | .cons step rest, hnr, k + 1, hk =>
+    simp only [FMADPTrace.AllNormalRange] at hnr
+    simp only [fmaDPTraceMags, List.getElem_cons_succ]
+    exact fma_dp_trace_mag_recur rest hnr.2 k (by simp at hk; omega)
+
+set_option maxHeartbeats 800000 in
+/-- **Weighted error sum bound for FMA dot product** via `weightedErrorSum_le_of_step_errors`.
+    Instantiates with `κ = 1`, `α = η`. -/
+theorem fma_dp_weighted_error_bound
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
+    (trace : FMADPTrace pairs acc final)
+    (hnr : trace.AllNormalRange (R := R)) :
+    weightedErrorSum 1 (fmaDPStepErrors trace (R := R)) ≤
+      ((1 + η) ^ pairs.length - 1) *
+        hornerPoly (pairs.map (fun p => |p.1.toVal (R := R) * p.2.toVal|))
+          |acc.toVal (R := R)| 1 := by
+  have hη : (0 : R) ≤ η := by positivity
+  have hgen := weightedErrorSum_le_of_step_errors
+    1 (η : R)
+    zero_le_one hη
+    (fmaDPStepErrors trace (R := R))
+    (pairs.map (fun p => |p.1.toVal (R := R) * p.2.toVal|))
+    (fmaDPTraceMags trace)
+    |acc.toVal (R := R)|
+    (by rw [fmaDPStepErrors_length]; simp)
+    (fun c hc => by simp only [List.mem_map] at hc; obtain ⟨_, _, rfl⟩ := hc; positivity)
+    (abs_nonneg _)
+    (by rw [fmaDPTraceMags_zero])
+    (fmaDPTraceMags_nonneg (R := R) trace)
+    (fun k hk => by
+      rw [fmaDPStepErrors_length] at hk
+      simp only [List.getElem_map]
+      exact fma_dp_trace_step_error (R := R) trace hnr k hk)
+    (fun k hk => by
+      rw [fmaDPStepErrors_length] at hk
+      simp only [List.getElem_map]
+      exact fma_dp_trace_mag_recur (R := R) trace hnr k hk)
+  rw [fmaDPStepErrors_length] at hgen
+  linarith
+
+/-- **FMA dot product error bound via AffineFold framework** (`(1+η)^n` form).
+
+    `|final - (init + Σxᵢyᵢ)| ≤ ((1+η)^n-1) · (|init| + Σ|xᵢyᵢ|)`
+
+    With zero init, this matches `DotProductFMA.fma_dp_error_bound`. -/
+theorem fma_dp_error_bound_via_affineFold
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {pairs : List (FiniteFp × FiniteFp)} {init final : FiniteFp}
+    (trace : FMADPTrace pairs init final)
+    (hnr : trace.AllNormalRange (R := R)) :
+    |(final.toVal : R) -
+      hornerPoly (pairs.map (fun p => p.1.toVal (R := R) * p.2.toVal)) (init.toVal) 1| ≤
+      ((1 + η) ^ pairs.length - 1) *
+        hornerPoly (pairs.map (fun p => |p.1.toVal (R := R) * p.2.toVal|))
+          |init.toVal (R := R)| 1 := by
+  refine accumulator_error_bound _ _ (1 : R) _ _
+    (fma_dp_exact_decomposition (R := R) trace) ?_
+  simp only [abs_one]
+  exact fma_dp_weighted_error_bound (R := R) trace hnr
+
+end FMADotProductErrorBound
 
 end AffineFoldInstances
