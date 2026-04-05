@@ -1,5 +1,6 @@
 import Flean.Operations.DotProduct
 import Flean.Operations.KahanSum
+import Flean.Operations.AffineFoldInstances
 
 /-!
 # Compensated Dot Product (Ogita-Rump-Oishi)
@@ -430,5 +431,101 @@ theorem cdp_error_bound
     rw [hsc_eq]
     simpa using h
   linarith
+
+/-! ## Per-step correction bound -/
+
+/-- Each correction `|σᵢ + πᵢ|` equals the dot-product per-step error
+    `|s_{i-1} + xᵢyᵢ - sᵢ|`, which is bounded by
+    `((1+η)²-1) · (|s_{i-1}| + |xᵢyᵢ|)` (two roundings: mul then add). -/
+theorem cdp_correction_eq_dp_error [RModeExec]
+    {s_prev c_prev x y : FiniteFp}
+    (step : CDPStep s_prev c_prev x y)
+    (hexact : CDPStepExact (R := R) s_prev c_prev x y step) :
+    step.sigma.toVal (R := R) + step.pi.toVal =
+      (s_prev.toVal : R) + x.toVal * y.toVal - step.s_new.toVal := by
+  -- σ + π = (s_prev + p - s_new) + (x·y - p) = s_prev + x·y - s_new
+  linarith [hexact.hsigma, hexact.hpi]
+
+/-- Bound each `|σᵢ + πᵢ|` as a DotProduct step error. -/
+theorem cdp_correction_bound
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {s_prev c_prev x y : FiniteFp}
+    (step : CDPStep s_prev c_prev x y)
+    (hexact : CDPStepExact (R := R) s_prev c_prev x y step)
+    (hmul_nr : isNormalRange ((x.toVal : R) * y.toVal) ∨ (x.toVal : R) * y.toVal = 0)
+    (hadd_nr : isNormalRange ((s_prev.toVal : R) + step.p.toVal) ∨
+               (s_prev.toVal : R) + step.p.toVal = 0) :
+    |step.sigma.toVal (R := R) + step.pi.toVal| ≤
+      ((1 + η) ^ 2 - 1) * (|(s_prev.toVal : R)| + |x.toVal * y.toVal|) := by
+  rw [cdp_correction_eq_dp_error step hexact]
+  exact AffineFoldInstances.dp_step_combined_error (R := R)
+    ⟨step.p, step.hp, step.s_new, step.hs⟩
+    ⟨hmul_nr, hadd_nr⟩
+
+/-! ## Gamma-squared form -/
+
+/-- **Compensated dot product: γ² form** (simplified, with γ_{2n}).
+
+    When `Σ|σᵢ + πᵢ| ≤ C · Σ|xᵢyᵢ|` (from the correction bound), the
+    main error bound becomes:
+
+    `|result - Σxᵢyᵢ| ≤ η|sₙ + cₙ| + ((1+η)^{2n}-1) · C · Σ|xᵢyᵢ|`
+
+    With `C = ((1+η)^{2n}-1)` from the DotProduct-style bound on the s-lane
+    corrections, the bound becomes `η|s+c| + ((1+η)^{2n}-1)² · Σ|xᵢyᵢ|`.
+    Using `γ_{2n} ≥ (1+η)^{2n}-1`:
+
+    `|result - Σxᵢyᵢ| ≤ η|sₙ + cₙ| + γ_{2n}² · Σ|xᵢyᵢ|` -/
+theorem cdp_error_bound_gamma_sq
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {pairs : List (FiniteFp × FiniteFp)}
+    {s_init c_init s_final c_final : FiniteFp}
+    (trace : CDPTrace pairs s_init c_init s_final c_final)
+    (hexact : trace.AllExact (R := R))
+    (hnr : trace.AllNormalRange (R := R))
+    (hinit_s : s_init.toVal (R := R) = 0)
+    (hinit_c : c_init.toVal (R := R) = 0)
+    (result : FiniteFp)
+    (hresult : s_final + c_final = Fp.finite result)
+    (hresult_nr : isNormalRange ((s_final.toVal : R) + c_final.toVal) ∨
+                  (s_final.toVal : R) + c_final.toVal = 0)
+    (hcorr_bound : ((cdpCorrections (R := R) trace).map (|·|)).sum ≤
+        ((1 + η) ^ (2 * pairs.length) - 1) *
+          (pairs.map (fun p => |p.1.toVal (R := R) * p.2.toVal|)).sum)
+    (hsmall : (2 * pairs.length : R) * η < 1) :
+    |(result.toVal (R := R)) -
+      (pairs.map (fun p => p.1.toVal (R := R) * p.2.toVal)).sum| ≤
+      η * |(s_final.toVal : R) + c_final.toVal| +
+      gamma_n (R := R) (2 * pairs.length) ^ 2 *
+        (pairs.map (fun p => |p.1.toVal (R := R) * p.2.toVal|)).sum := by
+  have hbase := cdp_error_bound (R := R) trace hexact hnr hinit_s hinit_c
+    result hresult hresult_nr
+  -- hbase: ≤ η|s+c| + ((1+η)^{2n}-1) · Σ|corr|
+  -- hcorr_bound: Σ|corr| ≤ ((1+η)^{2n}-1) · Σ|xy|
+  -- Combine: ≤ η|s+c| + ((1+η)^{2n}-1)² · Σ|xy|
+  set T := (pairs.map (fun p => |p.1.toVal (R := R) * p.2.toVal|)).sum
+  set C := ((1 + η : R) ^ (2 * pairs.length) - 1)
+  have hη : (0 : R) ≤ η := by positivity
+  have h1η : (1 : R) ≤ 1 + η := by linarith
+  have hC_nn : (0 : R) ≤ C := by
+    have := one_le_pow₀ h1η (n := 2 * pairs.length)
+    linarith
+  have hT_nn : (0 : R) ≤ T := List.sum_nonneg (fun z hz => by
+    simp only [List.mem_map] at hz; obtain ⟨_, _, rfl⟩ := hz; exact abs_nonneg _)
+  have hcorr_nn : (0 : R) ≤ ((cdpCorrections (R := R) trace).map (|·|)).sum :=
+    List.sum_nonneg (fun z hz => by
+      simp only [List.mem_map] at hz; obtain ⟨_, _, rfl⟩ := hz; exact abs_nonneg _)
+  -- ((1+η)^{2n}-1)·Σ|corr| ≤ ((1+η)^{2n}-1)·((1+η)^{2n}-1)·Σ|xy| = C²·T
+  have hchain : C * ((cdpCorrections (R := R) trace).map (|·|)).sum ≤ C ^ 2 * T := by
+    calc C * ((cdpCorrections (R := R) trace).map (|·|)).sum
+        ≤ C * (C * T) := mul_le_mul_of_nonneg_left hcorr_bound hC_nn
+      _ = C ^ 2 * T := by ring
+  -- C ≤ γ_{2n}
+  have hC_le_gamma : C ≤ gamma_n (R := R) (2 * pairs.length) :=
+    pow_sub_one_le_gamma (2 * pairs.length) (by push_cast; exact hsmall)
+  -- C² ≤ γ_{2n}²
+  have hC2_le : C ^ 2 ≤ gamma_n (R := R) (2 * pairs.length) ^ 2 := by
+    exact pow_le_pow_left₀ hC_nn hC_le_gamma 2
+  linarith [mul_le_mul_of_nonneg_right hC2_le hT_nn]
 
 end CompensatedDotProduct
