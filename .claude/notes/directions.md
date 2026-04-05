@@ -262,15 +262,22 @@ Rounding/ files but narrow applicability.
   CompensatedHorner feeds directly into the perturbation framework.
 
 ## Mid-Term — Backward Error & Conditioning
-- [ ] **Backward error for summation/dot product** — prove "the computed sum equals the exact
-  sum of slightly perturbed inputs": `ŝ = Σ(1+δᵢ)xᵢ` with `|δᵢ| ≤ γ_n`.
-  We partly have this for Kahan (`kahan_weak_backward_error`) but not for plain summation
-  or dot product. Would unify with condition number analysis.
-  Ref: Higham, "Accuracy and Stability of Numerical Algorithms", Ch. 3-4.
-- [ ] **Condition numbers** — formalize `cond(f, x) = ‖J_f(x)‖·‖x‖/‖f(x)‖` and prove the
+- [x] **Backward error framework** — `BackwardError.lean`: `PerturbationGauge`, `BackwardResult`,
+  `MixedResult`, `error_distributable`, condition number bridge (`forward_le_cond_mul_backward`).
+  Design doc: `Flean/Operations/BackwardErrorDesign.md`.
+- [x] **Dot product backward error** — `dp_backward_error` + `_gamma`: `fl(x·y) = Σ(1+μᵢ)xᵢyᵢ`,
+  `|μᵢ| ≤ (1+η)^n-1` or `γ_n`. Constructive perturbations via `error_distributable`.
+- [x] **Scalar composition** — `backward_compose_one_round`: `(1+δ)·Σ(1+μᵢ)vᵢ = Σ(1+μ'ᵢ)vᵢ`
+  with `|μ'ᵢ| ≤ ε₁+ε₂+ε₁ε₂`.
+- [x] **Condition number (summation)** — `componentwiseCondNumber` + `forward_rel_le_cond_mul_backward`:
+  `rel_fwd_error ≤ ε · Σ|xᵢ|/|Σxᵢ|`.
+- [ ] **Horner backward error** — `hornerPoly_eq_fin_sum` has 1 sorry (Fin index arithmetic).
+  Once resolved: `horner_backward_error` with `|μᵢ| ≤ (1+η)^{2n}-1` on coefficients.
+- [ ] **General condition numbers** — formalize `cond(f, x) = ‖J_f(x)‖·‖x‖/‖f(x)‖` and prove the
   fundamental relation `forward_error ≤ cond · backward_error · (1 + O(η))`.
-  For summation: `cond = Σ|xᵢ|/|Σxᵢ|`. For polynomial evaluation: standard Wilkinson-type
-  bounds. Would give a clean "is this problem hard or is our algorithm bad?" decomposition.
+  For polynomial evaluation: standard Wilkinson-type bounds.
+- [ ] **Full gauge-based composition** — `PerturbationLift`, triangle inequality on gauge,
+  `BackwardResult.compose`. Needs `PerturbationMetric` (gauge + triangle). Deferred.
 - [ ] **Wilkinson polynomial root conditioning** — root sensitivity bound:
   `|Δx_k| ≈ |Δaⱼ| · Πᵢ≠ₖ |x_k - x_i|⁻¹`. Connects to Newton-Horner convergence radius:
   ill-conditioned roots → smaller convergence basin → more Newton steps needed.
