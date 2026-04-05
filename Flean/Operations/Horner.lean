@@ -37,8 +37,12 @@ namespace Horner
 variable [FloatFormat]
 variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
 
-/-! ## Polynomial Evaluation -/
+/-! ## Polynomial Evaluation
 
+These pure-math lemmas about `hornerPoly` don't depend on `FloatFormat` or `FloorRing`.
+The `omit` allows them to be used without those typeclasses. -/
+
+omit [FloatFormat] [FloorRing R] in
 /-- Exact Horner evaluation: `hornerPoly [c₀,...,c_{n-1}] init x` computes
     `init · x^n + c₀ · x^{n-1} + ... + c_{n-1}` via the recurrence
     `acc ← acc * x + c`. -/
@@ -46,6 +50,7 @@ def hornerPoly : List R → R → R → R
   | [], acc, _ => acc
   | c :: cs, acc, x => hornerPoly cs (acc * x + c) x
 
+omit [FloatFormat] [FloorRing R] in
 theorem hornerPoly_nonneg (coeffs : List R) (acc x : R)
     (hacc : 0 ≤ acc) (hx : 0 ≤ x)
     (hcoeffs : ∀ c ∈ coeffs, 0 ≤ c) :
@@ -59,6 +64,7 @@ theorem hornerPoly_nonneg (coeffs : List R) (acc x : R)
     · intro d hd
       exact hcoeffs d (List.mem_cons.mpr (Or.inr hd))
 
+omit [FloatFormat] [FloorRing R] in
 /-- Horner polynomial is affine in the accumulator:
     `hornerPoly cs (a + e) x = hornerPoly cs a x + e * x^{cs.length}`.
 
@@ -74,6 +80,7 @@ theorem hornerPoly_affine (cs : List R) (a e x : R) :
     rw [heq, ih]
     ring
 
+omit [FloatFormat] [FloorRing R] in
 /-- Horner polynomial is monotone in the accumulator when `x ≥ 0`
     and all coefficients are nonneg. -/
 theorem hornerPoly_mono (cs : List R) (a b x : R)
@@ -87,6 +94,16 @@ theorem hornerPoly_mono (cs : List R) (a b x : R)
     · have hc : 0 ≤ c := hcs c (List.mem_cons.mpr (Or.inl rfl))
       nlinarith [mul_le_mul_of_nonneg_right hab hx]
     · exact fun d hd => hcs d (List.mem_cons.mpr (Or.inr hd))
+
+omit [FloatFormat] [FloorRing R] in
+/-- `acc * x^n ≤ hornerPoly cs acc x` when acc, x, and all coefficients are nonneg. -/
+theorem hornerPoly_ge_acc_xpow (cs : List R) (acc x : R)
+    (hacc : 0 ≤ acc) (hx : 0 ≤ x) (hcs : ∀ c ∈ cs, 0 ≤ c) :
+    acc * x ^ cs.length ≤ hornerPoly cs acc x := by
+  have h := hornerPoly_affine cs 0 acc x
+  simp only [zero_add] at h
+  rw [h]
+  linarith [hornerPoly_nonneg cs 0 x le_rfl hx hcs]
 
 /-! ## Step and Trace -/
 

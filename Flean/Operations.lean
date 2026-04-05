@@ -45,6 +45,7 @@ import Flean.Operations.Clenshaw
 import Flean.Operations.GeomBound
 import Flean.Operations.AffineFold
 import Flean.Operations.AffineFoldInstances
+import Flean.Operations.GeneralAccum
 import Flean.Operations.ClenshawBound
 import Flean.Operations.JetHorner
 import Flean.Operations.NewtonHorner
