@@ -394,8 +394,18 @@ theorem hornerPoly_eq_fin_sum (cs : List R) (x : R) :
     simp only [Horner.hornerPoly, zero_mul, zero_add, List.length_cons]
     rw [hornerPoly_acc_eq cs c x, ih, add_comm, Fin.sum_univ_succ]
     simp only [List.get_cons_zero, Fin.val_zero, Nat.sub_zero]
-    -- Remains: Σ cs[i]*x^(m-1-i) = Σ (c::cs)[succ i]*x^(m+1-1-(succ i).val)
-    sorry
+    rw [show c * x ^ cs.length = c * x ^ (cs.length + 1 - 1) by
+      simp]
+    rw [add_comm]
+    congr 1
+    apply Finset.sum_congr rfl
+    intro i _
+    have hi : i.val < cs.length := i.isLt
+    have hexp : cs.length - 1 - i.val = cs.length + 1 - 1 - i.succ.val := by
+      simp [Fin.val_succ]
+      omega
+    rw [hexp]
+    rfl
 
 -- TODO: Horner backward error
 -- The linking lemma `hornerPoly_eq_fin_sum` and `horner_backward_error` require
