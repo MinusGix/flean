@@ -389,6 +389,44 @@ theorem weightedErrorSum_le_of_relative_errors
                mul_le_mul_of_nonneg_left (le_trans hP_mono (le_of_eq hP_affine)) h1αn_sub,
                mul_le_mul_of_nonneg_left hMκn_le (mul_nonneg h1αn hα)]
 
+/-! ### Simplified Error Bound via Actual Magnitudes
+
+The main `weightedErrorSum_le_of_relative_errors` requires a magnitude function
+satisfying a recurrence. In practice, we always use `actual(k) = |fp_acc_k|`.
+The recurrence `actual(k+1) ≤ (1+α) · (κ · actual(k) + offset(k))` follows
+from `magnitude_of_relative_error` at each step. This wrapper handles the
+monotonicity lifting internally. -/
+
+/-- **Simplified generic weighted error sum bound.**
+
+    Only requires per-step error bounds against *actual* FP magnitudes.
+    The magnitude recurrence lifts to the generic theorem internally. -/
+theorem weightedErrorSum_le_of_step_errors
+    (κ α : R) (hκ : 0 ≤ κ) (hα : 0 ≤ α)
+    (errors offsets : List R) (actual : ℕ → R) (init : R)
+    (hlen : errors.length = offsets.length)
+    (hoffsets : ∀ c ∈ offsets, 0 ≤ c)
+    (hinit_nn : 0 ≤ init)
+    (hinit : actual 0 ≤ init)
+    (hactual_nn : ∀ k, 0 ≤ actual k)
+    (herr : ∀ k (hk : k < errors.length),
+        |errors[k]| ≤ α * (κ * actual k + offsets[k]'(by omega)))
+    (hrecur : ∀ k (hk : k < errors.length),
+        actual (k + 1) ≤ (1 + α) * (κ * actual k + offsets[k]'(by omega))) :
+    weightedErrorSum κ errors ≤
+      ((1 + α) ^ errors.length - 1) * hornerPoly offsets init κ := by
+  -- Use actual magnitudes directly, but with init as the starting point for the bound.
+  -- We need: actual(k) ≤ wcm(k) where wcm satisfies the same recurrence starting at init.
+  -- Then error bounds transfer: |e_k| ≤ α * (κ * actual(k) + offset_k) ≤ α * (κ * wcm(k) + offset_k).
+  -- Instead of defining wcm explicitly, just show `actual` itself works up to init:
+  -- Apply the original theorem with a monotone wrapper.
+  refine weightedErrorSum_le_of_relative_errors κ α hκ hα errors offsets
+    actual hlen hoffsets hactual_nn herr hrecur |>.trans ?_
+  -- Need: hornerPoly offsets (actual 0) κ ≤ hornerPoly offsets init κ
+  exact mul_le_mul_of_nonneg_left
+    (hornerPoly_mono offsets _ init κ hinit hκ hoffsets)
+    (by linarith [one_le_pow₀ (show (1 : R) ≤ 1 + α by linarith) (n := errors.length)])
+
 /-! ### Helper: Magnitude from Relative Error
 
 If `|exact - fp| ≤ α * M` and `|exact| ≤ M`, then `|fp| ≤ (1+α) * M`.
@@ -489,20 +527,19 @@ def hornerTraceMags [RModeExec] {x : FiniteFp} :
   | _, acc, _, .cons _ _, 0 => |(acc.toVal : R)|
   | _, _, _, .cons _ rest, n + 1 => hornerTraceMags rest n
 
-@[simp] theorem hornerTraceMags_zero [RModeExec] {x : FiniteFp}
-    {coeffs : List FiniteFp} {acc final : FiniteFp}
-    (trace : HornerTrace x coeffs acc final) :
-    hornerTraceMags (R := R) trace 0 = |(acc.toVal : R)| := by
-  cases trace <;> rfl
-
 theorem hornerTraceMags_nonneg [RModeExec] {x : FiniteFp}
     {coeffs : List FiniteFp} {acc final : FiniteFp}
     (trace : HornerTrace x coeffs acc final) (k : ℕ) :
     0 ≤ hornerTraceMags (R := R) trace k := by
   match trace, k with
-  | .nil _, _ => exact abs_nonneg _
-  | .cons _ _, 0 => exact abs_nonneg _
+  | .nil _, _ | .cons _ _, 0 => exact abs_nonneg _
   | .cons _ rest, k + 1 => exact hornerTraceMags_nonneg rest k
+
+@[simp] theorem hornerTraceMags_zero [RModeExec] {x : FiniteFp}
+    {coeffs : List FiniteFp} {acc final : FiniteFp}
+    (trace : HornerTrace x coeffs acc final) :
+    hornerTraceMags (R := R) trace 0 = |(acc.toVal : R)| := by
+  cases trace <;> rfl
 
 /-- The per-step error bound holds for each step of the trace. -/
 theorem horner_trace_step_error
@@ -552,10 +589,9 @@ theorem horner_trace_mag_recur
     exact horner_trace_mag_recur rest hnr.2 k (by simp at hk; omega)
 
 set_option maxHeartbeats 800000 in
-/-- **Weighted error sum bound** via the generic `weightedErrorSum_le_of_relative_errors`.
+/-- **Weighted error sum bound** via `weightedErrorSum_le_of_step_errors`.
 
-    Instantiates the generic theorem with `κ = |x|`, `α = (1+η)²-1`,
-    `mags k = |acc_at_step_k|`, `offsets = |coeffs|`. -/
+    Instantiates with `κ = |x|`, `α = (1+η)²-1`, `actual k = |acc_at_step_k|`. -/
 theorem horner_weighted_error_bound
     [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
     {x : FiniteFp} {coeffs : List FiniteFp} {acc final : FiniteFp}
@@ -568,16 +604,18 @@ theorem horner_weighted_error_bound
   have hη : (0 : R) ≤ η := by positivity
   have hα : (0 : R) ≤ (1 + (η : R)) ^ 2 - 1 := by
     nlinarith [one_le_pow₀ (show (1 : R) ≤ 1 + η by linarith) (n := 2)]
-  -- Generic theorem gives bound with (1 + α)^n where α = (1+η)²-1
-  have hgen := weightedErrorSum_le_of_relative_errors
+  have hgen := weightedErrorSum_le_of_step_errors
     |x.toVal (R := R)| ((1 + (η : R)) ^ 2 - 1)
     (abs_nonneg _) hα
     (CompensatedHorner.stepErrors trace (R := R))
     (coeffs.map (fun c => |c.toVal (R := R)|))
     (hornerTraceMags trace)
+    |acc.toVal (R := R)|
     (by rw [CompensatedHorner.stepErrors_length]; simp)
     (fun c hc => by simp at hc; obtain ⟨_, _, rfl⟩ := hc; exact abs_nonneg _)
-    (fun k => hornerTraceMags_nonneg (R := R) trace k)
+    (abs_nonneg _)
+    (by rw [hornerTraceMags_zero])
+    (hornerTraceMags_nonneg (R := R) trace)
     (fun k hk => by
       rw [CompensatedHorner.stepErrors_length] at hk
       simp only [List.getElem_map]
@@ -591,7 +629,6 @@ theorem horner_weighted_error_bound
       (1 + η) ^ (2 * coeffs.length) := by
     rw [show (1 : R) + ((1 + η) ^ 2 - 1) = (1 + η) ^ 2 from by ring,
         ← pow_mul, CompensatedHorner.stepErrors_length]
-  rw [hornerTraceMags_zero] at hgen
   linarith [hpow ▸ hgen]
 
 /-- **Horner error bound via AffineFold framework** (`(1+η)^{2n}` form).
@@ -634,22 +671,21 @@ def fmaTraceMags [RModeExec] {x : FiniteFp} :
   | _, acc, _, .cons _ _, 0 => |(acc.toVal : R)|
   | _, _, _, .cons _ rest, n + 1 => fmaTraceMags rest n
 
+theorem fmaTraceMags_nonneg [RModeExec] {x : FiniteFp}
+    {coeffs : List FiniteFp} {acc final : FiniteFp}
+    (trace : FMATrace x coeffs acc final) (k : ℕ) :
+    0 ≤ fmaTraceMags (R := R) trace k := by
+  match trace, k with
+  | .nil _, _ | .cons _ _, 0 => exact abs_nonneg _
+  | .cons _ rest, k + 1 => exact fmaTraceMags_nonneg rest k
+
 @[simp] theorem fmaTraceMags_zero [RModeExec] {x : FiniteFp}
     {coeffs : List FiniteFp} {acc final : FiniteFp}
     (trace : FMATrace x coeffs acc final) :
     fmaTraceMags (R := R) trace 0 = |(acc.toVal : R)| := by
   cases trace <;> rfl
 
-theorem fmaTraceMags_nonneg [RModeExec] {x : FiniteFp}
-    {coeffs : List FiniteFp} {acc final : FiniteFp}
-    (trace : FMATrace x coeffs acc final) (k : ℕ) :
-    0 ≤ fmaTraceMags (R := R) trace k := by
-  match trace, k with
-  | .nil _, _ => exact abs_nonneg _
-  | .cons _ _, 0 => exact abs_nonneg _
-  | .cons _ rest, k + 1 => exact fmaTraceMags_nonneg rest k
-
-/-- Step errors for an FMA Horner trace (correct definition). -/
+/-- Step errors for an FMA Horner trace. -/
 def fmaHornerStepErrors [RModeExec] {x : FiniteFp} :
     {coeffs : List FiniteFp} → {acc final : FiniteFp} →
     FMATrace x coeffs acc final → List R
@@ -727,7 +763,8 @@ theorem fma_trace_step_error
     simp only [fmaHornerStepErrors, List.getElem_cons_succ, fmaTraceMags]
     exact fma_trace_step_error rest hnr.2 k (by simp at hk; omega)
 
-/-- Per-step FMA magnitude recurrence: `mag_{k+1} ≤ (1+η) · (|x| · mag_k + |coeff_k|)`. -/
+/-- Per-step FMA magnitude recurrence: `mag_{k+1} ≤ (1+η) · (|x| · mag_k + |coeff_k|)`.
+    Derived from `fma_trace_step_error` via `magnitude_of_relative_error`. -/
 theorem fma_trace_mag_recur
     [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
     {x : FiniteFp} {coeffs : List FiniteFp} {acc final : FiniteFp}
@@ -757,7 +794,7 @@ theorem fma_trace_mag_recur
     simp only [fmaTraceMags, List.getElem_cons_succ]
     exact fma_trace_mag_recur rest hnr.2 k (by simp at hk; omega)
 
-/-- Weighted error sum bound for FMA Horner via generic theorem with `α = η`. -/
+/-- Weighted error sum bound for FMA Horner via `weightedErrorSum_le_of_step_errors`. -/
 theorem fma_horner_weighted_error_bound
     [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
     {x : FiniteFp} {coeffs : List FiniteFp} {acc final : FiniteFp}
@@ -768,14 +805,17 @@ theorem fma_horner_weighted_error_bound
         hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|))
           |acc.toVal (R := R)| |x.toVal (R := R)| := by
   have hη : (0 : R) ≤ η := by positivity
-  have hgen := weightedErrorSum_le_of_relative_errors
+  have h := weightedErrorSum_le_of_step_errors
     |x.toVal (R := R)| (η : R) (abs_nonneg _) hη
     (fmaHornerStepErrors trace (R := R))
     (coeffs.map (fun c => |c.toVal (R := R)|))
     (fmaTraceMags trace)
+    |acc.toVal (R := R)|
     (by rw [fmaHornerStepErrors_length]; simp)
     (fun c hc => by simp at hc; obtain ⟨_, _, rfl⟩ := hc; exact abs_nonneg _)
-    (fun k => fmaTraceMags_nonneg (R := R) trace k)
+    (abs_nonneg _)
+    (by rw [fmaTraceMags_zero])
+    (fmaTraceMags_nonneg (R := R) trace)
     (fun k hk => by
       rw [fmaHornerStepErrors_length] at hk
       simp only [List.getElem_map]
@@ -784,8 +824,7 @@ theorem fma_horner_weighted_error_bound
       rw [fmaHornerStepErrors_length] at hk
       simp only [List.getElem_map]
       exact fma_trace_mag_recur (R := R) trace hnr k hk)
-  rw [fmaTraceMags_zero, fmaHornerStepErrors_length] at hgen
-  exact hgen
+  rw [fmaHornerStepErrors_length] at h; exact h
 
 /-- **FMA Horner error bound via generic framework** (`(1+η)^n` form).
 
