@@ -313,12 +313,13 @@ section GaugeBounds
 variable {S : Type*} [AddCommGroup S]
 variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
 
-/-- A gauge on `S` with values in `R`: nonnegative, sub-additive. -/
+/-- A gauge on `S` with values in `R`: nonnegative, symmetric, sub-additive. -/
 structure Gauge (S : Type*) [AddCommGroup S] (R : Type*) [Field R] [LinearOrder R]
     [IsStrictOrderedRing R] where
   val : S → R
   nonneg : ∀ s, 0 ≤ val s
   zero : val 0 = 0
+  symmetric : ∀ s, val (-s) = val s
   triangle : ∀ a b, val (a + b) ≤ val a + val b
 
 /-- **Propagation bound with gauge**: if `ν(L(s)) ≤ κ · ν(s)`, then
@@ -388,6 +389,14 @@ theorem affineFold_gauge_uniform_bound (L : S → S)
 def weightedGaugeSum (ν : Gauge S R) (κ : R) : List S → R
   | [] => 0
   | e :: es => κ ^ es.length * ν.val e + weightedGaugeSum ν κ es
+
+theorem weightedGaugeSum_nonneg (ν : Gauge S R) (κ : R) (hκ : 0 ≤ κ)
+    (errors : List S) : 0 ≤ weightedGaugeSum ν κ errors := by
+  induction errors with
+  | nil => simp [weightedGaugeSum]
+  | cons e es ih =>
+    simp only [weightedGaugeSum]
+    exact add_nonneg (mul_nonneg (pow_nonneg hκ _) (ν.nonneg _)) ih
 
 /-- **Per-index gauge bound**: `ν(affineFold L errors 0) ≤ Σ ν(eₖ) · κ^{n-1-k}`. -/
 theorem affineFold_gauge_per_index (L : S → S)

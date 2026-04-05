@@ -1788,4 +1788,34 @@ theorem kahan_weak_backward_error_auto
   exact BackwardError.backwardResult_of_forward_sum_bound xs (fun x => x.toVal) _ eps (by positivity)
     (kahan_higham_bound_auto trace hinit_sum hinit_comp hexact hnr)
 
+/-- **Structured backward error for Kahan summation**: returns a `BackwardResult`
+    with componentwise relative gauge.
+
+    The computed sum equals the exact sum of perturbed inputs under gauge bound
+    `max_i |μ_i| ≤ 2η + nη²`. -/
+noncomputable def kahan_backward_result
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {xs : List FiniteFp} {init final : State}
+    (hxs : 0 < xs.length)
+    (trace : Trace xs init final)
+    (hinit_sum : init.sum.toVal (R := R) = 0)
+    (hinit_comp : init.comp.toVal (R := R) = 0)
+    (hexact : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepTwoSumExact (R := R) st x step)
+    (hnr : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      StepNormalRange (R := R) st x step)
+    (hM : ∀ (st : State) (x : FiniteFp) (step : StepWitness st x),
+      |(st.sum.toVal : R) + step.y.toVal| ≤
+        (xs.map (fun x => |x.toVal (R := R)|)).sum) :
+    BackwardError.BackwardResult
+      (BackwardError.componentwiseRelGauge xs.length hxs)
+      (fun w => ∑ i : Fin xs.length, w i)
+      (fun i => (xs.get i).toVal)
+      (final.sum.toVal : R) := by
+  have hfwd := kahan_higham_bound trace hinit_sum hinit_comp hexact hnr hM
+  rw [BackwardError.list_map_sum_eq_finset_sum',
+      BackwardError.list_map_sum_eq_finset_sum'] at hfwd
+  exact BackwardError.backwardResult_struct_of_forward_fin_bound
+    hxs _ _ _ (by positivity) hfwd
+
 end KahanSum

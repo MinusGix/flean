@@ -2,6 +2,7 @@ import Mathlib.Algebra.Group.Defs
 import Mathlib.Algebra.Order.Field.Basic
 import Mathlib.Algebra.BigOperators.Group.Finset.Basic
 import Flean.FloatFormat
+import Flean.Operations.AffineFold
 
 /-!
 # Backward Error Framework — Core
@@ -77,6 +78,25 @@ def trivialGauge (X : Type*) : PerturbationGauge X R where
   nonneg _ _ := le_refl 0
   self _ := rfl
 
+/-- Componentwise relative gauge: `max_i |x'_i - x_i| / |x_i|`.
+
+    For zero inputs, the term is 0 (multiplicative perturbation of 0 is 0).
+    This is the standard gauge for backward error: if `x'_i = (1+μ_i)·x_i`
+    then `dist(x, x') = max_i |μ_i|`. -/
+def componentwiseRelGauge (n : ℕ) (hn : 0 < n) : PerturbationGauge (Fin n → R) R where
+  dist x x' := Finset.sup' Finset.univ (Finset.univ_nonempty_iff.mpr ⟨⟨0, hn⟩⟩)
+    (fun i => if x i = 0 then 0 else |x' i - x i| / |x i|)
+  nonneg x x' := by
+    apply le_trans _ (Finset.le_sup' _ (Finset.mem_univ ⟨0, hn⟩))
+    split_ifs with h
+    · exact le_refl 0
+    · exact div_nonneg (abs_nonneg _) (abs_nonneg _)
+  self x := by
+    apply le_antisymm
+    · exact Finset.sup'_le _ _ (fun i _ => by simp)
+    · apply le_trans _ (Finset.le_sup' _ (Finset.mem_univ ⟨0, hn⟩))
+      split_ifs with h <;> simp
+
 /-! ## Backward Error Results -/
 
 /-- **Strict backward error**: the computed result equals `f(x')` for some `x'`
@@ -110,6 +130,7 @@ structure BackwardResult {X Y : Type*}
     A `BackwardResult` embeds into `MixedResult` with `residual = 0`. -/
 structure MixedResult {X Y : Type*} [AddCommGroup Y]
     (G_in : PerturbationGauge X R)
+    (G_out : AffineFold.Gauge Y R)
     (f : X → Y) (x : X) (computed : Y) where
   /-- The perturbed input. -/
   x' : X
@@ -123,26 +144,76 @@ structure MixedResult {X Y : Type*} [AddCommGroup Y]
   eps_back_nonneg : 0 ≤ eps_back
   /-- Input perturbation bounded. -/
   back_bound : G_in.dist x x' ≤ eps_back
-  /-- Forward residual bound (as a real number). -/
-  fwd_bound : R
+  /-- Forward residual bound. -/
+  eps_fwd : R
   /-- Non-negative forward bound. -/
-  fwd_bound_nonneg : 0 ≤ fwd_bound
+  eps_fwd_nonneg : 0 ≤ eps_fwd
+  /-- Residual bounded under the output gauge. -/
+  residual_bound : G_out.val residual ≤ eps_fwd
 
 /-! ### Conversions -/
 
-/-- Embed a strict backward result into a mixed result with zero residual. -/
+/-- Embed a strict backward result into a mixed result with zero residual.
+    Works with any output gauge (residual is 0, so `G_out.val 0 = 0 ≤ 0`). -/
 def BackwardResult.toMixed {X Y : Type*} [AddCommGroup Y]
     {G : PerturbationGauge X R} {f : X → Y} {x : X} {computed : Y}
-    (br : BackwardResult (R := R) G f x computed) :
-    MixedResult (R := R) G f x computed where
+    (br : BackwardResult (R := R) G f x computed)
+    (G_out : AffineFold.Gauge Y R) :
+    MixedResult (R := R) G G_out f x computed where
   x' := br.x'
   residual := 0
   decomp := by rw [add_zero]; exact br.exact.symm
   eps_back := br.eps
   eps_back_nonneg := br.eps_nonneg
   back_bound := br.bound
-  fwd_bound := 0
-  fwd_bound_nonneg := le_refl 0
+  eps_fwd := 0
+  eps_fwd_nonneg := le_refl 0
+  residual_bound := le_of_eq G_out.zero
+
+/-! ### AffineFold → MixedResult bridge -/
+
+/-- Every `affineFold_exact_decomposition` produces a `MixedResult` with zero backward error
+    and forward residual bounded by the gauge.
+
+    Given `computed + affineFold L errors 0 = affineFold L vs s` (the exact decomposition),
+    this yields `computed = f(s) + residual` where `f = affineFold L vs`,
+    `residual = -(affineFold L errors 0)`, and the residual is gauge-bounded. -/
+def MixedResult.ofAffineFold {S : Type*} [AddCommGroup S]
+    {G_in : PerturbationGauge S R} (G_out : AffineFold.Gauge S R)
+    {L : S → S} {vs errors : List S} {s computed : S}
+    (hdecomp : computed + AffineFold.affineFold L errors 0 = AffineFold.affineFold L vs s)
+    (eps_fwd : R) (heps_fwd : 0 ≤ eps_fwd)
+    (hresidual : G_out.val (AffineFold.affineFold L errors 0) ≤ eps_fwd) :
+    MixedResult (R := R) G_in G_out (AffineFold.affineFold L vs) s computed where
+  x' := s
+  residual := -(AffineFold.affineFold L errors 0)
+  decomp := by
+    have : computed = AffineFold.affineFold L vs s - AffineFold.affineFold L errors 0 :=
+      eq_sub_of_add_eq hdecomp
+    rw [this]; abel
+  eps_back := 0
+  eps_back_nonneg := le_refl 0
+  back_bound := le_of_eq (G_in.self _)
+  eps_fwd := eps_fwd
+  eps_fwd_nonneg := heps_fwd
+  residual_bound := by rw [G_out.symmetric]; exact hresidual
+
+/-- Convenience: `MixedResult` from an exact decomposition + per-index gauge bound.
+
+    Uses `affineFold_gauge_per_index` to bound the residual by the weighted gauge sum
+    `Σ G_out(eₖ) · κ^{n-1-k}`. -/
+def MixedResult.ofAffineFoldGauge {S : Type*} [AddCommGroup S]
+    {G_in : PerturbationGauge S R} (G_out : AffineFold.Gauge S R)
+    {L : S → S} (hL : ∀ a b, L (a + b) = L a + L b)
+    {vs errors : List S} {s computed : S}
+    (hdecomp : computed + AffineFold.affineFold L errors 0 = AffineFold.affineFold L vs s)
+    (κ : R) (hκ : 0 ≤ κ)
+    (hLG : ∀ t, G_out.val (L t) ≤ κ * G_out.val t) :
+    MixedResult (R := R) G_in G_out (AffineFold.affineFold L vs) s computed :=
+  MixedResult.ofAffineFold G_out hdecomp
+    (AffineFold.weightedGaugeSum G_out κ errors)
+    (AffineFold.weightedGaugeSum_nonneg G_out κ hκ errors)
+    (AffineFold.affineFold_gauge_per_index L hL G_out κ hκ hLG errors)
 
 /-! ## Backward Error for Linear Functions (Summation) -/
 
@@ -285,6 +356,36 @@ theorem backwardResult_of_forward_fin_bound (n : ℕ) (v : Fin n → R)
       rw [abs_mul, abs_div, abs_of_pos hS_pos]
       exact le_trans (mul_le_mul_of_nonneg_left (abs_abs_div_self_le_one' _) hES_nn)
         (by rw [mul_one]; exact hES)
+
+/-- **Structured backward result from forward sum bound**: lifts
+    `backwardResult_of_forward_fin_bound` into a `BackwardResult` with
+    `componentwiseRelGauge`.
+
+    For `n > 0`: `computed = (∑ v_i)` up to forward error gives
+    `BackwardResult` with `x'_i = (1+μ_i)·v_i` and `max_i |μ_i| ≤ ε`. -/
+noncomputable def backwardResult_struct_of_forward_fin_bound
+    {n : ℕ} (hn : 0 < n) (v : Fin n → R)
+    (result eps : R) (heps : 0 ≤ eps)
+    (hfwd : |result - ∑ i : Fin n, v i| ≤ eps * ∑ i : Fin n, |v i|) :
+    BackwardResult (componentwiseRelGauge n hn) (fun w => ∑ i : Fin n, w i)
+      v result := by
+  choose mu hmu_eq hmu_bnd using backwardResult_of_forward_fin_bound n v result eps heps hfwd
+  exact {
+    x' := fun i => (1 + mu i) * v i
+    exact := hmu_eq.symm
+    eps := eps
+    eps_nonneg := heps
+    bound := by
+      unfold componentwiseRelGauge
+      dsimp only
+      apply Finset.sup'_le
+      intro i _
+      by_cases hvi : v i = 0
+      · simp [hvi, heps]
+      · rw [if_neg hvi, show (1 + mu i) * v i - v i = mu i * v i from by ring,
+            abs_mul, mul_div_cancel_of_imp (by intro h; exact absurd (abs_eq_zero.mp h) hvi)]
+        exact hmu_bnd i
+  }
 
 end LinearBackward
 

@@ -615,6 +615,7 @@ def jetHornerL1Gauge : Gauge (R × R) R where
   val := fun (v, d) => |v| + |d|
   nonneg := fun (v, d) => by positivity
   zero := by simp
+  symmetric := fun (v, d) => by simp [abs_neg]
   triangle := fun (v₁, d₁) (v₂, d₂) => by
     simp only [Prod.add_def]
     calc |v₁ + v₂| + |d₁ + d₂|

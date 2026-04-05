@@ -313,33 +313,79 @@ the standard way these results are stated in numerical analysis textbooks.
 
 ## Known Debt (ordered by priority)
 
-### D1. `error_distributable` duplication
-KahanSum.lean has its own `error_distributable` + `backward_from_forward`.
-BackwardError.lean has generalized versions. KahanSum should import
-BackwardError and delegate, then `kahan_weak_backward_error` uses the framework.
+### D1. `error_distributable` duplication — DONE
+KahanSum.lean imports BackwardErrorCore and uses the framework's
+`backwardResult_of_forward_sum_bound`. Old duplicates removed.
 
-### D2. `MixedResult` missing residual gauge
-The current `MixedResult` has a bare `fwd_bound : R` with no formal connection
-to `|residual|`. Needs a `residual_bound : gauge.val residual ≤ fwd_bound`
-field or similar. Important for AffineFold integration.
+### D2. `MixedResult` residual gauge — DONE
+`MixedResult` now takes `G_out : AffineFold.Gauge Y R` parameter and has
+`residual_bound : G_out.val residual ≤ eps_fwd`. `Gauge` gained a `symmetric`
+field (`val (-s) = val s`). `BackwardResult.toMixed` takes an output gauge.
 
-### D3. AffineFold → MixedResult bridge
-Every `affineFold_exact_decomposition` gives a `MixedResult` directly
-(`computed = exact - error_fold`). Need a generic theorem that packages this.
+### D3. AffineFold → MixedResult bridge — DONE
+`MixedResult.ofAffineFold` + `MixedResult.ofAffineFoldGauge` in
+BackwardErrorCore.lean. Given `computed + error_fold = exact`, produces
+`MixedResult` with zero backward error and gauge-bounded residual.
+Also added `weightedGaugeSum_nonneg` to AffineFold.lean.
 
 ### D4. Condition number section disconnected
 `componentwiseCondNumber` is defined but not connected to `BackwardResult`.
 The full bridge works for summation but not general `f`. Generalizing needs
 partial derivatives / Jacobian framework.
 
-### D5. Gauge hierarchy minimal
-Only `uniformGauge` and `trivialGauge`. No componentwise relative gauge.
-Gauges become important for composition (needs `PerturbationMetric` with
-triangle inequality).
+### D5. Gauge hierarchy — partially done
+`componentwiseRelGauge` added (max_i |x'_i - x_i|/|x_i|). Still missing:
+normwise gauge, weighted gauge, `PerturbationMetric` (triangle inequality).
 
 ### D6. Full gauge-based composition
 `PerturbationLift` + `BackwardResult.compose` require triangle inequality
 on `PerturbationGauge`. Need `PerturbationMetric` structure extending gauge.
 
-### D7. Port `kahan_weak_backward_error` to framework
-Once D1 is done, restate Kahan backward error using `BackwardResult` structure.
+### D7. Port `kahan_weak_backward_error` to framework — DONE
+`kahan_backward_result` in KahanSum.lean returns `BackwardResult` with
+`componentwiseRelGauge`. Uses `backwardResult_struct_of_forward_fin_bound`
+bridge from BackwardErrorCore.lean.
+
+## Future Directions
+
+### F1. Gauge = seminorm design note
+Adding `symmetric` to `Gauge` makes it a seminorm (nonneg, zero, triangle,
+symmetric). This is the right abstraction for error analysis gauges. If we
+ever need asymmetric gauges, a separate structure would be needed — but this
+is unlikely for numerical error analysis where all gauges are norm-like.
+
+### F2. AffineFold backward attribution (non-degenerate MixedResult)
+`MixedResult.ofAffineFold` always produces `x' = x` (zero backward, all
+forward). The interesting case: *redistribute* some forward error backward
+onto the coefficients. For Horner `p(x) = Σ cᵢxⁱ`, this would give
+"perturbed coefficients `c'ᵢ = (1+μᵢ)cᵢ` + smaller residual" — the standard
+backward error interpretation.
+
+The bridge would combine `ofAffineFold` with `error_distributable`:
+1. Start with degenerate MixedResult (all-forward residual)
+2. Use `error_distributable` on the residual to produce per-coefficient `μᵢ`
+3. Attribute those perturbations backward, leaving a smaller (higher-order) residual
+
+This is the natural next step for AffineFold integration after D4.
+
+### F3. `componentwiseRelGauge` requires `n > 0`
+The `Finset.sup'` in `componentwiseRelGauge` needs `Finset.univ.Nonempty`,
+forcing `0 < n`. The `n = 0` case is trivially correct (empty sum = empty sum)
+but can't be expressed with this gauge. Callers must carry the `0 < xs.length`
+hypothesis. Could add a `componentwiseRelGauge₀` with a special `n = 0` case,
+but probably not worth the complexity.
+
+### F4. Condition number bridge (extends D4)
+Connecting `componentwiseCondNumber` to `BackwardResult` closes the loop:
+**backward error × condition number = forward error bound**.
+
+For summation: `κ = Σ|xᵢ| / |Σxᵢ|`, already defined.
+For Horner: `κ = Σ|cᵢxⁱ| / |p(x)|` — the classical result that Horner
+evaluation is backward stable with this condition number.
+
+The theorem shape:
+```
+theorem forward_from_backward_result (br : BackwardResult G f x computed) :
+    |computed - f x| ≤ componentwiseCondNumber ... * br.eps * |f x|
+```
+This is the standard "rule of thumb" from Higham Ch. 1.
