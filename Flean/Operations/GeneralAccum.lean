@@ -268,4 +268,82 @@ theorem weightedErrorSum_le_of_general_step_max
   exact weightedErrorSum_le_of_uniform_step κ α hκ hα errors offsets mags
     hlen hoffsets hmags_nn herr' hrecur'
 
+/-! ## geomBound bridge for the uniform model
+
+The uniform bound `((1+α)^n - 1) · P` is `geomBound α α n · P` by `geomBound_uniform`.
+These restatements make the connection explicit. -/
+
+/-- `weightedErrorSum_le_of_uniform_step` restated with `geomBound`. -/
+theorem weightedErrorSum_le_of_uniform_step_geom
+    (κ α : R) (hκ : 0 ≤ κ) (hα : 0 ≤ α)
+    (errors offsets : List R) (mags : ℕ → R)
+    (hlen : errors.length = offsets.length)
+    (hoffsets : ∀ c ∈ offsets, 0 ≤ c)
+    (hmags_nn : ∀ k, 0 ≤ mags k)
+    (herr : ∀ k (hk : k < errors.length),
+        |errors[k]| ≤ α * (κ * mags k + offsets[k]'(by omega)))
+    (hrecur : ∀ k (hk : k < errors.length),
+        mags (k + 1) ≤ (1 + α) * (κ * mags k + offsets[k]'(by omega))) :
+    weightedErrorSum κ errors ≤
+      geomBound α α errors.length * hornerPoly offsets (mags 0) κ := by
+  rw [geomBound_uniform]
+  exact weightedErrorSum_le_of_uniform_step κ α hκ hα errors offsets mags
+    hlen hoffsets hmags_nn herr hrecur
+
+/-! ## Composition theorem
+
+When algorithm A's output feeds algorithm B's input, A's error becomes an
+initial perturbation in B. The `geomBound_add` lemma provides the algebraic
+core: `geomBound α β (m+n) = geomBound α β m · (1+β)^n + geomBound α β n`.
+
+The composition theorem works at the abstract level: given bounds on A's and B's
+weighted error sums, derive a bound on the composed error. -/
+
+/-- **Weighted error sum splits over append.**
+
+`weightedErrorSum κ (A ++ B) = κ^|B| · weightedErrorSum κ A + weightedErrorSum κ B`
+
+This is the fundamental structural lemma for composition. -/
+theorem weightedErrorSum_append (κ : R) (A B : List R) :
+    weightedErrorSum κ (A ++ B) =
+      κ ^ B.length * weightedErrorSum κ A + weightedErrorSum κ B := by
+  induction A with
+  | nil => simp [weightedErrorSum]
+  | cons e es ih =>
+    simp only [List.cons_append, weightedErrorSum, List.length_append, List.length_cons]
+    rw [ih, pow_add]
+    ring
+
+/-- **Composition via weighted error sum splitting.**
+
+If `weightedErrorSum κ A ≤ bound_A` and `weightedErrorSum κ B ≤ bound_B`,
+then `weightedErrorSum κ (A ++ B) ≤ κ^|B| · bound_A + bound_B`.
+
+This is the general composition principle. Combined with `accumulator_error_bound`,
+it chains two algorithms' error analyses. -/
+theorem weightedErrorSum_compose'
+    (κ : R) (hκ : 0 ≤ κ)
+    (A B : List R)
+    (bound_A bound_B : R)
+    (hA : weightedErrorSum κ A ≤ bound_A)
+    (hB : weightedErrorSum κ B ≤ bound_B) :
+    weightedErrorSum κ (A ++ B) ≤
+      κ ^ B.length * bound_A + bound_B := by
+  rw [weightedErrorSum_append]
+  have := mul_le_mul_of_nonneg_left hA (pow_nonneg hκ B.length)
+  linarith
+
+/-- **Composition with `geomBound` closed form** (uniform model).
+
+When both phases use the same parameters (α, κ), the composed bound
+uses `geomBound_add`:
+  `geomBound α α (m+n) · P = (geomBound α α m · (1+α)^n + geomBound α α n) · P`
+
+This matches the intuition: A's error `geomBound α α m · P` is amplified by
+`(1+α)^n` through B's growth, plus B's own `geomBound α α n · P`. -/
+theorem geomBound_compose_uniform (α : R) (m n : ℕ) (P : R) (hP : 0 ≤ P) :
+    geomBound α α (m + n) * P =
+      geomBound α α m * (1 + α) ^ n * P + geomBound α α n * P := by
+  rw [geomBound_add]; ring
+
 end GeneralAccum
