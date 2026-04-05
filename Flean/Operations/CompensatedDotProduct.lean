@@ -186,7 +186,46 @@ theorem cdp_clane_step_error
     (hnr : CDPStepNormalRange (R := R) c_prev step) :
     |(c_prev.toVal : R) + step.sigma.toVal + step.pi.toVal - step.c_new.toVal| ≤
       ((1 + η) ^ 2 - 1) * (|(c_prev.toVal : R)| + |step.sigma.toVal + step.pi.toVal|) := by
-  sorry
+  set cv := (c_prev.toVal : R)
+  set corr : R := step.sigma.toVal + step.pi.toVal
+  set qv : R := step.q.toVal
+  set nv : R := step.c_new.toVal
+  have hη : (0 : R) ≤ η := by positivity
+  have hq := KahanSum.fpAdd_error_or_zero (R := R) step.pi step.sigma step.q step.hq hnr.q_normal
+  have hc := KahanSum.fpAdd_error_or_zero (R := R) c_prev step.q step.c_new step.hc hnr.c_normal
+  have hq_err : |qv - corr| ≤ η * |corr| := by
+    simpa [qv, corr, add_comm, add_left_comm, add_assoc] using hq
+  have hq_bound : |qv| ≤ (1 + η) * |corr| := by
+    have h1 : |qv| - |corr| ≤ η * |corr| := le_trans (abs_sub_abs_le_abs_sub qv corr) hq_err
+    linarith
+  have hc_sum : |cv + qv| ≤ |cv| + (1 + η) * |corr| := by
+    calc
+      |cv + qv| ≤ |cv| + |qv| := abs_add_le _ _
+      _ ≤ |cv| + (1 + η) * |corr| := by linarith
+  have hc_err : |nv - (cv + qv)| ≤ η * (|cv| + (1 + η) * |corr|) := by
+    calc
+      |nv - (cv + qv)| ≤ η * |cv + qv| := hc
+      _ ≤ η * (|cv| + (1 + η) * |corr|) := by
+          exact mul_le_mul_of_nonneg_left hc_sum hη
+  have htri : |cv + corr - nv| ≤ |nv - (cv + qv)| + |qv - corr| := by
+    have : cv + corr - nv = -(nv - (cv + qv)) + -(qv - corr) := by ring
+    rw [this]
+    linarith [abs_add_le (-(nv - (cv + qv))) (-(qv - corr)),
+      abs_neg (nv - (cv + qv)), abs_neg (qv - corr)]
+  have hcombine : |cv + corr - nv| ≤ η * |cv| + (2 * (η : R) + η ^ 2) * |corr| := by
+    nlinarith [htri, hc_err, hq_err,
+      mul_nonneg hη (abs_nonneg cv),
+      mul_nonneg hη (abs_nonneg corr),
+      mul_nonneg (mul_nonneg hη hη) (abs_nonneg corr)]
+  have hη_le : (η : R) ≤ 2 * η + η ^ 2 := by
+    nlinarith
+  have hslack :
+      η * |cv| + (2 * (η : R) + η ^ 2) * |corr| ≤
+        (((1 + (η : R)) ^ 2 - 1) : R) * (|cv| + |corr|) := by
+    have hpow2 : (((1 + (η : R)) ^ 2 - 1) : R) = 2 * η + η ^ 2 := by ring
+    rw [hpow2]
+    nlinarith [hη_le, abs_nonneg cv, abs_nonneg corr]
+  simpa [corr, add_assoc] using (le_trans hcombine hslack)
 
 /-- C-lane magnitude: `|c_new| ≤ (1+η)² · (|c_prev| + |σ+π|)`. -/
 theorem cdp_clane_step_magnitude
@@ -196,7 +235,23 @@ theorem cdp_clane_step_magnitude
     (hnr : CDPStepNormalRange (R := R) c_prev step) :
     |step.c_new.toVal (R := R)| ≤
       (1 + η) ^ 2 * (|(c_prev.toVal : R)| + |step.sigma.toVal + step.pi.toVal|) := by
-  sorry
+  set exact_val : R := (c_prev.toVal : R) + (step.sigma.toVal + step.pi.toVal)
+  set M : R := |(c_prev.toVal : R)| + |step.sigma.toVal + step.pi.toVal|
+  have herr := cdp_clane_step_error (R := R) step hnr
+  have herr' : |step.c_new.toVal (R := R) - exact_val| ≤ (((1 + (η : R)) ^ 2 - 1) : R) * M := by
+    simpa [exact_val, M, add_assoc, abs_sub_comm] using herr
+  have hexact : |exact_val| ≤ M := by
+    dsimp [exact_val, M]
+    exact abs_add_le _ _
+  have hsub : |step.c_new.toVal (R := R)| - |exact_val| ≤
+      |step.c_new.toVal (R := R) - exact_val| := by
+    exact abs_sub_abs_le_abs_sub _ _
+  have hcn : |step.c_new.toVal (R := R)| ≤ |exact_val| + (((1 + (η : R)) ^ 2 - 1) : R) * M := by
+    linarith
+  have hpow2 : |exact_val| + (((1 + (η : R)) ^ 2 - 1) : R) * M ≤ ((1 + η) ^ 2) * M := by
+    have : ((1 + (η : R)) ^ 2) * M = M + (((1 + η) ^ 2 - 1) : R) * M := by ring
+    linarith
+  linarith
 
 /-! ## Main error bound -/
 
@@ -250,32 +305,130 @@ theorem cdp_error_bound
       η * |(s_final.toVal : R) + c_final.toVal| +
       ((1 + η) ^ (2 * pairs.length) - 1) *
         ((cdpCorrections (R := R) trace).map (|·|)).sum := by
+  have hclane :
+      ∀ {pairs : List (FiniteFp × FiniteFp)}
+        {s_init c_init s_final c_final : FiniteFp}
+        (trace : CDPTrace pairs s_init c_init s_final c_final),
+        trace.AllNormalRange (R := R) →
+        |(c_final.toVal : R) -
+          ((c_init.toVal : R) + (cdpCorrections (R := R) trace).sum)| ≤
+          ((1 + η) ^ (2 * pairs.length) - 1) *
+            (|(c_init.toVal : R)| + ((cdpCorrections (R := R) trace).map (|·|)).sum) := by
+    intro pairs s_init c_init s_final c_final trace
+    induction trace with
+    | nil c =>
+      intro _
+      simp [cdpCorrections]
+    | @cons s_prev c_prev x y pairs s_final c_final step rest ih =>
+      intro hnr
+      simp only [CDPTrace.AllNormalRange] at hnr
+      obtain ⟨hnr_step, hnr_rest⟩ := hnr
+      simp only [cdpCorrections, List.sum_cons, List.map_cons, List.sum_cons]
+      set corr : R := step.sigma.toVal + step.pi.toVal
+      set restSum : R := (cdpCorrections (R := R) rest).sum
+      set restAbs : R := ((cdpCorrections (R := R) rest).map (|·|)).sum
+      set B : R := |(c_prev.toVal : R)| + |corr|
+      set Arest : R := (1 + η) ^ (2 * pairs.length) - 1
+      set Atotal : R := (1 + η) ^ (2 * (pairs.length + 1)) - 1
+      set α : R := (1 + η) ^ 2 - 1
+      have ih_bound :
+          |(c_final.toVal : R) - (step.c_new.toVal + restSum)| ≤
+            Arest * (|step.c_new.toVal (R := R)| + restAbs) := by
+        simpa [Arest, restSum, restAbs] using ih hnr_rest
+      have hstep_err :
+          |step.c_new.toVal (R := R) - ((c_prev.toVal : R) + corr)| ≤ α * B := by
+        simpa [corr, B, α, add_assoc, add_comm, add_left_comm, abs_sub_comm] using
+          cdp_clane_step_error (R := R) step hnr_step
+      have hstep_mag :
+          |step.c_new.toVal (R := R)| ≤ (1 + η) ^ 2 * B := by
+        simpa [corr, B, add_assoc] using cdp_clane_step_magnitude (R := R) step hnr_step
+      have htri :
+          |(c_final.toVal : R) - ((c_prev.toVal : R) + (corr + restSum))| ≤
+            |(c_final.toVal : R) - (step.c_new.toVal + restSum)| +
+            |step.c_new.toVal (R := R) - ((c_prev.toVal : R) + corr)| := by
+        have :
+            (c_final.toVal : R) - ((c_prev.toVal : R) + (corr + restSum)) =
+              ((c_final.toVal : R) - (step.c_new.toVal + restSum)) +
+              (step.c_new.toVal - ((c_prev.toVal : R) + corr)) := by
+          ring
+        rw [this]
+        exact abs_add_le _ _
+      have hη : (0 : R) ≤ η := by positivity
+      have h1η : (1 : R) ≤ 1 + η := by linarith
+      have hArest_nn : (0 : R) ≤ Arest := by
+        have hpow : (1 : R) ≤ (1 + η) ^ (2 * pairs.length) := one_le_pow₀ h1η
+        linarith [Arest]
+      have hrestAbs_nn : (0 : R) ≤ restAbs := by
+        refine List.sum_nonneg ?_
+        intro z hz
+        simp only [List.mem_map] at hz
+        obtain ⟨w, _, rfl⟩ := hz
+        exact abs_nonneg w
+      have htotal :
+          |(c_final.toVal : R) - ((c_prev.toVal : R) + (corr + restSum))| ≤
+            Arest * (|step.c_new.toVal (R := R)| + restAbs) + α * B := by
+        linarith
+      have htotal' :
+          |(c_final.toVal : R) - ((c_prev.toVal : R) + (corr + restSum))| ≤
+            Arest * ((1 + η) ^ 2 * B + restAbs) + α * B := by
+        have hmul :
+            Arest * |step.c_new.toVal (R := R)| ≤ Arest * ((1 + η) ^ 2 * B) :=
+          mul_le_mul_of_nonneg_left hstep_mag hArest_nn
+        linarith
+      have hAtotal_ge : Arest ≤ Atotal := by
+        have hpow_eq :
+            (1 + (η : R)) ^ (2 * (pairs.length + 1)) =
+              (1 + η) ^ (2 * pairs.length) * (1 + η) ^ 2 := by
+          have hnat : 2 * (pairs.length + 1) = 2 * pairs.length + 2 := by omega
+          rw [hnat, pow_add]
+        have hpow_nn : (0 : R) ≤ (1 + η) ^ (2 * pairs.length) := by
+          positivity
+        have hpow2_ge1 : (1 : R) ≤ (1 + η) ^ 2 := one_le_pow₀ h1η
+        dsimp [Arest, Atotal]
+        nlinarith [hpow_eq, hpow_nn, hpow2_ge1]
+      have hrest_mono : Arest * restAbs ≤ Atotal * restAbs := by
+        exact mul_le_mul_of_nonneg_right hAtotal_ge hrestAbs_nn
+      have hmain_eq :
+          Arest * ((1 + η) ^ 2 * B + restAbs) + α * B =
+            Atotal * B + Arest * restAbs := by
+        have hpow_eq :
+            (1 + (η : R)) ^ (2 * (pairs.length + 1)) =
+              (1 + η) ^ (2 * pairs.length) * (1 + η) ^ 2 := by
+          have hnat : 2 * (pairs.length + 1) = 2 * pairs.length + 2 := by omega
+          rw [hnat, pow_add]
+        dsimp [Arest, Atotal, α]
+        rw [hpow_eq]
+        ring
+      have hfinal :
+          |(c_final.toVal : R) - ((c_prev.toVal : R) + (corr + restSum))| ≤
+            Atotal * B + Atotal * restAbs := by
+        linarith
+      have hsum :
+          Atotal * B + Atotal * restAbs = Atotal * (B + restAbs) := by ring
+      simpa [B, corr, restSum, restAbs, Atotal, add_assoc, add_left_comm, add_comm] using
+        hfinal.trans_eq hsum
   -- Final rounding: |result - (s+c)| ≤ η|s+c|
   have hfinal := KahanSum.fpAdd_error_or_zero (R := R) s_final c_final result
     hresult hresult_nr
   -- Exact decomposition: s_final + Σ(σ+π) = Σ(xy)
   have hdecomp := cdp_exact_decomposition (R := R) trace hexact
   rw [hinit_s, zero_add] at hdecomp
-  -- C-lane telescoping: c_final + Σ(c-errors) = Σ(corrections)
-  have hc_tele := c_lane_telescoping (R := R) trace
-  rw [hinit_c, zero_add] at hc_tele
-  -- Combine: Σ(xy) - (s+c) = Σ(c-errors)
   set S := (pairs.map (fun p => p.1.toVal (R := R) * p.2.toVal)).sum
   set sc := (s_final.toVal : R) + c_final.toVal
   -- Triangle: |result - S| ≤ |result - sc| + |sc - S|
   have htri : |(result.toVal : R) - S| ≤ |result.toVal - sc| + |sc - S| := by
     have : (result.toVal : R) - S = (result.toVal - sc) + (sc - S) := by ring
     rw [this]; exact abs_add_le _ _
-  -- |sc - S| = |Σ(c-errors)| (since S = s + Σcorr and sc = c + Σ(c-errors) + s - Σ(c-errors)...)
-  -- Actually: S = s_final + Σcorr (from hdecomp)
-  --           c_final + Σ(c-errors) = Σcorr (from hc_tele)
-  --           sc = s_final + c_final
-  --           S - sc = Σcorr - c_final = Σ(c-errors)
-  have hsc_diff : S - sc = (cdpCLaneErrors (R := R) trace).sum := by linarith
-  -- Need: |Σ(c-errors)| ≤ ((1+η)^{2n}-1) · Σ|corrections|
-  -- The c-lane is a naive summation with two roundings per step.
-  -- Each c-lane error ≤ ((1+η)²-1) · (|c_k| + |corr_k|).
-  -- This is exactly the DotProduct error structure with κ=1, α=(1+η)²-1.
-  sorry
+  have hclane_bound :
+      |sc - S| ≤
+        ((1 + η) ^ (2 * pairs.length) - 1) *
+          ((cdpCorrections (R := R) trace).map (|·|)).sum := by
+    have h := hclane trace hnr
+    rw [hinit_c, zero_add] at h
+    have hsc_eq : sc - S = (c_final.toVal : R) - (cdpCorrections (R := R) trace).sum := by
+      linarith [hdecomp]
+    rw [hsc_eq]
+    simpa using h
+  linarith
 
 end CompensatedDotProduct
