@@ -42,6 +42,7 @@ import Flean.Operations.HornerFMA
 import Flean.Operations.DotProductFMA
 import Flean.Operations.CompensatedHorner
 import Flean.Operations.Clenshaw
+import Flean.Operations.GeomBound
 import Flean.Operations.AffineFold
 import Flean.Operations.AffineFoldInstances
 import Flean.Operations.ClenshawBound
