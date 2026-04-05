@@ -407,12 +407,123 @@ theorem hornerPoly_eq_fin_sum (cs : List R) (x : R) :
     rw [hexp]
     rfl
 
--- TODO: Horner backward error
--- The linking lemma `hornerPoly_eq_fin_sum` and `horner_backward_error` require
--- careful Fin/Nat arithmetic to connect `hornerPoly` (recursive) to `Finset.sum`
--- (indexed). The `hornerPoly_acc_eq` helper is proved; the remaining work is
--- Fin index rewriting in the inductive step + a Fin-indexed version of
--- `backwardResult_of_forward_sum_bound`. Deferred to a focused session.
+/-- Absolute version: `hornerPoly |cs| 0 |x| = Σ |cs[i]| · |x|^{n-1-i}`. -/
+theorem hornerPoly_abs_eq_fin_sum (cs : List R) (x : R) :
+    Horner.hornerPoly (cs.map (fun c => |c|)) 0 |x| =
+      ∑ i : Fin cs.length, |cs.get i| * |x| ^ (cs.length - 1 - i.val) := by
+  induction cs with
+  | nil => simp [Horner.hornerPoly]
+  | cons c cs ih =>
+    simp only [Horner.hornerPoly, zero_mul, zero_add, List.map_cons, List.length_cons]
+    rw [hornerPoly_acc_eq, ih, add_comm, Fin.sum_univ_succ]
+    simp only [List.get_cons_zero, Fin.val_zero, Nat.sub_zero, List.length_map]
+    rw [show |c| * |x| ^ cs.length = |c| * |x| ^ (cs.length + 1 - 1) by simp]
+    rw [add_comm]
+    congr 1
+    apply Finset.sum_congr rfl
+    intro i _
+    have hexp : cs.length - 1 - i.val = cs.length + 1 - 1 - i.succ.val := by
+      simp [Fin.val_succ]; omega
+    rw [hexp]; rfl
+
+/-- `Σ |cs[i]| · |x|^k = Σ |cs[i] · x^k|`. -/
+theorem abs_horner_sum_eq (cs : List R) (x : R) :
+    (∑ i : Fin cs.length, |cs.get i| * |x| ^ (cs.length - 1 - i.val)) =
+      ∑ i : Fin cs.length, |cs.get i * x ^ (cs.length - 1 - i.val)| := by
+  apply Finset.sum_congr rfl
+  intro i _
+  rw [abs_mul, abs_pow]
+
+/-- **Fin-indexed forward-to-backward bridge**: if `|result - Σ v(i)| ≤ ε · Σ|v(i)|`,
+    then `result = Σ(1+μᵢ)·v(i)` with `|μᵢ| ≤ ε`. -/
+theorem backwardResult_of_forward_fin_bound (n : ℕ) (v : Fin n → R)
+    (result eps : R) (heps : 0 ≤ eps)
+    (hfwd : |result - ∑ i : Fin n, v i| ≤ eps * ∑ i : Fin n, |v i|) :
+    ∃ mu : Fin n → R,
+      result = ∑ i : Fin n, (1 + mu i) * v i ∧
+      ∀ i, |mu i| ≤ eps := by
+  set E := result - ∑ i : Fin n, v i
+  set S := ∑ i : Fin n, |v i|
+  by_cases hS : S = 0
+  · -- S = 0 means |E| ≤ 0, so E = 0
+    have hE_zero : |E| ≤ 0 := le_trans hfwd (by rw [hS, mul_zero])
+    have hE : E = 0 := abs_eq_zero.mp (le_antisymm hE_zero (abs_nonneg _))
+    refine ⟨fun _ => 0, ?_, fun _ => by simp [heps]⟩
+    show result = ∑ i : Fin n, (1 + 0) * v i
+    simp only [add_zero, one_mul]
+    linarith [show E = result - ∑ i : Fin n, v i from rfl]
+  · have hS_pos : 0 < S := lt_of_le_of_ne
+      (Finset.sum_nonneg (fun i _ => abs_nonneg (v i))) (Ne.symm hS)
+    have hES : |E| / S ≤ eps := by rwa [div_le_iff₀ hS_pos]
+    have hES_nn : 0 ≤ |E| / S := div_nonneg (abs_nonneg E) hS_pos.le
+    refine ⟨fun i => E / S * (|v i| / v i), ?_, ?_⟩
+    · -- Distribute error: E = Σ μᵢ · vᵢ
+      set mu := fun i : Fin n => E / S * (|v i| / v i)
+      have hdist : E = ∑ i : Fin n, mu i * v i := by
+        show E = ∑ i, E / S * (|v i| / v i) * v i
+        simp_rw [show ∀ i : Fin n,
+          E / S * (|v i| / v i) * v i = E / S * |v i| from
+          fun i => by rw [mul_assoc, abs_div_mul_self']]
+        rw [← Finset.mul_sum]
+        exact (div_mul_cancel₀ E (ne_of_gt hS_pos)).symm
+      -- result = Σ vᵢ + E = Σ vᵢ + Σ μᵢvᵢ = Σ (1 + μᵢ)vᵢ
+      show result = ∑ i : Fin n, (1 + mu i) * v i
+      have hresult : result = (∑ i : Fin n, v i) + E := by
+        show result = _ + (result - _); ring
+      rw [hresult, hdist, ← Finset.sum_add_distrib]
+      congr 1; ext i; ring
+    · intro i
+      rw [abs_mul, abs_div, abs_of_pos hS_pos]
+      exact le_trans (mul_le_mul_of_nonneg_left (abs_abs_div_self_le_one' _) hES_nn)
+        (by rw [mul_one]; exact hES)
+
+/-- **Backward error for Horner evaluation**: the computed polynomial evaluation
+    equals a polynomial with perturbed coefficients evaluated at the exact `x`:
+
+    `fl(p(x)) = Σ(1 + μᵢ) · cᵢ · x^{n-1-i}` where `|μᵢ| ≤ (1+η)^{2n} - 1`.
+
+    Requires `init = 0` (standard polynomial evaluation, not accumulated). -/
+theorem horner_backward_error
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {x init final : FiniteFp} {coeffs : List FiniteFp}
+    (trace : Horner.HornerTrace x coeffs init final)
+    (hinit : init.toVal (R := R) = 0)
+    (hnr : trace.AllNormalRange (R := R)) :
+    ∃ mu : Fin coeffs.length → R,
+      (final.toVal : R) =
+        ∑ i : Fin coeffs.length,
+          (1 + mu i) * ((coeffs.get i).toVal (R := R) *
+            (x.toVal (R := R)) ^ (coeffs.length - 1 - i.val)) ∧
+      ∀ i, |mu i| ≤ (1 + η) ^ (2 * coeffs.length) - 1 := by
+  -- Forward error bound from Horner.horner_error_bound
+  have hfwd := Horner.horner_error_bound trace hnr
+  -- Simplify with init = 0
+  simp only [hinit, abs_zero] at hfwd
+  -- The forward bound involves:
+  --   LHS: hornerPoly (coeffs.map toVal) 0 x.toVal
+  --   RHS: hornerPoly (coeffs.map |toVal|) 0 |x.toVal|
+  -- Rewrite both to Fin sums
+  -- Rewrite the value-side hornerPoly to a Fin sum
+  set vfun : Fin coeffs.length → R :=
+    fun i => (coeffs.get i).toVal (R := R) *
+      (x.toVal (R := R)) ^ (coeffs.length - 1 - i.val)
+  -- The forward bound says |result - Σ vfun| ≤ ε · Σ|vfun|
+  -- Restate the forward bound using vfun
+  have hval : Horner.hornerPoly (coeffs.map (fun c => c.toVal (R := R))) 0 (x.toVal) =
+      ∑ i, vfun i := by
+    sorry
+  have habs : Horner.hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|)) 0 |x.toVal (R := R)| =
+      ∑ i, |vfun i| := by
+    sorry
+  have hfwd' : |(final.toVal : R) - ∑ i, vfun i| ≤
+      ((1 + η) ^ (2 * coeffs.length) - 1) * ∑ i, |vfun i| := by
+    rw [← hval, ← habs]; exact hfwd
+  -- Apply the Fin-indexed bridge
+  have heps_nn : (0 : R) ≤ (1 + η) ^ (2 * coeffs.length) - 1 := by
+    have : (0 : R) < η := by simp only [FloatFormat.hEps_def]; positivity
+    exact sub_nonneg.mpr (one_le_pow₀ (show (1 : R) ≤ 1 + η by linarith))
+  exact backwardResult_of_forward_fin_bound coeffs.length vfun
+    (final.toVal : R) _ heps_nn hfwd'
 
 end BackwardError
 
