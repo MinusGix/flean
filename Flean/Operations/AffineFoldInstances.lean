@@ -5,6 +5,7 @@ import Flean.Operations.Clenshaw
 import Flean.Operations.CompensatedHorner
 import Flean.Operations.DotProduct
 import Flean.Operations.DotProductFMA
+import Flean.Operations.GeneralAccum
 
 /-!
 # AffineFold Instances: Horner, Clenshaw, and Dot Product
@@ -1076,6 +1077,175 @@ theorem dp_error_bound_via_affineFold
   exact dp_weighted_error_bound (R := R) trace hnr
 
 end DotProductErrorBound
+
+/-! ## Tight Dot Product Error Bound via Four-Parameter Framework
+
+The four-parameter model with `α_acc = η, α_off = (1+η)²-1, β_acc = η, β_off = (1+η)²-1`
+gives a two-term bound with exponent `n` instead of `2n`:
+
+  `geomBound(η, η, n) · |init| + ((1+η)²-1 + η·(1+η)²·geomBound(1, η, n)) · Σ|xᵢyᵢ|`
+
+With zero init, the init term vanishes. The coefficient on `Σ|xᵢyᵢ|` is
+`O(2η + η·n·η) = O(η)` for small η, comparable to the manual proof's `((1+η)^n-1)`. -/
+
+section DotProductTightBound
+
+variable [FloatFormat]
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+
+/-- Per-step split error bound: `|error_k| ≤ η·|acc_k| + ((1+η)²-1)·|xy_k|`.
+    The accumulator contributes only `η` (from the add), while the offset
+    contributes `(1+η)²-1 ≈ 2η` (from mul + add). -/
+theorem dp_step_split_error
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {acc x y : FiniteFp} (step : DPStep acc x y)
+    (hnr : DPStepNormalRange (R := R) acc x y step) :
+    |(acc.toVal : R) + x.toVal * y.toVal - step.next.toVal| ≤
+      η * (1 * |(acc.toVal : R)|) + ((1 + η) ^ 2 - 1) * |x.toVal * y.toVal| := by
+  set av := (acc.toVal : R); set xv := (x.toVal : R); set yv := (y.toVal : R)
+  set pv := (step.prod.toVal : R); set nv := (step.next.toVal : R)
+  have hη : (0 : R) ≤ η := by positivity
+  have hmul := KahanSum.fpMul_error_or_zero (R := R) x y step.prod step.hprod hnr.mul_normal
+  have hadd := KahanSum.fpAdd_error_or_zero (R := R) acc step.prod step.next step.hnext
+    hnr.add_normal
+  -- |prod - xy| ≤ η|xy|
+  have hmul_bound : |pv - xv * yv| ≤ η * |xv * yv| := hmul
+  -- |prod| ≤ (1+η)|xy|
+  have hprod_bound : |pv| ≤ (1 + η) * |xv * yv| := by
+    linarith [le_trans (abs_sub_abs_le_abs_sub pv (xv * yv)) hmul_bound]
+  -- |acc + prod| ≤ |acc| + (1+η)|xy|
+  have hap : |av + pv| ≤ |av| + (1 + η) * |xv * yv| :=
+    le_trans (abs_add_le av pv) (by linarith)
+  -- |next - (acc + prod)| ≤ η · (|acc| + (1+η)|xy|)
+  have hadd_bound : |nv - (av + pv)| ≤ η * (|av| + (1 + η) * |xv * yv|) :=
+    le_trans hadd (mul_le_mul_of_nonneg_left hap hη)
+  -- Triangle: |acc + xy - next| ≤ |next - (acc+prod)| + |prod - xy|
+  have htri : |av + xv * yv - nv| ≤ |nv - (av + pv)| + |pv - xv * yv| := by
+    have : av + xv * yv - nv = -(nv - (av + pv)) + -(pv - xv * yv) := by ring
+    rw [this]; linarith [abs_add_le (-(nv - (av + pv))) (-(pv - xv * yv)),
+      abs_neg (nv - (av + pv)), abs_neg (pv - xv * yv)]
+  -- Combine: η|acc| + η(1+η)|xy| + η|xy| = η|acc| + (2η+η²)|xy| = η|acc| + ((1+η)²-1)|xy|
+  nlinarith [abs_nonneg av, abs_nonneg (xv * yv),
+             mul_nonneg hη (abs_nonneg av), mul_nonneg hη (abs_nonneg (xv * yv))]
+
+/-- Per-step split magnitude: `|next| ≤ (1+η)·|acc| + (1+η)²·|xy|`.
+    The accumulator grows by `(1+η)` (add only), while the offset enters
+    with factor `(1+η)²` (mul then add). -/
+theorem dp_step_split_magnitude
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {acc x y : FiniteFp} (step : DPStep acc x y)
+    (hnr : DPStepNormalRange (R := R) acc x y step) :
+    |step.next.toVal (R := R)| ≤
+      (1 + η) * (1 * |(acc.toVal : R)|) + (1 + ((1 + η) ^ 2 - 1)) * |x.toVal * y.toVal| := by
+  -- (1 + ((1+η)²-1)) = (1+η)²
+  have h1βoff : (1 : R) + ((1 + η) ^ 2 - 1) = (1 + η) ^ 2 := by ring
+  rw [h1βoff, one_mul]
+  set av := (acc.toVal : R); set xv := (x.toVal : R); set yv := (y.toVal : R)
+  set nv := (step.next.toVal : R)
+  have hη : (0 : R) ≤ η := by positivity
+  have herr := dp_step_split_error (R := R) step hnr
+  simp only [one_mul] at herr
+  -- |nv| ≤ |av + xv*yv| + |error|
+  have htri : |nv| - |av + xv * yv| ≤ |nv - (av + xv * yv)| :=
+    abs_sub_abs_le_abs_sub nv (av + xv * yv)
+  -- |error| = |av + xv*yv - nv|
+  have herr_sym : |nv - (av + xv * yv)| = |av + xv * yv - nv| := abs_sub_comm _ _
+  have hsum : |av + xv * yv| ≤ |av| + |xv * yv| := abs_add_le _ _
+  have h2sq : (1 + η : R) ^ 2 = 1 + 2 * η + η ^ 2 := by ring
+  nlinarith [abs_nonneg av, abs_nonneg (xv * yv), abs_nonneg nv]
+
+/-- Per-step split error for trace index k. -/
+theorem dp_trace_split_step_error
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
+    (trace : DPTrace pairs acc final)
+    (hnr : trace.AllNormalRange (R := R))
+    (k : ℕ) (hk : k < pairs.length) :
+    |(dpStepErrors trace (R := R))[k]'(by rw [dpStepErrors_length]; exact hk)| ≤
+      η * (1 * dpTraceMags trace k) +
+      ((1 + η) ^ 2 - 1) * |(pairs[k]'hk).1.toVal (R := R) * (pairs[k]'hk).2.toVal| := by
+  match trace, hnr, k, hk with
+  | .cons (acc := a) (x := x) (y := y) step rest, hnr, 0, hk =>
+    simp only [DPTrace.AllNormalRange] at hnr
+    simp only [dpStepErrors, List.getElem_cons_zero, dpTraceMags]
+    exact dp_step_split_error (R := R) step hnr.1
+  | .cons step rest, hnr, k + 1, hk =>
+    simp only [DPTrace.AllNormalRange] at hnr
+    simp only [dpStepErrors, List.getElem_cons_succ, dpTraceMags]
+    exact dp_trace_split_step_error rest hnr.2 k (by simp at hk; omega)
+
+/-- Per-step split magnitude recurrence for trace index k. -/
+theorem dp_trace_split_mag_recur
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
+    (trace : DPTrace pairs acc final)
+    (hnr : trace.AllNormalRange (R := R))
+    (k : ℕ) (hk : k < pairs.length) :
+    dpTraceMags trace (k + 1) ≤
+      (1 + η) * (1 * dpTraceMags trace k) +
+      (1 + ((1 + η) ^ 2 - 1)) * |(pairs[k]'hk).1.toVal (R := R) * (pairs[k]'hk).2.toVal| := by
+  match trace, hnr, k, hk with
+  | .cons (acc := a) (x := x) (y := y) step rest, hnr, 0, hk =>
+    simp only [DPTrace.AllNormalRange] at hnr
+    show dpTraceMags rest 0 ≤ _
+    rw [dpTraceMags_zero]
+    simp only [List.getElem_cons_zero, dpTraceMags_zero (R := R)]
+    exact dp_step_split_magnitude (R := R) step hnr.1
+  | .cons step rest, hnr, k + 1, hk =>
+    simp only [DPTrace.AllNormalRange] at hnr
+    simp only [dpTraceMags, List.getElem_cons_succ]
+    exact dp_trace_split_mag_recur rest hnr.2 k (by simp at hk; omega)
+
+/-- **Tight dot product error bound via four-parameter framework** (two-term output).
+
+    Uses `α_acc = η, α_off = (1+η)²-1, β_acc = η, β_off = (1+η)²-1` to get
+    exponent `n` instead of `2n`. The init term grows as `geomBound(η, η, n)·|init|`
+    and the offset term captures the per-product error. -/
+theorem dp_error_bound_tight
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {pairs : List (FiniteFp × FiniteFp)} {init final : FiniteFp}
+    (trace : DPTrace pairs init final)
+    (hnr : trace.AllNormalRange (R := R)) :
+    |(final.toVal : R) -
+      hornerPoly (pairs.map (fun p => p.1.toVal (R := R) * p.2.toVal)) (init.toVal) 1| ≤
+      GeomBound.geomBound η η pairs.length * 1 ^ pairs.length * |init.toVal (R := R)| +
+      (((1 + η) ^ 2 - 1) + η * (1 + ((1 + η) ^ 2 - 1)) *
+        GeomBound.geomBound 1 η pairs.length) *
+        hornerPoly (pairs.map (fun p => |p.1.toVal (R := R) * p.2.toVal|)) 0 1 := by
+  -- Use accumulator_error_bound with the decomposition
+  have hdecomp := dp_exact_decomposition (R := R) trace
+  -- Apply the four-parameter framework
+  have hwes := GeneralAccum.weightedErrorSum_le_of_general_step
+    (1 : R) η ((1 + η) ^ 2 - 1) η ((1 + η) ^ 2 - 1)
+    zero_le_one (by positivity) (by nlinarith [show (0:R) ≤ η from by positivity])
+    (by positivity) (by nlinarith [show (0:R) ≤ η from by positivity])
+    (dpStepErrors trace (R := R))
+    (pairs.map (fun p => |p.1.toVal (R := R) * p.2.toVal|))
+    (dpTraceMags trace)
+    (by rw [dpStepErrors_length]; simp)
+    (fun c hc => by simp only [List.mem_map] at hc; obtain ⟨_, _, rfl⟩ := hc; positivity)
+    (dpTraceMags_nonneg (R := R) trace)
+    (fun k hk => by
+      rw [dpStepErrors_length] at hk
+      simp only [List.getElem_map]
+      exact dp_trace_split_step_error (R := R) trace hnr k hk)
+    (fun k hk => by
+      rw [dpStepErrors_length] at hk
+      simp only [List.getElem_map]
+      exact dp_trace_split_mag_recur (R := R) trace hnr k hk)
+  -- Bridge: |final - exact| ≤ wes ≤ bound
+  have herr : final.toVal (R := R) - hornerPoly (pairs.map (fun p => p.1.toVal (R := R) * p.2.toVal)) (init.toVal) 1 =
+      -(hornerPoly (dpStepErrors trace (R := R)) 0 1) := by linarith
+  rw [herr, abs_neg]
+  have hpi := hornerPoly_abs_le_per_index (1 : R) (dpStepErrors trace (R := R))
+  rw [← weightedErrorSum_eq_hornerPoly] at hpi
+  simp only [abs_one] at hpi
+  -- Bridge: dpStepErrors length = pairs.length, dpTraceMags 0 = |init|
+  rw [dpStepErrors_length] at hwes
+  rw [dpTraceMags_zero] at hwes
+  linarith
+
+end DotProductTightBound
 
 /-! ## FMA Dot Product Error Bound via Framework
 
