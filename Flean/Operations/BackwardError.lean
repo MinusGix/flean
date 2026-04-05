@@ -511,10 +511,37 @@ theorem horner_backward_error
   -- Restate the forward bound using vfun
   have hval : Horner.hornerPoly (coeffs.map (fun c => c.toVal (R := R))) 0 (x.toVal) =
       ∑ i, vfun i := by
-    sorry
+    calc
+      Horner.hornerPoly (coeffs.map (fun c => c.toVal (R := R))) 0 (x.toVal) =
+          ∑ i : Fin (coeffs.map (fun c => c.toVal (R := R))).length,
+            (coeffs.map (fun c => c.toVal (R := R))).get i *
+              (x.toVal (R := R)) ^
+                ((coeffs.map (fun c => c.toVal (R := R))).length - 1 - i.val) := by
+            exact hornerPoly_eq_fin_sum (coeffs.map (fun c => c.toVal (R := R))) (x.toVal)
+      _ = ∑ i : Fin coeffs.length, vfun i := by
+        refine Finset.sum_equiv
+          (finCongr (List.length_map (f := fun c : FiniteFp => c.toVal (R := R)) (as := coeffs))) ?_ ?_
+        · intro i
+          simp
+        · intro i _
+          simp [vfun, List.length_map, List.get_eq_getElem, List.getElem_map]
   have habs : Horner.hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|)) 0 |x.toVal (R := R)| =
       ∑ i, |vfun i| := by
-    sorry
+    calc
+      Horner.hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|)) 0 |x.toVal (R := R)| =
+          ∑ i : Fin (coeffs.map (fun c => c.toVal (R := R))).length,
+            |(coeffs.map (fun c => c.toVal (R := R))).get i| *
+              |x.toVal (R := R)| ^
+                ((coeffs.map (fun c => c.toVal (R := R))).length - 1 - i.val) := by
+            simpa [List.map_map]
+              using hornerPoly_abs_eq_fin_sum (coeffs.map (fun c => c.toVal (R := R))) (x.toVal)
+      _ = ∑ i : Fin coeffs.length, |vfun i| := by
+        refine Finset.sum_equiv
+          (finCongr (List.length_map (f := fun c : FiniteFp => c.toVal (R := R)) (as := coeffs))) ?_ ?_
+        · intro i
+          simp
+        · intro i _
+          simp [vfun, List.length_map, List.get_eq_getElem, List.getElem_map, abs_mul, abs_pow]
   have hfwd' : |(final.toVal : R) - ∑ i, vfun i| ≤
       ((1 + η) ^ (2 * coeffs.length) - 1) * ∑ i, |vfun i| := by
     rw [← hval, ← habs]; exact hfwd
