@@ -194,6 +194,16 @@ Rounding/ files but narrow applicability.
   `AddCommGroup S`. Core theorem `affineFold_affine` + `affineFold_exact_decomposition`.
   Unifies Horner (1D), Clenshaw (2D), Jet Horner (2D). Sorry-free.
   Scalar + gauge bounds, per-index bounds, Horner instantiation.
+- [x] **geomBound** — `GeomBound.lean`: `geomBound α β n = α · Σ (1+β)^k`. 23-lemma API.
+  `geomBound_uniform`: bridge to `(1+α)^n - 1`. `geomBound_add`: composition.
+  Division-free core (`mul_geomBound`), monotonicity, positivity.
+- [x] **Four-parameter accumulator model** — `GeneralAccum.lean`: two-term output with
+  separate error rates `(α_acc, α_off)` and magnitude growth `(β_acc, β_off)`.
+  `weightedErrorSum_le_of_general_step` + `_uniform_step` + `_max` wrapper.
+  `weightedErrorSum_append` (structural split) + `weightedErrorSum_compose'` (composition).
+  Design doc: `AccumulatorBounds.md`.
+- [x] **DotProduct/DotProductFMA via framework** — `AffineFoldInstances.lean`: κ=1 instantiation.
+  Tight `dp_error_bound_tight` via four-parameter model (exponent n vs 2n).
 - [x] **Jet Horner** — `JetHorner.lean`: simultaneous value+derivative (S = R × R).
   `polyDeriv` + recurrence + chain rule term. Third AffineFold instance. Sorry-free.
 - [x] **Newton + jet Horner** — `NewtonHorner.lean`: sorry-free, ~725 lines.
@@ -224,10 +234,21 @@ Rounding/ files but narrow applicability.
   (better than Horner's `γ_{2n}` for large n). Tree-structured variant of AffineFold,
   or direct analysis. Practically important for SIMD/pipelining.
   Ref: Muller et al., Handbook of FP Arithmetic, §5.3.
-- [ ] **Compensated dot product** (Ogita-Rump-Oishi) — TwoSum/TwoProduct-based accurate
-  dot product achieving `|d̂ - x·y| ≤ η|x·y| + γ_n²·Σ|xᵢyᵢ|` (nearly full precision).
-  All building blocks exist (TwoSum, TwoProduct, compensated summation). Classic result
-  that completes the "compensated algorithms" story.
+- [x] **Compensated dot product** (Ogita-Rump-Oishi) — CompensatedDotProduct.lean. Sorry-free.
+  - `cdp_exact_decomposition`: `sₙ + Σ(σᵢ+πᵢ) = Σxᵢyᵢ` (exact telescoping)
+  - `c_lane_telescoping`: `cₙ + Σ(c-errors) = Σ(corrections)` (exact)
+  - `cdp_error_bound`: `|result - Σxᵢyᵢ| ≤ η|sₙ+cₙ| + ((1+η)^{2n}-1)·Σ|σᵢ+πᵢ|`
+  - `cdp_error_bound_gamma_sq`: `|result - Σxᵢyᵢ| ≤ η|sₙ+cₙ| + γ_{2n}²·Σ|xᵢyᵢ|`
+  - `cdp_correction_bound`: each `|σᵢ+πᵢ| ≤ ((1+η)²-1)·(|sᵢ₋₁| + |xᵢyᵢ|)`
+  - Structures: `CDPStep` (computation), `CDPStepExact` (EFT), `CDPStepNormalRange`, `CDPTrace`
+  - **Extension: tight γ_n² form** — The current γ_{2n}² uses the framework's 2n exponent
+    for bounding Σ|corrections|. To get the standard γ_n² (Ogita Thm 4.3), need to
+    extract a `DPTrace` from the s-lane of `CDPTrace` and apply the manual
+    `dp_error_bound` (which has exponent n via zero-init + separate mul/add tracking).
+    The `cdp_error_bound_gamma_sq` theorem takes `hcorr_bound` as a hypothesis, so
+    users who prove the tighter `Σ|corrections| ≤ ((1+η)^n-1)·Σ|xᵢyᵢ|` get γ_n²
+    automatically. Requires: s-lane DPTrace extraction function + proof that the
+    extracted trace matches the original s-lane operations + apply `dp_error_bound`.
   Ref: Ogita, Rump, Oishi, "Accurate Sum and Dot Product" (2005).
 - [ ] **Running error bounds** — computable error estimates alongside computation:
   `r_i = (1+η)|x·r_{i-1}| + |v_i|·η` for Horner, etc. Prove `actual_error ≤ running_bound`
