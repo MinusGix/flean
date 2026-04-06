@@ -255,11 +255,11 @@ Rounding/ files but narrow applicability.
   at each step. Practically important: user can check at runtime if answer is good enough
   without knowing condition number a priori. Would be a verified implementation, not just
   a bound theorem.
-- [ ] **Compensated Newton** — compensated Horner *inside* Newton iteration. Compensated
-  Horner gives `O(η)` evaluation error instead of `O(nη)`, so Newton converges to a tighter
-  ball: `O(η·|x*/p'(x*)|)` instead of `O(nη·|x*/p'(x*)|)`. Natural composition of
-  CompensatedHorner + NewtonHorner. The exact decomposition `s + Σerrors = p(x)` from
-  CompensatedHorner feeds directly into the perturbation framework.
+- [x] **Compensated Newton** — `CompensatedNewton.lean`: compensated Horner *inside* Newton iteration ✓
+  `CompNewtonStep` structure + `comp_newton_perturbation` bound.
+  `newton_perturbation_from_eval_errors` in NewtonHorner.lean: generic composition
+  of evaluation errors + rounding → Newton perturbation. ~140 lines, sorry-free.
+  Near roots, perturbation is `O(η/|p'(x*)|)` instead of `O(nη/|p'(x*)|)`.
 
 ## Mid-Term — Backward Error & Conditioning
 - [x] **Backward error framework** — `BackwardError.lean`: `PerturbationGauge`, `BackwardResult`,

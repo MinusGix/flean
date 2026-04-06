@@ -769,4 +769,55 @@ theorem newton_horner_perturbation_bound
       _ = |x'_v - (x_v - β)| + |β - α| := by rw [abs_neg]
   linarith
 
+/-- **Generic Newton perturbation from evaluation errors.**
+
+    Given evaluation errors `|v̂ - p(x)| ≤ δ_v` and `|d̂ - p'(x)| ≤ δ_d`,
+    with machine epsilon `η` on division and subtraction rounding, the
+    Newton step perturbation is bounded.
+
+    This generalizes `newton_horner_perturbation_bound` to work with any
+    evaluation method (standard Horner, compensated Horner, etc.).
+    Instantiate with `δ_v, δ_d` from the chosen evaluation strategy. -/
+theorem newton_perturbation_from_eval_errors
+    {x_v p_x p'_x v_hat d_hat q_v x'_v δ_v δ_d : R}
+    (hp'_ne : p'_x ≠ 0) (hd_ne : d_hat ≠ 0)
+    -- Rounding errors
+    (hsub : |x'_v - (x_v - q_v)| ≤ η * |x_v - q_v|)
+    (hdiv : |q_v - v_hat / d_hat| ≤ η * |v_hat / d_hat|)
+    -- Evaluation errors
+    (hv : |v_hat - p_x| ≤ δ_v)
+    (hd : |d_hat - p'_x| ≤ δ_d) :
+    |x'_v - (x_v - p_x / p'_x)| ≤
+      η * |x_v - q_v| + η * |v_hat / d_hat| +
+      (δ_v * |p'_x| + |p_x| * δ_d) / (|d_hat| * |p'_x|) := by
+  -- Triangle: split at the computed quotient
+  have htri : |x'_v - (x_v - p_x / p'_x)| ≤
+      |x'_v - (x_v - v_hat / d_hat)| + |v_hat / d_hat - p_x / p'_x| := by
+    have heq : x'_v - (x_v - p_x / p'_x) =
+      (x'_v - (x_v - v_hat / d_hat)) - (v_hat / d_hat - p_x / p'_x) := by ring
+    rw [heq, show (x'_v - (x_v - v_hat / d_hat)) - (v_hat / d_hat - p_x / p'_x) =
+      (x'_v - (x_v - v_hat / d_hat)) + (-(v_hat / d_hat - p_x / p'_x)) from by ring]
+    exact le_trans (abs_add_le _ _) (by rw [abs_neg])
+  -- First part: subtraction + division rounding
+  have h1 : |x'_v - (x_v - v_hat / d_hat)| ≤ η * |x_v - q_v| + η * |v_hat / d_hat| := by
+    have heq : x'_v - (x_v - v_hat / d_hat) =
+      (x'_v - (x_v - q_v)) - (q_v - v_hat / d_hat) := by ring
+    rw [heq, show (x'_v - (x_v - q_v)) - (q_v - v_hat / d_hat) =
+      (x'_v - (x_v - q_v)) + (-(q_v - v_hat / d_hat)) from by ring]
+    calc |(x'_v - (x_v - q_v)) + (-(q_v - v_hat / d_hat))|
+        ≤ |x'_v - (x_v - q_v)| + |-(q_v - v_hat / d_hat)| := abs_add_le _ _
+      _ = |x'_v - (x_v - q_v)| + |q_v - v_hat / d_hat| := by rw [abs_neg]
+      _ ≤ η * |x_v - q_v| + η * |v_hat / d_hat| := by linarith
+  -- Second part: quotient perturbation
+  have h2 := quotient_perturbation (R := R) hd_ne hp'_ne (a := v_hat) (b := d_hat)
+    (c := p_x) (d := p'_x)
+  -- Bound the numerator using δ_v, δ_d
+  have hnum : |v_hat - p_x| * |p'_x| + |p_x| * |d_hat - p'_x| ≤
+      δ_v * |p'_x| + |p_x| * δ_d := by
+    have := mul_le_mul_of_nonneg_right hv (abs_nonneg p'_x)
+    have := mul_le_mul_of_nonneg_left hd (abs_nonneg p_x)
+    linarith
+  have hden_pos : (0 : R) < |d_hat| * |p'_x| := by positivity
+  linarith [div_le_div_of_nonneg_right hnum hden_pos.le]
+
 end NewtonHorner
