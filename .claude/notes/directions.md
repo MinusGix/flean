@@ -225,7 +225,7 @@ Rounding/ files but narrow applicability.
 - [ ] **Newton sqrt** — `x_{n+1} = (x_n + a/x_n)/2` or reciprocal form `y_{n+1} = y_n(3 - ay_n²)/2`.
   Reciprocal form avoids division. Used in hardware sqrt implementations (e.g. x86 FSQRT
   initial approximation + Newton refinement). Similar to Newton reciprocal framework.
-- [ ] **Mathlib Polynomial connection** — `hornerPoly cs init x = Polynomial.eval x p`.
+- [x] **Mathlib Polynomial connection** — `hornerPoly_eq_eval` in PolynomialConnection.lean ✓
   Would let us state error bounds in terms of Mathlib polynomials, enabling access to
   Mathlib's polynomial algebra (degree, roots, derivative via `Polynomial.derivative`).
   Also: `polyDeriv cs 0 x = Polynomial.eval x (Polynomial.derivative p)`.
