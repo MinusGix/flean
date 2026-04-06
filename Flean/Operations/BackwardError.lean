@@ -70,6 +70,29 @@ theorem dp_backward_error_gamma
   obtain ⟨mu, heq, hbnd⟩ := dp_backward_error trace hinit hnr
   exact ⟨mu, heq, fun i => le_trans (hbnd i) (pow_sub_one_le_gamma pairs.length hsmall)⟩
 
+/-- **Structured backward error for dot product**: returns a `BackwardResult`
+    on the **product space** with componentwise relative gauge.
+
+    `fl(x·y) = Σ(1+μᵢ)·xᵢyᵢ` where `max_i |μᵢ| ≤ (1+η)^n - 1`. -/
+noncomputable def dp_backward_result
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeIdem R]
+    {pairs : List (FiniteFp × FiniteFp)} {init final : FiniteFp}
+    (hpairs : 0 < pairs.length)
+    (trace : DotProduct.DPTrace pairs init final)
+    (hinit : init.toVal (R := R) = 0)
+    (hnr : trace.AllNormalRange (R := R)) :
+    BackwardResult
+      (componentwiseRelGauge pairs.length hpairs)
+      (fun w => ∑ i : Fin pairs.length, w i)
+      (fun i => (pairs.get i).1.toVal (R := R) * (pairs.get i).2.toVal)
+      (final.toVal : R) := by
+  have hfwd := DotProduct.dp_error_bound trace hinit hnr
+  rw [list_map_sum_eq_finset_sum', list_map_sum_eq_finset_sum'] at hfwd
+  exact backwardResult_struct_of_forward_fin_bound hpairs _ _ _
+    (by have : (0 : R) < η := by simp only [FloatFormat.hEps_def]; positivity
+        exact sub_nonneg.mpr (one_le_pow₀ (show (1 : R) ≤ 1 + η by linarith)))
+    hfwd
+
 /-! ### Horner Polynomial ↔ Fin Sum -/
 
 /-- Helper: `hornerPoly cs acc x = acc * x^n + hornerPoly cs 0 x`. -/
