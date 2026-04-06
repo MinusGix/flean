@@ -387,6 +387,40 @@ noncomputable def backwardResult_struct_of_forward_fin_bound
         exact hmu_bnd i
   }
 
+/-- **Structured backward result for weighted sums**: if
+    `|result - Σ c_i·w_i| ≤ ε · Σ|c_i·w_i|`, then there is a `BackwardResult`
+    on the **coefficient space** with `f(c) = Σ c_i·w_i` and componentwise gauge.
+
+    This is the key bridge for Horner backward error: the weights `w_i = x^{n-1-i}`
+    are fixed, and the coefficients `c_i` are the "inputs" being perturbed. -/
+noncomputable def backwardResult_struct_of_forward_weighted_bound
+    {n : ℕ} (hn : 0 < n) (c w : Fin n → R)
+    (result eps : R) (heps : 0 ≤ eps)
+    (hfwd : |result - ∑ i : Fin n, c i * w i| ≤
+            eps * ∑ i : Fin n, |c i * w i|) :
+    BackwardResult (componentwiseRelGauge n hn)
+      (fun c' => ∑ i : Fin n, c' i * w i) c result := by
+  choose mu hmu_eq hmu_bnd using
+    backwardResult_of_forward_fin_bound n (fun i => c i * w i) result eps heps hfwd
+  exact {
+    x' := fun i => (1 + mu i) * c i
+    exact := by
+      convert hmu_eq.symm using 1
+      congr 1; ext i; ring
+    eps := eps
+    eps_nonneg := heps
+    bound := by
+      unfold componentwiseRelGauge
+      dsimp only
+      apply Finset.sup'_le
+      intro i _
+      by_cases hci : c i = 0
+      · simp [hci, heps]
+      · rw [if_neg hci, show (1 + mu i) * c i - c i = mu i * c i from by ring,
+            abs_mul, mul_div_cancel_of_imp (by intro h; exact absurd (abs_eq_zero.mp h) hci)]
+        exact hmu_bnd i
+  }
+
 end LinearBackward
 
 /-! ## Condition Number -/

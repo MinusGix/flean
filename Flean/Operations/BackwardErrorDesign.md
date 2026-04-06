@@ -355,19 +355,17 @@ symmetric). This is the right abstraction for error analysis gauges. If we
 ever need asymmetric gauges, a separate structure would be needed — but this
 is unlikely for numerical error analysis where all gauges are norm-like.
 
-### F2. AffineFold backward attribution (non-degenerate MixedResult)
-`MixedResult.ofAffineFold` always produces `x' = x` (zero backward, all
-forward). The interesting case: *redistribute* some forward error backward
-onto the coefficients. For Horner `p(x) = Σ cᵢxⁱ`, this would give
-"perturbed coefficients `c'ᵢ = (1+μᵢ)cᵢ` + smaller residual" — the standard
-backward error interpretation.
+### F2. AffineFold backward attribution — DONE (Horner)
+`backwardResult_struct_of_forward_weighted_bound` in BackwardErrorCore.lean:
+structured `BackwardResult` for weighted sums `f(c) = Σ cᵢwᵢ` on the
+coefficient space. `horner_backward_result` in BackwardError.lean: Horner
+evaluation as `BackwardResult` with `componentwiseRelGauge` on coefficients,
+`max_i |μᵢ| ≤ (1+η)^{2n} - 1`.
 
-The bridge would combine `ofAffineFold` with `error_distributable`:
-1. Start with degenerate MixedResult (all-forward residual)
-2. Use `error_distributable` on the residual to produce per-coefficient `μᵢ`
-3. Attribute those perturbations backward, leaving a smaller (higher-order) residual
-
-This is the natural next step for AffineFold integration after D4.
+For the full AffineFold pipeline (degenerate MixedResult → redistribute
+via error_distributable → BackwardResult), the weighted bridge subsumes
+the intermediate steps. Direct AffineFold → MixedResult still useful for
+algorithms where backward attribution isn't clean.
 
 ### F3. `componentwiseRelGauge` requires `n > 0`
 The `Finset.sup'` in `componentwiseRelGauge` needs `Finset.univ.Nonempty`,

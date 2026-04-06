@@ -205,4 +205,67 @@ theorem horner_backward_error
   exact backwardResult_of_forward_fin_bound coeffs.length vfun
     (final.toVal : R) _ heps_nn hfwd'
 
+/-- **Structured backward error for Horner evaluation**: returns a `BackwardResult`
+    on the **coefficient space** with componentwise relative gauge.
+
+    The computed polynomial evaluation equals the exact evaluation of a polynomial
+    with perturbed coefficients: `fl(p(x)) = p̃(x)` where `c̃ᵢ = (1+μᵢ)·cᵢ`
+    and `max_i |μᵢ| ≤ (1+η)^{2n} - 1`.
+
+    The function maps coefficient vectors to polynomial values at fixed `x`. -/
+noncomputable def horner_backward_result
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {x init final : FiniteFp} {coeffs : List FiniteFp}
+    (hcoeffs : 0 < coeffs.length)
+    (trace : Horner.HornerTrace x coeffs init final)
+    (hinit : init.toVal (R := R) = 0)
+    (hnr : trace.AllNormalRange (R := R)) :
+    BackwardResult
+      (componentwiseRelGauge coeffs.length hcoeffs)
+      (fun c => ∑ i : Fin coeffs.length,
+        c i * (x.toVal (R := R)) ^ (coeffs.length - 1 - i.val))
+      (fun i => (coeffs.get i).toVal)
+      (final.toVal : R) := by
+  -- Get the forward error bound in Fin-indexed form
+  have hfwd := Horner.horner_error_bound trace hnr
+  simp only [hinit, abs_zero] at hfwd
+  set vfun : Fin coeffs.length → R :=
+    fun i => (coeffs.get i).toVal (R := R) *
+      (x.toVal (R := R)) ^ (coeffs.length - 1 - i.val)
+  -- Restate using Fin sums (from horner_backward_error proof)
+  have hval : Horner.hornerPoly (coeffs.map (fun c => c.toVal (R := R))) 0 (x.toVal) =
+      ∑ i, vfun i := by
+    calc _ = ∑ i : Fin (coeffs.map (fun c => c.toVal (R := R))).length,
+            (coeffs.map (fun c => c.toVal (R := R))).get i *
+              (x.toVal (R := R)) ^
+                ((coeffs.map (fun c => c.toVal (R := R))).length - 1 - i.val) :=
+            hornerPoly_eq_fin_sum _ _
+      _ = ∑ i : Fin coeffs.length, vfun i := by
+        refine Finset.sum_equiv
+          (finCongr (List.length_map (f := fun c : FiniteFp => c.toVal (R := R)) (as := coeffs))) ?_ ?_
+        · intro i; simp
+        · intro i _; simp [vfun, List.length_map, List.get_eq_getElem, List.getElem_map]
+  have habs : Horner.hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|)) 0 |x.toVal (R := R)| =
+      ∑ i, |vfun i| := by
+    calc _ = ∑ i : Fin (coeffs.map (fun c => c.toVal (R := R))).length,
+            |(coeffs.map (fun c => c.toVal (R := R))).get i| *
+              |x.toVal (R := R)| ^
+                ((coeffs.map (fun c => c.toVal (R := R))).length - 1 - i.val) := by
+            simpa [List.map_map]
+              using hornerPoly_abs_eq_fin_sum (coeffs.map (fun c => c.toVal (R := R))) (x.toVal)
+      _ = ∑ i : Fin coeffs.length, |vfun i| := by
+        refine Finset.sum_equiv
+          (finCongr (List.length_map (f := fun c : FiniteFp => c.toVal (R := R)) (as := coeffs))) ?_ ?_
+        · intro i; simp
+        · intro i _; simp [vfun, List.length_map, List.get_eq_getElem, List.getElem_map, abs_mul, abs_pow]
+  have hfwd' : |(final.toVal : R) - ∑ i, vfun i| ≤
+      ((1 + η) ^ (2 * coeffs.length) - 1) * ∑ i, |vfun i| := by
+    rw [← hval, ← habs]; exact hfwd
+  have heps_nn : (0 : R) ≤ (1 + η) ^ (2 * coeffs.length) - 1 := by
+    have : (0 : R) < η := by simp only [FloatFormat.hEps_def]; positivity
+    exact sub_nonneg.mpr (one_le_pow₀ (show (1 : R) ≤ 1 + η by linarith))
+  exact backwardResult_struct_of_forward_weighted_bound hcoeffs
+    (fun i => (coeffs.get i).toVal) (fun i => (x.toVal (R := R)) ^ (coeffs.length - 1 - i.val))
+    _ _ heps_nn hfwd'
+
 end BackwardError

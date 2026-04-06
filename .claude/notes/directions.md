@@ -271,8 +271,8 @@ Rounding/ files but narrow applicability.
   with `|μ'ᵢ| ≤ ε₁+ε₂+ε₁ε₂`.
 - [x] **Condition number (summation)** — `componentwiseCondNumber` + `forward_rel_le_cond_mul_backward`:
   `rel_fwd_error ≤ ε · Σ|xᵢ|/|Σxᵢ|`.
-- [ ] **Horner backward error** — `hornerPoly_eq_fin_sum` has 1 sorry (Fin index arithmetic).
-  Once resolved: `horner_backward_error` with `|μᵢ| ≤ (1+η)^{2n}-1` on coefficients.
+- [x] **Horner backward error** — `horner_backward_error` (existential) + `horner_backward_result`
+  (structured `BackwardResult` with `componentwiseRelGauge`) ✓. `|μᵢ| ≤ (1+η)^{2n}-1`.
 - [ ] **General condition numbers** — formalize `cond(f, x) = ‖J_f(x)‖·‖x‖/‖f(x)‖` and prove the
   fundamental relation `forward_error ≤ cond · backward_error · (1 + O(η))`.
   For polynomial evaluation: standard Wilkinson-type bounds.
