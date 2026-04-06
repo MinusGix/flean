@@ -562,6 +562,17 @@ theorem forward_from_sum_backward {n : ℕ} (hn : 0 < n)
         · exact componentwiseRelGauge_component_bound hn br.bound i hvi
     _ = br.eps * ∑ i, |v i| := (Finset.mul_sum ..).symm
 
+/-- Automatically discharge the `hzero` condition for backward results built by
+    `backwardResult_struct_of_forward_fin_bound`. -/
+theorem backwardResult_struct_of_forward_fin_bound_zero
+    {n : ℕ} (hn : 0 < n) (v : Fin n → R)
+    (result eps : R) (heps : 0 ≤ eps)
+    (hfwd : |result - ∑ i : Fin n, v i| ≤ eps * ∑ i : Fin n, |v i|)
+    (i : Fin n) (hvi : v i = 0) :
+    (backwardResult_struct_of_forward_fin_bound hn v result eps heps hfwd).x' i = 0 := by
+  simp only [backwardResult_struct_of_forward_fin_bound]
+  rw [hvi, mul_zero]
+
 /-- **Relative forward error from backward result** (summation + condition number).
 
     `|computed - Σvᵢ| / |Σvᵢ| ≤ ε · κ` where `κ = Σ|vᵢ|/|Σvᵢ|`
