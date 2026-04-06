@@ -226,9 +226,16 @@ Rounding/ files but narrow applicability.
   Reciprocal form avoids division. Used in hardware sqrt implementations (e.g. x86 FSQRT
   initial approximation + Newton refinement). Similar to Newton reciprocal framework.
 - [x] **Mathlib Polynomial connection** — `hornerPoly_eq_eval` in PolynomialConnection.lean ✓
-  Would let us state error bounds in terms of Mathlib polynomials, enabling access to
-  Mathlib's polynomial algebra (degree, roots, derivative via `Polynomial.derivative`).
-  Also: `polyDeriv cs 0 x = Polynomial.eval x (Polynomial.derivative p)`.
+  `hornerPoly cs 0 x = (hornerListPoly cs).eval x` + derivative eval.
+  hornerPoly now only needs `CommRing R` (typeclass cleanup).
+  Follow-up items:
+  - [ ] **polyDeriv ↔ Polynomial.derivative** — `polyDeriv cs 0 x = (hornerListPoly cs).derivative.eval x`.
+    Validates JetHorner derivative against Mathlib's formal derivative.
+  - [ ] **Backward error in Polynomial form** — restate `horner_backward_error` as
+    `fl(p(x)) = p̃(x)` where `p̃ : R[X]` is a Mathlib polynomial with perturbed coefficients.
+  - [ ] **hornerListPoly properties** — `natDegree`, leading coefficient, cons/append recurrences.
+  - [ ] **Estrin sub-polynomial splitting** — express `p(x) = p_lo(x) + x^m · p_hi(x)` via
+    `hornerListPoly` and reason about the tree-structured evaluation in Mathlib terms.
 - [ ] **Estrin's method** — parallel polynomial evaluation: group pairs of Horner steps,
   evaluate sub-polynomials independently, combine. Error bound `γ_{2⌈log₂n⌉}·p̃(|x|)`
   (better than Horner's `γ_{2n}` for large n). Tree-structured variant of AffineFold,

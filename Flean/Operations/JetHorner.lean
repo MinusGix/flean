@@ -167,6 +167,7 @@ These formulas are essential for the jet Horner derivative error bound. -/
 
 variable [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
 
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
 /-- **Full propagation formula for `affineProp (jetHornerL x)`.**
 
     `(affineProp L n (ev, ed)).2 = x^n * ed + ↑n * x^{n-1} * ev`
@@ -199,6 +200,7 @@ theorem affineProp_jetHornerL_snd_abs_le (n : ℕ) (x ev ed : R) :
         rw [abs_mul, abs_mul, abs_mul, abs_pow, abs_pow,
             abs_of_nonneg (Nat.cast_nonneg (α := R) n)]
 
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
 /-- **`polyDeriv` is affine in its initial value.**
 
     Shifting the initial accumulator by `e` shifts the derivative by

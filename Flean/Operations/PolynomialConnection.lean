@@ -1,4 +1,5 @@
 import Flean.Operations.Horner
+import Flean.Operations.JetHorner
 import Mathlib.Algebra.Polynomial.Eval.Defs
 import Mathlib.Algebra.Polynomial.Derivative
 
@@ -99,3 +100,63 @@ theorem hornerListPoly_derivative_eval (cs : List R) (x : R) :
   simp only [eval_finset_sum, eval_mul, eval_C, eval_pow, eval_X]
 
 end Horner
+
+/-! ## JetHorner / polyDeriv Connection -/
+
+namespace JetHorner
+
+open Horner
+
+variable {R : Type*} [Field R]
+
+/-- The value component of `jetHornerExact` equals `hornerPoly`.
+    The derivative input `d` is irrelevant for the value. -/
+theorem jetHornerExact_fst_eq_hornerPoly (cs : List R) (init d x : R) :
+    (jetHornerExact cs init d x).1 = hornerPoly cs init x := by
+  induction cs generalizing init d with
+  | nil => simp [jetHornerExact, hornerPoly]
+  | cons c cs ih =>
+    simp only [jetHornerExact, hornerPoly]
+    rw [ih, mul_comm x init]
+
+/-- `hornerListPoly` cons recurrence: prepending a coefficient `c` adds `C c * X^n`. -/
+theorem hornerListPoly_cons (c : R) (cs : List R) :
+    hornerListPoly (c :: cs) =
+      C c * X ^ cs.length + hornerListPoly cs := by
+  simp only [hornerListPoly, List.length_cons]
+  rw [Fin.sum_univ_succ]
+  simp only [List.get_cons_zero, Fin.val_zero, Nat.sub_zero, add_comm]
+  congr 1
+  apply Finset.sum_congr rfl
+  intro i _
+  simp only [List.get_cons_succ, Fin.val_succ]
+  congr 2
+  omega
+
+/-- **polyDeriv connection**: `polyDeriv cs 0 x = (hornerListPoly cs).derivative.eval x`.
+
+    This validates our JetHorner derivative computation against Mathlib's
+    formal polynomial derivative: the jet Horner recurrence computes the same
+    derivative as Mathlib's formal `Polynomial.derivative`.
+
+    Proof: by induction on `cs`, using `hornerListPoly_cons` to decompose the
+    polynomial and `polyDeriv_affine` to handle the accumulator shift. -/
+theorem polyDeriv_eq_derivative_eval
+    (cs : List R) (x : R) :
+    polyDeriv cs 0 x = (Horner.hornerListPoly cs).derivative.eval x := by
+  induction cs with
+  | nil => simp [polyDeriv_nil, Horner.hornerListPoly_nil]
+  | cons c cs ih =>
+    -- LHS: polyDeriv (c::cs) 0 x = polyDeriv cs c x (by polyDeriv_cons with init=0)
+    --     = polyDeriv cs 0 x + cs.length * x^{cs.length-1} * c (by polyDeriv_affine)
+    rw [polyDeriv_cons, show x * 0 + c = 0 + c from by ring, polyDeriv_affine]
+    -- RHS: derivative(C c * X^n + hornerListPoly cs).eval x
+    --     = (C (c * n) * X^{n-1}).eval x + (hornerListPoly cs).derivative.eval x
+    --     = c * n * x^{n-1} + (hornerListPoly cs).derivative.eval x
+    rw [hornerListPoly_cons, map_add, derivative_C_mul_X_pow, Polynomial.eval_add,
+      eval_mul, eval_C, eval_pow, eval_X]
+    -- Now both sides have (hornerListPoly cs).derivative.eval x; use IH
+    rw [← ih]
+    ring
+
+end JetHorner
