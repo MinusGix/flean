@@ -91,6 +91,13 @@ def trivialGauge (X : Type*) : PerturbationGauge X R where
   nonneg _ _ := le_refl 0
   self _ := rfl
 
+/-- Scalar absolute gauge: `dist(y, y') = |y' - y|`.
+    The natural gauge for a single scalar output. -/
+def scalarAbsGauge : PerturbationGauge R R where
+  dist y y' := |y' - y|
+  nonneg _ _ := abs_nonneg _
+  self _ := by simp
+
 /-- Componentwise relative gauge: `max_i |x'_i - x_i| / |x_i|`.
 
     For zero inputs, the term is 0 (multiplicative perturbation of 0 is 0).
@@ -764,6 +771,15 @@ noncomputable def uniformGauge_metric (n : ℕ) (hn : 0 < n) :
             (Finset.le_sup' (fun j => |x' j - x j|) (Finset.mem_univ i))
             (Finset.le_sup' (fun j => |x'' j - x' j|) (Finset.mem_univ i))
 
+/-- `scalarAbsGauge` satisfies the triangle inequality: `|z - x| ≤ |y - x| + |z - y|`. -/
+noncomputable def scalarAbsGauge_metric :
+    PerturbationMetric R R where
+  toPerturbationGauge := scalarAbsGauge
+  triangle x x' x'' := by
+    show |x'' - x| ≤ |x' - x| + |x'' - x'|
+    calc |x'' - x| = |(x' - x) + (x'' - x')| := by ring_nf
+      _ ≤ |x' - x| + |x'' - x'| := abs_add_le _ _
+
 /-- A perturbation lift for `f`: output perturbations of `f(x₀)` in `G_Y` can be
     pulled back to input perturbations of `x₀` in `G_X`, with amplification factor `Λ`.
 
@@ -820,5 +836,51 @@ noncomputable def BackwardResult.compose {X Y Z : Type*}
         ≤ G_X.dist x brA.x' + G_X.dist brA.x' x'' := G_X.triangle x brA.x' x''
       _ ≤ brA.eps + plift.Lambda * brB.eps := add_le_add brA.bound hdist_x''
   }
+
+/-! ## Concrete PerturbationLift Instances -/
+
+/-- **Summation lift**: perturbations of `∑ wᵢ` in `scalarAbsGauge` can be pulled back
+    to perturbations of `w` in `uniformGauge` with amplification `Λ = 1`.
+
+    Construction: given target `y'` with `|y' - ∑ w₀ᵢ| ≤ δ`, set
+    `w'ᵢ = w₀ᵢ + (y' - ∑ w₀ⱼ) / n`. Then `∑ w'ᵢ = y'` and
+    `max_i |w'ᵢ - w₀ᵢ| = |y' - ∑ w₀ⱼ| / n ≤ δ / n ≤ δ = 1 · δ`. -/
+noncomputable def summationLift (n : ℕ) (hn : 0 < n) :
+    PerturbationLift (R := R) (uniformGauge n hn) scalarAbsGauge
+      (fun w => ∑ i : Fin n, w i) where
+  Lambda := 1
+  Lambda_nonneg := zero_le_one
+  lift w₀ y' delta hdist _hdelta_nn := by
+    -- hdist : |y' - ∑ w₀ᵢ| ≤ delta
+    simp only [scalarAbsGauge] at hdist
+    -- Construct w' by distributing the difference evenly
+    let diff := y' - ∑ i : Fin n, w₀ i
+    let w' : Fin n → R := fun i => w₀ i + diff / (n : R)
+    refine ⟨w', ?_, ?_⟩
+    · -- ∑ w'ᵢ = y'
+      show ∑ i : Fin n, (w₀ i + diff / (n : R)) = y'
+      have hn_ne : (n : R) ≠ 0 := Nat.cast_ne_zero.mpr (by omega)
+      simp only [Finset.sum_add_distrib, Finset.sum_const, Finset.card_fin, nsmul_eq_mul]
+      field_simp
+      simp [diff]
+    · -- max_i |w'ᵢ - w₀ᵢ| ≤ 1 * delta
+      show (uniformGauge n hn).dist w₀ w' ≤ 1 * delta
+      rw [one_mul]
+      simp only [uniformGauge]
+      apply Finset.sup'_le
+      intro i _
+      show |w' i - w₀ i| ≤ delta
+      -- |w'ᵢ - w₀ᵢ| = |diff / n| ≤ |diff| / n ≤ |diff| ≤ delta
+      simp only [w', add_sub_cancel_left]
+      have hn_pos : (0 : R) < (n : R) := Nat.cast_pos.mpr hn
+      rw [abs_div]
+      calc |diff| / |(n : R)|
+          = |diff| / (n : R) := by rw [abs_of_pos hn_pos]
+        _ ≤ |diff| := by
+            rw [div_le_iff₀ hn_pos]
+            calc |diff| = |diff| * 1 := by ring
+              _ ≤ |diff| * (n : R) :=
+                  mul_le_mul_of_nonneg_left (by exact_mod_cast hn) (abs_nonneg _)
+        _ ≤ delta := hdist
 
 end BackwardError

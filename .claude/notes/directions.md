@@ -280,11 +280,10 @@ Rounding/ files but narrow applicability.
   Two tracks: multiplicative (`compose_scalar_sum/weighted_sum` for `componentwiseRelGauge`)
   and additive (`BackwardResult.compose` with `PerturbationMetric` + `PerturbationLift`).
 - [ ] **Concrete `PerturbationLift` instances** — needed to make `BackwardResult.compose` usable:
-  - Summation lift (`uniformGauge`): `Λ = 1`, distribute output perturbation evenly across inputs.
-    Uses `error_distributable`-style allocation.
-  - Horner/weighted-sum lift: pull back output perturbation to coefficient perturbations.
+  - [x] Summation lift (`uniformGauge`→`scalarAbsGauge`): `Λ = 1`, distribute perturbation evenly ✓
+  - [ ] Horner/weighted-sum lift: pull back output perturbation to coefficient perturbations.
     `Λ = condition number` (= `Σ|cᵢx^i|/|p(x)|`). Connects to `componentwiseCondNumber`.
-  - Linear function lift (general): any `f(x) = Ax` with `Λ = ‖A⁻¹‖` or pseudo-inverse.
+  - [ ] Linear function lift (general): any `f(x) = Ax` with `Λ = ‖A⁻¹‖` or pseudo-inverse.
 - [ ] **`MixedResult.compose_no_lift`** — fallback composition into `MixedResult` when no
   lift exists. Backward part from `brA`, forward residual bounded by Lipschitz constant
   of `g` times `brB.eps`. Needs Lipschitz-like hypothesis on `g`. Low priority.
