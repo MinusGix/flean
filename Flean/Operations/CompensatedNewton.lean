@@ -24,6 +24,34 @@ Each step:
 5. Division: `q = fl(v_comp / d)`
 6. Update: `x_next = fl(x - q)`
 
+## Structure factoring (future)
+
+`CompNewtonStep` and `NewtonStep` share the division+subtraction tail:
+`hd_nonzero`, `quot`, `hquot`, `x_next`, `hx_next` + normal range conditions.
+A shared `NewtonUpdate` sub-structure would reduce duplication if more Newton
+variants are added (compensated FMA, double-compensated, interval Newton).
+Not worth the refactor with only two variants.
+
+## Derivative bottleneck
+
+The value `p(x)` is compensated to `O(η)` error, but the derivative `p'(x)` is
+still evaluated by standard Horner with `O(nη)` error. The perturbation bound has
+two evaluation-error terms:
+
+    `(δ_v · |p'(x)| + |p(x)| · δ_d) / (|d̂| · |p'(x)|)`
+    = `δ_v / |d̂| + |p(x)| · δ_d / (|d̂| · |p'(x)|)`
+
+Near a root (`|p(x)| → 0`), the `δ_d` term is suppressed by the factor `|p(x)|`,
+so the `O(nη)` derivative error doesn't hurt. Away from roots, both terms matter
+equally and the derivative error dominates.
+
+To fully eliminate the `n`-dependence everywhere, one would need **compensated jet
+Horner**: extract a `HornerTrace` from the d-channel of `JetHornerTrace` and apply
+compensation. The d-channel step `d' = fl(x·d + v)` is a standard Horner step
+(accumulator `d`, offset `v`, multiplier `x`), so the same compensation machinery
+applies. The obstacle is that `JetHornerTrace` and `HornerTrace` are separate types;
+a d-channel extraction function + compatibility proof would be needed.
+
 ## References
 
 - Graillat, Langlois, Louvet, "Compensated Horner scheme" (2006)

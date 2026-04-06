@@ -710,74 +710,20 @@ Newton perturbation → perturbed Newton convergence.
 The capstone states: if the polynomial has a simple root and the initial
 approximation is close enough, FP Newton converges to an O(η)-ball. -/
 
-/-- **Newton-Horner perturbation bound.**
-
-    Each FP Newton step on a polynomial (via jet Horner) has perturbation
-    bounded by: subtraction rounding + division rounding + evaluation error,
-    where evaluation error is bounded via jet Horner value error + quotient
-    perturbation.
-
-    This is the bridge between `jetHorner_value_error_bound` and
-    `perturbed_newton_ball`. The full composition requires instantiating
-    the abstract `exact_newton_quadratic` with polynomial-specific Taylor
-    and Lipschitz bounds. -/
-theorem newton_horner_perturbation_bound
-    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeSticky R]
-    {init : FiniteFp} {coeffs : List FiniteFp} {x_cur : FiniteFp}
-    (step : NewtonStep init coeffs x_cur)
-    (hnr : NewtonStepNormalRange (R := R) init coeffs x_cur step)
-    (hd_hat_ne : (step.d_final.toVal : R) ≠ 0)
-    (hd_exact_ne : (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
-        (init.toVal : R) 0 (x_cur.toVal : R)).2 ≠ 0) :
-    let x_v := (x_cur.toVal : R)
-    let p_exact := hornerPoly (coeffs.map (fun c => c.toVal (R := R)))
-        (init.toVal : R) x_v
-    let d_exact := (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
-        (init.toVal : R) 0 x_v).2
-    let v_hat := (step.v_final.toVal : R)
-    let d_hat := (step.d_final.toVal : R)
-    |(step.x_next.toVal : R) - (x_v - p_exact / d_exact)| ≤
-      η * |x_v - step.quot.toVal| +
-      η * |v_hat / d_hat| +
-      (|v_hat - p_exact| * |d_exact| + |p_exact| * |d_hat - d_exact|) /
-        (|d_hat| * |d_exact|) := by
-  intro x_v p_exact d_exact v_hat d_hat
-  -- Rewrite p_exact = jet value component
-  have hp_eq : p_exact = (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
-      (init.toVal : R) 0 x_v).1 :=
-    (jetHornerExact_fst_eq_hornerPoly _ _ _).symm
-  rw [hp_eq]
-  set je1 := (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
-      (init.toVal : R) 0 x_v).1
-  -- Three bounds
-  have h1 := newton_step_perturbation (R := R) step hnr
-  have h2 := newton_step_div_error (R := R) step hnr.div_normal
-  have h3 := quotient_perturbation (R := R) hd_hat_ne hd_exact_ne
-    (a := v_hat) (b := d_hat) (c := je1) (d := d_exact)
-  -- Triangle: |x' - (x - je1/d_exact)| ≤ |x' - (x - v/d)| + |v/d - je1/d_exact|
-  set x'_v := (step.x_next.toVal : R)
-  have htri : |x'_v - (x_v - je1 / d_exact)| ≤
-      |x'_v - (x_v - v_hat / d_hat)| + |v_hat / d_hat - je1 / d_exact| := by
-    set α := je1 / d_exact
-    set β := v_hat / d_hat
-    -- x' - (x - α) = (x' - (x - β)) - (β - α)
-    have heq : x'_v - (x_v - α) = (x'_v - (x_v - β)) - (β - α) := by ring
-    rw [heq, show (x'_v - (x_v - β)) - (β - α) =
-      (x'_v - (x_v - β)) + (-(β - α)) from by ring]
-    calc |(x'_v - (x_v - β)) + (-(β - α))|
-        ≤ |x'_v - (x_v - β)| + |-(β - α)| := abs_add_le _ _
-      _ = |x'_v - (x_v - β)| + |β - α| := by rw [abs_neg]
-  linarith
-
 /-- **Generic Newton perturbation from evaluation errors.**
 
     Given evaluation errors `|v̂ - p(x)| ≤ δ_v` and `|d̂ - p'(x)| ≤ δ_d`,
     with machine epsilon `η` on division and subtraction rounding, the
     Newton step perturbation is bounded.
 
-    This generalizes `newton_horner_perturbation_bound` to work with any
-    evaluation method (standard Horner, compensated Horner, etc.).
-    Instantiate with `δ_v, δ_d` from the chosen evaluation strategy. -/
+    This is the core composition theorem for Newton's method. Instantiate
+    `δ_v, δ_d` with bounds from any evaluation strategy:
+    - Standard Horner: `δ_v = ((1+η)^{2n}-1)·p̃(|x|)`, `δ_d = ((1+η)^{2n}-1)·p̃'(|x|)`
+    - Compensated Horner: `δ_v = O(η)` (much tighter near roots)
+    - Jet Horner: value channel error for δ_v, derivative channel for δ_d
+
+    See `newton_horner_perturbation_bound` and `comp_newton_perturbation`
+    for concrete instantiations. -/
 theorem newton_perturbation_from_eval_errors
     {x_v p_x p'_x v_hat d_hat q_v x'_v δ_v δ_d : R}
     (hp'_ne : p'_x ≠ 0) (hd_ne : d_hat ≠ 0)
@@ -819,5 +765,40 @@ theorem newton_perturbation_from_eval_errors
     linarith
   have hden_pos : (0 : R) < |d_hat| * |p'_x| := by positivity
   linarith [div_le_div_of_nonneg_right hnum hden_pos.le]
+
+/-- **Newton-Horner perturbation bound** (jet Horner instantiation).
+
+    Corollary of `newton_perturbation_from_eval_errors` with jet Horner
+    rounding errors. -/
+theorem newton_horner_perturbation_bound
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeSticky R]
+    {init : FiniteFp} {coeffs : List FiniteFp} {x_cur : FiniteFp}
+    (step : NewtonStep init coeffs x_cur)
+    (hnr : NewtonStepNormalRange (R := R) init coeffs x_cur step)
+    (hd_hat_ne : (step.d_final.toVal : R) ≠ 0)
+    (hd_exact_ne : (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+        (init.toVal : R) 0 (x_cur.toVal : R)).2 ≠ 0) :
+    let x_v := (x_cur.toVal : R)
+    let p_exact := hornerPoly (coeffs.map (fun c => c.toVal (R := R)))
+        (init.toVal : R) x_v
+    let d_exact := (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+        (init.toVal : R) 0 x_v).2
+    let v_hat := (step.v_final.toVal : R)
+    let d_hat := (step.d_final.toVal : R)
+    |(step.x_next.toVal : R) - (x_v - p_exact / d_exact)| ≤
+      η * |x_v - step.quot.toVal| +
+      η * |v_hat / d_hat| +
+      (|v_hat - p_exact| * |d_exact| + |p_exact| * |d_hat - d_exact|) /
+        (|d_hat| * |d_exact|) := by
+  intro x_v p_exact d_exact v_hat d_hat
+  have hp_eq : p_exact = (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+      (init.toVal : R) 0 x_v).1 :=
+    (jetHornerExact_fst_eq_hornerPoly _ _ _).symm
+  rw [hp_eq]
+  exact newton_perturbation_from_eval_errors hd_exact_ne hd_hat_ne
+    (newton_step_sub_error (R := R) step hnr.sub_normal)
+    (newton_step_div_error (R := R) step hnr.div_normal)
+    (by linarith [jetHorner_value_error_bound (R := R) step.trace hnr.horner_normal])
+    (by linarith [jetHorner_value_error_bound (R := R) step.trace hnr.horner_normal])
 
 end NewtonHorner
