@@ -883,4 +883,104 @@ noncomputable def summationLift (n : ℕ) (hn : 0 < n) :
                   mul_le_mul_of_nonneg_left (by exact_mod_cast hn) (abs_nonneg _)
         _ ≤ delta := hdist
 
+/-- **Weighted sum lift**: perturbations of `Σ xᵢaᵢ` in `scalarAbsGauge` can be
+    pulled back to perturbations of `x` in `uniformGauge` with amplification
+    `Λ = 1 / max|aᵢ|`.
+
+    Construction: pick the index `k` with largest `|aₖ|` and perturb only that
+    component: `x'ₖ = x₀ₖ + (y' - Σ x₀ⱼaⱼ)/aₖ`. Then `Σ x'ᵢaᵢ = y'` and
+    `max_i |x'ᵢ - x₀ᵢ| = |y' - Σ x₀ⱼaⱼ|/|aₖ| ≤ δ/max|aᵢ|`.
+
+    Requires at least one nonzero weight. -/
+noncomputable def weightedSumLift (n : ℕ) (hn : 0 < n)
+    (a : Fin n → R) (k : Fin n) (hak : a k ≠ 0)
+    (hmax : ∀ i, |a i| ≤ |a k|) :
+    PerturbationLift (R := R) (uniformGauge n hn) scalarAbsGauge
+      (fun x => ∑ i : Fin n, x i * a i) where
+  Lambda := 1 / |a k|
+  Lambda_nonneg := div_nonneg zero_le_one (abs_nonneg _)
+  lift x₀ y' delta hdist hdelta_nn := by
+    simp only [scalarAbsGauge] at hdist
+    let diff := y' - ∑ i : Fin n, x₀ i * a i
+    -- Perturb only component k
+    let x' : Fin n → R := fun i => if i = k then x₀ i + diff / a k else x₀ i
+    refine ⟨x', ?_, ?_⟩
+    · -- ∑ x'ᵢ · aᵢ = y'
+      show ∑ i : Fin n, x' i * a i = y'
+      -- Split sum: only k-th term differs
+      have : ∑ i : Fin n, x' i * a i =
+          ∑ i : Fin n, x₀ i * a i + diff / a k * a k := by
+        have hsame : ∀ i, x' i * a i =
+            x₀ i * a i + if i = k then diff / a k * a k else 0 := by
+          intro i; simp only [x']; split_ifs with h
+          · subst h; ring
+          · ring
+        simp_rw [hsame, Finset.sum_add_distrib]
+        congr 1
+        simp [Finset.sum_ite_eq', Finset.mem_univ]
+      rw [this, div_mul_cancel₀ _ hak]; simp [diff]
+    · -- max_i |x'ᵢ - x₀ᵢ| ≤ (1/|aₖ|) · δ
+      show (uniformGauge n hn).dist x₀ x' ≤ 1 / |a k| * delta
+      simp only [uniformGauge]
+      apply Finset.sup'_le
+      intro i _
+      show |x' i - x₀ i| ≤ 1 / |a k| * delta
+      simp only [x']
+      split_ifs with h
+      · subst h
+        simp only [add_sub_cancel_left, abs_div, one_div, diff]
+        rw [inv_mul_eq_div]
+        exact div_le_div_of_nonneg_right hdist (abs_nonneg _)
+      · simp only [sub_self, abs_zero]
+        exact mul_nonneg (div_nonneg zero_le_one (abs_nonneg _)) hdelta_nn
+
+/-! ## Mixed Composition -/
+
+/-- **Composition without lift**: when no perturbation lift exists, composing two
+    backward results produces a `MixedResult` with backward error from the first
+    algorithm and forward residual from the second.
+
+    Given:
+    - `brA`: backward stability of A for `f` with error `ε_A`
+    - `brB`: backward stability of B for `g` at `intermediate = f(x'_A)` with error `ε_B`
+    - `hLip`: a Lipschitz-like bound `G_out.val (g(y₁) - g(y₂)) ≤ L · G_Y.dist(y₁, y₂)`
+
+    Produces: `computed = (g ∘ f)(x'_A) + residual` with `G_out.val(residual) ≤ L · ε_B`.
+
+    The backward error is just `ε_A` (from A only), and the forward residual
+    captures B's error as measured through g's Lipschitz constant. -/
+noncomputable def MixedResult.compose_no_lift {X Y Z : Type*} [AddCommGroup Z]
+    {G_X : PerturbationGauge X R}
+    {G_Y : PerturbationGauge Y R}
+    {G_out : AffineFold.Gauge Z R}
+    {f : X → Y} {g : Y → Z} {x : X} {intermediate : Y} {computed : Z}
+    (brA : BackwardResult G_X f x intermediate)
+    (brB : BackwardResult G_Y g intermediate computed)
+    (L : R) (hL : 0 ≤ L)
+    (hLip : ∀ y₁ y₂ : Y, G_out.val (g y₁ - g y₂) ≤ L * G_Y.dist y₁ y₂) :
+    MixedResult (R := R) G_X G_out (g ∘ f) x computed where
+  x' := brA.x'
+  residual := computed - g (f brA.x')
+  decomp := by simp [Function.comp]
+  eps_back := brA.eps
+  eps_back_nonneg := brA.eps_nonneg
+  back_bound := brA.bound
+  eps_fwd := L * brB.eps
+  eps_fwd_nonneg := mul_nonneg hL brB.eps_nonneg
+  residual_bound := by
+    -- computed = g(brB.x'), and intermediate = f(brA.x')
+    -- residual = g(brB.x') - g(f(brA.x'))
+    -- residual = computed - (g∘f)(x'_A)
+    -- computed = g(x'_B) by brB.exact
+    -- intermediate = f(x'_A) by brA.exact
+    -- So residual = g(x'_B) - g(intermediate) = -(g(intermediate) - g(x'_B))
+    calc G_out.val (computed - g (f brA.x'))
+        = G_out.val (-(g (f brA.x') - computed)) := by
+          congr 1; abel
+      _ = G_out.val (g (f brA.x') - computed) := G_out.symmetric _
+      _ = G_out.val (g (f brA.x') - g brB.x') := by rw [brB.exact]
+      _ = G_out.val (g intermediate - g brB.x') := by rw [brA.exact]
+      _ ≤ L * G_Y.dist intermediate brB.x' := hLip intermediate brB.x'
+      _ ≤ L * brB.eps := mul_le_mul_of_nonneg_left brB.bound hL
+
 end BackwardError
