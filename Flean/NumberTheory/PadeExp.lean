@@ -392,7 +392,7 @@ private theorem padeCross_ne_zero (N : ℕ) (x : ℝ) (hx : x ≠ 0) :
     · exact ih
 
 /-- The Padé cross product `Q_N·P_{N+1} - Q_{N+1}·P_N ≠ 0` for nonzero `x`. -/
-private theorem pade_cross_product_ne_zero (N : ℕ) (_hN : 0 < N) (x : ℝ) (hx : x ≠ 0) :
+private theorem pade_cross_product_ne_zero (N : ℕ) (x : ℝ) (hx : x ≠ 0) :
     padeQ N x * padeP (N + 1) x - padeQ (N + 1) x * padeP N x ≠ 0 :=
   padeCross_ne_zero N x hx
 
@@ -477,7 +477,7 @@ private theorem pade_not_both_zero (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 
         _ = padeQ (N + 1) x * padeP N x * 2 ^ s := by ring
     exact mul_right_cancel₀ h2s_ne this
   -- Step 4: Contradict pade_cross_product_ne_zero
-  exact pade_cross_product_ne_zero N hN x hx_ne (by linarith)
+  exact pade_cross_product_ne_zero N x hx_ne (by linarith)
 
 /-- For nonzero `q = a/b` and any shift `s`, `exp(a/b) · 2^s` is bounded away
 from every integer. Uses irrationality of `exp(a/b)` to show the fractional part
@@ -1017,7 +1017,7 @@ private theorem pade_not_both_zero_nat (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a 
         _ = padeP (N + 1) x * (d : ℝ) * padeP N x := by ring
         _ = padeQ (N + 1) x * (c : ℝ) * padeP N x := by rw [hQP_N1]
         _ = padeQ (N + 1) x * padeP N x * (c : ℝ) := by ring)
-  exact pade_cross_product_ne_zero N hN x hx_ne (by linarith)
+  exact pade_cross_product_ne_zero N x hx_ne (by linarith)
 
 /-- Generalization of `pade_K_ne_zero`: if the scaled remainder times `c` is `< 1/2`,
 then `K_N = N!·b^N·P_N(a/b) ≠ 0`. -/

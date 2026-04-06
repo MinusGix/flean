@@ -620,9 +620,8 @@ lemma div_right_distrib_of_nonneg (h : 0 ≤ a) (h' : 0 ≤ b) :
   simp only [div_eq_mul_inv]
   exact right_distrib_of_nonneg h h'
 
-/-- Division distributes over addition when the divisor is nonnegative.
-    Note: This is only true when the divisor is nonnegative (or when both a, b are nonnegative). -/
-lemma add_div_of_nonneg_right (ha : 0 ≤ a) (hb : 0 ≤ b) (_hc : 0 ≤ c) :
+/-- Division distributes over addition when the numerators are nonnegative. -/
+lemma add_div_of_nonneg_right (ha : 0 ≤ a) (hb : 0 ≤ b) :
     (a + b) / c = a / c + b / c :=
   div_right_distrib_of_nonneg ha hb
 

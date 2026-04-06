@@ -661,7 +661,7 @@ private theorem scalar_compose_component_bound
     (x'_i v_i delta eps_A eps_B : R)
     (hcomp : |x'_i - v_i| ≤ eps_A * |v_i|)
     (hdelta : |delta| ≤ eps_B)
-    (_heps_A : 0 ≤ eps_A) (heps_B : 0 ≤ eps_B) (hvi : (0 : R) < |v_i|) :
+    (heps_B : 0 ≤ eps_B) (hvi : (0 : R) < |v_i|) :
     |(1 + delta) * x'_i - v_i| ≤ (eps_A + eps_B + eps_A * eps_B) * |v_i| := by
   -- (1+δ)·x' - v = (1+δ)·(x' - v) + δ·v
   have key : (1 + delta) * x'_i - v_i =
@@ -737,7 +737,7 @@ noncomputable def BackwardResult.compose_scalar_sum {n : ℕ} (hn : 0 < n)
     rw [div_le_iff₀ habsvi]
     exact scalar_compose_component_bound _ _ _ _ _
       (componentwiseRelGauge_component_bound hn brA.bound i hvi)
-      hdelta brA.eps_nonneg heps_B habsvi
+      hdelta heps_B habsvi
 
 /-- **Scalar composition for weighted sums**: given a `BackwardResult` for
     `f(c) = Σ cᵢ·wᵢ` with `componentwiseRelGauge` on coefficients `c`,
@@ -768,7 +768,7 @@ noncomputable def BackwardResult.compose_scalar_weighted_sum {n : ℕ} (hn : 0 <
     rw [div_le_iff₀ habsvi]
     exact scalar_compose_component_bound _ _ _ _ _
       (componentwiseRelGauge_component_bound hn brA.bound i hvi)
-      hdelta brA.eps_nonneg heps_B habsvi
+      hdelta heps_B habsvi
 
 /-- **Multiplicative eps composition**: if `ε₁ = ε_A + ε_B + ε_A·ε_B`,
     then `1 + ε₁ = (1 + ε_A)(1 + ε_B)`.

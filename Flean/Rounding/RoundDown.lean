@@ -219,9 +219,7 @@ The hypotheses mirror the non-overflow, inexact case of `roundIntSigM`:
 private lemma isValid_roundDownNatMulZpowTarget [FloatFormat]
     (mag : ℕ) (e_base e_ulp : ℤ) (q : ℕ)
     (hmag : mag ≠ 0)
-    (_hval_pos : (0 : R) < (mag : R) * (2 : R) ^ e_base)
     (hfloor : ⌊(mag : R) * (2 : R) ^ e_base / (2 : R) ^ e_ulp⌋ = (q : ℤ))
-    (_hint_log : Int.log 2 ((mag : R) * (2 : R) ^ e_base) = (Nat.log2 mag : ℤ) + e_base)
     (he_ulp_ge_sub : e_ulp ≥ FloatFormat.min_exp - FloatFormat.prec + 1)
     (he_stored_le : e_ulp + FloatFormat.prec - 1 ≤ FloatFormat.max_exp)
     (hq_bound : q < 2 ^ FloatFormat.prec.toNat)
@@ -269,9 +267,7 @@ private lemma isValid_roundDownNatMulZpowTarget [FloatFormat]
 private def mkRoundDownNatMulZpowTarget [FloatFormat]
     (mag : ℕ) (e_base e_ulp : ℤ) (q : ℕ)
     (hmag : mag ≠ 0)
-    (hval_pos : (0 : R) < (mag : R) * (2 : R) ^ e_base)
     (hfloor : ⌊(mag : R) * (2 : R) ^ e_base / (2 : R) ^ e_ulp⌋ = (q : ℤ))
-    (hint_log : Int.log 2 ((mag : R) * (2 : R) ^ e_base) = (Nat.log2 mag : ℤ) + e_base)
     (he_ulp_ge_sub : e_ulp ≥ FloatFormat.min_exp - FloatFormat.prec + 1)
     (he_stored_le : e_ulp + FloatFormat.prec - 1 ≤ FloatFormat.max_exp)
     (hq_bound : q < 2 ^ FloatFormat.prec.toNat)
@@ -281,14 +277,12 @@ private def mkRoundDownNatMulZpowTarget [FloatFormat]
   ⟨false, e_ulp + FloatFormat.prec - 1, q,
     isValid_roundDownNatMulZpowTarget
       (R := R) mag e_base e_ulp q
-      hmag hval_pos hfloor hint_log he_ulp_ge_sub he_stored_le hq_bound h_e_ulp_eq_normal_or_sub⟩
+      hmag hfloor he_ulp_ge_sub he_stored_le hq_bound h_e_ulp_eq_normal_or_sub⟩
 
 private abbrev roundDownNatMulZpowTarget [FloatFormat]
     (mag : ℕ) (e_base e_ulp : ℤ) (q : ℕ)
     (hmag : mag ≠ 0)
-    (hval_pos : (0 : R) < (mag : R) * (2 : R) ^ e_base)
     (hfloor : ⌊(mag : R) * (2 : R) ^ e_base / (2 : R) ^ e_ulp⌋ = (q : ℤ))
-    (hint_log : Int.log 2 ((mag : R) * (2 : R) ^ e_base) = (Nat.log2 mag : ℤ) + e_base)
     (he_ulp_ge_sub : e_ulp ≥ FloatFormat.min_exp - FloatFormat.prec + 1)
     (he_stored_le : e_ulp + FloatFormat.prec - 1 ≤ FloatFormat.max_exp)
     (hq_bound : q < 2 ^ FloatFormat.prec.toNat)
@@ -298,7 +292,7 @@ private abbrev roundDownNatMulZpowTarget [FloatFormat]
   Fp.finite <|
     mkRoundDownNatMulZpowTarget
       (R := R) mag e_base e_ulp q
-      hmag hval_pos hfloor hint_log he_ulp_ge_sub he_stored_le hq_bound h_e_ulp_eq_normal_or_sub
+      hmag hfloor he_ulp_ge_sub he_stored_le hq_bound h_e_ulp_eq_normal_or_sub
 
 theorem roundDown_nat_mul_zpow [FloatFormat]
     (mag : ℕ) (e_base e_ulp : ℤ) (q : ℕ)
@@ -310,13 +304,12 @@ theorem roundDown_nat_mul_zpow [FloatFormat]
     (he_ulp_ge_sub : e_ulp ≥ FloatFormat.min_exp - FloatFormat.prec + 1)
     (he_stored_le : e_ulp + FloatFormat.prec - 1 ≤ FloatFormat.max_exp)
     (hq_bound : q < 2 ^ FloatFormat.prec.toNat)
-    (_hq_pos_or_zero : True) -- placeholder, q can be 0
     (h_e_ulp_eq_normal_or_sub : e_ulp = max (e_base + ↑(Nat.log2 mag + 1) - FloatFormat.prec)
         (FloatFormat.min_exp - FloatFormat.prec + 1)) :
     roundDown ((mag : R) * (2 : R) ^ e_base) =
       Fp.finite (mkRoundDownNatMulZpowTarget
         (R := R) mag e_base e_ulp q
-        hmag hval_pos hfloor hint_log he_ulp_ge_sub he_stored_le hq_bound h_e_ulp_eq_normal_or_sub) := by
+        hmag hfloor he_ulp_ge_sub he_stored_le hq_bound h_e_ulp_eq_normal_or_sub) := by
   unfold mkRoundDownNatMulZpowTarget
   unfold roundDown findPredecessor
   simp [ne_of_gt hval_pos, hval_pos]

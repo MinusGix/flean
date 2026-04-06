@@ -297,7 +297,7 @@ theorem delta_exact_branch_A
     (delta.toVal : R) = sum.toVal + x.toVal - t.toVal := by
   -- Step 1: fl(t - sum) is exact by Sterbenz (via sterbenz_sub_sa_same_sign)
   obtain ⟨z_fp, _hz_sub, hz_val⟩ :=
-    sterbenz_sub_sa_same_sign (R := R) sum x hsame hsum_nz hx_nz hge hne t ht
+    sterbenz_sub_sa_same_sign (R := R) sum x hsame hsum_nz hge hne t ht
   -- Step 2: fl(sum - t) is exact (reversed)
   have hw_exact : (w.toVal : R) = sum.toVal - t.toVal :=
     reversed_sub_exact (R := R) sum t w hw z_fp hz_val
@@ -334,7 +334,7 @@ theorem delta_exact_branch_B
   -- Step 1: fl(t - x) is exact by Sterbenz (x is the larger operand)
   have hsame' : x.s = sum.s := hsame.symm
   obtain ⟨z_fp, _hz_sub, hz_val⟩ :=
-    sterbenz_sub_sa_same_sign (R := R) x sum hsame' hx_nz hsum_nz hgt
+    sterbenz_sub_sa_same_sign (R := R) x sum hsame' hx_nz hgt
       (show (x.toVal : R) + sum.toVal ≠ 0 by rwa [add_comm]) t ht'
   -- Step 2: fl(x - t) is exact (reversed)
   have hw_exact : (w.toVal : R) = x.toVal - t.toVal :=

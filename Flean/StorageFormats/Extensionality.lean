@@ -88,7 +88,7 @@ theorem eq_ofFields (v : StorageFp f) (hsigned : f.hasSigned = true) :
   apply ext_fields v _ hsigned
   · exact (ofFields_sign v.sign v.exp v.man v.man_lt v.exp_lt hsigned).symm
   · exact (ofFields_exp v.sign v.exp v.man v.man_lt v.exp_lt).symm
-  · exact (ofFields_man v.sign v.exp v.man v.man_lt v.exp_lt).symm
+  · exact (ofFields_man v.sign v.exp v.man v.man_lt).symm
 
 /-! ## Zero-value helpers -/
 

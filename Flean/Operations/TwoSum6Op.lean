@@ -355,7 +355,7 @@ theorem twoSum_6op_nonzero_sum_of_bv_exact (a b : FiniteFp)
     a b ha_nz hb_nz hsum_ne s hs bv hbv hbv_exact hs_sub_rep av hav br hbr ar har t ht
 
 private theorem twoSum_6op_zero_sum (a b : FiniteFp)
-    (ha_nz : 0 < a.m) (_hb_nz : 0 < b.m)
+    (ha_nz : 0 < a.m)
     (hsum_zero : (a.toVal : R) + b.toVal = 0)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
     (s : FiniteFp) (hs : a + b = s)
@@ -536,7 +536,7 @@ theorem twoSum_6op_of_witnesses (a b : FiniteFp)
     (t : FiniteFp) (ht : ar + br = (t : Fp)) :
     (s.toVal : R) + t.toVal = a.toVal + b.toVal := by
   by_cases hsum_zero : (a.toVal : R) + b.toVal = 0
-  · exact twoSum_6op_zero_sum (R := R) a b ha_nz hb_nz hsum_zero
+  · exact twoSum_6op_zero_sum (R := R) a b ha_nz hsum_zero
       s hs bv hbv av hav br hbr ar har t ht
   · have hsum_ne : (a.toVal : R) + b.toVal ≠ 0 := hsum_zero
     exact twoSum_6op_nonzero_sum_of_witnesses (R := R) a b ha_nz hb_nz hsum_ne
@@ -559,7 +559,7 @@ theorem twoSum_6op_of_bv_exact (a b : FiniteFp)
     (t : FiniteFp) (ht : ar + br = (t : Fp)) :
     (s.toVal : R) + t.toVal = a.toVal + b.toVal := by
   by_cases hsum_zero : (a.toVal : R) + b.toVal = 0
-  · exact twoSum_6op_zero_sum (R := R) a b ha_nz hb_nz hsum_zero
+  · exact twoSum_6op_zero_sum (R := R) a b ha_nz hsum_zero
       s hs bv hbv av hav br hbr ar har t ht
   · have hsum_ne : (a.toVal : R) + b.toVal ≠ 0 := hsum_zero
     exact twoSum_6op_nonzero_sum_of_bv_exact (R := R)

@@ -480,9 +480,7 @@ Mirror of `roundDown_nat_mul_zpow` for the ceiling direction. -/
 private lemma isValid_roundUpNatMulZpowTarget [FloatFormat]
     (mag : ℕ) (e_base e_ulp : ℤ) (q : ℕ)
     (hmag : mag ≠ 0)
-    (_hval_pos : (0 : R) < (mag : R) * (2 : R) ^ e_base)
     (hceil : ⌈(mag : R) * (2 : R) ^ e_base / (2 : R) ^ e_ulp⌉ = (q : ℤ) + 1)
-    (_hint_log : Int.log 2 ((mag : R) * (2 : R) ^ e_base) = (Nat.log2 mag : ℤ) + e_base)
     (he_ulp_ge_sub : e_ulp ≥ FloatFormat.min_exp - FloatFormat.prec + 1)
     (he_stored_le : e_ulp + FloatFormat.prec - 1 ≤ FloatFormat.max_exp)
     (hq1_bound : q + 1 < 2 ^ FloatFormat.prec.toNat)
@@ -526,9 +524,7 @@ private lemma isValid_roundUpNatMulZpowTarget [FloatFormat]
 private def mkRoundUpNatMulZpowTarget [FloatFormat]
     (mag : ℕ) (e_base e_ulp : ℤ) (q : ℕ)
     (hmag : mag ≠ 0)
-    (hval_pos : (0 : R) < (mag : R) * (2 : R) ^ e_base)
     (hceil : ⌈(mag : R) * (2 : R) ^ e_base / (2 : R) ^ e_ulp⌉ = (q : ℤ) + 1)
-    (hint_log : Int.log 2 ((mag : R) * (2 : R) ^ e_base) = (Nat.log2 mag : ℤ) + e_base)
     (he_ulp_ge_sub : e_ulp ≥ FloatFormat.min_exp - FloatFormat.prec + 1)
     (he_stored_le : e_ulp + FloatFormat.prec - 1 ≤ FloatFormat.max_exp)
     (hq1_bound : q + 1 < 2 ^ FloatFormat.prec.toNat)
@@ -538,14 +534,12 @@ private def mkRoundUpNatMulZpowTarget [FloatFormat]
   ⟨false, e_ulp + FloatFormat.prec - 1, q + 1,
     isValid_roundUpNatMulZpowTarget
       (R := R) mag e_base e_ulp q
-      hmag hval_pos hceil hint_log he_ulp_ge_sub he_stored_le hq1_bound h_e_ulp_eq⟩
+      hmag hceil he_ulp_ge_sub he_stored_le hq1_bound h_e_ulp_eq⟩
 
 private abbrev roundUpNatMulZpowTarget [FloatFormat]
     (mag : ℕ) (e_base e_ulp : ℤ) (q : ℕ)
     (hmag : mag ≠ 0)
-    (hval_pos : (0 : R) < (mag : R) * (2 : R) ^ e_base)
     (hceil : ⌈(mag : R) * (2 : R) ^ e_base / (2 : R) ^ e_ulp⌉ = (q : ℤ) + 1)
-    (hint_log : Int.log 2 ((mag : R) * (2 : R) ^ e_base) = (Nat.log2 mag : ℤ) + e_base)
     (he_ulp_ge_sub : e_ulp ≥ FloatFormat.min_exp - FloatFormat.prec + 1)
     (he_stored_le : e_ulp + FloatFormat.prec - 1 ≤ FloatFormat.max_exp)
     (hq1_bound : q + 1 < 2 ^ FloatFormat.prec.toNat)
@@ -555,7 +549,7 @@ private abbrev roundUpNatMulZpowTarget [FloatFormat]
   Fp.finite <|
     mkRoundUpNatMulZpowTarget
       (R := R) mag e_base e_ulp q
-      hmag hval_pos hceil hint_log he_ulp_ge_sub he_stored_le hq1_bound h_e_ulp_eq
+      hmag hceil he_ulp_ge_sub he_stored_le hq1_bound h_e_ulp_eq
 
 theorem roundUp_nat_mul_zpow [FloatFormat]
     (mag : ℕ) (e_base e_ulp : ℤ) (q : ℕ)
@@ -572,7 +566,7 @@ theorem roundUp_nat_mul_zpow [FloatFormat]
     roundUp ((mag : R) * (2 : R) ^ e_base) =
       Fp.finite (mkRoundUpNatMulZpowTarget
         (R := R) mag e_base e_ulp q
-        hmag hval_pos hceil hint_log he_ulp_ge_sub he_stored_le hq1_bound h_e_ulp_eq) := by
+        hmag hceil he_ulp_ge_sub he_stored_le hq1_bound h_e_ulp_eq) := by
   unfold mkRoundUpNatMulZpowTarget
   unfold roundUp findSuccessor
   simp [ne_of_gt hval_pos, hval_pos]
@@ -711,7 +705,6 @@ private abbrev roundUpNatMulZpowCarryTarget [FloatFormat]
 
 theorem roundUp_nat_mul_zpow_carry [FloatFormat]
     (mag : ℕ) (e_base e_ulp : ℤ) (q : ℕ)
-    (_hmag : mag ≠ 0)
     (hval_pos : (0 : R) < (mag : R) * (2 : R) ^ e_base)
     (hval_lt : (mag : R) * (2 : R) ^ e_base < (2 : R) ^ (FloatFormat.max_exp + 1))
     (hceil : ⌈(mag : R) * (2 : R) ^ e_base / (2 : R) ^ e_ulp⌉ = (q : ℤ) + 1)

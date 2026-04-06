@@ -1616,7 +1616,7 @@ theorem step_twosum_exact_of_pos_dekker
     linarith
   -- Sterbenz: fl(t - sum) is exact
   obtain ⟨z_fp, hz_eq, hz_val⟩ :=
-    sterbenz_sub_sa (R := R) st.sum step.y hsum_pos hy_pos hm_sum hm_y
+    sterbenz_sub_sa (R := R) st.sum step.y hsum_pos hy_pos hm_sum
       hdekker hsum_ne step.t step.ht
   -- z_fp = step.w (both equal t - sum)
   have hw_eq_z : step.w = z_fp :=
@@ -1661,7 +1661,7 @@ theorem step_twosum_exact_of_dekker
       linarith
   -- Sterbenz: fl(t - sum) is exact
   obtain ⟨z_fp, hz_eq, hz_val⟩ :=
-    sterbenz_sub_sa_same_sign (R := R) st.sum step.y hsame.symm hm_sum hm_y
+    sterbenz_sub_sa_same_sign (R := R) st.sum step.y hsame.symm hm_sum
       hdekker hsum_ne step.t step.ht
   -- z_fp = step.w (both equal t - sum)
   have hw_eq_z : step.w = z_fp :=

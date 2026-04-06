@@ -106,7 +106,7 @@ private theorem packed_div_manBits (a e m mB eB : Nat) (hm : m < 2 ^ mB) :
 
 /-- The mantissa field of `ofFields f s e m` is `m` when `m` and `e` are in range. -/
 theorem ofFields_man (s : Bool) (e m : ℕ)
-    (hm : m < 2 ^ f.manBits) (_he : e < 2 ^ f.expBits) :
+    (hm : m < 2 ^ f.manBits) :
     (ofFields f s e m).man = m := by
   unfold man ofFields
   simp only [BitVec.toNat_and, BitVec.toNat_ofNat]
@@ -184,7 +184,7 @@ theorem ofFields_effectiveSignificand_zero (s : Bool) (m : ℕ)
     (ofFields f s 0 m).effectiveSignificand = m := by
   unfold effectiveSignificand
   have : (ofFields f s 0 m).isExpZero := (ofFields_isExpZero s 0 m hm he).mpr rfl
-  rw [if_pos this]; exact ofFields_man s 0 m hm he
+  rw [if_pos this]; exact ofFields_man s 0 m hm
 
 /-- The effective significand of `ofFields` when the exponent is nonzero (normal). -/
 theorem ofFields_effectiveSignificand_pos (s : Bool) (e m : ℕ)
@@ -193,7 +193,7 @@ theorem ofFields_effectiveSignificand_pos (s : Bool) (e m : ℕ)
   unfold effectiveSignificand
   have : ¬(ofFields f s e m).isExpZero := by
     rw [ofFields_isExpZero s e m hm he]; omega
-  rw [if_neg this]; congr 1; exact ofFields_man s e m hm he
+  rw [if_neg this]; congr 1; exact ofFields_man s e m hm
 
 /-- The unbiased exponent of `ofFields` when the exponent is zero. -/
 theorem ofFields_unbiasedExp_zero (s : Bool) (m : ℕ)

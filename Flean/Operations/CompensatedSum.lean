@@ -117,7 +117,7 @@ theorem bv_exact_of_same_sign_dekker [RModeExec]
   have hs_round : ○((a.toVal : R) + b.toVal) = Fp.finite s := hcorr.symm.trans hs
   -- Sterbenz gives fl(s - a) = s - a exactly
   obtain ⟨z_fp, hz_eq, hz_val⟩ := sterbenz_sub_sa_same_sign (R := R) a b
-    hsame ha_nz hb_nz hdekker hsum_ne s
+    hsame ha_nz hdekker hsum_ne s
     (by simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe]; exact hs)
   -- z_fp = bv since both equal s - a in Fp
   simp only [sub_finite_eq_fpSubFinite, sub_eq_fpSub, fpSub_coe_coe] at hbv hz_eq

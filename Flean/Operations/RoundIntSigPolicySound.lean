@@ -392,7 +392,7 @@ theorem round_idempotent (mode : RoundingMode) (f : FiniteFp)
 returns `Fp.finite (-g)` and `(-g).toVal = val`. Useful for extending positive-case exactness
 results to negative values via negation. -/
 theorem round_neg_exact (mode : RoundingMode) (val : R)
-    (g : FiniteFp) (_hgs : g.s = false) (hgm : 0 < g.m)
+    (g : FiniteFp) (hgm : 0 < g.m)
     (hgv : g.toVal (R := R) = -val) :
     mode.round val = Fp.finite (-g) ∧ (-g).toVal (R := R) = val := by
   have hng_val : (-g).toVal (R := R) = val := by
@@ -971,7 +971,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
         have hroundDown_eq : roundDown ((mag : R) * (2 : R) ^ e_base) =
             Fp.finite ⟨false, e_ulp + FloatFormat.prec - 1, q, _⟩ :=
           roundDown_nat_mul_zpow mag e_base e_ulp q hmag hval_pos hval_lt_overflow
-            hfloor_bridge hint_log (by omega) he_stored_le_inner hq_bound trivial h_e_ulp_eq
+            hfloor_bridge hint_log (by omega) he_stored_le_inner hq_bound h_e_ulp_eq
         -- pred_fp and its toVal
         set pred_fp : FiniteFp := ⟨false, e_ulp + FloatFormat.prec - 1, q, _⟩ with hpred_fp_def
         have hpred_toVal : pred_fp.toVal (R := R) = (q : R) * (2 : R) ^ e_ulp := by
@@ -1051,7 +1051,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
             have hval_ne : (mag : R) * (2 : R) ^ e_base ≠ 0 := ne_of_gt hval_pos
             -- roundUp(val) = Fp.finite ⟨false, e_ulp+prec, 2^(prec-1).toNat, _⟩
             have hroundUp_carry := roundUp_nat_mul_zpow_carry (R := R) mag e_base e_ulp q
-              hmag hval_pos hval_lt_overflow hceil_bridge hint_log (by omega)
+              hval_pos hval_lt_overflow hceil_bridge hint_log (by omega)
               he_stored_carry (by omega) h_e_ulp_eq
             -- Bridge (prec-1).toNat = prec.toNat - 1 in the result
             have hm_bridge : 2 ^ (FloatFormat.prec - 1).toNat = 2 ^ (FloatFormat.prec.toNat - 1) := by
@@ -1256,7 +1256,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
                 have hq_eq : q + 1 = 2 ^ FloatFormat.prec.toNat := by omega
                 by_cases he_carry : e_ulp + FloatFormat.prec ≤ FloatFormat.max_exp
                 · have hroundUp_carry := roundUp_nat_mul_zpow_carry (R := R) mag e_base e_ulp q
-                    hmag hval_pos hval_lt_overflow hceil_bridge hint_log (by omega)
+                    hval_pos hval_lt_overflow hceil_bridge hint_log (by omega)
                     he_carry hq_eq h_e_ulp_eq
                   have hval_lt_thresh := val_lt_thresh_of_roundUp_finite _ _ hval_pos hroundUp_carry
                   rw [rnEven_below_mid_roundDown _ mid_val pred_fp _ hval_pos hval_lt_thresh
@@ -1319,7 +1319,7 @@ theorem roundIntSig_correct (mode : RoundingMode) (sign : Bool) (mag : ℕ) (e_b
               have hq_eq : q + 1 = 2 ^ FloatFormat.prec.toNat := by omega
               by_cases he_carry : e_ulp + FloatFormat.prec ≤ FloatFormat.max_exp
               · have hroundUp_carry := roundUp_nat_mul_zpow_carry (R := R) mag e_base e_ulp q
-                  hmag hval_pos hval_lt_overflow hceil_bridge hint_log (by omega)
+                  hval_pos hval_lt_overflow hceil_bridge hint_log (by omega)
                   he_carry hq_eq h_e_ulp_eq
                 have hval_lt_thresh := val_lt_thresh_of_roundUp_finite _ _ hval_pos hroundUp_carry
                 rw [rnAway_lt_mid_roundDown _ mid_val pred_fp _ hval_pos hval_lt_thresh

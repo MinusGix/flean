@@ -39,7 +39,7 @@ theorem split_s_sub_bv_sterbenz
   -- s ≥ a, s ≤ 2a
   have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
   have hb_pos : (0 : R) < b.toVal := FiniteFp.toVal_pos b hb hb_nz
-  have hs_ge_a := round_sum_ge_left (R := R) a b ha hb ha_nz hsum_ne s hs_fp
+  have hs_ge_a := round_sum_ge_left (R := R) a b ha hb hsum_ne s hs_fp
   have hs_le_2a := round_sum_le_double (R := R) a b ha hb ha_nz hab hsum_ne s hs_fp
   -- s positive
   have hs_pos : (0 : R) < s.toVal := lt_of_lt_of_le ha_pos hs_ge_a
@@ -91,7 +91,7 @@ theorem split_b_sub_bv_sterbenz
     have hcorr := fpAddFinite_correct (R := R) a b hsum_ne
     simp only [add_finite_eq_fpAddFinite] at hcorr
     exact hcorr.trans hs
-  have hs_ge_a := round_sum_ge_left (R := R) a b ha hb ha_nz hsum_ne s hs_fp
+  have hs_ge_a := round_sum_ge_left (R := R) a b ha hb hsum_ne s hs_fp
   have hs_le_2a := round_sum_le_double (R := R) a b ha hb ha_nz hab hsum_ne s hs_fp
   have hs_pos : (0 : R) < s.toVal := lt_of_lt_of_le ha_pos hs_ge_a
   have hs_s : s.s = false := ((FiniteFp.toVal_pos_iff (R := R)).mpr hs_pos).1

@@ -28,7 +28,7 @@ For same-sign operands with `|b| ≤ |a|`, the rounded sum `s` satisfies
 /-- Sterbenz conditions hold for `(s_fp, a)` when `a, b` are positive with `a ≥ b`. -/
 theorem sterbenz_sub_sa (a b : FiniteFp)
     (ha : a.s = false) (hb : b.s = false)
-    (ha_nz : 0 < a.m) (_hb_nz : 0 < b.m)
+    (ha_nz : 0 < a.m)
     (hab : (b.toVal : R) ≤ a.toVal)
     (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     (s_fp : FiniteFp)
@@ -38,7 +38,7 @@ theorem sterbenz_sub_sa (a b : FiniteFp)
       s_fp - a = z_fp ∧
         z_fp.toVal (R := R) = s_fp.toVal - a.toVal := by
   have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
-  have hs_ge_a := round_sum_ge_left (R := R) a b ha hb ha_nz hsum_ne s_fp hs
+  have hs_ge_a := round_sum_ge_left (R := R) a b ha hb hsum_ne s_fp hs
   have hs_le_2a := round_sum_le_double (R := R) a b ha hb ha_nz hab hsum_ne s_fp hs
   have hs_s : s_fp.s = false :=
     ((FiniteFp.toVal_pos_iff (R := R)).mpr (by linarith)).1
@@ -50,7 +50,7 @@ theorem sterbenz_sub_sa (a b : FiniteFp)
 
 /-- Sterbenz conditions hold for `(s_fp, a)` when `a, b` are same-sign with `|b| ≤ |a|`. -/
 theorem sterbenz_sub_sa_same_sign (a b : FiniteFp)
-    (hsame : a.s = b.s) (ha_nz : 0 < a.m) (_hb_nz : 0 < b.m)
+    (hsame : a.s = b.s) (ha_nz : 0 < a.m)
     (hab : FiniteFp.toVal_mag b (R := R) ≤ FiniteFp.toVal_mag a)
     (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     (s_fp : FiniteFp)
@@ -168,7 +168,7 @@ theorem fast2Sum_pos_exact (a b : FiniteFp)
   have hsum_ne : (a.toVal : R) + b.toVal ≠ 0 := by linarith
   -- Step 1: z = s - a is exact by Sterbenz
   obtain ⟨z_fp, hz_eq, hz_val⟩ :=
-    sterbenz_sub_sa (R := R) a b ha hb ha_nz hb_nz hab hsum_ne s_fp hs
+    sterbenz_sub_sa (R := R) a b ha hb ha_nz hab hsum_ne s_fp hs
   -- Step 2: b - z is exact
   -- b.toVal - z_fp.toVal = b.toVal - (s.toVal - a.toVal) = (a + b) - s
   suffices h_bz : ∃ t_fp : FiniteFp,

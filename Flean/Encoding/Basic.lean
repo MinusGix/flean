@@ -420,7 +420,7 @@ theorem NaN_isNaN (sign : Bool) (T : BitVec FloatFormat.significandBits) (hT : T
 def sigToTrailing (m : ℕ) := m &&& (2^FloatFormat.significandBits - 1)
 
 /-- Construct a finite float from the sign, exponent, and integral significand. -/
-def finite (s : Bool) (e : ℤ) (m : ℕ) (_vf : IsValidFiniteVal e m) : FloatBits :=
+def finite (s : Bool) (e : ℤ) (m : ℕ) (vf : IsValidFiniteVal e m) : FloatBits :=
   -- Biased exponent
   let E := if _root_.isSubnormal e m then 0 else e + FloatFormat.exponentBias
   let E := E.toNat

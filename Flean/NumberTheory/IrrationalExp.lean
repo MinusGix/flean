@@ -35,7 +35,7 @@ theorem expPoly_ne_zero (q : ℚ) (hq : q ≠ 0) : expPoly q ≠ 0 := by
   simp at this
   exact expPoly_eval_zero_ne q hq (by simpa [expPoly] using this)
 
-theorem expPoly_natDegree (q : ℚ) (_hq : q ≠ 0) : (expPoly q).natDegree = 1 := by
+theorem expPoly_natDegree (q : ℚ) : (expPoly q).natDegree = 1 := by
   unfold expPoly
   have hden : (q.den : ℤ) ≠ 0 := Int.natCast_ne_zero.mpr (Rat.den_ne_zero q)
   rw [sub_eq_add_neg, ← map_neg C q.num]
@@ -166,7 +166,7 @@ theorem irrational_exp_rat (q : ℚ) (hq : q ≠ 0) : Irrational (Real.exp (q : 
   have hbound := hgp_bound hroot
   -- gp has degree ≤ p - 1 (since f has degree 1)
   have hgp_deg' : gp.natDegree ≤ p - 1 := by
-    rw [expPoly_natDegree q hq] at hgp_deg; omega
+    rw [expPoly_natDegree q] at hgp_deg; omega
   -- Clear denominators: b^(p-1) * aeval(q : ℂ) gp is an integer
   obtain ⟨M, hM⟩ := int_poly_clear_denom gp a b hb_ne (p - 1) hgp_deg'
   -- The key integer

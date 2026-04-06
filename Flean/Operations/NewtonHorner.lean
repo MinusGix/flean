@@ -293,7 +293,6 @@ and each FP step has perturbation `|x' - N(x)| ≤ δ`, then:
     Quadratic convergence plus bounded perturbation. -/
 theorem perturbed_newton_one_step
     {N : R → R} {r x x' : R} {C δ : R}
-    (_hC : 0 ≤ C) (_hδ : 0 ≤ δ)
     (hquad : |N x - r| ≤ C * |x - r| ^ 2)
     (hpert : |x' - N x| ≤ δ) :
     |x' - r| ≤ C * |x - r| ^ 2 + δ := by
@@ -313,7 +312,7 @@ theorem perturbed_newton_ball
     (hball : C * ρ ^ 2 + δ ≤ ρ) :
     |x' - r| ≤ ρ := by
   calc |x' - r| ≤ C * |x - r| ^ 2 + δ :=
-        perturbed_newton_one_step hC hδ hquad hpert
+        perturbed_newton_one_step hquad hpert
     _ ≤ C * ρ ^ 2 + δ := by
         have h1 : |x - r| * |x - r| ≤ ρ * ρ := mul_le_mul hin hin (abs_nonneg _) hρ
         nlinarith [sq_abs (x - r), sq_abs ρ]

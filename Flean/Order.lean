@@ -495,7 +495,7 @@ theorem is_lt_trans {a b c : FiniteFp} : a < b → b < c → a < c := by
     · have := is_mag_lt_trans h2.right.right h1.right.right
       grind
 
-theorem pos_nz_is_mag_lt_imp_nz {x y : FiniteFp} (_hs : x.s = false) (hnz : ¬x.isZero): x.is_mag_lt y → ¬y.isZero := by
+theorem nz_is_mag_lt_imp_nz {x y : FiniteFp} (hnz : ¬x.isZero): x.is_mag_lt y → ¬y.isZero := by
   intro hm
   unfold isZero at hnz ⊢
   unfold is_mag_lt at hm
@@ -800,7 +800,7 @@ theorem lt_imp_stdLt_right_nz {x y : FiniteFp} (hlt : x < y) (hnz : ¬y.isZero) 
 
 theorem stdLt_trans {x y z : FiniteFp} (hxy : x.stdLt y) (hyz : y.stdLt z) : x.stdLt z := by
   unfold stdLt at *
-  have := @pos_nz_is_mag_lt_imp_nz
+  have := @nz_is_mag_lt_imp_nz
   cases' hxy with h1 h1
   <;> cases' hyz with h2 h2
   <;> simp_all

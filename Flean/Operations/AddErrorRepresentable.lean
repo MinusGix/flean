@@ -27,7 +27,7 @@ variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRin
 
 /-- The rounded sum of positive values is at least as large as the larger operand. -/
 theorem round_sum_ge_left (a b : FiniteFp)
-    (ha : a.s = false) (hb : b.s = false) (_ha_nz : 0 < a.m)
+    (ha : a.s = false) (hb : b.s = false)
     (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     (s_fp : FiniteFp)
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeMono R] [RModeIdem R]
@@ -74,7 +74,7 @@ theorem round_sum_le_double (a b : FiniteFp)
     push_neg at he
     have ha_e_eq : a.e = FloatFormat.max_exp := le_antisymm a.valid.2.1 (by omega)
     have hs_s : s_fp.s = false := by
-      have hs_ge := round_sum_ge_left (R := R) a b ha hb ha_nz hsum_ne s_fp hs_orig
+      have hs_ge := round_sum_ge_left (R := R) a b ha hb hsum_ne s_fp hs_orig
       exact ((FiniteFp.toVal_pos_iff (R := R)).mpr (by linarith)).1
     have hs_bound : s_fp.toVal (R := R) < (2 : R) ^ (FloatFormat.max_exp + 1) :=
       calc s_fp.toVal (R := R) < (2 : R) ^ (s_fp.e + 1) :=
@@ -149,7 +149,7 @@ theorem round_sum_ge_left_mag (a b : FiniteFp)
     linarith
   · -- a.s = false (positive)
     have hb : b.s = false := hsame ▸ ha
-    have hge := round_sum_ge_left (R := R) a b ha hb ha_nz hsum_ne s_fp hs
+    have hge := round_sum_ge_left (R := R) a b ha hb hsum_ne s_fp hs
     rw [FiniteFp.toVal_mag_toVal_abs, FiniteFp.toVal_mag_toVal_abs]
     have ha_nn := FiniteFp.toVal_nonneg a ha (R := R)
     rw [abs_of_nonneg ha_nn, abs_of_nonneg (by linarith)]
@@ -273,7 +273,7 @@ theorem round_sum_le_double_mag (a b : FiniteFp)
       exact hab
     have hle := round_sum_le_double (R := R) a b ha hb ha_nz hab_val hsum_ne s_fp hs
     rw [FiniteFp.toVal_mag_toVal_abs, FiniteFp.toVal_mag_toVal_abs]
-    have hge := round_sum_ge_left (R := R) a b ha hb ha_nz hsum_ne s_fp hs
+    have hge := round_sum_ge_left (R := R) a b ha hb hsum_ne s_fp hs
     have ha_nn := FiniteFp.toVal_nonneg a ha (R := R)
     rw [abs_of_nonneg ha_nn, abs_of_nonneg (by linarith)]
     linarith
@@ -329,7 +329,7 @@ theorem add_error_representable (a b : FiniteFp)
   have hs_correct : RMode.round ((a.toVal : R) + b.toVal) = s_fp := by
     rw [← hsum_round]
     exact hs
-  have hs_ge_a := round_sum_ge_left (R := R) a b ha hb ha_nz hsum_ne s_fp hs
+  have hs_ge_a := round_sum_ge_left (R := R) a b ha hb hsum_ne s_fp hs
   have hs_s : s_fp.s = false :=
     ((FiniteFp.toVal_pos_iff (R := R)).mpr (by linarith)).1
   -- Step B': Prove a is normal (subnormal sums are exact → error = 0)
@@ -744,14 +744,13 @@ theorem mixed_pos_round_ge_a_plus_two_b (a b s_fp : FiniteFp)
     a b ha hb ha_nz hb_nz hab hsum_ne s_fp hs_add
   exact hs_ge
 
-/-- Mixed-sign positive-sum upper bound for nearest rounding.
+/-- Mixed-sign upper bound for nearest rounding.
 
-When `a > 0`, `b < 0`, and `a + b > 0`, monotonicity gives `s ≤ a` for
-`s = round(a+b)`. -/
-theorem mixed_pos_round_le_a (a b s_fp : FiniteFp)
+When `a > 0` and `b < 0`, monotonicity gives `s ≤ a` for
+`s = round(a+b)`. Does not require `a + b > 0`. -/
+theorem mixed_round_le_a (a b s_fp : FiniteFp)
     (ha : a.s = false) (hb : b.s = true)
-    (_ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
-    (_hsum_pos : (0 : R) < (a.toVal : R) + b.toVal)
+    (hb_nz : 0 < b.m)
     [RMode R] [RModeNearest R]
     (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s_fp) :
     (s_fp.toVal : R) ≤ a.toVal := by
@@ -779,7 +778,7 @@ theorem mixed_pos_round_lt_a_of_sub_nonzero (a b s_fp : FiniteFp)
     (hsa_ne : (s_fp.toVal (R := R) : R) - a.toVal ≠ 0) :
     (s_fp.toVal (R := R) : R) < a.toVal := by
   have hs_le_a : (s_fp.toVal (R := R) : R) ≤ a.toVal :=
-    mixed_pos_round_le_a (R := R) a b s_fp ha hb ha_nz hb_nz hsum_pos hs
+    mixed_round_le_a (R := R) a b s_fp ha hb hb_nz hs
   exact lt_of_le_of_ne hs_le_a (by
     intro hEq
     apply hsa_ne
@@ -812,7 +811,7 @@ theorem mixed_pos_s_sub_a_bounds (a b s_fp : FiniteFp)
     mixed_pos_round_ge_a_plus_two_b (R := R)
       a b s_fp ha hb ha_nz hb_nz hab_abs hsum_ne hs
   have hs_le_a : (s_fp.toVal (R := R) : R) ≤ a.toVal :=
-    mixed_pos_round_le_a (R := R) a b s_fp ha hb ha_nz hb_nz hsum_pos hs
+    mixed_round_le_a (R := R) a b s_fp ha hb hb_nz hs
   constructor
   · linarith
   · exact sub_nonpos.mpr hs_le_a
