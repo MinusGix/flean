@@ -536,7 +536,12 @@ theorem componentwiseRelGauge_component_bound {n : ℕ} (hn : 0 < n)
     Given a `BackwardResult` with `componentwiseRelGauge` for `f = Σ`,
     the forward error is `|computed - Σvᵢ| ≤ ε · Σ|vᵢ|`.
 
-    The `hzero` hypothesis ensures zero inputs have zero perturbation;
+    The `hzero` hypothesis ensures zero inputs have zero perturbation.
+    This is needed because `componentwiseRelGauge` ignores zero-input components
+    (they contribute 0 to the gauge), so `br.x' i` is unconstrained when `v i = 0`.
+    Without `hzero`, the forward error could be arbitrarily large.
+    All `BackwardResult` instances built by `backwardResult_struct_of_forward_*` satisfy
+    this automatically (see `backwardResult_struct_of_forward_weighted_bound_zero`).
     this holds for all results constructed via
     `backwardResult_struct_of_forward_fin_bound`. -/
 theorem forward_from_sum_backward {n : ℕ} (hn : 0 < n)
@@ -680,6 +685,19 @@ def BackwardResult.scale {X : Type*}
   eps_nonneg := brA.eps_nonneg
   bound := brA.bound
 
+/-- **Weaken** a backward result by relaxing the error bound.
+    Useful for simplifying bounds, e.g., `(1+η)^n - 1 ≤ γ_n`. -/
+def BackwardResult.weaken {X Y : Type*}
+    {G : PerturbationGauge X R} {f : X → Y} {x : X} {computed : Y}
+    (br : BackwardResult G f x computed)
+    {eps' : R} (heps' : br.eps ≤ eps') (heps'_nn : 0 ≤ eps') :
+    BackwardResult G f x computed where
+  x' := br.x'
+  exact := br.exact
+  eps := eps'
+  eps_nonneg := heps'_nn
+  bound := le_trans br.bound heps'
+
 /-- **Scalar composition for summation**: given a `BackwardResult` for `f = Σ`
     with `componentwiseRelGauge`, and a scalar perturbation `(1 + δ)`,
     produce a `BackwardResult` for the **same function** `f = Σ`.
@@ -740,6 +758,15 @@ noncomputable def BackwardResult.compose_scalar_weighted_sum {n : ℕ} (hn : 0 <
     exact scalar_compose_component_bound _ _ _ _ _
       (componentwiseRelGauge_component_bound hn brA.bound i hvi)
       hdelta brA.eps_nonneg heps_B habsvi
+
+/-- **Multiplicative eps composition**: if `ε₁ = ε_A + ε_B + ε_A·ε_B`,
+    then `1 + ε₁ = (1 + ε_A)(1 + ε_B)`.
+
+    This is the key algebraic identity for chaining scalar compositions:
+    after `m` roundings with bound `η` on initial error `ε₀`, the total
+    is `(1 + ε₀)·(1 + η)^m - 1`. -/
+theorem compose_eps_mul (eps_A eps_B : R) :
+    1 + (eps_A + eps_B + eps_A * eps_B) = (1 + eps_A) * (1 + eps_B) := by ring
 
 /-! ## Additive Composition Framework -/
 
