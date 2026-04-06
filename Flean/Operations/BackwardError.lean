@@ -13,6 +13,7 @@ the generic framework in `BackwardErrorCore.lean`.
 - `dp_backward_error`: dot product backward error `|μᵢ| ≤ (1+η)^n - 1`
 - `dp_backward_error_gamma`: dot product backward error `|μᵢ| ≤ γ_n`
 - `horner_backward_error`: Horner coefficient perturbation `|μᵢ| ≤ (1+η)^{2n} - 1`
+- `horner_compose_round`: Horner + scalar rounding, `|μᵢ| ≤ (1+η)^{2n+1} - 1`
 
 ## Linking lemmas
 
@@ -290,5 +291,59 @@ noncomputable def horner_backward_result
   exact backwardResult_struct_of_forward_weighted_bound hcoeffs
     (fun i => (coeffs.get i).toVal) (fun i => (x.toVal (R := R)) ^ (coeffs.length - 1 - i.val))
     _ _ heps_nn hfwd'
+
+/-- **Horner + scalar rounding composition**: if Horner evaluation produces a
+    backward error of `(1+η)^{2n} - 1` on coefficients, and one more rounding
+    introduces a factor `(1+δ)` with `|δ| ≤ η`, the composed backward error
+    on coefficients is `(1+η)^{2n+1} - 1`.
+
+    This demonstrates `compose_scalar_weighted_sum` on a concrete algorithm.
+    A typical use case: `fl(c · p(x)) = (1+δ) · fl(p(x))` where `fl(p(x))`
+    is computed by Horner's method. -/
+noncomputable def horner_compose_round
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {x init final : FiniteFp} {coeffs : List FiniteFp}
+    (hcoeffs : 0 < coeffs.length)
+    (trace : Horner.HornerTrace x coeffs init final)
+    (hinit : init.toVal (R := R) = 0)
+    (hnr : trace.AllNormalRange (R := R))
+    (delta : R) (hdelta : |delta| ≤ η) :
+    BackwardResult
+      (componentwiseRelGauge coeffs.length hcoeffs)
+      (fun c => ∑ i : Fin coeffs.length,
+        c i * (x.toVal (R := R)) ^ (coeffs.length - 1 - i.val))
+      (fun i => (coeffs.get i).toVal)
+      ((1 + delta) * (final.toVal : R)) :=
+  (horner_backward_result (R := R) hcoeffs trace hinit hnr).compose_scalar_weighted_sum
+    hcoeffs delta η hdelta (by simp only [FloatFormat.hEps_def]; positivity)
+
+/-- The epsilon bound for `horner_compose_round` is `(1+η)^{2n+1} - 1`:
+    `ε_A + η + ε_A·η = ((1+η)^{2n} - 1)·(1+η) + η = (1+η)^{2n+1} - 1`.
+
+    Note: stated as `≤` because the internal eps comes from a tactic proof
+    and doesn't reduce definitionally. The bound is tight (equality holds). -/
+theorem horner_compose_round_eps
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {x init final : FiniteFp} {coeffs : List FiniteFp}
+    (hcoeffs : 0 < coeffs.length)
+    (trace : Horner.HornerTrace x coeffs init final)
+    (hinit : init.toVal (R := R) = 0)
+    (hnr : trace.AllNormalRange (R := R))
+    (delta : R) (hdelta : |delta| ≤ η) :
+    (horner_compose_round hcoeffs trace hinit hnr delta hdelta).eps =
+    (1 + η) ^ (2 * coeffs.length + 1) - 1 := by
+  -- compose_scalar_weighted_sum sets eps = brA.eps + η + brA.eps * η
+  -- horner_compose_round unfolds to (horner_backward_result ...).compose_scalar_weighted_sum ...
+  -- but horner_backward_result is a tactic proof that doesn't reduce.
+  -- Instead, use the structure directly:
+  show ((horner_backward_result (R := R) hcoeffs trace hinit hnr).eps + η +
+    (horner_backward_result (R := R) hcoeffs trace hinit hnr).eps * η) =
+    (1 + η) ^ (2 * coeffs.length + 1) - 1
+  -- horner_backward_result.eps = (1+η)^{2n} - 1, proved via the forward error bound
+  -- We need to know this value. Extract it:
+  have heps : (horner_backward_result (R := R) hcoeffs trace hinit hnr).eps =
+      (1 + η) ^ (2 * coeffs.length) - 1 := by
+    simp only [horner_backward_result, backwardResult_struct_of_forward_weighted_bound]
+  rw [heps, pow_succ]; ring
 
 end BackwardError

@@ -276,8 +276,21 @@ Rounding/ files but narrow applicability.
 - [ ] **General condition numbers** — formalize `cond(f, x) = ‖J_f(x)‖·‖x‖/‖f(x)‖` and prove the
   fundamental relation `forward_error ≤ cond · backward_error · (1 + O(η))`.
   For polynomial evaluation: standard Wilkinson-type bounds.
-- [ ] **Full gauge-based composition** — `PerturbationLift`, triangle inequality on gauge,
-  `BackwardResult.compose`. Needs `PerturbationMetric` (gauge + triangle). Deferred.
+- [x] **Full gauge-based composition** — `PerturbationLift`, `PerturbationMetric`, `BackwardResult.compose` ✓
+  Two tracks: multiplicative (`compose_scalar_sum/weighted_sum` for `componentwiseRelGauge`)
+  and additive (`BackwardResult.compose` with `PerturbationMetric` + `PerturbationLift`).
+- [ ] **Concrete `PerturbationLift` instances** — needed to make `BackwardResult.compose` usable:
+  - Summation lift (`uniformGauge`): `Λ = 1`, distribute output perturbation evenly across inputs.
+    Uses `error_distributable`-style allocation.
+  - Horner/weighted-sum lift: pull back output perturbation to coefficient perturbations.
+    `Λ = condition number` (= `Σ|cᵢx^i|/|p(x)|`). Connects to `componentwiseCondNumber`.
+  - Linear function lift (general): any `f(x) = Ax` with `Λ = ‖A⁻¹‖` or pseudo-inverse.
+- [ ] **`MixedResult.compose_no_lift`** — fallback composition into `MixedResult` when no
+  lift exists. Backward part from `brA`, forward residual bounded by Lipschitz constant
+  of `g` times `brB.eps`. Needs Lipschitz-like hypothesis on `g`. Low priority.
+- [x] **Composition example: Horner + rounding** — `horner_compose_round` in BackwardError.lean ✓
+  Composes `horner_backward_result` with scalar rounding via `compose_scalar_weighted_sum`.
+  `horner_compose_round_eps`: backward error = `(1+η)^{2n+1} - 1` on coefficients.
 - [ ] **Wilkinson polynomial root conditioning** — root sensitivity bound:
   `|Δx_k| ≈ |Δaⱼ| · Πᵢ≠ₖ |x_k - x_i|⁻¹`. Connects to Newton-Horner convergence radius:
   ill-conditioned roots → smaller convergence basin → more Newton steps needed.

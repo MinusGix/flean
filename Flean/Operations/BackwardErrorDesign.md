@@ -336,11 +336,24 @@ General `f` still needs partial derivatives / Jacobian framework.
 
 ### D5. Gauge hierarchy — partially done
 `componentwiseRelGauge` added (max_i |x'_i - x_i|/|x_i|). Still missing:
-normwise gauge, weighted gauge, `PerturbationMetric` (triangle inequality).
+normwise gauge, weighted gauge. `PerturbationMetric` (triangle inequality)
+now implemented with `uniformGauge_metric` instance.
 
-### D6. Full gauge-based composition
-`PerturbationLift` + `BackwardResult.compose` require triangle inequality
-on `PerturbationGauge`. Need `PerturbationMetric` structure extending gauge.
+### D6. Full gauge-based composition — DONE
+Two-track design implemented:
+
+**Track A (Multiplicative)** — for `componentwiseRelGauge` (all existing algorithms):
+- `scalar_compose_component_bound`: helper for `|(1+δ)x' - v| ≤ (ε_A+ε_B+ε_A·ε_B)|v|`
+- `BackwardResult.scale`: trivial post-scaling (same backward error)
+- `BackwardResult.compose_scalar_sum`: absorbs `(1+δ)` into component perturbations for Σ
+- `BackwardResult.compose_scalar_weighted_sum`: same for weighted sums Σ cᵢwᵢ
+- Bound: `(1+ε_A)(1+ε_B) - 1` (multiplicative triangle inequality)
+
+**Track B (Additive)** — for gauges with additive triangle inequality:
+- `PerturbationMetric`: extends `PerturbationGauge` with triangle inequality
+- `uniformGauge_metric`: `uniformGauge` satisfies triangle inequality
+- `PerturbationLift`: pullback structure (point-free, constructive)
+- `BackwardResult.compose`: general `g ∘ f` composition with bound `ε_A + Λ·ε_B`
 
 ### D7. Port `kahan_weak_backward_error` to framework — DONE
 `kahan_backward_result` in KahanSum.lean returns `BackwardResult` with

@@ -23,7 +23,20 @@ floating-point dependencies. This file can be imported by any module
 - `backwardResult_of_forward_sum_bound`: forward → backward bridge for sums
 - `backwardResult_of_forward_fin_bound`: Fin-indexed version
 - `forward_le_cond_mul_backward`: forward error ≤ ε · condition number
-- `backward_compose_one_round`: scalar composition of backward errors
+- `backward_compose_one_round`: scalar composition of backward errors (unstructured)
+
+## Composition
+
+Two tracks for composing backward results:
+
+**Multiplicative** (for `componentwiseRelGauge`):
+- `BackwardResult.compose_scalar_sum`: `(1+δ)·Σ` with bound `(1+ε_A)(1+ε_B) - 1`
+- `BackwardResult.compose_scalar_weighted_sum`: same for weighted sums
+
+**Additive** (for gauges with triangle inequality):
+- `PerturbationMetric`: gauge + triangle inequality
+- `PerturbationLift`: pullback of output perturbations through `f`
+- `BackwardResult.compose`: general `g ∘ f` with bound `ε_A + Λ·ε_B`
 
 ## References
 
@@ -421,6 +434,18 @@ noncomputable def backwardResult_struct_of_forward_weighted_bound
         exact hmu_bnd i
   }
 
+/-- Zero coefficients have zero perturbed values in `backwardResult_struct_of_forward_weighted_bound`.
+    Since `x' i = (1 + μ_i) · c i`, when `c i = 0` we get `x' i = 0`. -/
+theorem backwardResult_struct_of_forward_weighted_bound_zero
+    {n : ℕ} (hn : 0 < n) (c w : Fin n → R)
+    (result eps : R) (heps : 0 ≤ eps)
+    (hfwd : |result - ∑ i : Fin n, c i * w i| ≤
+            eps * ∑ i : Fin n, |c i * w i|)
+    (i : Fin n) (hci : c i = 0) :
+    (backwardResult_struct_of_forward_weighted_bound hn c w result eps heps hfwd).x' i = 0 := by
+  simp only [backwardResult_struct_of_forward_weighted_bound]
+  rw [hci, mul_zero]
+
 end LinearBackward
 
 /-! ## Condition Number -/
@@ -592,5 +617,208 @@ theorem backward_compose_one_round (n : ℕ)
     rw [Finset.mul_sum]
     congr 1; ext i
     ring
+
+/-- Establish `componentwiseRelGauge` bound from per-component bounds.
+    Converse direction of `componentwiseRelGauge_component_bound`.
+    Only needs bounds for nonzero components — zero components contribute 0 to the gauge. -/
+theorem componentwiseRelGauge_dist_le {n : ℕ} (hn : 0 < n)
+    {v x' : Fin n → R} {eps : R} (heps : 0 ≤ eps)
+    (hnonzero : ∀ i, v i ≠ 0 → |x' i - v i| / |v i| ≤ eps) :
+    (componentwiseRelGauge n hn).dist v x' ≤ eps := by
+  simp only [componentwiseRelGauge]
+  apply Finset.sup'_le
+  intro i _
+  split_ifs with h
+  · exact heps
+  · exact hnonzero i h
+
+/-- Helper: `|(1+δ)·x' - v| ≤ (ε_A + ε_B + ε_A·ε_B)·|v|` when `|x' - v| ≤ ε_A·|v|`
+    and `|δ| ≤ ε_B`. Used by all multiplicative composition theorems. -/
+private theorem scalar_compose_component_bound
+    (x'_i v_i delta eps_A eps_B : R)
+    (hcomp : |x'_i - v_i| ≤ eps_A * |v_i|)
+    (hdelta : |delta| ≤ eps_B)
+    (_heps_A : 0 ≤ eps_A) (heps_B : 0 ≤ eps_B) (hvi : (0 : R) < |v_i|) :
+    |(1 + delta) * x'_i - v_i| ≤ (eps_A + eps_B + eps_A * eps_B) * |v_i| := by
+  -- (1+δ)·x' - v = (1+δ)·(x' - v) + δ·v
+  have key : (1 + delta) * x'_i - v_i =
+      (1 + delta) * (x'_i - v_i) + delta * v_i := by ring
+  calc |(1 + delta) * x'_i - v_i|
+      = |(1 + delta) * (x'_i - v_i) + delta * v_i| := by rw [key]
+    _ ≤ |(1 + delta) * (x'_i - v_i)| + |delta * v_i| := abs_add_le _ _
+    _ = |(1 + delta)| * |x'_i - v_i| + |delta| * |v_i| := by
+        simp only [abs_mul]
+    _ ≤ (1 + eps_B) * (eps_A * |v_i|) + eps_B * |v_i| := by
+        have h1 : |(1 + delta)| ≤ 1 + eps_B := calc
+          |(1 + delta)| ≤ |1| + |delta| := abs_add_le _ _
+          _ = 1 + |delta| := by rw [abs_one]
+          _ ≤ 1 + eps_B := by linarith
+        have h2 := mul_le_mul h1 hcomp (abs_nonneg _) (by linarith)
+        linarith [mul_le_mul_of_nonneg_right hdelta hvi.le]
+    _ = (eps_A + eps_B + eps_A * eps_B) * |v_i| := by ring
+
+/-- **Scalar post-composition**: given a `BackwardResult` for `f` and a scalar
+    multiplication `(1 + δ)`, produce a `BackwardResult` for `(1+δ)·f`.
+
+    The perturbed input stays the same as `brA.x'`, so the backward error
+    is unchanged. This is the trivial direction — the scalar just passes through. -/
+def BackwardResult.scale {X : Type*}
+    {G : PerturbationGauge X R} {f : X → R} {x : X} {computed : R}
+    (brA : BackwardResult G f x computed)
+    (c : R) :
+    BackwardResult G (fun w => c * f w) x (c * computed) where
+  x' := brA.x'
+  exact := by rw [brA.exact]
+  eps := brA.eps
+  eps_nonneg := brA.eps_nonneg
+  bound := brA.bound
+
+/-- **Scalar composition for summation**: given a `BackwardResult` for `f = Σ`
+    with `componentwiseRelGauge`, and a scalar perturbation `(1 + δ)`,
+    produce a `BackwardResult` for the **same function** `f = Σ`.
+
+    Absorbs `(1+δ)` into each component perturbation via the identity
+    `(1+δ)·Σ(1+μᵢ)·vᵢ = Σ(1+μ'ᵢ)·vᵢ` where `μ'ᵢ = μᵢ + δ + μᵢ·δ`.
+    The bound grows multiplicatively: `ε' = ε_A + ε_B + ε_A·ε_B = (1+ε_A)(1+ε_B) - 1`. -/
+noncomputable def BackwardResult.compose_scalar_sum {n : ℕ} (hn : 0 < n)
+    {v : Fin n → R} {computed : R}
+    (brA : BackwardResult (componentwiseRelGauge n hn)
+      (fun w => ∑ i : Fin n, w i) v computed)
+    (delta eps_B : R)
+    (hdelta : |delta| ≤ eps_B) (heps_B : 0 ≤ eps_B) :
+    BackwardResult (componentwiseRelGauge n hn)
+      (fun w => ∑ i : Fin n, w i) v ((1 + delta) * computed) where
+  x' i := (1 + delta) * brA.x' i
+  exact := by
+    simp only []
+    rw [← Finset.mul_sum, brA.exact]
+  eps := brA.eps + eps_B + brA.eps * eps_B
+  eps_nonneg := by nlinarith [brA.eps_nonneg]
+  bound := by
+    apply componentwiseRelGauge_dist_le hn (by nlinarith [brA.eps_nonneg])
+    intro i hvi
+    have habsvi := abs_pos.mpr hvi
+    rw [div_le_iff₀ habsvi]
+    exact scalar_compose_component_bound _ _ _ _ _
+      (componentwiseRelGauge_component_bound hn brA.bound i hvi)
+      hdelta brA.eps_nonneg heps_B habsvi
+
+/-- **Scalar composition for weighted sums**: given a `BackwardResult` for
+    `f(c) = Σ cᵢ·wᵢ` with `componentwiseRelGauge` on coefficients `c`,
+    and a scalar perturbation `(1 + δ)`, produce a `BackwardResult` for the
+    same weighted sum function (absorbing `(1+δ)` into coefficient perturbations). -/
+noncomputable def BackwardResult.compose_scalar_weighted_sum {n : ℕ} (hn : 0 < n)
+    {w v : Fin n → R} {computed : R}
+    (brA : BackwardResult (componentwiseRelGauge n hn)
+      (fun c => ∑ i : Fin n, c i * w i) v computed)
+    (delta eps_B : R)
+    (hdelta : |delta| ≤ eps_B) (heps_B : 0 ≤ eps_B) :
+    BackwardResult (componentwiseRelGauge n hn)
+      (fun c => ∑ i : Fin n, c i * w i) v ((1 + delta) * computed) where
+  x' i := (1 + delta) * brA.x' i
+  exact := by
+    show ∑ i : Fin n, ((1 + delta) * brA.x' i) * w i = (1 + delta) * computed
+    have : ∀ i : Fin n, (1 + delta) * brA.x' i * w i =
+        (1 + delta) * (brA.x' i * w i) := fun i => by ring
+    simp_rw [this, ← Finset.mul_sum]
+    congr 1
+    exact brA.exact
+  eps := brA.eps + eps_B + brA.eps * eps_B
+  eps_nonneg := by nlinarith [brA.eps_nonneg]
+  bound := by
+    apply componentwiseRelGauge_dist_le hn (by nlinarith [brA.eps_nonneg])
+    intro i hvi
+    have habsvi := abs_pos.mpr hvi
+    rw [div_le_iff₀ habsvi]
+    exact scalar_compose_component_bound _ _ _ _ _
+      (componentwiseRelGauge_component_bound hn brA.bound i hvi)
+      hdelta brA.eps_nonneg heps_B habsvi
+
+/-! ## Additive Composition Framework -/
+
+/-- A perturbation metric is a `PerturbationGauge` with the triangle inequality.
+
+    `componentwiseRelGauge` does NOT satisfy this (different denominators),
+    but `uniformGauge` does. For `componentwiseRelGauge`, use the multiplicative
+    composition (`compose_scalar`, `compose_scalar_sum`) instead. -/
+structure PerturbationMetric (X : Type*) (R : Type*) [Zero R] [LE R] [Add R]
+    extends PerturbationGauge X R where
+  triangle : ∀ x x' x'', dist x x'' ≤ dist x x' + dist x' x''
+
+/-- `uniformGauge` satisfies the triangle inequality via `|a - c| ≤ |a - b| + |b - c|`. -/
+noncomputable def uniformGauge_metric (n : ℕ) (hn : 0 < n) :
+    PerturbationMetric (Fin n → R) R where
+  toPerturbationGauge := uniformGauge n hn
+  triangle x x' x'' := by
+    show (uniformGauge n hn).dist x x'' ≤
+      (uniformGauge n hn).dist x x' + (uniformGauge n hn).dist x' x''
+    simp only [uniformGauge]
+    apply Finset.sup'_le
+    intro i _
+    calc |x'' i - x i|
+        = |(x' i - x i) + (x'' i - x' i)| := by ring_nf
+      _ ≤ |x' i - x i| + |x'' i - x' i| := abs_add_le _ _
+      _ ≤ Finset.sup' Finset.univ _ (fun j => |x' j - x j|) +
+          Finset.sup' Finset.univ _ (fun j => |x'' j - x' j|) :=
+          add_le_add
+            (Finset.le_sup' (fun j => |x' j - x j|) (Finset.mem_univ i))
+            (Finset.le_sup' (fun j => |x'' j - x' j|) (Finset.mem_univ i))
+
+/-- A perturbation lift for `f`: output perturbations of `f(x₀)` in `G_Y` can be
+    pulled back to input perturbations of `x₀` in `G_X`, with amplification factor `Λ`.
+
+    For linear functions, `Λ` is related to the condition number.
+    For affine functions (AffineFold), `Λ` comes from the linear part. -/
+structure PerturbationLift {X Y : Type*}
+    (G_X : PerturbationGauge X R) (G_Y : PerturbationGauge Y R)
+    (f : X → Y) where
+  /-- Amplification factor. -/
+  Lambda : R
+  Lambda_nonneg : 0 ≤ Lambda
+  /-- The lift: given base point `x₀` and target `y'` near `f(x₀)`,
+      produce `x'` near `x₀` with `f(x') = y'` and bounded perturbation. -/
+  lift : (x₀ : X) → (y' : Y) → (delta : R) →
+         G_Y.dist (f x₀) y' ≤ delta → 0 ≤ delta →
+         { x' : X // f x' = y' ∧ G_X.dist x₀ x' ≤ Lambda * delta }
+
+/-- **General composition of backward results** via `PerturbationMetric` and `PerturbationLift`.
+
+    Given:
+    - `brA`: backward stability of algorithm A for `f` with error `ε_A`
+    - `brB`: backward stability of algorithm B for `g` at the intermediate value with error `ε_B`
+    - `plift`: output perturbations of `f` pull back with amplification `Λ`
+    - Triangle inequality on `G_X`
+
+    Produces backward stability of B∘A for `g ∘ f` with error `ε_A + Λ·ε_B`.
+
+    Note: `brB` is stated at reference input `intermediate`, which equals `f brA.x'`
+    by `brA.exact`. The lift pulls back B's perturbation through `f`. -/
+noncomputable def BackwardResult.compose {X Y Z : Type*}
+    {G_X : PerturbationMetric X R} {G_Y : PerturbationGauge Y R}
+    {f : X → Y} {g : Y → Z} {x : X} {intermediate : Y} {computed : Z}
+    (brA : BackwardResult G_X.toPerturbationGauge f x intermediate)
+    (brB : BackwardResult G_Y g intermediate computed)
+    (plift : PerturbationLift (R := R) G_X.toPerturbationGauge G_Y f) :
+    BackwardResult G_X.toPerturbationGauge (g ∘ f) x computed := by
+  -- brA.exact : f brA.x' = intermediate
+  -- brB.bound : G_Y.dist intermediate brB.x' ≤ brB.eps
+  -- Rewrite brB.bound to use f brA.x' as reference
+  have hbound_at_x' : G_Y.dist (f brA.x') brB.x' ≤ brB.eps := by
+    rw [brA.exact]; exact brB.bound
+  -- Apply the lift to pull back brB.x' through f
+  obtain ⟨x'', hfx'', hdist_x''⟩ :=
+    plift.lift brA.x' brB.x' brB.eps hbound_at_x' brB.eps_nonneg
+  exact {
+    x' := x''
+    exact := by
+      simp only [Function.comp]
+      rw [hfx'']
+      exact brB.exact
+    eps := brA.eps + plift.Lambda * brB.eps
+    eps_nonneg := add_nonneg brA.eps_nonneg (mul_nonneg plift.Lambda_nonneg brB.eps_nonneg)
+    bound := calc G_X.dist x x''
+        ≤ G_X.dist x brA.x' + G_X.dist brA.x' x'' := G_X.triangle x brA.x' x''
+      _ ≤ brA.eps + plift.Lambda * brB.eps := add_le_add brA.bound hdist_x''
+  }
 
 end BackwardError
