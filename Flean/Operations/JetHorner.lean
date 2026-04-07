@@ -113,7 +113,7 @@ private theorem jetHornerProp_zero_d_snd (n : ℕ) (d x : R) :
     (affineProp (jetHornerL x) n (0, d)).2 = d * x ^ n := by
   induction n generalizing d with
   | zero => simp [affineProp]
-  | succ n ih => simp only [affineProp, jetHornerL, mul_zero, zero_add]; rw [ih]; ring
+  | succ n ih => simp only [affineProp, jetHornerL, mul_zero]; rw [ih]; ring
 
 theorem jetHorner_deriv_shift (cs : List R) (init d x : R) :
     (jetHornerExact cs init d x).2 = polyDeriv cs init x + d * x ^ cs.length := by
@@ -189,6 +189,7 @@ theorem affineProp_jetHornerL_snd (n : ℕ) (x ev ed : R) :
     | zero => simp
     | succ n => push_cast; ring
 
+omit [FloorRing R] in
 /-- Absolute bound on the second component of propagation. -/
 theorem affineProp_jetHornerL_snd_abs_le (n : ℕ) (x ev ed : R) :
     |(affineProp (jetHornerL x) n (ev, ed)).2| ≤
@@ -230,6 +231,7 @@ theorem polyDeriv_nonneg (cs : List R) (init x : R)
     have hinit' : 0 ≤ x * init + c := by positivity
     linarith [ih (x * init + c) hinit' hrest, mul_nonneg hinit (pow_nonneg hx cs.length)]
 
+omit [FloorRing R] in
 /-- `polyDeriv` is monotone in the initial value (for nonneg coefficients and x). -/
 theorem polyDeriv_mono (cs : List R) (a b x : R)
     (hab : a ≤ b) (hx : 0 ≤ x) :
@@ -239,6 +241,7 @@ theorem polyDeriv_mono (cs : List R) (a b x : R)
   linarith [mul_nonneg (mul_nonneg (Nat.cast_nonneg' (n := cs.length))
     (pow_nonneg hx (cs.length - 1))) (by linarith : (0 : R) ≤ b - a)]
 
+omit [FloorRing R] in
 /-- For nonempty coefficient list, `polyDeriv` is at least `init * x^{cs.length}`.
     This is the chain-rule term from the first unfolding of `polyDeriv_cons`. -/
 theorem polyDeriv_ge_init_mul_xpow (c : R) (cs : List R) (init x : R)

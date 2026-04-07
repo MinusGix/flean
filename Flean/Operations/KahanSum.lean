@@ -425,10 +425,10 @@ theorem fpDiv_error_or_zero
     -- hf : Fp.finite a / Fp.finite b = Fp.finite f (uses HDiv Fp Fp Fp)
     -- Reduce to fpDivFinite since b.m ≠ 0
     have hf' : fpDivFinite a b = Fp.finite f := by
-      simp only [div_eq_fpDiv, fpDiv, hb, ↓reduceDIte, div_finite_eq_fpDivFinite] at hf
+      simp only [div_eq_fpDiv, fpDiv, hb, div_finite_eq_fpDivFinite] at hf
       exact hf
     simp only [fpDivFinite, hscaled, Nat.zero_div, Nat.zero_mod,
-               ↓reduceDIte, roundIntSigM] at hf'
+               roundIntSigM] at hf'
     -- hf' identifies f with ±0 → f.m = 0 → f.toVal = 0
     -- Extract: Fp.finite f = Fp.finite (±0) → f = ±0 → f.m = 0
     have hfm : f.m = 0 := by

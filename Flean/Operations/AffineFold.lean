@@ -350,7 +350,7 @@ theorem affineFold_gauge_uniform_bound (L : S → S)
   induction errors with
   | nil =>
     simp only [affineFold, List.length_nil, Nat.cast_zero, zero_mul]
-    change ν.val 0 ≤ 0; linarith [ν.zero]
+    linarith [ν.zero]
   | cons e es ih =>
     simp only [affineFold, List.length_cons]
     have hL0 : L (0 : S) = 0 := by

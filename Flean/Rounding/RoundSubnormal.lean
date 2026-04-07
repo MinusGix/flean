@@ -467,7 +467,7 @@ theorem roundSubnormalUp_sub_roundSubnormalDown_le (x : R) (h : isSubnormalRange
         exact mul_le_mul_of_nonneg_right (by exact_mod_cast hcf) (le_of_lt hu_pos)
     _ = ⌊x / (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1)⌋ *
           (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) +
-          (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by push_cast; ring
+          (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by ring
     _ ≤ (roundSubnormalDown x h).toVal (R := R) +
           (2 : R) ^ (FloatFormat.min_exp - (FloatFormat.prec : ℤ) + 1) := by linarith
 

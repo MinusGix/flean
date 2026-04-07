@@ -101,7 +101,7 @@ theorem hornerPoly_mono (cs : List R) (a b x : R)
 
 /-- `acc * x^n ≤ hornerPoly cs acc x` when acc, x, and all coefficients are nonneg. -/
 theorem hornerPoly_ge_acc_xpow (cs : List R) (acc x : R)
-    (hacc : 0 ≤ acc) (hx : 0 ≤ x) (hcs : ∀ c ∈ cs, 0 ≤ c) :
+    (hx : 0 ≤ x) (hcs : ∀ c ∈ cs, 0 ≤ c) :
     acc * x ^ cs.length ≤ hornerPoly cs acc x := by
   have h := hornerPoly_affine cs 0 acc x
   simp only [zero_add] at h

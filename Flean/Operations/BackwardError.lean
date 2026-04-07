@@ -96,6 +96,7 @@ noncomputable def dp_backward_result
 
 /-! ### Horner Polynomial ↔ Fin Sum -/
 
+omit [FloatFormat] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
 /-- Helper: `hornerPoly cs acc x = acc * x^n + hornerPoly cs 0 x`. -/
 private theorem hornerPoly_acc_eq (cs : List R) (acc x : R) :
     Horner.hornerPoly cs acc x =
@@ -107,6 +108,7 @@ private theorem hornerPoly_acc_eq (cs : List R) (acc x : R) :
     rw [ih (acc * x + c), ih c]
     ring
 
+omit [FloatFormat] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
 /-- `hornerPoly cs 0 x` as a Finset sum over `Fin cs.length`. -/
 theorem hornerPoly_eq_fin_sum (cs : List R) (x : R) :
     Horner.hornerPoly cs 0 x =
@@ -130,6 +132,7 @@ theorem hornerPoly_eq_fin_sum (cs : List R) (x : R) :
     rw [hexp]
     rfl
 
+omit [FloatFormat] [IsStrictOrderedRing R] [FloorRing R] in
 /-- Absolute version: `hornerPoly |cs| 0 |x| = Σ |cs[i]| · |x|^{n-1-i}`. -/
 theorem hornerPoly_abs_eq_fin_sum (cs : List R) (x : R) :
     Horner.hornerPoly (cs.map (fun c => |c|)) 0 |x| =
@@ -149,6 +152,7 @@ theorem hornerPoly_abs_eq_fin_sum (cs : List R) (x : R) :
       simp [Fin.val_succ]; omega
     rw [hexp]; rfl
 
+omit [FloatFormat] [FloorRing R] in
 /-- `Σ |cs[i]| · |x|^k = Σ |cs[i] · x^k|`. -/
 theorem abs_horner_sum_eq (cs : List R) (x : R) :
     (∑ i : Fin cs.length, |cs.get i| * |x| ^ (cs.length - 1 - i.val)) =

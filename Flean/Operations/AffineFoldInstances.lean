@@ -126,10 +126,12 @@ section HornerErrorBound
 variable [FloatFormat]
 variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
 
+omit [FloatFormat] [FloorRing R] in
 /-- `hornerL x` has contraction bound `|x|`: `|L(e)| = |x * e| = |x| · |e|`. -/
 theorem hornerL_bound (x : R) (e : R) : |hornerL x e| ≤ |x| * |e| := by
   simp [hornerL, abs_mul]
 
+omit [FloatFormat] [FloorRing R] in
 /-- **Propagation bound for Horner** (derived from generic `affineProp_abs_le`):
     `|affineProp (hornerL x) n e| ≤ |x|^n · |e|`.
 
@@ -138,6 +140,7 @@ theorem horner_prop_bound (x : R) (n : ℕ) (e : R) :
     |affineProp (hornerL x) n e| ≤ |x| ^ n * |e| :=
   affineProp_abs_le (hornerL x) |x| (abs_nonneg x) (hornerL_bound x) n e
 
+omit [FloatFormat] [FloorRing R] in
 /-- **Horner uniform error bound from generic framework.**
 
     If each per-step error satisfies `|εₖ| ≤ δ` and `|x| ≥ 1`, then:
@@ -152,6 +155,7 @@ theorem horner_error_uniform_from_generic (x : R) (hx : 1 ≤ |x|)
   exact affineFold_error_uniform_bound (hornerL x) (hornerL_additive x) |x| hx
     (hornerL_bound x) errors δ hδ herr
 
+omit [FloatFormat] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
 /-- **Exact decomposition for Horner from generic framework.**
 
     `computed + hornerPoly(errors, 0, x) = hornerPoly(coeffs, init, x)`
@@ -168,6 +172,7 @@ theorem horner_exact_decomposition_from_generic
 
 /-! ### Bridge: weightedErrorSum = hornerPoly of absolute errors -/
 
+omit [FloatFormat] [FloorRing R] in
 /-- The weighted error sum `Σ|eₖ|·|x|^{n-1-k}` IS `hornerPoly(|errors|, 0, |x|)`.
 
     This connects the AffineFold per-index bound to the Horner absolute polynomial. -/
@@ -185,6 +190,7 @@ theorem weightedErrorSum_eq_hornerPoly (x : R) (errors : List R) :
     simp only [zero_add, List.length_map] at haffine
     linarith
 
+omit [FloatFormat] [FloorRing R] in
 /-- **Horner error via per-index bound**: for any errors list,
     `|hornerPoly(errors, 0, x)| ≤ hornerPoly(|errors|, 0, |x|)`.
 
@@ -195,6 +201,7 @@ theorem hornerPoly_abs_le_per_index (x : R) (errors : List R) :
   exact affineFold_error_per_index (hornerL x) (hornerL_additive x)
     |x| (abs_nonneg x) (hornerL_bound x) errors
 
+omit [FloatFormat] [FloorRing R] in
 /-- **Full Horner error chain from generic framework.**
 
     Given per-step error bounds, derive the Horner error bound:
@@ -218,6 +225,7 @@ theorem horner_error_from_framework
   rw [heq, abs_neg]
   exact hornerPoly_abs_le_per_index x errors
 
+omit [FloatFormat] [FloorRing R] in
 /-- **Coefficient-list monotonicity for hornerPoly**: if `aᵢ ≤ bᵢ` element-wise,
     `acc_a ≤ acc_b`, and `x ≥ 0`, then `hornerPoly(as, acc_a, x) ≤ hornerPoly(bs, acc_b, x)`. -/
 theorem hornerPoly_mono_coeffs (as bs : List R) (acc_a acc_b xv : R)
@@ -250,6 +258,7 @@ The full derivation composes:
 3. Monotonicity: bound `hornerPoly(|errors|, 0, |x|)` using per-step bounds
 4. Result: `|final - exact| ≤ hornerPoly(bounds, 0, |x|)` -/
 
+omit [FloorRing R] in
 /-- **Horner bound from exact decomposition + per-index + monotonicity.**
 
     Given per-step error bounds `|eₖ| ≤ bₖ`:
@@ -263,7 +272,6 @@ theorem horner_bound_from_decomposition
     (trace : Horner.HornerTrace x coeffs init final)
     (bounds : List R)
     (hlen : (CompensatedHorner.stepErrors trace (R := R)).length = bounds.length)
-    (hbounds_nn : ∀ b ∈ bounds, 0 ≤ b)
     (hstep_bounds : ∀ i (hi : i < bounds.length),
       |(CompensatedHorner.stepErrors trace (R := R))[i]'(by omega)| ≤ bounds[i]) :
     |(final.toVal : R) -
@@ -294,9 +302,10 @@ theorem horner_bound_from_decomposition
       simp only [List.getElem_map]
       exact hstep_bounds i (by rw [← hlen]; simp at hi ⊢; exact hi))
 
+omit [FloatFormat] [FloorRing R] in
 /-- `acc · x^n ≤ hornerPoly(cs, acc, x)` when all inputs are nonneg. -/
 theorem hornerPoly_ge_acc_xpow (cs : List R) (acc xv : R)
-    (hacc : 0 ≤ acc) (hx : 0 ≤ xv) (hcs : ∀ c ∈ cs, 0 ≤ c) :
+    (hx : 0 ≤ xv) (hcs : ∀ c ∈ cs, 0 ≤ c) :
     acc * xv ^ cs.length ≤ hornerPoly cs acc xv := by
   have h := hornerPoly_affine cs 0 acc xv
   simp only [zero_add] at h; rw [h]
@@ -314,6 +323,7 @@ Then: `weightedErrorSum κ errors ≤ ((1+α)^n - 1) · hornerPoly(offsets, mag�
 This captures Horner (κ=|x|, α=(1+η)²-1), HornerFMA (κ=|x|, α=η),
 DotProduct (κ=1, α=(1+η)²-1), DotProductFMA (κ=1, α=η). -/
 
+omit [FloatFormat] [FloorRing R] in
 set_option maxHeartbeats 800000 in
 /-- **Generic weighted error sum bound for accumulator algorithms.**
 
@@ -377,7 +387,7 @@ theorem weightedErrorSum_le_of_relative_errors
       exact h
     -- Dominance: M * κ^n ≤ P
     have hMκn_le : M * κ ^ n ≤ P := by
-      have := hornerPoly_ge_acc_xpow cs M κ hM_nn hκ hcs_nn
+      have := hornerPoly_ge_acc_xpow cs M κ hκ hcs_nn
       rw [show cs.length = n from by omega] at this; exact this
     have hP_nn : (0 : R) ≤ P := le_trans (mul_nonneg hM_nn hκn) hMκn_le
     -- Power identity: (1+α)^{n+1} - 1 = (1+α)^n · α + ((1+α)^n - 1)
@@ -400,6 +410,7 @@ The recurrence `actual(k+1) ≤ (1+α) · (κ · actual(k) + offset(k))` follows
 from `magnitude_of_relative_error` at each step. This wrapper handles the
 monotonicity lifting internally. -/
 
+omit [FloatFormat] [FloorRing R] in
 /-- **Simplified generic weighted error sum bound.**
 
     Only requires per-step error bounds against *actual* FP magnitudes.
@@ -409,7 +420,6 @@ theorem weightedErrorSum_le_of_step_errors
     (errors offsets : List R) (actual : ℕ → R) (init : R)
     (hlen : errors.length = offsets.length)
     (hoffsets : ∀ c ∈ offsets, 0 ≤ c)
-    (hinit_nn : 0 ≤ init)
     (hinit : actual 0 ≤ init)
     (hactual_nn : ∀ k, 0 ≤ actual k)
     (herr : ∀ k (hk : k < errors.length),
@@ -435,10 +445,11 @@ theorem weightedErrorSum_le_of_step_errors
 If `|exact - fp| ≤ α * M` and `|exact| ≤ M`, then `|fp| ≤ (1+α) * M`.
 Eliminates the need for separate magnitude proofs per algorithm. -/
 
+omit [FloatFormat] [FloorRing R] in
 /-- Derive FP magnitude bound from relative error bound.
     `|fp| ≤ |exact| + |error| ≤ M + α*M = (1+α)*M`. -/
 theorem magnitude_of_relative_error (exact fp M α : R)
-    (hM : 0 ≤ M) (hexact : |exact| ≤ M) (herr : |exact - fp| ≤ α * M) (hα : 0 ≤ α) :
+    (hexact : |exact| ≤ M) (herr : |exact - fp| ≤ α * M) :
     |fp| ≤ (1 + α) * M := by
   have h := abs_sub_abs_le_abs_sub fp exact
   linarith [abs_sub_comm exact fp]
@@ -451,6 +462,7 @@ into a single theorem. Each algorithm only needs to provide:
 - Per-step error bound and magnitude recurrence (via `weightedErrorSum_le_of_relative_errors`)
 -/
 
+omit [FloatFormat] [FloorRing R] in
 /-- **Master accumulator error bound.**
 
     Given an exact decomposition and a weighted error sum bound,
@@ -519,7 +531,7 @@ theorem horner_step_magnitude
       |(acc.toVal : R)| * |x.toVal| + |coeff.toVal| :=
     le_trans (abs_add_le _ _) (by rw [abs_mul])
   have hα : (0 : R) ≤ (1 + η) ^ 2 - 1 := by nlinarith [show (0 : R) ≤ η from by positivity]
-  have hmag := magnitude_of_relative_error _ _ _ _ (by positivity) hexact herr hα
+  have hmag := magnitude_of_relative_error _ _ _ _ hexact herr
   linarith [show (1 : R) + ((1 + η) ^ 2 - 1) = (1 + η) ^ 2 from by ring]
 
 /-- Extract accumulator magnitudes from a Horner trace: `|acc_k|` at each step. -/
@@ -530,6 +542,7 @@ def hornerTraceMags [RModeExec] {x : FiniteFp} :
   | _, acc, _, .cons _ _, 0 => |(acc.toVal : R)|
   | _, _, _, .cons _ rest, n + 1 => hornerTraceMags rest n
 
+omit [FloorRing R] in
 theorem hornerTraceMags_nonneg [RModeExec] {x : FiniteFp}
     {coeffs : List FiniteFp} {acc final : FiniteFp}
     (trace : HornerTrace x coeffs acc final) (k : ℕ) :
@@ -538,6 +551,7 @@ theorem hornerTraceMags_nonneg [RModeExec] {x : FiniteFp}
   | .nil _, _ | .cons _ _, 0 => exact abs_nonneg _
   | .cons _ rest, k + 1 => exact hornerTraceMags_nonneg rest k
 
+omit [IsStrictOrderedRing R] [FloorRing R] in
 @[simp] theorem hornerTraceMags_zero [RModeExec] {x : FiniteFp}
     {coeffs : List FiniteFp} {acc final : FiniteFp}
     (trace : HornerTrace x coeffs acc final) :
@@ -616,7 +630,6 @@ theorem horner_weighted_error_bound
     |acc.toVal (R := R)|
     (by rw [CompensatedHorner.stepErrors_length]; simp)
     (fun c hc => by simp at hc; obtain ⟨_, _, rfl⟩ := hc; exact abs_nonneg _)
-    (abs_nonneg _)
     (by rw [hornerTraceMags_zero])
     (hornerTraceMags_nonneg (R := R) trace)
     (fun k hk => by
@@ -674,6 +687,7 @@ def fmaTraceMags [RModeExec] {x : FiniteFp} :
   | _, acc, _, .cons _ _, 0 => |(acc.toVal : R)|
   | _, _, _, .cons _ rest, n + 1 => fmaTraceMags rest n
 
+omit [FloorRing R] in
 theorem fmaTraceMags_nonneg [RModeExec] {x : FiniteFp}
     {coeffs : List FiniteFp} {acc final : FiniteFp}
     (trace : FMATrace x coeffs acc final) (k : ℕ) :
@@ -682,6 +696,7 @@ theorem fmaTraceMags_nonneg [RModeExec] {x : FiniteFp}
   | .nil _, _ | .cons _ _, 0 => exact abs_nonneg _
   | .cons _ rest, k + 1 => exact fmaTraceMags_nonneg rest k
 
+omit [IsStrictOrderedRing R] [FloorRing R] in
 @[simp] theorem fmaTraceMags_zero [RModeExec] {x : FiniteFp}
     {coeffs : List FiniteFp} {acc final : FiniteFp}
     (trace : FMATrace x coeffs acc final) :
@@ -697,6 +712,7 @@ def fmaHornerStepErrors [RModeExec] {x : FiniteFp} :
     ((acc.toVal : R) * x.toVal + coeff.toVal - step.next.toVal) ::
       fmaHornerStepErrors rest
 
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
 theorem fmaHornerStepErrors_length [RModeExec] {x : FiniteFp}
     {coeffs : List FiniteFp} {acc final : FiniteFp}
     (trace : FMATrace x coeffs acc final) :
@@ -705,6 +721,7 @@ theorem fmaHornerStepErrors_length [RModeExec] {x : FiniteFp}
   | .nil _ => simp [fmaHornerStepErrors]
   | .cons _ rest => simp [fmaHornerStepErrors, fmaHornerStepErrors_length rest]
 
+omit [FloorRing R] in
 /-- FMA exact decomposition: `final + hornerPoly(errors, 0, x) = hornerPoly(coeffs, init, x)`. -/
 theorem fma_horner_exact_decomposition [RModeExec] {x : FiniteFp}
     {coeffs : List FiniteFp} {acc final : FiniteFp}
@@ -791,7 +808,7 @@ theorem fma_trace_mag_recur
     have herr : |(a.toVal : R) * x.toVal + c.toVal - step.next.toVal| ≤
         η * (|x.toVal| * |(a.toVal : R)| + |c.toVal|) := by
       rw [abs_sub_comm] at hfma; linarith [mul_le_mul_of_nonneg_left hexact hη]
-    exact magnitude_of_relative_error _ _ _ _ (by positivity) hexact herr hη
+    exact magnitude_of_relative_error _ _ _ _ hexact herr
   | .cons step rest, hnr, k + 1, hk =>
     simp only [FMATrace.AllNormalRange] at hnr
     simp only [fmaTraceMags, List.getElem_cons_succ]
@@ -816,7 +833,6 @@ theorem fma_horner_weighted_error_bound
     |acc.toVal (R := R)|
     (by rw [fmaHornerStepErrors_length]; simp)
     (fun c hc => by simp at hc; obtain ⟨_, _, rfl⟩ := hc; exact abs_nonneg _)
-    (abs_nonneg _)
     (by rw [fmaTraceMags_zero])
     (fmaTraceMags_nonneg (R := R) trace)
     (fun k hk => by
@@ -872,6 +888,7 @@ def dpStepErrors [RModeExec] :
   | _, _, _, .cons (acc := acc) (x := x) (y := y) step rest =>
     ((acc.toVal : R) + x.toVal * y.toVal - step.next.toVal) :: dpStepErrors rest
 
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
 theorem dpStepErrors_length [RModeExec]
     {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
     (trace : DPTrace pairs acc final) :
@@ -880,6 +897,7 @@ theorem dpStepErrors_length [RModeExec]
   | nil => simp [dpStepErrors]
   | cons _ _ ih => simp [dpStepErrors, ih]
 
+omit [FloorRing R] in
 /-- Exact decomposition for dot product: `final + hornerPoly(errors, 0, 1) = init + Σ(xᵢyᵢ)`. -/
 theorem dp_exact_decomposition [RModeExec]
     {pairs : List (FiniteFp × FiniteFp)} {init final : FiniteFp}
@@ -943,7 +961,7 @@ theorem dp_step_magnitude
   have hexact : |(acc.toVal : R) + x.toVal * y.toVal| ≤
       |(acc.toVal : R)| + |x.toVal * y.toVal| := abs_add_le _ _
   have hα : (0 : R) ≤ (1 + η) ^ 2 - 1 := by nlinarith [show (0 : R) ≤ η from by positivity]
-  have hmag := magnitude_of_relative_error _ _ _ _ (by positivity) hexact herr hα
+  have hmag := magnitude_of_relative_error _ _ _ _ hexact herr
   linarith [show (1 : R) + ((1 + η) ^ 2 - 1) = (1 + η) ^ 2 from by ring]
 
 /-- Extract accumulator magnitudes from a dot product trace. -/
@@ -954,6 +972,7 @@ def dpTraceMags [RModeExec] :
   | _, acc, _, .cons _ _, 0 => |(acc.toVal : R)|
   | _, _, _, .cons _ rest, n + 1 => dpTraceMags rest n
 
+omit [FloorRing R] in
 theorem dpTraceMags_nonneg [RModeExec]
     {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
     (trace : DPTrace pairs acc final) (k : ℕ) :
@@ -962,6 +981,7 @@ theorem dpTraceMags_nonneg [RModeExec]
   | .nil _, _ | .cons _ _, 0 => exact abs_nonneg _
   | .cons _ rest, k + 1 => exact dpTraceMags_nonneg rest k
 
+omit [IsStrictOrderedRing R] [FloorRing R] in
 @[simp] theorem dpTraceMags_zero [RModeExec]
     {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
     (trace : DPTrace pairs acc final) :
@@ -1037,7 +1057,6 @@ theorem dp_weighted_error_bound
     |acc.toVal (R := R)|
     (by rw [dpStepErrors_length]; simp)
     (fun c hc => by simp only [List.mem_map] at hc; obtain ⟨_, _, rfl⟩ := hc; positivity)
-    (abs_nonneg _)
     (by rw [dpTraceMags_zero])
     (dpTraceMags_nonneg (R := R) trace)
     (fun k hk => by
@@ -1268,6 +1287,7 @@ def fmaDPStepErrors [RModeExec] :
   | _, _, _, .cons (acc := acc) (x := x) (y := y) step rest =>
     ((acc.toVal : R) + x.toVal * y.toVal - step.next.toVal) :: fmaDPStepErrors rest
 
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
 theorem fmaDPStepErrors_length [RModeExec]
     {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
     (trace : FMADPTrace pairs acc final) :
@@ -1276,6 +1296,7 @@ theorem fmaDPStepErrors_length [RModeExec]
   | nil => simp [fmaDPStepErrors]
   | cons _ _ ih => simp [fmaDPStepErrors, ih]
 
+omit [FloorRing R] in
 /-- Exact decomposition for FMA dot product. -/
 theorem fma_dp_exact_decomposition [RModeExec]
     {pairs : List (FiniteFp × FiniteFp)} {init final : FiniteFp}
@@ -1329,7 +1350,7 @@ theorem fma_dp_step_magnitude
   have hexact : |(acc.toVal : R) + x.toVal * y.toVal| ≤
       |(acc.toVal : R)| + |x.toVal * y.toVal| := abs_add_le _ _
   have hα : (0 : R) ≤ η := by positivity
-  have hmag := magnitude_of_relative_error _ _ _ _ (by positivity) hexact herr hα
+  have hmag := magnitude_of_relative_error _ _ _ _ hexact herr
   linarith
 
 /-- Extract accumulator magnitudes from an FMA dot product trace. -/
@@ -1340,6 +1361,7 @@ def fmaDPTraceMags [RModeExec] :
   | _, acc, _, .cons _ _, 0 => |(acc.toVal : R)|
   | _, _, _, .cons _ rest, n + 1 => fmaDPTraceMags rest n
 
+omit [FloorRing R] in
 theorem fmaDPTraceMags_nonneg [RModeExec]
     {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
     (trace : FMADPTrace pairs acc final) (k : ℕ) :
@@ -1348,6 +1370,7 @@ theorem fmaDPTraceMags_nonneg [RModeExec]
   | .nil _, _ | .cons _ _, 0 => exact abs_nonneg _
   | .cons _ rest, k + 1 => exact fmaDPTraceMags_nonneg rest k
 
+omit [IsStrictOrderedRing R] [FloorRing R] in
 @[simp] theorem fmaDPTraceMags_zero [RModeExec]
     {pairs : List (FiniteFp × FiniteFp)} {acc final : FiniteFp}
     (trace : FMADPTrace pairs acc final) :
@@ -1420,7 +1443,6 @@ theorem fma_dp_weighted_error_bound
     |acc.toVal (R := R)|
     (by rw [fmaDPStepErrors_length]; simp)
     (fun c hc => by simp only [List.mem_map] at hc; obtain ⟨_, _, rfl⟩ := hc; positivity)
-    (abs_nonneg _)
     (by rw [fmaDPTraceMags_zero])
     (fmaDPTraceMags_nonneg (R := R) trace)
     (fun k hk => by

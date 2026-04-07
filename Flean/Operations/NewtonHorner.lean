@@ -246,6 +246,7 @@ then `|x - p(x)/p'(x) - r| ≤ (L + M) · |x - r|² / |p'(x)|`.
 The hypotheses are abstract (Taylor remainder bound + derivative Lipschitz),
 not derived from `hornerPoly`, making the theorem reusable for any function. -/
 
+omit [FloatFormat] [FloorRing R] in
 /-- **Exact Newton quadratic convergence.**
 
     If `p(r) = 0` and we have:
@@ -256,9 +257,9 @@ not derived from `hornerPoly`, making the theorem reusable for any function. -/
 theorem exact_newton_quadratic
     {p p' : R → R} {r x : R}
     (hp'x_ne : p' x ≠ 0)
-    {M : R} (hM : 0 ≤ M)
+    {M : R}
     (hTaylor : |p x - p' r * (x - r)| ≤ M * |x - r| ^ 2)
-    {L : R} (hL : 0 ≤ L)
+    {L : R}
     (hLip : |p' x - p' r| ≤ L * |x - r|) :
     |x - p x / p' x - r| ≤ (L + M) * |x - r| ^ 2 / |p' x| := by
   -- Rewrite: x - p(x)/p'(x) - r = ((x-r)·p'(x) - p(x)) / p'(x)
@@ -289,6 +290,7 @@ and each FP step has perturbation `|x' - N(x)| ≤ δ`, then:
 1. One step: `|x' - r| ≤ C·|x-r|² + δ`
 2. Ball invariance: if `C·ρ² + δ ≤ ρ` then `|x-r| ≤ ρ → |x'-r| ≤ ρ` -/
 
+omit [FloatFormat] [FloorRing R] in
 /-- **One-step contraction for perturbed Newton.**
     Quadratic convergence plus bounded perturbation. -/
 theorem perturbed_newton_one_step
@@ -301,11 +303,12 @@ theorem perturbed_newton_one_step
     _ ≤ δ + C * |x - r| ^ 2 := add_le_add hpert hquad
     _ = C * |x - r| ^ 2 + δ := by ring
 
+omit [FloatFormat] [FloorRing R] in
 /-- **Perturbed Newton stays in a ball.**
     If `|x - r| ≤ ρ` and `C·ρ² + δ ≤ ρ`, then `|x' - r| ≤ ρ`. -/
 theorem perturbed_newton_ball
     {N : R → R} {r x x' : R} {C δ ρ : R}
-    (hC : 0 ≤ C) (hδ : 0 ≤ δ) (hρ : 0 ≤ ρ)
+    (hC : 0 ≤ C) (_hδ : 0 ≤ δ) (hρ : 0 ≤ ρ)
     (hquad : |N x - r| ≤ C * |x - r| ^ 2)
     (hpert : |x' - N x| ≤ δ)
     (hin : |x - r| ≤ ρ)
@@ -318,6 +321,7 @@ theorem perturbed_newton_ball
         nlinarith [sq_abs (x - r), sq_abs ρ]
     _ ≤ ρ := hball
 
+omit [FloatFormat] [FloorRing R] in
 /-- **Multi-step ball invariance for perturbed Newton.**
     All iterates of a perturbed Newton sequence stay in the ball of radius `ρ`. -/
 theorem perturbed_newton_n_steps
@@ -435,6 +439,7 @@ theorem newton_step_perturbation
 The value component of `jetHornerExact` equals `hornerPoly` (up to the
 commutativity `x * v = v * x` in the accumulator update). -/
 
+omit [FloatFormat] [LinearOrder R] [IsStrictOrderedRing R] in
 /-- Jet Horner value = standard Horner polynomial. -/
 theorem jetHornerExact_fst_eq_hornerPoly (cs : List R) (init x : R) :
     (jetHornerExact cs init 0 x).1 = hornerPoly cs init x := by
@@ -616,11 +621,11 @@ def jetHornerL1Gauge : Gauge (R × R) R where
   zero := by simp
   symmetric := fun (v, d) => by simp [abs_neg]
   triangle := fun (v₁, d₁) (v₂, d₂) => by
-    simp only [Prod.add_def]
     calc |v₁ + v₂| + |d₁ + d₂|
         ≤ (|v₁| + |v₂|) + (|d₁| + |d₂|) := by linarith [abs_add_le v₁ v₂, abs_add_le d₁ d₂]
       _ = (|v₁| + |d₁|) + (|v₂| + |d₂|) := by ring
 
+omit [FloatFormat] [FloorRing R] in
 /-- `jetHornerL x` contracts under the L1 gauge with rate `|x| + 1`. -/
 theorem jetHornerL1Gauge_contraction (x_v : R) (p : R × R) :
     (jetHornerL1Gauge (R := R)).val (jetHornerL x_v p) ≤
@@ -650,7 +655,7 @@ theorem jetHorner_deriv_error_bound
     [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
     {x init d_init : FiniteFp} {coeffs : List FiniteFp} {v_final d_final : FiniteFp}
     (trace : JetHornerTrace x coeffs init d_init v_final d_final)
-    (hnr : trace.AllNormalRange (R := R)) :
+    (_hnr : trace.AllNormalRange (R := R)) :
     |(d_final.toVal : R) -
       (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
         (init.toVal) (d_init.toVal) (x.toVal)).2| ≤
@@ -676,7 +681,7 @@ theorem jetHorner_deriv_error_bound
     (jetHornerL_additive (x.toVal : R))
     (jetHornerL1Gauge (R := R)) (|x.toVal (R := R)| + 1)
     (by linarith [abs_nonneg (x.toVal : R)])
-    (jetHornerL1Gauge_contraction (R := R) (x.toVal : R))
+    (jetHornerL1Gauge_contraction (x.toVal : R))
     errors
   calc |fold.2|
       ≤ (jetHornerL1Gauge (R := R)).val fold := hsnd_le
@@ -686,6 +691,7 @@ theorem jetHorner_deriv_error_bound
 
 Pure algebra: `|a/b - c/d| ≤ (|a-c|·|d| + |c|·|b-d|) / (|b|·|d|)` for b,d ≠ 0. -/
 
+omit [FloatFormat] [FloorRing R] in
 /-- **Quotient perturbation bound.**
     If `b ≠ 0` and `d ≠ 0`, then
     `|a/b - c/d| ≤ (|a - c| · |d| + |c| · |b - d|) / (|b| · |d|)`. -/
@@ -709,6 +715,7 @@ Newton perturbation → perturbed Newton convergence.
 The capstone states: if the polynomial has a simple root and the initial
 approximation is close enough, FP Newton converges to an O(η)-ball. -/
 
+omit [FloorRing R] in
 /-- **Generic Newton perturbation from evaluation errors.**
 
     Given evaluation errors `|v̂ - p(x)| ≤ δ_v` and `|d̂ - p'(x)| ≤ δ_d`,

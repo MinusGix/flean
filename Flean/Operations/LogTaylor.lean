@@ -91,7 +91,7 @@ theorem taylorLogQ_go_cast_eq (t : ℚ) (fuel k : ℕ) (term acc : ℚ)
         (-1 : ℝ) ^ j * (↑t : ℝ) ^ (j + 1) / ((j : ℝ) + 1) := by
   induction fuel generalizing k term acc with
   | zero =>
-    simp [taylorLogQ.go, Finset.Ico_self]
+    simp [taylorLogQ.go]
   | succ n ih =>
     simp only [taylorLogQ.go]
     have hk2 : (k : ℝ) + 2 ≠ 0 := by positivity
@@ -104,10 +104,10 @@ theorem taylorLogQ_go_cast_eq (t : ℚ) (fuel k : ℕ) (term acc : ℚ)
     push_cast
     rw [show k + 1 + 1 + n = k + 1 + (n + 1) from by omega]
     rw [show Finset.Ico (k + 1 + 1) (k + 1 + (n + 1)) =
-        Finset.Ico (k + 2) (k + 2 + n) from by congr 1 <;> omega]
+        Finset.Ico (k + 2) (k + 2 + n) from by congr 1; omega]
     have hIco : Finset.Ico (k + 1) (k + 1 + (n + 1)) =
         {k + 1} ∪ Finset.Ico (k + 2) (k + 2 + n) := by
-      ext x; simp [Finset.mem_Ico, Finset.mem_union, Finset.mem_singleton]; omega
+      ext x; simp [Finset.mem_Ico]; omega
     rw [hIco]
     have hdisj : Disjoint ({k + 1} : Finset ℕ) (Finset.Ico (k + 2) (k + 2 + n)) := by
       rw [Finset.disjoint_left]; intro x hx hx2
@@ -135,7 +135,7 @@ theorem taylorLogQ_cast_eq_sum (t : ℚ) (n : ℕ) :
     rw [show 0 + 1 + (n - 1) = n from by omega]
     -- acc = t = the k=0 term, plus sum from k=1 to n-1
     rw [show Finset.range n = {0} ∪ Finset.Ico 1 n from by
-      ext x; simp [Finset.mem_range, Finset.mem_union, Finset.mem_singleton, Finset.mem_Ico]
+      ext x; simp [Finset.mem_range, Finset.mem_Ico]
       omega]
     rw [Finset.sum_union (by
       rw [Finset.disjoint_left]; intro x hx hx2
@@ -165,7 +165,7 @@ theorem hasSum_log_taylor (t : ℚ) (ht : 0 ≤ t) (ht1 : (t : ℝ) < 1) :
   have h := Real.hasSum_pow_div_log_of_abs_lt_one htabs
   -- h : HasSum (fun n => (-t)^(n+1) / (n+1)) (-log(1-(-t))) = (-log(1+t))
   -- We want: HasSum (fun n => (-1)^n * t^(n+1) / (n+1)) (log(1+t))
-  simp only [neg_neg, ← neg_pow] at h
+  simp at h
   convert h.neg using 1
   · ext k; ring
   · simp
@@ -226,12 +226,9 @@ theorem logLowerBound_mono (t : ℚ) (ht : 0 ≤ t) (ht1 : (t : ℝ) ≤ 1) (M N
           -- Adding pair: (-1)^{2(M+k)} * a + (-1)^{2(M+k)+1} * a' = a - a' ≥ 0
           have h_even : (-1 : ℝ) ^ (2 * (M + k)) = 1 := by simp
           have h_odd : (-1 : ℝ) ^ (2 * (M + k) + 1) = -1 := by simp [pow_succ]
-          simp only [h_even, h_odd, one_mul, neg_one_mul, neg_div]
+          simp only [h_even, h_odd, one_mul, neg_one_mul]
           have hanti := logTerms_antitone t ht ht1
             (show 2 * (M + k) ≤ 2 * (M + k) + 1 by omega)
-          simp only [show (2 * (M + k) + 1 : ℕ) + 1 = 2 * (M + k) + 1 + 1 from by omega,
-                     show ((2 * (M + k) + 1 : ℕ) : ℝ) + 1 = ↑(2 * (M + k) + 1) + 1 from by push_cast; ring,
-                     show ((2 * (M + k) : ℕ) : ℝ) + 1 = ↑(2 * (M + k)) + 1 from by push_cast; ring] at hanti
           linarith
 
 /-- `logLowerBound t N > 0` for `0 < t < 1` and `N ≥ 1`.
@@ -265,7 +262,4 @@ theorem logLowerBound_nonneg (t : ℚ) (ht : 0 ≤ t) (ht1 : (t : ℝ) < 1) (N :
     simp only [mul_div_assoc, h2N_even, h2N1_odd, one_mul, neg_one_mul, neg_div] at ih ⊢
     have hanti := logTerms_antitone t ht ht1.le (show 2 * N ≤ 2 * N + 1 by omega)
     -- hanti : t^(2N+2)/(2N+2) ≤ t^(2N+1)/(2N+1)
-    simp only [show (2 * N + 1 : ℕ) + 1 = 2 * N + 1 + 1 from by omega,
-               show ((2 * N + 1 : ℕ) : ℝ) + 1 = ↑(2 * N + 1) + 1 from by push_cast; ring,
-               show ((2 * N : ℕ) : ℝ) + 1 = ↑(2 * N) + 1 from by push_cast; ring] at hanti
     linarith

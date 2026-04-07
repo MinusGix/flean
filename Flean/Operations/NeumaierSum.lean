@@ -79,6 +79,7 @@ def stepRho [RModeExec] (st : NState) (x : FiniteFp)
     (step : NStepWitness (R := R) st x) : R :=
   (step.comp'.toVal : R) - (st.comp.toVal + step.delta.toVal)
 
+omit [LinearOrder R] [IsStrictOrderedRing R] in
 /-- **Corrected sum identity**: `σ' = σ + x + ρ` where `ρ` is the comp rounding error. -/
 theorem neumaier_step_sigma_eq [RModeExec] (st : NState) (x : FiniteFp)
     (step : NStepWitness (R := R) st x) :
@@ -136,6 +137,7 @@ def traceResidual [RModeExec] :
   | _, _, _, .cons step rest =>
     stepRho (R := R) _ _ step + traceResidual rest
 
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
 /-- **Telescoping identity**: corrected sum = initial + Σxᵢ + Σρᵢ. -/
 theorem neumaier_trace_sigma_eq [RModeExec]
     {xs : List FiniteFp} {init final : NState}
@@ -216,12 +218,13 @@ def traceAddMag [RModeExec] :
   | _, _, _, .cons (st := st) (x := x) _ rest =>
     |(st.sum.toVal : R) + x.toVal| + traceAddMag rest
 
+omit [FloorRing R] in
 /-- Bound `traceAddMag` via an external magnitude hypothesis `M`. -/
 theorem traceAddMag_le_mul_length [RModeExec]
     {xs : List FiniteFp} {init final : NState}
     (trace : NTrace (R := R) xs init final)
     (M : R)
-    (hM : ∀ (st : NState) (x : FiniteFp) (step : NStepWitness (R := R) st x),
+    (hM : ∀ (st : NState) (x : FiniteFp) (_step : NStepWitness (R := R) st x),
       |(st.sum.toVal : R) + x.toVal| ≤ M) :
     traceAddMag (R := R) trace ≤ M * (xs.length : R) := by
   induction trace with
@@ -289,7 +292,7 @@ theorem delta_exact_branch_A
     [RModeConj R] [RModeIdem R] [RModeMono R]
     (sum x t : FiniteFp)
     (ht : sum + x = Fp.finite t)
-    (hsame : sum.s = x.s) (hsum_nz : 0 < sum.m) (hx_nz : 0 < x.m)
+    (hsame : sum.s = x.s) (hsum_nz : 0 < sum.m)
     (hge : FiniteFp.toVal_mag x (R := R) ≤ FiniteFp.toVal_mag sum)
     (hne : (sum.toVal : R) + x.toVal ≠ 0)
     (w : FiniteFp) (hw : sum - t = Fp.finite w)
@@ -322,7 +325,7 @@ theorem delta_exact_branch_B
     [RModeConj R] [RModeIdem R] [RModeMono R]
     (sum x t : FiniteFp)
     (ht : sum + x = Fp.finite t)
-    (hsame : sum.s = x.s) (hsum_nz : 0 < sum.m) (hx_nz : 0 < x.m)
+    (hsame : sum.s = x.s) (hx_nz : 0 < x.m)
     (hgt : FiniteFp.toVal_mag sum (R := R) ≤ FiniteFp.toVal_mag x)
     (hne : (sum.toVal : R) + x.toVal ≠ 0)
     (w : FiniteFp) (hw : x - t = Fp.finite w)
@@ -362,8 +365,8 @@ theorem comp_growth [RModeExec]
     (trace : NTrace (R := R) xs init final)
     (hnr : ∀ (st : NState) (x : FiniteFp) (step : NStepWitness (R := R) st x),
       NStepNormalRange (R := R) st x step)
-    (S : R) (hS : 0 ≤ S)
-    (hM : ∀ (st : NState) (x : FiniteFp) (step : NStepWitness (R := R) st x),
+    (S : R)
+    (hM : ∀ (st : NState) (x : FiniteFp) (_step : NStepWitness (R := R) st x),
       |(st.sum.toVal : R) + x.toVal| ≤ S) :
     |final.comp.toVal (R := R)| ≤
       (1 + η) ^ xs.length * |init.comp.toVal (R := R)| +
@@ -428,7 +431,7 @@ private theorem traceCompDeltaSum_bound_gen [RModeExec]
     (hnr : ∀ (st : NState) (x : FiniteFp) (step : NStepWitness (R := R) st x),
       NStepNormalRange (R := R) st x step)
     (S : R) (hS : 0 ≤ S)
-    (hM : ∀ (st : NState) (x : FiniteFp) (step : NStepWitness (R := R) st x),
+    (hM : ∀ (st : NState) (x : FiniteFp) (_step : NStepWitness (R := R) st x),
       |(st.sum.toVal : R) + x.toVal| ≤ S) :
     traceCompDeltaSum (R := R) trace ≤
       (xs.length : R) * (1 + η) ^ xs.length * |init.comp.toVal (R := R)| +
@@ -603,7 +606,7 @@ private theorem traceCompDeltaSum_bound [RModeExec]
     (hnr : ∀ (st : NState) (x : FiniteFp) (step : NStepWitness (R := R) st x),
       NStepNormalRange (R := R) st x step)
     (S : R) (hS : 0 ≤ S)
-    (hM : ∀ (st : NState) (x : FiniteFp) (step : NStepWitness (R := R) st x),
+    (hM : ∀ (st : NState) (x : FiniteFp) (_step : NStepWitness (R := R) st x),
       |(st.sum.toVal : R) + x.toVal| ≤ S)
     (hinit_comp : init.comp.toVal (R := R) = 0) :
     traceCompDeltaSum (R := R) trace ≤
@@ -640,7 +643,7 @@ theorem neumaier_concrete_bound [RModeExec]
     (hnr : ∀ (st : NState) (x : FiniteFp) (step : NStepWitness (R := R) st x),
       NStepNormalRange (R := R) st x step)
     (S : R) (hS : 0 ≤ S)
-    (hM : ∀ (st : NState) (x : FiniteFp) (step : NStepWitness (R := R) st x),
+    (hM : ∀ (st : NState) (x : FiniteFp) (_step : NStepWitness (R := R) st x),
       |(st.sum.toVal : R) + x.toVal| ≤ S) :
     |final.sigma (R := R) - (xs.map (fun x => x.toVal (R := R))).sum| ≤
       (xs.length : R) * η * ((1 + η) ^ (xs.length + 1) - 1) * S := by

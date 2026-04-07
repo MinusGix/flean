@@ -771,8 +771,7 @@ theorem mixed_round_le_a (a b s_fp : FiniteFp)
 /-- Nonzero-subtraction mixed-sign positive-sum implies strict `s < a`. -/
 theorem mixed_pos_round_lt_a_of_sub_nonzero (a b s_fp : FiniteFp)
     (ha : a.s = false) (hb : b.s = true)
-    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
-    (hsum_pos : (0 : R) < (a.toVal : R) + b.toVal)
+    (hb_nz : 0 < b.m)
     [RMode R] [RModeNearest R]
     (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s_fp)
     (hsa_ne : (s_fp.toVal (R := R) : R) - a.toVal ≠ 0) :

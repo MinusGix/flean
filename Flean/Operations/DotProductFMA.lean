@@ -167,7 +167,7 @@ theorem fma_dp_error_bound_gamma
       gamma_n (R := R) pairs.length *
         (pairs.map (fun p => |p.1.toVal (R := R) * p.2.toVal|)).sum := by
   have h1 := fma_dp_error_bound trace hinit hnr
-  have h2 := pow_sub_one_le_gamma (R := R) pairs.length (by push_cast; exact hsmall)
+  have h2 := pow_sub_one_le_gamma (R := R) pairs.length (by exact hsmall)
   have habs_nn : (0 : R) ≤ (pairs.map (fun p => |p.1.toVal (R := R) * p.2.toVal|)).sum :=
     List.sum_nonneg (fun z hz => by
       simp only [List.mem_map] at hz; obtain ⟨_, _, rfl⟩ := hz; exact abs_nonneg _)

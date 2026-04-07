@@ -31,6 +31,7 @@ variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
 /-- The quadratic form preserved by Clenshaw's linear map. -/
 def Q (w a b : R) : R := a ^ 2 - w * a * b + b ^ 2
 
+omit [LinearOrder R] [IsStrictOrderedRing R] in
 /-- **Q-invariance**: the Clenshaw step preserves Q exactly.
 
     `Q(w·a - b, a) = Q(a, b)`
@@ -40,6 +41,7 @@ theorem Q_step_invariant (w a b : R) :
     Q w (w * a - b) a = Q w a b := by
   unfold Q; ring
 
+omit [LinearOrder R] [IsStrictOrderedRing R] in
 /-- **Q-invariance for propagation**: after n steps, Q is preserved.
 
     `Q(clenshawProp n ea eb w) = Q(ea, eb)` -/
@@ -103,6 +105,7 @@ theorem prop_fst_sq_bound (n : ℕ) (ea eb w : R) (hw : |w| < 2) :
   have h := prop_sq_bound n ea eb w hw
   linarith [sq_nonneg (clenshawProp n ea eb w).2]
 
+omit [LinearOrder R] [IsStrictOrderedRing R] in
 /-- **Q value for zero-perturbation in second component**: `Q(ea, 0) = ea²`. -/
 theorem Q_zero_snd (w ea : R) : Q w ea 0 = ea ^ 2 := by
   unfold Q; ring

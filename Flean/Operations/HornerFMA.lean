@@ -248,7 +248,7 @@ theorem fma_horner_error_bound_gamma
         Horner.hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|))
           |init.toVal (R := R)| |x.toVal (R := R)| := by
   have h1 := fma_horner_error_bound trace hnr
-  have h2 := pow_sub_one_le_gamma (R := R) coeffs.length (by push_cast; exact hsmall)
+  have h2 := pow_sub_one_le_gamma (R := R) coeffs.length (by exact hsmall)
   have hpoly_nn := Horner.hornerPoly_nonneg
     (coeffs.map (fun c => |c.toVal (R := R)|)) |init.toVal (R := R)| |x.toVal (R := R)|
     (abs_nonneg _) (abs_nonneg _) (fun c hc => by

@@ -469,7 +469,7 @@ theorem toVal_isInt {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R
   · -- s = true (negative)
     have : (f.toVal : R) = -((f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1)) := by
       simp only [FiniteFp.toVal, FiniteFp.sign', hs, FloatFormat.radix_val_eq_two,
-        Bool.true_eq, ↓reduceIte]
+        ↓reduceIte]
       ring
     rw [this]
     exact ⟨-(f.m * 2 ^ (f.e - FloatFormat.prec + 1).toNat), by

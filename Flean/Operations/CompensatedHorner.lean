@@ -41,6 +41,7 @@ def stepErrors [RModeExec] {x : FiniteFp} :
     let e := (acc.toVal (R := R)) * x.toVal + coeff.toVal - step.next.toVal
     e :: stepErrors rest
 
+omit [LinearOrder R] [IsStrictOrderedRing R] in
 /-- The step errors list has the same length as the coefficient list. -/
 theorem stepErrors_length [RModeExec] {x : FiniteFp}
     {coeffs : List FiniteFp} {acc final : FiniteFp}
@@ -52,6 +53,7 @@ theorem stepErrors_length [RModeExec] {x : FiniteFp}
 
 /-! ## Exact Decomposition -/
 
+omit [FloorRing R] in
 /-- **Exact decomposition theorem for Horner evaluation.**
 
     The computed result `sₙ` plus the error polynomial equals the exact value:

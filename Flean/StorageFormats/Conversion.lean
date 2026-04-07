@@ -346,8 +346,8 @@ theorem minPos_isFinite_E2M1 : (minPos E2M1).isFinite := by decide
 theorem one_toVal_E4M3 {R : Type*} [Field R] [NeZero (2 : R)] :
     (one E4M3).toVal = (1 : R) := by
   simp only [toVal, signVal, effectiveSignificand, unbiasedExp, isExpZero,
-    one_sign_E4M3, one_exp_E4M3, one_man_E4M3, ↓reduceIte]
-  simp only [E4M3]; push_cast; simp only [one_mul, Nat.add_zero]
+    one_sign_E4M3, one_exp_E4M3, one_man_E4M3]
+  simp only [E4M3]; push_cast; simp only [one_mul]
   -- Goal: 8 * 2^(-3) = 1
   rw [show (8 : R) = 2 ^ 3 from by norm_num]; rw [show (-3 : ℤ) = -(3 : ℤ) from by norm_num]
   rw [← zpow_natCast (2 : R) 3, ← zpow_add₀ (two_ne_zero' R)]; simp
@@ -355,8 +355,8 @@ theorem one_toVal_E4M3 {R : Type*} [Field R] [NeZero (2 : R)] :
 theorem one_toVal_E5M2 {R : Type*} [Field R] [NeZero (2 : R)] :
     (one E5M2).toVal = (1 : R) := by
   simp only [toVal, signVal, effectiveSignificand, unbiasedExp, isExpZero,
-    one_sign_E5M2, one_exp_E5M2, one_man_E5M2, ↓reduceIte]
-  simp only [E5M2]; push_cast; simp only [one_mul, Nat.add_zero]
+    one_sign_E5M2, one_exp_E5M2, one_man_E5M2]
+  simp only [E5M2]; push_cast; simp only [one_mul]
   -- Goal: 4 * 2^(-2) = 1
   rw [show (4 : R) = 2 ^ 2 from by norm_num]; rw [show (-2 : ℤ) = -(2 : ℤ) from by norm_num]
   rw [← zpow_natCast (2 : R) 2, ← zpow_add₀ (two_ne_zero' R)]; simp
@@ -364,8 +364,8 @@ theorem one_toVal_E5M2 {R : Type*} [Field R] [NeZero (2 : R)] :
 theorem maxFinite_toVal_E4M3 {R : Type*} [Field R] [NeZero (2 : R)] :
     (maxFinite E4M3).toVal = (448 : R) := by
   simp only [toVal, signVal, effectiveSignificand, unbiasedExp, isExpZero,
-    maxFinite_sign_E4M3, maxFinite_exp_E4M3, maxFinite_man_E4M3, ↓reduceIte]
-  simp only [E4M3, StorageFormat.maxExpField, StorageFormat.maxManFieldAtMaxExp]
+    maxFinite_sign_E4M3, maxFinite_exp_E4M3, maxFinite_man_E4M3]
+  simp only [E4M3]
   push_cast; norm_num [zpow_natCast]
 
 theorem minPos_toVal_E4M3 {R : Type*} [Field R] :

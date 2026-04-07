@@ -527,7 +527,7 @@ theorem componentwiseRelGauge_component_bound {n : ℕ} (hn : 0 < n)
   have hle : |x' i - v i| / |v i| ≤ eps := by
     have := le_trans (Finset.le_sup' (fun j => if v j = 0 then 0
       else |x' j - v j| / |v j|) (Finset.mem_univ i)) hbound
-    simp only [componentwiseRelGauge] at this
+    simp at this
     rwa [if_neg hvi] at this
   rwa [div_le_iff₀ (abs_pos.mpr hvi)] at hle
 
@@ -770,6 +770,7 @@ noncomputable def BackwardResult.compose_scalar_weighted_sum {n : ℕ} (hn : 0 <
       (componentwiseRelGauge_component_bound hn brA.bound i hvi)
       hdelta heps_B habsvi
 
+omit [LinearOrder R] [IsStrictOrderedRing R] in
 /-- **Multiplicative eps composition**: if `ε₁ = ε_A + ε_B + ε_A·ε_B`,
     then `1 + ε₁ = (1 + ε_A)(1 + ε_B)`.
 

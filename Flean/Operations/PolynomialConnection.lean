@@ -125,11 +125,11 @@ theorem hornerListPoly_cons (c : R) (cs : List R) :
       C c * X ^ cs.length + hornerListPoly cs := by
   simp only [hornerListPoly, List.length_cons]
   rw [Fin.sum_univ_succ]
-  simp only [List.get_cons_zero, Fin.val_zero, Nat.sub_zero, add_comm]
+  simp only [List.get_cons_zero, Fin.val_zero, Nat.sub_zero]
   congr 1
   apply Finset.sum_congr rfl
   intro i _
-  simp only [List.get_cons_succ, Fin.val_succ]
+  simp only [Fin.val_succ]
   congr 2
   omega
 

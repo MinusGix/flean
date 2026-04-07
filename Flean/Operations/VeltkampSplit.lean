@@ -36,12 +36,14 @@ variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRin
 
 /-! ## Helper: extracting toVal from Fp equality -/
 
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
 private theorem toVal_of_fp_eq (x y : FiniteFp) (h : (x : Fp) = (y : Fp)) :
     x.toVal (R := R) = y.toVal := by
   have := Fp.finite.inj h; subst this; rfl
 
 /-! ## Helper: addition of zero-summing floats -/
 
+omit [FloorRing R] in
 private theorem fpAddFinite_zero_of_eq_sum [RModeExec] (a b : FiniteFp)
     (hsum : (a.toVal : R) + b.toVal = 0) :
     ∃ f : FiniteFp, a + b = f ∧ f.toVal (R := R) = 0 := by

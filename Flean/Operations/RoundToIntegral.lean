@@ -44,18 +44,23 @@ def tiesAway (x : ℚ) : ℤ :=
   else if 1 / 2 < fr then ⌈x⌉
   else if 0 ≤ x then ⌈x⌉ else ⌊x⌋
 
+omit [FloatFormat] in
 theorem truncate_of_nonneg {x : ℚ} (hx : 0 ≤ x) : truncate x = ⌊x⌋ := by
   simp [truncate, hx]
 
+omit [FloatFormat] in
 theorem truncate_of_neg {x : ℚ} (hx : x < 0) : truncate x = ⌈x⌉ := by
   simp [truncate, not_le.mpr hx]
 
+omit [FloatFormat] in
 theorem truncate_int (n : ℤ) : truncate (n : ℚ) = n := by
   simp [truncate]
 
+omit [FloatFormat] in
 theorem tiesToEven_int (n : ℤ) : tiesToEven (n : ℚ) = n := by
   simp [tiesToEven, Int.fract_intCast]
 
+omit [FloatFormat] in
 theorem tiesAway_int (n : ℤ) : tiesAway (n : ℚ) = n := by
   simp [tiesAway, Int.fract_intCast]
 

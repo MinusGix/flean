@@ -34,7 +34,6 @@ theorem split_s_sub_bv_sterbenz
   -- Link ○(a+b) to fpAddFinite
   have hs_fp : (a : Fp) + b = Fp.finite s := by
     have hcorr := fpAddFinite_correct (R := R) a b hsum_ne
-    simp only [add_finite_eq_fpAddFinite] at hcorr
     exact hcorr.trans hs
   -- s ≥ a, s ≤ 2a
   have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
@@ -89,7 +88,6 @@ theorem split_b_sub_bv_sterbenz
   have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
   have hs_fp : (a : Fp) + b = Fp.finite s := by
     have hcorr := fpAddFinite_correct (R := R) a b hsum_ne
-    simp only [add_finite_eq_fpAddFinite] at hcorr
     exact hcorr.trans hs
   have hs_ge_a := round_sum_ge_left (R := R) a b ha hb hsum_ne s hs_fp
   have hs_le_2a := round_sum_le_double (R := R) a b ha hb ha_nz hab hsum_ne s hs_fp
@@ -141,10 +139,9 @@ giving the coefficient bound needed for representability. -/
 theorem round_sum_ge_two_a
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeConj R]
     (a b s : FiniteFp)
-    (ha : a.s = false) (hb : b.s = false)
-    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (ha : a.s = false)
+    (ha_nz : 0 < a.m)
     (hab : (a.toVal : R) < b.toVal)
-    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s) :
     2 * (a.toVal : R) ≤ s.toVal := by
   have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
@@ -266,7 +263,6 @@ theorem bv_ge_half_s
       (by have := FloatFormat.exp_order; omega)
     have hdv' : (d.toVal : R) = s.toVal - a.toVal := by
       rw [hdv, FiniteFp.toVal_pos_eq s hs_s, FiniteFp.toVal_pos_eq a ha, hs_e, ha_e]
-      push_cast
       rw [show (↑(s.m - a.m) : R) = (↑s.m : R) - ↑a.m from by exact_mod_cast Nat.cast_sub (le_of_lt hsm_gt_am)]
       ring
     have hround_d := RModeIdem.round_idempotent (R := R) d (Or.inl hds)
@@ -319,7 +315,6 @@ theorem split_s_sub_bv_grid
     (ha : a.s = false) (hb : b.s = false)
     (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
     (hab : (a.toVal : R) < b.toVal)
-    (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     (hs : ○((a.toVal : R) + b.toVal) = Fp.finite s)
     (bv : FiniteFp)
     (hbv : ○((s.toVal : R) - a.toVal) = Fp.finite bv) :
@@ -331,7 +326,7 @@ theorem split_s_sub_bv_grid
   -- Establish key bounds
   have ha_pos : (0 : R) < a.toVal := FiniteFp.toVal_pos a ha ha_nz
   have hb_pos : (0 : R) < b.toVal := FiniteFp.toVal_pos b hb hb_nz
-  have hs_ge_2a := round_sum_ge_two_a (R := R) a b s ha hb ha_nz hb_nz hab hsum_ne hs
+  have hs_ge_2a := round_sum_ge_two_a (R := R) a b s ha ha_nz hab hs
   have hs_pos : (0 : R) < s.toVal := by linarith
   have hbv_ge := bv_ge_half_s (R := R) a s ha ha_nz hs_pos hs_ge_2a bv hbv
   have hbv_le := bv_le_s (R := R) a s ha_pos bv hbv
@@ -418,7 +413,6 @@ theorem split_b_sub_bv_grid
   -- Step 1: Get s as Fp.finite from correctness
   have hs_fp : (a : Fp) + b = Fp.finite s := by
     have hcorr := fpAddFinite_correct (R := R) a b hsum_ne
-    simp only [add_finite_eq_fpAddFinite] at hcorr
     exact hcorr.trans hs
   -- Step 2: s ≥ b (from monotonicity + idempotence, since a+b > b)
   have hs_ge_b : (b.toVal : R) ≤ s.toVal := by
@@ -442,7 +436,7 @@ theorem split_b_sub_bv_grid
   have hs_nz : 0 < s.m := ((FiniteFp.toVal_pos_iff (R := R)).mpr hs_pos).2
   -- Step 4: bv bounds from existing lemmas
   have hs_ge_2a : 2 * (a.toVal : R) ≤ s.toVal :=
-    round_sum_ge_two_a (R := R) a b s ha hb ha_nz hb_nz hab hsum_ne hs
+    round_sum_ge_two_a (R := R) a b s ha ha_nz hab hs
   have hbv_le_s : bv.toVal (R := R) ≤ s.toVal :=
     bv_le_s (R := R) a s ha_pos bv hbv
   have hbv_ge_half_s : s.toVal (R := R) ≤ 2 * bv.toVal :=
@@ -573,7 +567,7 @@ theorem split_s_sub_bv_pos
       f.toVal (R := R) = s.toVal - bv.toVal := by
   rcases le_or_gt (b.toVal (R := R)) a.toVal with hab | hab
   · exact split_s_sub_bv_sterbenz a b s ha hb ha_nz hb_nz hab hsum_ne hs bv hbv
-  · exact split_s_sub_bv_grid a b s ha hb ha_nz hb_nz hab hsum_ne hs bv hbv
+  · exact split_s_sub_bv_grid a b s ha hb ha_nz hb_nz hab hs bv hbv
 
 /-- Positive-case split_b_sub_bv: combines Sterbenz and grid cases. -/
 theorem split_b_sub_bv_pos

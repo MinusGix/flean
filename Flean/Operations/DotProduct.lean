@@ -61,17 +61,6 @@ def DPTrace.AllNormalRange [RModeExec] :
 
 /-! ## Error Bound -/
 
-/-- Helper: `|a + b| ≤ |a| + (1+η)|b|` when `|b - c| ≤ η|c|`. -/
-private lemma abs_add_prod_bound {a b c : R} (hη : (0 : R) ≤ η)
-    (hbc : |b - c| ≤ η * |c|) :
-    |a + b| ≤ |a| + (1 + η) * |c| := by
-  have hb : |b| ≤ (1 + η) * |c| := by
-    have := abs_sub_abs_le_abs_sub b c
-    have : |b| - |c| ≤ η * |c| := le_trans (abs_sub_abs_le_abs_sub b c) hbc
-    nlinarith [abs_nonneg c, mul_nonneg hη (abs_nonneg c)]
-  calc |a + b| ≤ |a| + |b| := abs_add_le _ _
-    _ ≤ |a| + (1 + η) * |c| := by linarith
-
 /-- **General dot product error bound** (with arbitrary initial accumulator).
 
     `|final - (init + Σxᵢyᵢ)| ≤ ((1+η)^n - 1)·|init| + ((1+η)^(n+1) - 1)·Σ|xᵢyᵢ|`

@@ -105,7 +105,7 @@ Uses Sterbenz: same-sign + Dekker ⟹ `|a| ≤ |s| ≤ 2|a|`, so `s - a` is exac
 theorem bv_exact_of_same_sign_dekker [RModeExec]
     [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeConj R]
     (a b : FiniteFp) (hsame : a.s = b.s)
-    (ha_nz : 0 < a.m) (hb_nz : 0 < b.m)
+    (ha_nz : 0 < a.m)
     (hdekker : FiniteFp.toVal_mag b (R := R) ≤ FiniteFp.toVal_mag a)
     (hsum_ne : (a.toVal : R) + b.toVal ≠ 0)
     (s : FiniteFp) (hs : a + b = (s : Fp))
@@ -118,7 +118,7 @@ theorem bv_exact_of_same_sign_dekker [RModeExec]
   -- Sterbenz gives fl(s - a) = s - a exactly
   obtain ⟨z_fp, hz_eq, hz_val⟩ := sterbenz_sub_sa_same_sign (R := R) a b
     hsame ha_nz hdekker hsum_ne s
-    (by simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe]; exact hs)
+    (by simp only [add_finite_eq_fpAddFinite]; exact hs)
   -- z_fp = bv since both equal s - a in Fp
   simp only [sub_finite_eq_fpSubFinite, sub_eq_fpSub, fpSub_coe_coe] at hbv hz_eq
   have : (bv : Fp) = (z_fp : Fp) := hbv.symm.trans hz_eq
@@ -163,10 +163,8 @@ theorem twoSum_6op_pos [RModeExec]
     have hbv_exact : bv.toVal (R := R) = s.toVal - a.toVal := by
       rw [this, hbv'_val, hsa_ne]
     -- Reconstruct hs/hbv in Fp form for twoSum_6op
-    have hs' : (a : Fp) + b = s := by
-      simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe]; exact hs
-    have hbv' : (s : Fp) - a = bv := by
-      simp only [sub_finite_eq_fpSubFinite, sub_eq_fpSub, fpSub_coe_coe]; exact hbv
+    have hs' : (a : Fp) + b = s := hs
+    have hbv' : (s : Fp) - a = bv := hbv
     exact twoSum_6op (R := R) a b s hs' bv hbv'
       (fun _ => hbv_exact) av hav br hbr ar har t ht
   · -- s.toVal ≠ a.toVal: derive round form for bv
@@ -178,10 +176,8 @@ theorem twoSum_6op_pos [RModeExec]
       hs_round bv hbv_round
     have hb_sub := split_b_sub_bv_pos (R := R) a b s ha hb ha_nz hb_nz hsum_ne
       hs_round bv hbv_round
-    have hs' : (a : Fp) + b = s := by
-      simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe]; exact hs
-    have hbv' : (s : Fp) - a = bv := by
-      simp only [sub_finite_eq_fpSubFinite, sub_eq_fpSub, fpSub_coe_coe]; exact hbv
+    have hs' : (a : Fp) + b = s := hs
+    have hbv' : (s : Fp) - a = bv := hbv
     exact twoSum_6op_of_witnesses (R := R) a b ha_nz hb_nz s hs'
       bv hbv' (fun _ => hs_sub) av hav (fun _ => hb_sub) br hbr ar har t ht
 
@@ -212,10 +208,8 @@ theorem twoSum_6op_same_sign [RModeExec]
     have : bv = bv' := by cases hbv.symm.trans hbv'_eq; rfl
     have hbv_exact : bv.toVal (R := R) = s.toVal - a.toVal := by
       rw [this, hbv'_val, hsa_ne]
-    have hs' : (a : Fp) + b = s := by
-      simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe]; exact hs
-    have hbv' : (s : Fp) - a = bv := by
-      simp only [sub_finite_eq_fpSubFinite, sub_eq_fpSub, fpSub_coe_coe]; exact hbv
+    have hs' : (a : Fp) + b = s := hs
+    have hbv' : (s : Fp) - a = bv := hbv
     exact twoSum_6op (R := R) a b s hs' bv hbv'
       (fun _ => hbv_exact) av hav br hbr ar har t ht
   · -- s.toVal ≠ a.toVal: derive round form for bv
@@ -227,10 +221,8 @@ theorem twoSum_6op_same_sign [RModeExec]
       hs_round bv hbv_round
     have hb_sub := split_b_sub_bv_same_sign (R := R) a b s hsame ha_nz hb_nz hsum_ne
       hs_round bv hbv_round
-    have hs' : (a : Fp) + b = s := by
-      simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe]; exact hs
-    have hbv' : (s : Fp) - a = bv := by
-      simp only [sub_finite_eq_fpSubFinite, sub_eq_fpSub, fpSub_coe_coe]; exact hbv
+    have hs' : (a : Fp) + b = s := hs
+    have hbv' : (s : Fp) - a = bv := hbv
     exact twoSum_6op_of_witnesses (R := R) a b ha_nz hb_nz s hs'
       bv hbv' (fun _ => hs_sub) av hav (fun _ => hb_sub) br hbr ar har t ht
 
@@ -497,7 +489,6 @@ theorem cs_err_abs_le_ulp_half [RModeExec]
     have hcancel := fpAddFinite_exact_cancel_sign st.sum step.y hisum
     have ht_eq : fpAddFinite st.sum step.y = Fp.finite step.t := by
       have := step.ht
-      simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe] at this
       exact this
     rw [hcancel] at ht_eq
     have ht_zero : step.t.toVal (R := R) = 0 :=
@@ -510,7 +501,6 @@ theorem cs_err_abs_le_ulp_half [RModeExec]
       have hcorr := fpAddFinite_correct (R := R) st.sum step.y hav_ne
       simp only [add_eq_fpAdd, fpAdd_coe_coe] at hcorr
       have := step.ht
-      simp only [add_finite_eq_fpAddFinite, add_eq_fpAdd, fpAdd_coe_coe] at this
       rw [← hcorr]; exact this
     rcases le_or_gt av 0 with hle | hpos
     · have hlt : av < 0 := lt_of_le_of_ne hle hav_ne

@@ -485,19 +485,19 @@ private theorem roundSigCore_subnormal_e_ulp
     (hprec : prec ≥ 2) (hmag : mag ≠ 0)
     (hov : (roundSigCore sign mag e_base prec min_exp max_exp shouldRoundUp).2.2 = false)
     (hm_sub : (roundSigCore sign mag e_base prec min_exp max_exp shouldRoundUp).1 < 2 ^ (prec - 1))
-    (hm_pos : (roundSigCore sign mag e_base prec min_exp max_exp shouldRoundUp).1 ≠ 0) :
+    (_hm_pos : (roundSigCore sign mag e_base prec min_exp max_exp shouldRoundUp).1 ≠ 0) :
     (roundSigCore sign mag e_base prec min_exp max_exp shouldRoundUp).2.1 =
     min_exp - ↑prec + 1 := by
   have hmag_ge : 2 ^ (Nat.log2 mag + 1 - 1) ≤ mag := Nat.log2_self_le hmag
   -- Unfold roundSigCore, reduce let-bindings
-  unfold roundSigCore at hov hm_sub hm_pos ⊢
-  simp only at hov hm_sub hm_pos ⊢
+  unfold roundSigCore at hov hm_sub ⊢
+  simp only at hov hm_sub ⊢
   -- Case split on the max (subnormal vs normal e_ulp)
   by_cases h_max : e_base + ↑(Nat.log2 mag + 1) - ↑prec ≤ min_exp - ↑prec + 1
   · -- Subnormal: e_ulp = min_exp - prec + 1
     simp only [show max (e_base + ↑(Nat.log2 mag + 1) - ↑prec) (min_exp - ↑prec + 1) =
-      min_exp - ↑prec + 1 from max_eq_right h_max] at hov hm_sub hm_pos ⊢
-    split_ifs at hov hm_sub hm_pos ⊢ <;> (try exact absurd rfl hov) <;>
+      min_exp - ↑prec + 1 from max_eq_right h_max] at hov hm_sub ⊢
+    split_ifs at hov hm_sub ⊢ <;>
       simp only [not_le, not_lt] at *
     all_goals (
       first
@@ -506,25 +506,21 @@ private theorem roundSigCore_subnormal_e_ulp
       | (have h2prec : 2 ^ prec = 2 * 2 ^ (prec - 1) := by
            conv_rhs => rw [mul_comm, ← Nat.pow_succ, Nat.succ_eq_add_one,
              Nat.sub_add_cancel (by omega : prec ≥ 1)]
-         omega)
-      | (have h2prec : 2 ^ prec = 2 * 2 ^ (prec - 1) := by
-           conv_rhs => rw [mul_comm, ← Nat.pow_succ, Nat.succ_eq_add_one,
-             Nat.sub_add_cancel (by omega : prec ≥ 1)]
-         push_cast at *; omega))
+         omega))
   · -- Normal: e_ulp = e_base + bits - prec.
     -- In this case, the result's significand ≥ 2^(prec-1), contradicting hm_sub.
     push_neg at h_max
     simp only [show max (e_base + ↑(Nat.log2 mag + 1) - ↑prec) (min_exp - ↑prec + 1) =
       e_base + ↑(Nat.log2 mag + 1) - ↑prec from max_eq_left (le_of_lt h_max)]
-      at hov hm_sub hm_pos ⊢
+      at hov hm_sub ⊢
     -- Simplify shift: e_base + bits - prec - e_base = bits - prec
     simp only [show e_base + ↑(Nat.log2 mag + 1) - ↑prec - e_base =
-      ↑(Nat.log2 mag + 1) - ↑prec from by ring] at hov hm_sub hm_pos ⊢
+      ↑(Nat.log2 mag + 1) - ↑prec from by ring] at hov hm_sub ⊢
     have h2prec : 2 ^ prec = 2 * 2 ^ (prec - 1) := by
       conv_rhs => rw [mul_comm, ← Nat.pow_succ, Nat.succ_eq_add_one,
         Nat.sub_add_cancel (by omega : prec ≥ 1)]
     have hprec1_pos : 2 ^ (prec - 1) ≥ 1 := Nat.one_le_two_pow
-    split_ifs at hov hm_sub hm_pos ⊢ <;> (try exact absurd rfl hov)
+    split_ifs at hov hm_sub ⊢
     all_goals simp only [not_le, not_lt] at *
     all_goals (
       first
@@ -561,7 +557,7 @@ private theorem roundSigCore_m_bound
     simp only [show max (e_base + ↑(Nat.log2 mag + 1) - ↑prec) (min_exp - ↑prec + 1) =
       min_exp - ↑prec + 1 from max_eq_right h_max] at hov ⊢
     have h_shift_ge : min_exp - ↑prec + 1 - e_base ≥ ↑(Nat.log2 mag + 1) - ↑prec := by omega
-    split_ifs at hov ⊢ <;> (try exact absurd rfl hov) <;>
+    split_ifs at hov ⊢ <;>
       simp only [not_le, not_lt] at *
     all_goals (
       first
@@ -579,7 +575,7 @@ private theorem roundSigCore_m_bound
     simp only [show e_base + ↑(Nat.log2 mag + 1) - ↑prec - e_base =
       ↑(Nat.log2 mag + 1) - ↑prec from by ring] at hov ⊢
     have h_shift_ge : (↑(Nat.log2 mag + 1) : ℤ) - ↑prec ≥ ↑(Nat.log2 mag + 1) - ↑prec := le_refl _
-    split_ifs at hov ⊢ <;> (try exact absurd rfl hov) <;>
+    split_ifs at hov ⊢ <;>
       simp only [not_le, not_lt] at *
     all_goals (
       first
@@ -602,7 +598,7 @@ private theorem roundSigCore_e_ulp_ge
     min_exp - ↑prec + 1 := by
   unfold roundSigCore at hov ⊢
   simp only at hov ⊢
-  split_ifs at hov ⊢ <;> (try exact absurd rfl hov) <;>
+  split_ifs at hov ⊢ <;>
     simp only [not_le, not_lt] at * <;> omega
 
 omit inst in

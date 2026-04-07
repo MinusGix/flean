@@ -78,9 +78,9 @@ theorem roundRNE_eq_policyShouldRoundUp (mag shift : ℕ) (hshift : 0 < shift) :
   set half := 2 ^ (shift - 1)
   by_cases hr0 : r = 0
   · rw [if_neg (show ¬(r > half) from by omega), if_pos (show r < half from by omega)]
-    simp only [hr0, ↓reduceIte, Bool.false_eq_true, ite_false]
+    simp only [hr0, ↓reduceIte, Bool.false_eq_true]
   · simp only [hr0, ↓reduceIte]
-    split_ifs <;> simp_all <;> omega
+    split_ifs <;> simp_all
 
 /-- The `nearestEven` policy is sign-independent. -/
 theorem policyShouldRoundUp_nearestEven_sign_indep (s₁ s₂ : Bool) (q r shift : ℕ) :

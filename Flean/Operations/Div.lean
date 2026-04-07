@@ -96,7 +96,7 @@ instance [RModeExec] : HDiv Fp Fp Fp where
     to `fpDivFinite a b` (the `HDiv FiniteFp FiniteFp Fp` instance). -/
 @[simp] theorem fpDiv_finite_finite [RModeExec] (a b : FiniteFp) (hb : b.m ≠ 0) :
     Fp.finite a / Fp.finite b = fpDivFinite a b := by
-  simp only [div_eq_fpDiv, fpDiv, hb, ↓reduceDIte, ↓reduceIte, div_finite_eq_fpDivFinite]
+  simp only [div_eq_fpDiv, fpDiv, hb, ↓reduceIte, div_finite_eq_fpDivFinite]
 
 variable [RModeExec]
 

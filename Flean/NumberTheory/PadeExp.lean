@@ -982,7 +982,7 @@ only used as a nonzero integer multiplier.
 /-- Generalization of `pade_not_both_zero`: consecutive Padé integers can't both
 satisfy `J_N · c = K_N · d` for any nonzero integer `c`. -/
 private theorem pade_not_both_zero_nat (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0)
-    (N : ℕ) (hN : 0 < N) (c : ℕ) (hc : 0 < c) (d : ℤ) :
+    (N : ℕ) (c : ℕ) (hc : 0 < c) (d : ℤ) :
     let x := (a : ℝ) / (b : ℝ)
     let D := fun n => (n.factorial : ℝ) * (b : ℝ) ^ n
     let K := fun n => D n * padeP n x
@@ -1120,7 +1120,7 @@ theorem pade_effective_delta_nat (a : ℤ) (b : ℕ) (hb : 0 < b) (ha : a ≠ 0)
   set G₁ := B₁ * (c : ℤ) - A₁ * m
   have hG_or : G₀ ≠ 0 ∨ G₁ ≠ 0 := by
     by_contra h; push_neg at h; obtain ⟨h0, h1⟩ := h
-    exact pade_not_both_zero_nat a b hb ha N₀ hN₀_pos c hc m ⟨by
+    exact pade_not_both_zero_nat a b hb ha N₀ c hc m ⟨by
       have hG₀_cast : (G₀ : ℝ) = (B₀ : ℝ) * (c : ℝ) - (A₀ : ℝ) * m := by
         simp only [G₀]; push_cast [Int.cast_natCast]; ring
       have := show (G₀ : ℝ) = 0 from by exact_mod_cast h0

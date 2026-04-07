@@ -218,12 +218,7 @@ theorem finite_pos_le_largest {R : Type*} [Field R] [LinearOrder R] [IsStrictOrd
        ≤ ((2 : R) ^ FloatFormat.prec - 1) * ((2 : R) ^ (f.e - (FloatFormat.prec : ℤ) + 1) : R) := by {
          bound_calc }
      _ ≤ ((2 : R) ^ FloatFormat.prec - 1) * ((2 : R) ^ (FloatFormat.max_exp - (FloatFormat.prec : ℤ) + 1) : R) := by {
-         bound_calc [show (0 : R) ≤ (2 : R) ^ FloatFormat.prec - 1 from by
-           simp only [sub_nonneg]
-           calc (1 : R) ≤ 4 := by norm_num
-             _ ≤ (2 : R) ^ FloatFormat.prec.toNat := FloatFormat.prec_pow_le (R := R)
-             _ = (2 : R) ^ FloatFormat.prec := by
-               rw [← zpow_natCast]; congr 1; exact FloatFormat.prec_toNat_eq.symm] }
+         bound_calc }
      _ = ((2 : R) ^ FloatFormat.prec.toNat - 1) * ((2 : R) ^ (FloatFormat.max_exp - (FloatFormat.prec : ℤ) + 1) : R) := by {
          rw [h_prec_eq] }
 

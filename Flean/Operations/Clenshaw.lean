@@ -38,6 +38,7 @@ def clenshawProp : ℕ → R → R → R → R × R
   | 0, ea, eb, _ => (ea, eb)
   | n + 1, ea, eb, w => clenshawProp n (w * ea - eb) ea w
 
+omit [FloatFormat] [LinearOrder R] [IsStrictOrderedRing R] in
 /-- **2D affine property**: perturbing the initial state by `(ea, eb)` shifts the
     final state by `clenshawProp(n, ea, eb, w)` — the perturbation propagated
     through the LINEAR part of the recurrence (no coefficients).
@@ -56,12 +57,14 @@ theorem clenshawExact_affine (cs : List R) (a b ea eb w : R) :
     rw [h1]
     exact ih _ _ _ _
 
+omit [FloatFormat] [LinearOrder R] [IsStrictOrderedRing R] in
 /-- Propagation with zero perturbation gives zero. -/
 theorem clenshawProp_zero (n : ℕ) (w : R) : clenshawProp n 0 0 w = (0, 0) := by
   induction n with
   | zero => simp [clenshawProp]
   | succ n ih => simp [clenshawProp, ih]
 
+omit [FloatFormat] [LinearOrder R] [IsStrictOrderedRing R] in
 /-- Propagation is odd: negating the perturbation negates the result. -/
 theorem clenshawProp_neg (n : ℕ) (ea eb w : R) :
     clenshawProp n (-ea) (-eb) w =
@@ -119,6 +122,7 @@ def CTrace.stepErrors [RModeExec] {w : FiniteFp} :
   | _, _, _, .cons (st := st) (coeff := coeff) step rest =>
       stepError (R := R) st w coeff step :: rest.stepErrors
 
+omit [LinearOrder R] [IsStrictOrderedRing R] in
 theorem CTrace.stepErrors_length [RModeExec] {w : FiniteFp}
     {coeffs : List FiniteFp} {init final : CState}
     (trace : CTrace w coeffs init final) :
@@ -129,6 +133,7 @@ theorem CTrace.stepErrors_length [RModeExec] {w : FiniteFp}
 
 /-! ## Exact Decomposition -/
 
+omit [FloorRing R] in
 /-- **Exact decomposition for Clenshaw** (2D version).
 
     The computed state plus the propagated errors equals the exact state:

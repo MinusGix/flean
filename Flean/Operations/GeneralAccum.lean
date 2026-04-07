@@ -207,7 +207,7 @@ theorem weightedErrorSum_le_of_uniform_step
       have hMκn_le : M * κ ^ n ≤ P := by
         have hlen_cs : cs.length = n := by rw [hn]; exact hlen_tail.symm
         rw [hP, ← hlen_cs]
-        exact hornerPoly_ge_acc_xpow cs M κ hM_nn hκ hcs_nn
+        exact hornerPoly_ge_acc_xpow cs M κ hκ hcs_nn
       have hP_nn : (0 : R) ≤ P := le_trans (mul_nonneg hM_nn hκn) hMκn_le
       have hpow_split : (1 + α) ^ (n + 1) - 1 =
           (1 + α) ^ n * α + ((1 + α) ^ n - 1) := by rw [pow_succ]; ring
@@ -228,8 +228,8 @@ theorem weightedErrorSum_le_of_general_step_max
     (hκ : 0 ≤ κ) (hα : 0 ≤ α)
     (hα_acc_le : α_acc ≤ α) (hα_off_le : α_off ≤ α)
     (hβ_acc_le : β_acc ≤ α) (hβ_off_le : β_off ≤ α)
-    (hα_acc : 0 ≤ α_acc) (hα_off : 0 ≤ α_off)
-    (hβ_acc : 0 ≤ β_acc) (hβ_off : 0 ≤ β_off)
+    (_hα_acc : 0 ≤ α_acc) (_hα_off : 0 ≤ α_off)
+    (_hβ_acc : 0 ≤ β_acc) (_hβ_off : 0 ≤ β_off)
     (errors offsets : List R) (mags : ℕ → R)
     (hlen : errors.length = offsets.length)
     (hoffsets : ∀ c ∈ offsets, 0 ≤ c)
@@ -299,6 +299,7 @@ core: `geomBound α β (m+n) = geomBound α β m · (1+β)^n + geomBound α β n
 The composition theorem works at the abstract level: given bounds on A's and B's
 weighted error sums, derive a bound on the composed error. -/
 
+omit [IsStrictOrderedRing R] in
 /-- **Weighted error sum splits over append.**
 
 `weightedErrorSum κ (A ++ B) = κ^|B| · weightedErrorSum κ A + weightedErrorSum κ B`
@@ -310,7 +311,7 @@ theorem weightedErrorSum_append (κ : R) (A B : List R) :
   induction A with
   | nil => simp [weightedErrorSum]
   | cons e es ih =>
-    simp only [List.cons_append, weightedErrorSum, List.length_append, List.length_cons]
+    simp only [List.cons_append, weightedErrorSum, List.length_append]
     rw [ih, pow_add]
     ring
 
@@ -333,6 +334,7 @@ theorem weightedErrorSum_compose'
   have := mul_le_mul_of_nonneg_left hA (pow_nonneg hκ B.length)
   linarith
 
+omit [LinearOrder R] [IsStrictOrderedRing R] in
 /-- **Composition with `geomBound` closed form** (uniform model).
 
 When both phases use the same parameters (α, κ), the composed bound
@@ -341,7 +343,7 @@ uses `geomBound_add`:
 
 This matches the intuition: A's error `geomBound α α m · P` is amplified by
 `(1+α)^n` through B's growth, plus B's own `geomBound α α n · P`. -/
-theorem geomBound_compose_uniform (α : R) (m n : ℕ) (P : R) (hP : 0 ≤ P) :
+theorem geomBound_compose_uniform (α : R) (m n : ℕ) (P : R) :
     geomBound α α (m + n) * P =
       geomBound α α m * (1 + α) ^ n * P + geomBound α α n * P := by
   rw [geomBound_add]; ring
