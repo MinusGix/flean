@@ -348,4 +348,375 @@ theorem fpSoftmaxOf_exists_finite {n : ℕ} (exps : Fin n → FiniteFp) (denom :
 
 end NoOverflow
 
+/-! ## Componentwise Error Bound
+
+The main error theorem for `fpSoftmaxOf`. Given:
+- Correct FP exp values `exps` for normal-range exp inputs,
+- A sum bound `εsum` on `|denom.toVal - Σ eb_j| ≤ εsum · Σ|eb_j|`,
+- Normal-range quotients,
+
+we bound `|(result i).toVal - softmax xs̄ i| ≤ softmaxErrorCoeff εsum · softmax xs̄ i`,
+where `xs̄ j = (xs j).toVal`.
+
+The coefficient is `(η² + 2η + δ) / (1 - δ)` with `δ = η + εsum·(1+η)`, valid when `δ < 1`.
+For small `η, εsum` this is approximately `3η + εsum`. -/
+
+section ErrorBound
+
+variable [FloatFormat] [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+  [RModeNearest ℝ] [ExpApprox] [ExpApproxSound]
+
+open Finset BigOperators
+
+omit [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ] [RModeNearest ℝ]
+  [ExpApprox] [ExpApproxSound] in
+/-- `η < 1` follows from `prec > 0`. -/
+theorem hEps_lt_one : (η : ℝ) < 1 := by
+  simp only [FloatFormat.hEps_def]
+  have hp := FloatFormat.prec_pos
+  have hneg : -(FloatFormat.prec : ℤ) < 0 := by omega
+  have h1 : (1 : ℝ) < 2 := by norm_num
+  -- 2^(negative) < 2^0 = 1
+  calc (2 : ℝ) ^ (-(FloatFormat.prec : ℤ))
+      < (2 : ℝ) ^ (0 : ℤ) := zpow_lt_zpow_right₀ h1 hneg
+    _ = 1 := zpow_zero _
+
+/-- Relative error coefficient for the FP softmax computation.
+
+`softmaxErrorCoeff εsum = (η² + 2η + δ) / (1 - δ)` where `δ = η + εsum · (1+η)`. -/
+noncomputable def softmaxErrorCoeff (εsum : ℝ) : ℝ :=
+  ((η : ℝ)^2 + 2*(η : ℝ) + ((η : ℝ) + εsum*(1+(η : ℝ)))) /
+    (1 - ((η : ℝ) + εsum*(1+(η : ℝ))))
+
+/-- Per-component exp error: `|(exps i).toVal - exp(xs_i)| ≤ η · exp(xs_i)`. -/
+theorem exps_error_of_correct {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_exp_nr : ∀ i, isNormalRange (Real.exp ((xs i).toVal : ℝ)))
+    (i : Fin n) :
+    |((exps i).toVal : ℝ) - Real.exp ((xs i).toVal : ℝ)| ≤
+      (η : ℝ) * Real.exp ((xs i).toVal : ℝ) := by
+  have hcorr : fpExpFinite (xs i) = ○(Real.exp ((xs i).toVal : ℝ)) :=
+    fpExpFinite_correct (xs i)
+  have hfe : ○(Real.exp ((xs i).toVal : ℝ)) = Fp.finite (exps i) := by
+    rw [← hcorr]; exact h_exp i
+  have h := KahanSum.standard_error_additive (R := ℝ) _ (h_exp_nr i) (exps i) hfe
+  have hexp_pos : (0 : ℝ) ≤ Real.exp ((xs i).toVal : ℝ) := le_of_lt (Real.exp_pos _)
+  rwa [abs_of_nonneg hexp_pos] at h
+
+/-- Bound on each FP exp value: `(exps i).toVal ≤ (1+η) · exp(xs_i)`. -/
+theorem exps_le_of_correct {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_exp_nr : ∀ i, isNormalRange (Real.exp ((xs i).toVal : ℝ)))
+    (i : Fin n) :
+    ((exps i).toVal : ℝ) ≤ (1 + (η : ℝ)) * Real.exp ((xs i).toVal : ℝ) := by
+  have h := exps_error_of_correct xs exps h_exp h_exp_nr i
+  have := abs_le.mp h
+  linarith [this.2]
+
+/-- Lower bound on each FP exp value: `(1-η) · exp(xs_i) ≤ (exps i).toVal`. -/
+theorem exps_ge_of_correct {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_exp_nr : ∀ i, isNormalRange (Real.exp ((xs i).toVal : ℝ)))
+    (i : Fin n) :
+    (1 - (η : ℝ)) * Real.exp ((xs i).toVal : ℝ) ≤ ((exps i).toVal : ℝ) := by
+  have h := exps_error_of_correct xs exps h_exp h_exp_nr i
+  have := abs_le.mp h
+  linarith [this.1]
+
+/-- FP exp values are nonneg when inputs give normal-range exp outputs. -/
+theorem exps_nonneg_of_correct {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_exp_nr : ∀ i, isNormalRange (Real.exp ((xs i).toVal : ℝ)))
+    (hη : (η : ℝ) < 1)
+    (i : Fin n) :
+    0 ≤ ((exps i).toVal : ℝ) := by
+  have h := exps_ge_of_correct xs exps h_exp h_exp_nr i
+  have hexp : 0 < Real.exp ((xs i).toVal : ℝ) := Real.exp_pos _
+  have h1 : (0 : ℝ) < 1 - (η : ℝ) := by linarith
+  have : (0 : ℝ) ≤ (1 - (η : ℝ)) * Real.exp ((xs i).toVal : ℝ) :=
+    mul_nonneg (le_of_lt h1) (le_of_lt hexp)
+  linarith
+
+/-- Summed bound: `|Σ (exps j).toVal - Σ exp((xs j).toVal)| ≤ η · Σ exp((xs j).toVal)`. -/
+theorem sum_exps_error {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_exp_nr : ∀ i, isNormalRange (Real.exp ((xs i).toVal : ℝ))) :
+    |∑ j, ((exps j).toVal : ℝ) - ∑ j, Real.exp ((xs j).toVal : ℝ)| ≤
+      (η : ℝ) * ∑ j, Real.exp ((xs j).toVal : ℝ) := by
+  have hperj : ∀ j, |((exps j).toVal : ℝ) - Real.exp ((xs j).toVal : ℝ)| ≤
+      (η : ℝ) * Real.exp ((xs j).toVal : ℝ) :=
+    fun j => exps_error_of_correct xs exps h_exp h_exp_nr j
+  have hsum_eq : ∑ j, ((exps j).toVal : ℝ) - ∑ j, Real.exp ((xs j).toVal : ℝ) =
+      ∑ j, (((exps j).toVal : ℝ) - Real.exp ((xs j).toVal : ℝ)) := by
+    rw [Finset.sum_sub_distrib]
+  rw [hsum_eq]
+  calc |∑ j, (((exps j).toVal : ℝ) - Real.exp ((xs j).toVal : ℝ))|
+      ≤ ∑ j, |((exps j).toVal : ℝ) - Real.exp ((xs j).toVal : ℝ)| :=
+        Finset.abs_sum_le_sum_abs _ _
+    _ ≤ ∑ j, (η : ℝ) * Real.exp ((xs j).toVal : ℝ) :=
+        Finset.sum_le_sum (fun j _ => hperj j)
+    _ = (η : ℝ) * ∑ j, Real.exp ((xs j).toVal : ℝ) :=
+        by rw [← Finset.mul_sum]
+
+/-- Sum of FP exp values is positive when inputs yield normal-range exp outputs. -/
+theorem sum_exps_pos {n : ℕ} (hn : 0 < n) (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_exp_nr : ∀ i, isNormalRange (Real.exp ((xs i).toVal : ℝ)))
+    (hη : (η : ℝ) < 1) :
+    0 < ∑ j, ((exps j).toVal : ℝ) := by
+  -- Use (1-η) Σ exp ≤ Σ exps and (1-η) Σ exp > 0
+  have hsum_exp_pos : 0 < ∑ j, Real.exp ((xs j).toVal : ℝ) := by
+    apply Finset.sum_pos
+    · intros; exact Real.exp_pos _
+    · exact Finset.univ_nonempty_iff.mpr (Fin.pos_iff_nonempty.mp hn)
+  have hbd := sum_exps_error xs exps h_exp h_exp_nr
+  have := abs_le.mp hbd
+  have h1 : 0 < 1 - (η : ℝ) := by linarith
+  nlinarith [this.1, mul_pos h1 hsum_exp_pos]
+
+/-- Sum of |(exps j).toVal| = Σ (exps j).toVal since they're nonneg. -/
+theorem sum_abs_exps_eq_sum {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_exp_nr : ∀ i, isNormalRange (Real.exp ((xs i).toVal : ℝ)))
+    (hη : (η : ℝ) < 1) :
+    ∑ j, |((exps j).toVal : ℝ)| = ∑ j, ((exps j).toVal : ℝ) := by
+  apply Finset.sum_congr rfl
+  intro j _
+  exact abs_of_nonneg (exps_nonneg_of_correct xs exps h_exp h_exp_nr hη j)
+
+/-- Denominator total error: `|denom.toVal - Σ exp((xs j).toVal)| ≤ (η + εsum(1+η)) · Σ exp(...)`. -/
+theorem denom_error_of_correct {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (denom : FiniteFp) (εsum : ℝ)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_exp_nr : ∀ i, isNormalRange (Real.exp ((xs i).toVal : ℝ)))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum)
+    (hη : (η : ℝ) < 1) :
+    |(denom.toVal : ℝ) - ∑ j, Real.exp ((xs j).toVal : ℝ)| ≤
+      ((η : ℝ) + εsum * (1 + (η : ℝ))) * ∑ j, Real.exp ((xs j).toVal : ℝ) := by
+  set S : ℝ := ∑ j, Real.exp ((xs j).toVal : ℝ) with hS_def
+  set Seb : ℝ := ∑ j, ((exps j).toVal : ℝ) with hSeb_def
+  -- Σ|eb_j| = Σ eb_j since nonneg
+  have habs_eq : ∑ j, |((exps j).toVal : ℝ)| = Seb :=
+    sum_abs_exps_eq_sum xs exps h_exp h_exp_nr hη
+  rw [habs_eq] at h_denom_close
+  -- |Seb - S| ≤ η·S
+  have hsum_err := sum_exps_error xs exps h_exp h_exp_nr
+  -- Seb ≤ (1+η)·S
+  have hsum_le : Seb ≤ (1 + (η : ℝ)) * S := by
+    have hbd := abs_le.mp hsum_err
+    linarith [hbd.2]
+  -- Triangle: |denom - S| ≤ |denom - Seb| + |Seb - S| ≤ εsum·Seb + η·S
+  --                      ≤ εsum·(1+η)S + η·S = (η + εsum(1+η))·S
+  calc |(denom.toVal : ℝ) - S|
+      = |((denom.toVal : ℝ) - Seb) + (Seb - S)| := by ring_nf
+    _ ≤ |(denom.toVal : ℝ) - Seb| + |Seb - S| := abs_add_le _ _
+    _ ≤ εsum * Seb + (η : ℝ) * S := by
+        have : |Seb - S| = |∑ j, ((exps j).toVal : ℝ) - ∑ j, Real.exp ((xs j).toVal : ℝ)| := by
+          simp [hSeb_def, hS_def]
+        rw [this]
+        linarith [h_denom_close, hsum_err]
+    _ ≤ εsum * ((1 + (η : ℝ)) * S) + (η : ℝ) * S := by
+        have : εsum * Seb ≤ εsum * ((1 + (η : ℝ)) * S) := by
+          apply mul_le_mul_of_nonneg_left hsum_le h_εsum_nn
+        linarith
+    _ = ((η : ℝ) + εsum * (1 + (η : ℝ))) * S := by ring
+
+/-- Denom is positive when the combined error `δ = η + εsum(1+η) < 1` and n ≥ 1. -/
+theorem denom_pos_of_correct {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp) (denom : FiniteFp) (εsum : ℝ)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_exp_nr : ∀ i, isNormalRange (Real.exp ((xs i).toVal : ℝ)))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_δ_lt : (η : ℝ) + εsum * (1 + (η : ℝ)) < 1) :
+    0 < (denom.toVal : ℝ) := by
+  have hη_lt : (η : ℝ) < 1 := hEps_lt_one
+  have hS_pos : 0 < ∑ j, Real.exp ((xs j).toVal : ℝ) := by
+    apply Finset.sum_pos
+    · intros; exact Real.exp_pos _
+    · exact Finset.univ_nonempty_iff.mpr (Fin.pos_iff_nonempty.mp hn)
+  have hbd := denom_error_of_correct xs exps denom εsum h_exp h_exp_nr h_denom_close h_εsum_nn hη_lt
+  have := abs_le.mp hbd
+  set δ : ℝ := (η : ℝ) + εsum * (1 + (η : ℝ)) with hδ_def
+  have h1mδ : 0 < 1 - δ := by linarith
+  -- denom.toVal ≥ (1 - δ) · S > 0
+  have : (1 - δ) * ∑ j, Real.exp ((xs j).toVal : ℝ) ≤ (denom.toVal : ℝ) := by
+    have hlo := this.1
+    linarith
+  have : 0 < (1 - δ) * ∑ j, Real.exp ((xs j).toVal : ℝ) := mul_pos h1mδ hS_pos
+  linarith
+
+/-- **Main theorem: FP softmax componentwise error bound.**
+
+Given:
+- `xs`, `exps`, `denom`, `result` satisfy the FP pipeline equations
+  (`h_exp` and `h_result`),
+- each exp output is in normal range (`h_exp_nr`),
+- denom approximates `Σ exps` with relative error `εsum`,
+- each quotient `(exps i).toVal / denom.toVal` is in normal range,
+- combined error `δ = η + εsum(1+η) < 1`,
+- at least one input (`hn : 0 < n`),
+
+then:
+`|(result i).toVal - softmax i| ≤ softmaxErrorCoeff εsum · softmax i`
+
+where `softmaxErrorCoeff εsum = (η² + 2η + δ) / (1 - δ)`. -/
+theorem fpSoftmaxOf_error_bound
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp) (denom : FiniteFp)
+    (result : Fin n → FiniteFp) (εsum : ℝ)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_exp_nr : ∀ i, isNormalRange (Real.exp ((xs i).toVal : ℝ)))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_δ_lt : (η : ℝ) + εsum * (1 + (η : ℝ)) < 1)
+    (hd_m : denom.m ≠ 0)
+    (h_quot_nr : ∀ i, isNormalRange (((exps i).toVal : ℝ) / denom.toVal))
+    (h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i))
+    (i : Fin n) :
+    |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      softmaxErrorCoeff εsum *
+        softmax (fun j => ((xs j).toVal : ℝ)) i := by
+  -- Shorthand
+  set e : Fin n → ℝ := fun j => Real.exp ((xs j).toVal : ℝ) with he_def
+  set eb : Fin n → ℝ := fun j => ((exps j).toVal : ℝ) with heb_def
+  set S : ℝ := ∑ j, e j with hS_def
+  set Sb : ℝ := (denom.toVal : ℝ) with hSb_def
+  set sig : Fin n → ℝ := fun j => e j / S with hsig_def
+  set q : ℝ := ((result i).toVal : ℝ) with hq_def
+  set δ : ℝ := (η : ℝ) + εsum * (1 + (η : ℝ)) with hδ_def
+  -- Basic facts
+  have hη_lt : (η : ℝ) < 1 := hEps_lt_one
+  have hη_nn : (0 : ℝ) ≤ η := by positivity
+  have h1mδ : 0 < 1 - δ := by linarith
+  have h1mη : 0 < 1 - (η : ℝ) := by linarith
+  have he_pos : ∀ j, 0 < e j := fun j => Real.exp_pos _
+  have he_nn : ∀ j, 0 ≤ e j := fun j => le_of_lt (he_pos j)
+  have hS_pos : 0 < S := by
+    apply Finset.sum_pos
+    · intros; exact he_pos _
+    · exact Finset.univ_nonempty_iff.mpr (Fin.pos_iff_nonempty.mp hn)
+  have hSb_pos : 0 < Sb := denom_pos_of_correct hn xs exps denom εsum h_exp h_exp_nr
+    h_denom_close h_εsum_nn h_δ_lt
+  -- Bounds on eb_j and Σeb_j
+  have heb_bd : ∀ j, |eb j - e j| ≤ (η : ℝ) * e j := by
+    intro j; exact exps_error_of_correct xs exps h_exp h_exp_nr j
+  have heb_le : ∀ j, eb j ≤ (1 + (η : ℝ)) * e j := by
+    intro j; exact exps_le_of_correct xs exps h_exp h_exp_nr j
+  have heb_nn : ∀ j, 0 ≤ eb j := by
+    intro j; exact exps_nonneg_of_correct xs exps h_exp h_exp_nr hη_lt j
+  -- Denom error
+  have hdenom_err : |Sb - S| ≤ δ * S :=
+    denom_error_of_correct xs exps denom εsum h_exp h_exp_nr h_denom_close h_εsum_nn hη_lt
+  -- Sb bounds
+  have hSb_ge : (1 - δ) * S ≤ Sb := by
+    have := abs_le.mp hdenom_err
+    linarith
+  -- Softmax of i
+  have hsigi_eq : softmax (fun j => ((xs j).toVal : ℝ)) i = sig i := by
+    simp [softmax, softmaxDenom, hsig_def, he_def, hS_def]
+  have hsigi_pos : 0 < sig i := div_pos (he_pos i) hS_pos
+  have hsigi_nn : 0 ≤ sig i := le_of_lt hsigi_pos
+  -- result i = ○(eb i / Sb)
+  have hei_nn : 0 ≤ eb i / Sb := div_nonneg (heb_nn i) (le_of_lt hSb_pos)
+  have h_fpDiv : fpDivFinite (exps i) denom = Fp.finite (result i) := h_result i
+  have h_fpDiv_eq : fpDivFinite (exps i) denom = ○(eb i / Sb) := by
+    have hq_ne : (eb i / Sb : ℝ) ≠ 0 := ne_of_gt (isNormalRange_pos _ (h_quot_nr i))
+    have h := fpDivFinite_correct (R := ℝ) (exps i) denom hd_m hq_ne
+    simp only [div_eq_fpDiv, fpDiv, hd_m, ↓reduceIte, div_finite_eq_fpDivFinite] at h
+    exact h
+  have h_round_eq : ○(eb i / Sb) = Fp.finite (result i) := h_fpDiv_eq ▸ h_fpDiv
+  -- Division error bound
+  have hq_err : |q - eb i / Sb| ≤ (η : ℝ) * (eb i / Sb) := by
+    have h := KahanSum.standard_error_additive (R := ℝ) _ (h_quot_nr i) (result i) h_round_eq
+    have habs : |eb i / Sb| = eb i / Sb := abs_of_nonneg hei_nn
+    rwa [habs] at h
+  -- Numerator/denom bounds
+  have h1η_nn : (0 : ℝ) ≤ 1 + (η : ℝ) := by linarith
+  have h1δS_pos : 0 < (1 - δ) * S := mul_pos h1mδ hS_pos
+  -- Facts about sig
+  have hsig_i : sig i = e i / S := by simp [hsig_def]
+  have hSsig : S * sig i = e i := by
+    rw [hsig_i]; field_simp
+  -- First: eb i / Sb ≤ (1+η)·e i / ((1-δ)·S) = (1+η)/(1-δ) · sig i
+  have hei_le : eb i / Sb ≤ (1 + (η : ℝ)) / (1 - δ) * sig i := by
+    have h1 : eb i / Sb ≤ (1 + (η : ℝ)) * e i / ((1 - δ) * S) := by
+      rw [div_le_div_iff₀ hSb_pos h1δS_pos]
+      nlinarith [heb_le i, hSb_ge, heb_nn i, he_nn i, mul_nonneg h1η_nn (he_nn i)]
+    have h2 : (1 + (η : ℝ)) * e i / ((1 - δ) * S) = (1 + (η : ℝ)) / (1 - δ) * sig i := by
+      rw [hsig_i]
+      field_simp
+    linarith
+  -- Division error: |q - eb i/Sb| ≤ η · (eb i/Sb) ≤ η · ((1+η)/(1-δ) · sig i)
+  have hq_div_err : |q - eb i / Sb| ≤ (η : ℝ) * ((1 + (η : ℝ)) / (1 - δ) * sig i) := by
+    calc |q - eb i / Sb| ≤ (η : ℝ) * (eb i / Sb) := hq_err
+      _ ≤ (η : ℝ) * ((1 + (η : ℝ)) / (1 - δ) * sig i) :=
+          mul_le_mul_of_nonneg_left hei_le hη_nn
+  -- Second: |eb i/Sb - sig i| ≤ (η+δ)/(1-δ) · sig i
+  -- eb i·S - e i·Sb decomposed
+  have h_num_decomp : eb i * S - e i * Sb = (eb i - e i) * S - e i * (Sb - S) := by ring
+  have h_num_bd : |eb i * S - e i * Sb| ≤ ((η : ℝ) + δ) * (e i * S) := by
+    have h1 : |eb i - e i| ≤ (η : ℝ) * e i := heb_bd i
+    have h2 : |Sb - S| ≤ δ * S := hdenom_err
+    have heS_nn : 0 ≤ e i * S := mul_nonneg (he_nn i) (le_of_lt hS_pos)
+    have : |(eb i - e i) * S - e i * (Sb - S)| ≤ |(eb i - e i) * S| + |e i * (Sb - S)| := by
+      have := abs_sub (((eb i - e i)) * S) (e i * (Sb - S))
+      linarith [abs_sub ((eb i - e i) * S) (e i * (Sb - S)),
+                abs_add_le ((eb i - e i) * S) (-(e i * (Sb - S)))]
+    calc |eb i * S - e i * Sb|
+        = |(eb i - e i) * S - e i * (Sb - S)| := by rw [h_num_decomp]
+      _ ≤ |(eb i - e i) * S| + |e i * (Sb - S)| := this
+      _ = |eb i - e i| * S + e i * |Sb - S| := by
+          rw [abs_mul, abs_mul, abs_of_nonneg (le_of_lt hS_pos), abs_of_nonneg (he_nn i)]
+      _ ≤ (η : ℝ) * e i * S + e i * (δ * S) := by
+          apply add_le_add
+          · exact mul_le_mul_of_nonneg_right h1 (le_of_lt hS_pos)
+          · exact mul_le_mul_of_nonneg_left h2 (he_nn i)
+      _ = ((η : ℝ) + δ) * (e i * S) := by ring
+  -- |eb i / Sb - sig i| = |eb i · S - e i · Sb| / (Sb · S)
+  have h_diff_eq : eb i / Sb - sig i = (eb i * S - e i * Sb) / (Sb * S) := by
+    simp [hsig_def]
+    field_simp [ne_of_gt hS_pos, ne_of_gt hSb_pos]
+  have h_ratio_bd : |eb i / Sb - sig i| ≤ ((η : ℝ) + δ) / (1 - δ) * sig i := by
+    rw [h_diff_eq, abs_div, abs_of_pos (mul_pos hSb_pos hS_pos)]
+    rw [show (Sb * S : ℝ) = Sb * S from rfl]
+    -- |num| ≤ (η+δ)(e i S), denom = Sb S ≥ (1-δ) S · S > 0
+    have hbd := h_num_bd
+    have hden_ge : (1 - δ) * S * S ≤ Sb * S :=
+      mul_le_mul_of_nonneg_right hSb_ge (le_of_lt hS_pos)
+    have h1δSS_pos : 0 < (1 - δ) * S * S := by positivity
+    calc |eb i * S - e i * Sb| / (Sb * S)
+        ≤ ((η : ℝ) + δ) * (e i * S) / (Sb * S) := by
+          apply div_le_div_of_nonneg_right hbd
+          positivity
+      _ ≤ ((η : ℝ) + δ) * (e i * S) / ((1 - δ) * S * S) := by
+          apply div_le_div_of_nonneg_left _ h1δSS_pos hden_ge
+          positivity
+      _ = ((η : ℝ) + δ) / (1 - δ) * sig i := by
+          rw [hsig_i]
+          field_simp
+  -- Combine
+  have h_total : |q - sig i| ≤
+      (η : ℝ) * ((1 + (η : ℝ)) / (1 - δ) * sig i) + ((η : ℝ) + δ) / (1 - δ) * sig i := by
+    calc |q - sig i| = |(q - eb i / Sb) + (eb i / Sb - sig i)| := by ring_nf
+      _ ≤ |q - eb i / Sb| + |eb i / Sb - sig i| := abs_add_le _ _
+      _ ≤ (η : ℝ) * ((1 + (η : ℝ)) / (1 - δ) * sig i) + ((η : ℝ) + δ) / (1 - δ) * sig i :=
+          add_le_add hq_div_err h_ratio_bd
+  -- Simplify the RHS
+  rw [hsigi_eq]
+  show |q - sig i| ≤ softmaxErrorCoeff εsum * sig i
+  have h_simplify :
+      (η : ℝ) * ((1 + (η : ℝ)) / (1 - δ) * sig i) + ((η : ℝ) + δ) / (1 - δ) * sig i =
+      softmaxErrorCoeff εsum * sig i := by
+    simp only [softmaxErrorCoeff, hδ_def]
+    field_simp
+    ring
+  linarith
+
+end ErrorBound
+
 end Softmax

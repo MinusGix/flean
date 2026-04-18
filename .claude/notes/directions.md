@@ -309,12 +309,13 @@ Rounding/ files but narrow applicability.
   - `fpExpFinite_no_overflow`: exp on non-positive input doesn't overflow (via monotonicity + idempotence)
   - `round_le_largestFiniteFloat` / `round_ne_pos_inf_of_le_largest`: general rounding safety lemmas
   - Extensions:
-    - [~] **FP softmax computation** — `fpSoftmaxOf` + generic `FpSumBound` framework.
+    - [x] **FP softmax computation** — `fpSoftmaxOf` + generic `FpSumBound` framework. Sorry-free.
       - `FpSum.FpSumBound` structure — bundles sum result + relative error bound
       - `FpSumBound.ofPairwise` / `ofNaive` — constructors (NaiveSum via right-spine PairwiseSum.Trace)
       - `fpSoftmaxOf` (bare) + `fpSoftmaxFromSum` (wraps FpSumBound)
       - Safety: `fpExpFinite_exists_finite`, `fpSoftmaxOf_exists_finite` (finite-output guarantees)
-      - Still TODO: componentwise error bound `|fpSoftmax_i - softmax_i| ≤ f(η, εsum) · softmax_i`
+      - Error bound: `fpSoftmaxOf_error_bound` — `|fpSoftmax_i - softmax_i| ≤ softmaxErrorCoeff εsum · softmax_i`
+        where `softmaxErrorCoeff εsum = (η² + 2η + δ)/(1-δ)`, `δ = η + εsum·(1+η)` (Higham-style). For small η,εsum ≈ 3η + εsum.
     - [ ] **Log-sum-exp** — `logsumexp(xs) = max(xs) + log(Σ exp(xs_i - max(xs)))`,
       numerically stable computation of `log(Σ exp(xs_i))`.
     - [ ] **Temperature scaling** — `softmax(xs/T)`, convergence to argmax as T→0.
