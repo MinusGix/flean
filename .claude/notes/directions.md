@@ -229,8 +229,8 @@ Rounding/ files but narrow applicability.
   `hornerPoly cs 0 x = (hornerListPoly cs).eval x` + derivative eval.
   hornerPoly now only needs `CommRing R` (typeclass cleanup).
   Follow-up items:
-  - [ ] **polyDeriv ↔ Polynomial.derivative** — `polyDeriv cs 0 x = (hornerListPoly cs).derivative.eval x`.
-    Validates JetHorner derivative against Mathlib's formal derivative.
+  - [x] **polyDeriv ↔ Polynomial.derivative** — `polyDeriv_eq_derivative_eval` in PolynomialConnection.lean ✓
+    `polyDeriv cs 0 x = (hornerListPoly cs).derivative.eval x`.
   - [ ] **Backward error in Polynomial form** — restate `horner_backward_error` as
     `fl(p(x)) = p̃(x)` where `p̃ : R[X]` is a Mathlib polynomial with perturbed coefficients.
   - [ ] **hornerListPoly properties** — `natDegree`, leading coefficient, cons/append recurrences.
@@ -301,6 +301,23 @@ Rounding/ files but narrow applicability.
   `|Δx_k| ≈ |Δaⱼ| · Πᵢ≠ₖ |x_k - x_i|⁻¹`. Connects to Newton-Horner convergence radius:
   ill-conditioned roots → smaller convergence basin → more Newton steps needed.
   Would need Mathlib Polynomial connection first.
+
+## Mid-Term — ML Primitives
+- [x] **Softmax numerical stability** — `Softmax.lean`: mathematical softmax, shift invariance,
+  overflow analysis, FP-level no-overflow theorem. Sorry-free.
+  - `softmax_shift_eq`: softmax invariant under uniform translation
+  - `fpExpFinite_no_overflow`: exp on non-positive input doesn't overflow (via monotonicity + idempotence)
+  - `round_le_largestFiniteFloat` / `round_ne_pos_inf_of_le_largest`: general rounding safety lemmas
+  - Extensions:
+    - [~] **FP softmax computation** — `fpSoftmaxOf` + generic `FpSumBound` framework.
+      - `FpSum.FpSumBound` structure — bundles sum result + relative error bound
+      - `FpSumBound.ofPairwise` / `ofNaive` — constructors (NaiveSum via right-spine PairwiseSum.Trace)
+      - `fpSoftmaxOf` (bare) + `fpSoftmaxFromSum` (wraps FpSumBound)
+      - Safety: `fpExpFinite_exists_finite`, `fpSoftmaxOf_exists_finite` (finite-output guarantees)
+      - Still TODO: componentwise error bound `|fpSoftmax_i - softmax_i| ≤ f(η, εsum) · softmax_i`
+    - [ ] **Log-sum-exp** — `logsumexp(xs) = max(xs) + log(Σ exp(xs_i - max(xs)))`,
+      numerically stable computation of `log(Σ exp(xs_i))`.
+    - [ ] **Temperature scaling** — `softmax(xs/T)`, convergence to argmax as T→0.
 
 ## Mid-Term — Mixed-Precision & ML
 - [ ] **Mixed-precision accumulation** — error of computing in FP16/BF16 and accumulating
