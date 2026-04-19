@@ -316,6 +316,14 @@ Rounding/ files but narrow applicability.
       - Safety: `fpExpFinite_exists_finite`, `fpSoftmaxOf_exists_finite` (finite-output guarantees)
       - Error bound: `fpSoftmaxOf_error_bound` — `|fpSoftmax_i - softmax_i| ≤ softmaxErrorCoeff εsum · softmax_i`
         where `softmaxErrorCoeff εsum = (η² + 2η + δ)/(1-δ)`, `δ = η + εsum·(1+η)` (Higham-style). For small η,εsum ≈ 3η + εsum.
+      - Simpler bound: `softmaxErrorCoeff_le_linear` — `≤ 7η + 3εsum` under `η + 2εsum ≤ 1/2`
+      - Convenience wrappers: `fpSoftmaxOf_error_bound_of_sumBound` (FpSumBound-taking), `fpSoftmax_shifted_error` (auto-extracts exps/result)
+      - Companion theorems: `fpSoftmax_sum_close_to_one`, `fpSoftmax_preserves_argmax_pair`
+      - Bundle: `FpSoftmaxResult` — packages the full pipeline; `.error_bound`, `.sum_close_to_one`, `.preserves_argmax_pair` methods
+      - `FpSum.FpSumBound.weaken`/`reindex`/`congr`/`append` — compositional adapters
+      - Pre-shift: `fpMax`, `fpSoftmaxShift` (subtracts c from each)
+      - Partial subnormal-tolerant: `exps_ulp_error_of_correct` — subnormal-inclusive exp bound via `Fp.ulp`.
+        Full subnormal-tolerant main theorem deferred.
     - [ ] **Log-sum-exp** — `logsumexp(xs) = max(xs) + log(Σ exp(xs_i - max(xs)))`,
       numerically stable computation of `log(Σ exp(xs_i))`.
     - [ ] **Temperature scaling** — `softmax(xs/T)`, convergence to argmax as T→0.

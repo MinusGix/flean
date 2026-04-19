@@ -170,4 +170,175 @@ def FpSumBound.ofNaive {n : ℕ} (xs : Fin n → FiniteFp)
 
 end OfNaive
 
+/-! ## Compositional Adapters -/
+
+section Adapters
+
+/-- **Weaken** the relative error of a `FpSumBound` to a larger coefficient. -/
+def FpSumBound.weaken {n : ℕ} {xs : Fin n → FiniteFp}
+    (b : FpSumBound xs R)
+    (newRelErr : R) (h_ge : b.relErr ≤ newRelErr) :
+    FpSumBound xs R :=
+  { result := b.result
+    relErr := newRelErr
+    h_relErr_nn := le_trans b.h_relErr_nn h_ge
+    h_bound := by
+      have habs_nn : (0 : R) ≤ ∑ i, |((xs i).toVal : R)| :=
+        Finset.sum_nonneg (fun _ _ => abs_nonneg _)
+      calc |(b.result.toVal : R) - ∑ i, ((xs i).toVal : R)|
+          ≤ b.relErr * ∑ i, |((xs i).toVal : R)| := b.h_bound
+        _ ≤ newRelErr * ∑ i, |((xs i).toVal : R)| :=
+            mul_le_mul_of_nonneg_right h_ge habs_nn }
+
+/-- **Reindex** a `FpSumBound` through a permutation `e : Fin n ≃ Fin n`. -/
+def FpSumBound.reindex {n : ℕ} {xs : Fin n → FiniteFp}
+    (b : FpSumBound xs R) (e : Fin n ≃ Fin n) :
+    FpSumBound (xs ∘ e) R :=
+  { result := b.result
+    relErr := b.relErr
+    h_relErr_nn := b.h_relErr_nn
+    h_bound := by
+      have hsum : ∑ i, ((xs (e i)).toVal : R) = ∑ i, ((xs i).toVal : R) :=
+        Fintype.sum_equiv e _ _ (fun _ => rfl)
+      have habs : ∑ i, |((xs (e i)).toVal : R)| = ∑ i, |((xs i).toVal : R)| :=
+        Fintype.sum_equiv e _ _ (fun _ => rfl)
+      simpa [Function.comp, hsum, habs] using b.h_bound }
+
+/-- **Congr**: transport an `FpSumBound` when inputs are pointwise equal. -/
+def FpSumBound.congr {n : ℕ} {xs ys : Fin n → FiniteFp}
+    (b : FpSumBound xs R) (h : xs = ys) :
+    FpSumBound ys R :=
+  h ▸ b
+
+end Adapters
+
+/-! ## Append — combining two independent sums
+
+If `xs` and `ys` each come with an `FpSumBound`, and their partial results
+sum correctly in FP, the concatenated `Fin.append xs ys` has a combined bound.
+
+The combined relative error is bounded by `max(εx, εy) + η + εx·η + εy·η`
+(loosely: `max(εx,εy) + 2η` for small errors). -/
+
+section Append
+
+variable [RMode R] [RModeExec] [RModeNearest R] [RoundIntSigMSound R]
+
+/-- **Append two sum bounds via a single fpAdd of the partial results.**
+
+Hypotheses:
+- `bx : FpSumBound xs R` — bound for first segment's partial sum
+- `by_ : FpSumBound ys R` — bound for second segment
+- `hadd : bx.result + by_.result = Fp.finite combinedResult` — the combining add
+- `hnr_add : isNormalRange (bx.result.toVal + by_.result.toVal) ∨ ... = 0`
+  — normality for the combining add
+
+Result: `FpSumBound (Fin.append xs ys) R` with relErr = `max(εx, εy) + η + η · max(εx, εy)`
+(safe loose bound).
+-/
+def FpSumBound.append {m n : ℕ} {xs : Fin m → FiniteFp} {ys : Fin n → FiniteFp}
+    (bx : FpSumBound xs R) (by_ : FpSumBound ys R)
+    (combinedResult : FiniteFp)
+    (hadd : bx.result + by_.result = Fp.finite combinedResult)
+    (hnr_add : isNormalRange ((bx.result.toVal : R) + by_.result.toVal) ∨
+               (bx.result.toVal : R) + by_.result.toVal = 0) :
+    FpSumBound (Fin.append xs ys) R :=
+  let εM : R := max bx.relErr by_.relErr
+  have hη_nn : (0 : R) ≤ η := by positivity
+  have hεM_nn : 0 ≤ εM := le_trans bx.h_relErr_nn (le_max_left _ _)
+  have hmul_nn : 0 ≤ (η : R) * εM := mul_nonneg hη_nn hεM_nn
+  { result := combinedResult
+    relErr := εM + (η : R) + (η : R) * εM
+    h_relErr_nn := by positivity
+    h_bound := by
+      -- Combined add error
+      have hadd_err : |(combinedResult.toVal : R) -
+                       (bx.result.toVal + by_.result.toVal)| ≤
+                      (η : R) * |(bx.result.toVal : R) + by_.result.toVal| :=
+        KahanSum.fpAdd_error_or_zero (R := R) bx.result by_.result combinedResult hadd hnr_add
+      -- Sum splits
+      have hsum_split : ∑ i, ((Fin.append xs ys) i).toVal (R := R) =
+                        (∑ i, ((xs i).toVal : R)) + (∑ i, ((ys i).toVal : R)) := by
+        rw [Fin.sum_univ_add]
+        simp [Fin.append_left, Fin.append_right]
+      have habs_split : ∑ i, |((Fin.append xs ys) i).toVal (R := R)| =
+                        (∑ i, |((xs i).toVal : R)|) + (∑ i, |((ys i).toVal : R)|) := by
+        rw [Fin.sum_univ_add]
+        simp [Fin.append_left, Fin.append_right]
+      set Sx : R := ∑ i, ((xs i).toVal : R) with hSx_def
+      set Sy : R := ∑ i, ((ys i).toVal : R) with hSy_def
+      set Ax : R := ∑ i, |((xs i).toVal : R)| with hAx_def
+      set Ay : R := ∑ i, |((ys i).toVal : R)| with hAy_def
+      have hAx_nn : 0 ≤ Ax := Finset.sum_nonneg (fun _ _ => abs_nonneg _)
+      have hAy_nn : 0 ≤ Ay := Finset.sum_nonneg (fun _ _ => abs_nonneg _)
+      have hSx_le : |Sx| ≤ Ax := Finset.abs_sum_le_sum_abs _ _
+      have hSy_le : |Sy| ≤ Ay := Finset.abs_sum_le_sum_abs _ _
+      -- Bounds on partial results
+      have hx_bd : |(bx.result.toVal : R) - Sx| ≤ bx.relErr * Ax := bx.h_bound
+      have hy_bd : |(by_.result.toVal : R) - Sy| ≤ by_.relErr * Ay := by_.h_bound
+      -- Triangle: |combined - (Sx + Sy)| ≤ add_err + |bx.result - Sx| + |by_.result - Sy|
+      have htri : |(combinedResult.toVal : R) - (Sx + Sy)| ≤
+          (η : R) * |(bx.result.toVal : R) + by_.result.toVal| +
+          |(bx.result.toVal : R) - Sx| + |(by_.result.toVal : R) - Sy| := by
+        have hstep1 := abs_add_le ((combinedResult.toVal : R) -
+          (bx.result.toVal + by_.result.toVal))
+          (((bx.result.toVal : R) - Sx) + ((by_.result.toVal : R) - Sy))
+        have hstep2 := abs_add_le ((bx.result.toVal : R) - Sx) ((by_.result.toVal : R) - Sy)
+        have heq : (combinedResult.toVal : R) - (Sx + Sy) =
+          ((combinedResult.toVal : R) - (bx.result.toVal + by_.result.toVal)) +
+          (((bx.result.toVal : R) - Sx) + ((by_.result.toVal : R) - Sy)) := by ring
+        rw [heq]
+        linarith [hadd_err]
+      -- Bound bx.result.toVal by Sx + error
+      have hbx_le : |(bx.result.toVal : R)| ≤ |Sx| + bx.relErr * Ax := by
+        have := abs_sub_abs_le_abs_sub (bx.result.toVal : R) Sx
+        linarith
+      have hby_le : |(by_.result.toVal : R)| ≤ |Sy| + by_.relErr * Ay := by
+        have := abs_sub_abs_le_abs_sub (by_.result.toVal : R) Sy
+        linarith
+      -- |bx.result + by_.result| ≤ |bx.result| + |by_.result|
+      have hsum_bd : |(bx.result.toVal : R) + by_.result.toVal| ≤
+          Ax + bx.relErr * Ax + Ay + by_.relErr * Ay := by
+        have := abs_add_le (bx.result.toVal : R) by_.result.toVal
+        linarith [hSx_le, hSy_le]
+      -- Put it together: bound ≤ η·(Ax + εx·Ax + Ay + εy·Ay) + εx·Ax + εy·Ay
+      --                 = (η + εx + εx·η)·Ax + (η + εy + εy·η)·Ay
+      --                 ≤ (η + εM + εM·η)·Ax + (η + εM + εM·η)·Ay
+      have hεx_le_M : bx.relErr ≤ εM := le_max_left _ _
+      have hεy_le_M : by_.relErr ≤ εM := le_max_right _ _
+      have hεx_nn := bx.h_relErr_nn
+      have hεy_nn := by_.h_relErr_nn
+      rw [hsum_split, habs_split]
+      calc |(combinedResult.toVal : R) - (Sx + Sy)|
+          ≤ (η : R) * |(bx.result.toVal : R) + by_.result.toVal| +
+            |(bx.result.toVal : R) - Sx| + |(by_.result.toVal : R) - Sy| := htri
+        _ ≤ (η : R) * (Ax + bx.relErr * Ax + Ay + by_.relErr * Ay) +
+            bx.relErr * Ax + by_.relErr * Ay := by
+              have : (η : R) * |(bx.result.toVal : R) + by_.result.toVal| ≤
+                  (η : R) * (Ax + bx.relErr * Ax + Ay + by_.relErr * Ay) :=
+                mul_le_mul_of_nonneg_left hsum_bd hη_nn
+              linarith
+        _ = ((η : R) + bx.relErr + (η : R) * bx.relErr) * Ax +
+            ((η : R) + by_.relErr + (η : R) * by_.relErr) * Ay := by ring
+        _ ≤ ((η : R) + εM + (η : R) * εM) * Ax +
+            ((η : R) + εM + (η : R) * εM) * Ay := by
+              have hmulx : (η : R) * bx.relErr ≤ (η : R) * εM :=
+                mul_le_mul_of_nonneg_left hεx_le_M hη_nn
+              have hmuly : (η : R) * by_.relErr ≤ (η : R) * εM :=
+                mul_le_mul_of_nonneg_left hεy_le_M hη_nn
+              have : ((η : R) + bx.relErr + (η : R) * bx.relErr) ≤
+                     ((η : R) + εM + (η : R) * εM) := by linarith
+              have hbd_x : ((η : R) + bx.relErr + (η : R) * bx.relErr) * Ax ≤
+                           ((η : R) + εM + (η : R) * εM) * Ax :=
+                mul_le_mul_of_nonneg_right this hAx_nn
+              have : ((η : R) + by_.relErr + (η : R) * by_.relErr) ≤
+                     ((η : R) + εM + (η : R) * εM) := by linarith
+              have hbd_y : ((η : R) + by_.relErr + (η : R) * by_.relErr) * Ay ≤
+                           ((η : R) + εM + (η : R) * εM) * Ay :=
+                mul_le_mul_of_nonneg_right this hAy_nn
+              linarith
+        _ = (εM + (η : R) + (η : R) * εM) * (Ax + Ay) := by ring }
+
+end Append
+
 end FpSum

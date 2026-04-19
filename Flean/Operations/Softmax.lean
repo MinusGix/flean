@@ -504,6 +504,28 @@ theorem exps_ge_of_correct {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n →
   have := abs_le.mp h
   linarith [this.1]
 
+/-- Per-component exp error (subnormal-tolerant form): absolute error ≤ `ulp/2`.
+
+Uses `RModeNearest_abs_error_le_ulp_half_pos`, which holds for any positive exp
+output regardless of whether it's in normal or subnormal range. For a full
+subnormal-tolerant softmax theorem, this would replace `exps_error_of_correct`
+in the main proof, with the sum-error track similarly generalized.
+
+**Quantification**: for typical binary64 (`min_exp = -1022`, `prec = 53`),
+the subnormal ulp is `2^(-1074)`, so subnormal exp errors contribute at most
+`~10^(-324)` per term — negligible unless `n > 10^308` terms underflow. -/
+theorem exps_ulp_error_of_correct {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (i : Fin n) :
+    |((exps i).toVal : ℝ) - Real.exp ((xs i).toVal : ℝ)| ≤
+      Fp.ulp (Real.exp ((xs i).toVal : ℝ)) / 2 := by
+  have hcorr : fpExpFinite (xs i) = ○(Real.exp ((xs i).toVal : ℝ)) :=
+    fpExpFinite_correct (xs i)
+  have hfe : ○(Real.exp ((xs i).toVal : ℝ)) = Fp.finite (exps i) := by
+    rw [← hcorr]; exact h_exp i
+  have h := RModeNearest_abs_error_le_ulp_half_pos (R := ℝ) _ (Real.exp_pos _) (exps i) hfe
+  rwa [abs_sub_comm]
+
 /-- FP exp values are nonneg when inputs give normal-range exp outputs. -/
 theorem exps_nonneg_of_correct {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
     (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
@@ -956,5 +978,89 @@ theorem fpSoftmax_preserves_argmax_pair
   linarith [h_gap]
 
 end ErrorBound
+
+/-! ## `FpSoftmaxResult` Bundle
+
+Packages a complete, valid FP softmax computation: inputs, intermediate FP values,
+outputs, and all correctness witnesses. Lets downstream results take a single
+`FpSoftmaxResult` argument instead of 10+ separate hypotheses.
+
+Use `fpSoftmaxResult_apply_error_bound` to extract the componentwise bound from
+a bundle. -/
+
+section Bundle
+
+variable [FloatFormat] [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+  [RModeNearest ℝ] [ExpApprox] [ExpApproxSound]
+
+/-- A complete, valid FP softmax computation for a given `xs`. -/
+structure FpSoftmaxResult {n : ℕ} (xs : Fin n → FiniteFp) where
+  /-- FP exp values: `fpExpFinite (xs i) = Fp.finite (exps i)`. -/
+  exps : Fin n → FiniteFp
+  /-- FP denominator: the summation result. -/
+  denom : FiniteFp
+  /-- FP softmax outputs. -/
+  result : Fin n → FiniteFp
+  /-- Relative error coefficient of the sum. -/
+  εsum : ℝ
+  εsum_nn : 0 ≤ εsum
+  h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i)
+  h_exp_nr : ∀ i, isNormalRange (Real.exp ((xs i).toVal : ℝ))
+  h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                   εsum * ∑ j, |((exps j).toVal : ℝ)|
+  h_δ_lt : (η : ℝ) + εsum * (1 + (η : ℝ)) < 1
+  hd_m : denom.m ≠ 0
+  h_quot_nr : ∀ i, isNormalRange (((exps i).toVal : ℝ) / denom.toVal)
+  h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i)
+
+/-- Main error bound, applied to a bundled result. -/
+theorem FpSoftmaxResult.error_bound {n : ℕ} (hn : 0 < n)
+    {xs : Fin n → FiniteFp} (r : FpSoftmaxResult xs) (i : Fin n) :
+    |((r.result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      softmaxErrorCoeff r.εsum *
+        softmax (fun j => ((xs j).toVal : ℝ)) i :=
+  fpSoftmaxOf_error_bound hn xs r.exps r.denom r.result r.εsum
+    r.h_exp r.h_exp_nr r.h_denom_close r.εsum_nn r.h_δ_lt r.hd_m r.h_quot_nr r.h_result i
+
+/-- Sum-to-1 bound, applied to a bundled result. -/
+theorem FpSoftmaxResult.sum_close_to_one {n : ℕ} (hn : 0 < n)
+    {xs : Fin n → FiniteFp} (r : FpSoftmaxResult xs) :
+    |(∑ i, ((r.result i).toVal : ℝ)) - 1| ≤ softmaxErrorCoeff r.εsum :=
+  fpSoftmax_sum_close_to_one hn xs r.exps r.denom r.result r.εsum
+    r.h_exp r.h_exp_nr r.h_denom_close r.εsum_nn r.h_δ_lt r.hd_m r.h_quot_nr r.h_result
+
+/-- Argmax preservation, applied to a bundled result. -/
+theorem FpSoftmaxResult.preserves_argmax_pair {n : ℕ} (hn : 0 < n)
+    {xs : Fin n → FiniteFp} (r : FpSoftmaxResult xs) (istar j : Fin n)
+    (h_gap : softmax (fun k => ((xs k).toVal : ℝ)) istar -
+             softmax (fun k => ((xs k).toVal : ℝ)) j >
+              softmaxErrorCoeff r.εsum *
+                (softmax (fun k => ((xs k).toVal : ℝ)) istar +
+                 softmax (fun k => ((xs k).toVal : ℝ)) j)) :
+    ((r.result j).toVal : ℝ) < ((r.result istar).toVal : ℝ) :=
+  fpSoftmax_preserves_argmax_pair hn xs r.exps r.denom r.result r.εsum
+    r.h_exp r.h_exp_nr r.h_denom_close r.εsum_nn r.h_δ_lt r.hd_m r.h_quot_nr r.h_result istar j h_gap
+
+end Bundle
+
+/-! ## Pre-shift Helpers: `fpMax` and `fpSoftmaxShift` -/
+
+section Shift
+
+variable [FloatFormat] [RModeExec]
+
+/-- Max of a `Fin n → FiniteFp` via `Finset.sup'`, using the FP order. -/
+noncomputable def fpMax {n : ℕ} (xs : Fin n → FiniteFp) (hn : 0 < n) : FiniteFp :=
+  (Finset.univ : Finset (Fin n)).sup' (Finset.univ_nonempty_iff.mpr
+    (Fin.pos_iff_nonempty.mp hn)) (fun i => (xs i))
+
+/-- `fpSoftmaxShift xs c i = fpSubFinite (xs i) c` — subtracts `c` from each input. -/
+def fpSoftmaxShift {n : ℕ} (xs : Fin n → FiniteFp) (c : FiniteFp) : Fin n → Fp :=
+  fun i => fpSubFinite (xs i) c
+
+@[simp] theorem fpSoftmaxShift_apply {n : ℕ} (xs : Fin n → FiniteFp) (c : FiniteFp) (i : Fin n) :
+    fpSoftmaxShift xs c i = fpSubFinite (xs i) c := rfl
+
+end Shift
 
 end Softmax
