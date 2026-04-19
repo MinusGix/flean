@@ -346,6 +346,40 @@ theorem fpSoftmaxOf_exists_finite {n : ℕ} (exps : Fin n → FiniteFp) (denom :
   simp only [fpSoftmaxOf_apply]
   exact fpDivFinite_exists_finite_of_bounded (exps i) denom hd h_nn h_le
 
+/-- Extract FiniteFp exp values automatically from nonpos-shifted FP inputs.
+
+Uses classical choice via `fpExpFinite_exists_finite`. The extracted values satisfy
+`fpExpFinite (xs i) = Fp.finite (fpExpsFromXs xs h_nonpos i)` (see `fpExpsFromXs_correct`). -/
+noncomputable def fpExpsFromXs {n : ℕ} (xs : Fin n → FiniteFp)
+    (h_nonpos : ∀ i, ((xs i).toVal : ℝ) ≤ 0) :
+    Fin n → FiniteFp :=
+  fun i => Classical.choose (fpExpFinite_exists_finite (xs i) (h_nonpos i))
+
+theorem fpExpsFromXs_correct {n : ℕ} (xs : Fin n → FiniteFp)
+    (h_nonpos : ∀ i, ((xs i).toVal : ℝ) ≤ 0) (i : Fin n) :
+    fpExpFinite (xs i) = Fp.finite (fpExpsFromXs xs h_nonpos i) :=
+  Classical.choose_spec (fpExpFinite_exists_finite (xs i) (h_nonpos i))
+
+/-- Extract FiniteFp result values automatically when softmax outputs are bounded. -/
+noncomputable def fpSoftmaxResults {n : ℕ} (exps : Fin n → FiniteFp) (denom : FiniteFp)
+    (hd_m : denom.m ≠ 0)
+    (h_bounded : ∀ i, 0 ≤ (((exps i).toVal : ℝ) / denom.toVal) ∧
+                      (((exps i).toVal : ℝ) / denom.toVal) ≤
+                        FiniteFp.largestFiniteFloat.toVal (R := ℝ)) :
+    Fin n → FiniteFp :=
+  fun i => Classical.choose (fpDivFinite_exists_finite_of_bounded (exps i) denom hd_m
+    (h_bounded i).1 (h_bounded i).2)
+
+omit [ExpApprox] [ExpApproxSound] in
+theorem fpSoftmaxResults_correct {n : ℕ} (exps : Fin n → FiniteFp) (denom : FiniteFp)
+    (hd_m : denom.m ≠ 0)
+    (h_bounded : ∀ i, 0 ≤ (((exps i).toVal : ℝ) / denom.toVal) ∧
+                      (((exps i).toVal : ℝ) / denom.toVal) ≤
+                        FiniteFp.largestFiniteFloat.toVal (R := ℝ)) (i : Fin n) :
+    fpDivFinite (exps i) denom = Fp.finite (fpSoftmaxResults exps denom hd_m h_bounded i) :=
+  Classical.choose_spec (fpDivFinite_exists_finite_of_bounded (exps i) denom hd_m
+    (h_bounded i).1 (h_bounded i).2)
+
 end NoOverflow
 
 /-! ## Componentwise Error Bound
@@ -387,6 +421,53 @@ theorem hEps_lt_one : (η : ℝ) < 1 := by
 noncomputable def softmaxErrorCoeff (εsum : ℝ) : ℝ :=
   ((η : ℝ)^2 + 2*(η : ℝ) + ((η : ℝ) + εsum*(1+(η : ℝ)))) /
     (1 - ((η : ℝ) + εsum*(1+(η : ℝ))))
+
+omit [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ] [RModeNearest ℝ]
+  [ExpApprox] [ExpApproxSound] in
+/-- Simpler upper bound: `softmaxErrorCoeff εsum ≤ 7η + 3εsum` under `η + 2εsum ≤ 1/2`.
+
+This is looser than the exact `softmaxErrorCoeff` but easier to reason about.
+For typical FP (e.g., `η ≈ 10⁻⁷` for binary32) and small-`n` naive sums
+(`εsum ≈ nη`), the condition is trivially satisfied and the bound is within
+a small constant factor of the tight one. -/
+theorem softmaxErrorCoeff_le_linear (εsum : ℝ)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_small : (η : ℝ) + 2 * εsum ≤ 1/2) :
+    softmaxErrorCoeff εsum ≤ 7 * (η : ℝ) + 3 * εsum := by
+  have hη_nn : (0 : ℝ) ≤ η := by positivity
+  have hη_le : (η : ℝ) ≤ 1/2 := by linarith
+  set δ : ℝ := (η : ℝ) + εsum * (1 + (η : ℝ)) with hδ_def
+  have hδ_nn : 0 ≤ δ := by positivity
+  -- δ = η + εsum(1+η) ≤ η + (3/2)εsum ≤ 1/2
+  have hδ_le_half : δ ≤ 1/2 := by
+    have h1 : εsum * (1 + (η : ℝ)) ≤ εsum * (3/2) :=
+      mul_le_mul_of_nonneg_left (by linarith) h_εsum_nn
+    have h2 : (η : ℝ) + εsum * (3/2) ≤ 1/2 := by linarith
+    linarith
+  have h_denom_ge : (1/2 : ℝ) ≤ 1 - δ := by linarith
+  have h_denom_pos : 0 < 1 - δ := by linarith
+  -- Numerator: η² + 2η + δ
+  -- ≤ η·(1/2) + 2η + η + (3/2)εsum = (7/2)η + (3/2)εsum
+  have h_num_le : (η : ℝ)^2 + 2*(η : ℝ) + δ ≤ (7/2) * (η : ℝ) + (3/2) * εsum := by
+    have hη_sq : (η : ℝ)^2 ≤ (η : ℝ) * (1/2) := by
+      have : (η : ℝ)^2 = (η : ℝ) * (η : ℝ) := by ring
+      rw [this]; exact mul_le_mul_of_nonneg_left hη_le hη_nn
+    have hεtrunc : εsum * (1 + (η : ℝ)) ≤ (3/2) * εsum := by
+      have h1 : εsum * (1 + (η : ℝ)) ≤ εsum * (3/2) :=
+        mul_le_mul_of_nonneg_left (by linarith) h_εsum_nn
+      linarith
+    have : δ ≤ (η : ℝ) + (3/2) * εsum := by linarith
+    nlinarith [hη_sq, this]
+  have h_num_nn : 0 ≤ (η : ℝ)^2 + 2*(η : ℝ) + δ := by positivity
+  -- Divide by (1-δ) ≥ 1/2, so ≤ 2·num ≤ 2·((7/2)η + (3/2)εsum) = 7η + 3εsum
+  calc softmaxErrorCoeff εsum
+      = ((η : ℝ)^2 + 2*(η : ℝ) + δ) / (1 - δ) := by simp [softmaxErrorCoeff, hδ_def]
+    _ ≤ ((η : ℝ)^2 + 2*(η : ℝ) + δ) / (1/2) := by
+        apply div_le_div_of_nonneg_left h_num_nn (by norm_num) h_denom_ge
+    _ = 2 * ((η : ℝ)^2 + 2*(η : ℝ) + δ) := by ring
+    _ ≤ 2 * ((7/2) * (η : ℝ) + (3/2) * εsum) :=
+        mul_le_mul_of_nonneg_left h_num_le (by norm_num)
+    _ = 7 * (η : ℝ) + 3 * εsum := by ring
 
 /-- Per-component exp error: `|(exps i).toVal - exp(xs_i)| ≤ η · exp(xs_i)`. -/
 theorem exps_error_of_correct {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
@@ -716,6 +797,163 @@ theorem fpSoftmaxOf_error_bound
     field_simp
     ring
   linarith
+
+/-- **FpSumBound-taking wrapper**: the main error bound phrased in terms of a
+packed `FpSumBound` for the denominator computation. This is the user-facing
+form — pass any FP summation adapter producing a `FpSumBound` and get the
+full softmax error. -/
+theorem fpSoftmaxOf_error_bound_of_sumBound
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (sum : FpSum.FpSumBound exps ℝ)
+    (result : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_exp_nr : ∀ i, isNormalRange (Real.exp ((xs i).toVal : ℝ)))
+    (h_δ_lt : (η : ℝ) + sum.relErr * (1 + (η : ℝ)) < 1)
+    (hd_m : sum.result.m ≠ 0)
+    (h_quot_nr : ∀ i, isNormalRange (((exps i).toVal : ℝ) / sum.result.toVal))
+    (h_result : ∀ i, fpDivFinite (exps i) sum.result = Fp.finite (result i))
+    (i : Fin n) :
+    |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      softmaxErrorCoeff sum.relErr *
+        softmax (fun j => ((xs j).toVal : ℝ)) i :=
+  fpSoftmaxOf_error_bound hn xs exps sum.result result sum.relErr
+    h_exp h_exp_nr sum.h_bound sum.h_relErr_nn h_δ_lt hd_m h_quot_nr h_result i
+
+/-- **Convenience theorem**: combines exp-extraction, result-extraction, and error
+bound in one. User supplies just `xs`, `h_nonpos`, `h_exp_nr`, a sum method,
+and normal-range hypotheses for the quotient; gets the error bound for auto-extracted
+`fpSoftmaxResults`.
+
+Note: `h_bounded` (quotients in `[0, largestFiniteFloat]`) is still needed to
+construct `fpSoftmaxResults`. In practice it follows from `h_quot_nr` combined
+with positivity, but we keep it explicit for flexibility. -/
+theorem fpSoftmax_shifted_error
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp)
+    (h_nonpos : ∀ i, ((xs i).toVal : ℝ) ≤ 0)
+    (h_exp_nr : ∀ i, isNormalRange (Real.exp ((xs i).toVal : ℝ)))
+    (sum : FpSum.FpSumBound (fpExpsFromXs xs h_nonpos) ℝ)
+    (h_δ_lt : (η : ℝ) + sum.relErr * (1 + (η : ℝ)) < 1)
+    (hd_m : sum.result.m ≠ 0)
+    (h_quot_nr : ∀ i, isNormalRange
+      (((fpExpsFromXs xs h_nonpos i).toVal : ℝ) / sum.result.toVal))
+    (h_bounded : ∀ i, 0 ≤ (((fpExpsFromXs xs h_nonpos i).toVal : ℝ) / sum.result.toVal) ∧
+                      (((fpExpsFromXs xs h_nonpos i).toVal : ℝ) / sum.result.toVal) ≤
+                        FiniteFp.largestFiniteFloat.toVal (R := ℝ))
+    (i : Fin n) :
+    |((fpSoftmaxResults (fpExpsFromXs xs h_nonpos) sum.result hd_m h_bounded i).toVal : ℝ) -
+      softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      softmaxErrorCoeff sum.relErr *
+        softmax (fun j => ((xs j).toVal : ℝ)) i :=
+  fpSoftmaxOf_error_bound_of_sumBound hn xs (fpExpsFromXs xs h_nonpos) sum
+    (fpSoftmaxResults (fpExpsFromXs xs h_nonpos) sum.result hd_m h_bounded)
+    (fpExpsFromXs_correct xs h_nonpos) h_exp_nr h_δ_lt hd_m h_quot_nr
+    (fpSoftmaxResults_correct (fpExpsFromXs xs h_nonpos) sum.result hd_m h_bounded) i
+
+/-! ### Sum-to-1 invariant
+
+FP softmax outputs approximately sum to 1, with the error bounded by the
+per-component error coefficient. -/
+
+/-- The sum of FP softmax outputs is within `softmaxErrorCoeff` of 1. -/
+theorem fpSoftmax_sum_close_to_one
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp) (denom : FiniteFp)
+    (result : Fin n → FiniteFp) (εsum : ℝ)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_exp_nr : ∀ i, isNormalRange (Real.exp ((xs i).toVal : ℝ)))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_δ_lt : (η : ℝ) + εsum * (1 + (η : ℝ)) < 1)
+    (hd_m : denom.m ≠ 0)
+    (h_quot_nr : ∀ i, isNormalRange (((exps i).toVal : ℝ) / denom.toVal))
+    (h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i)) :
+    |(∑ i, ((result i).toVal : ℝ)) - 1| ≤ softmaxErrorCoeff εsum := by
+  have hσ_sum : ∑ i, softmax (fun j => ((xs j).toVal : ℝ)) i = 1 :=
+    softmax_sum_eq_one _ hn
+  have hcoeff_nn : 0 ≤ softmaxErrorCoeff εsum := by
+    have hη_nn : (0 : ℝ) ≤ η := by positivity
+    have h1mδ : 0 < 1 - ((η : ℝ) + εsum * (1 + (η : ℝ))) := by linarith
+    unfold softmaxErrorCoeff
+    apply div_nonneg
+    · have : 0 ≤ (η : ℝ) + εsum * (1 + (η : ℝ)) := by positivity
+      positivity
+    · linarith
+  -- Per-i bound
+  have hper : ∀ i, |((result i).toVal : ℝ) -
+                    softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+                   softmaxErrorCoeff εsum *
+                     softmax (fun j => ((xs j).toVal : ℝ)) i := by
+    intro i
+    exact fpSoftmaxOf_error_bound hn xs exps denom result εsum
+      h_exp h_exp_nr h_denom_close h_εsum_nn h_δ_lt hd_m h_quot_nr h_result i
+  -- Triangle inequality on the sum
+  calc |(∑ i, ((result i).toVal : ℝ)) - 1|
+      = |(∑ i, ((result i).toVal : ℝ)) -
+          ∑ i, softmax (fun j => ((xs j).toVal : ℝ)) i| := by rw [hσ_sum]
+    _ = |∑ i, (((result i).toVal : ℝ) -
+                softmax (fun j => ((xs j).toVal : ℝ)) i)| := by
+          rw [Finset.sum_sub_distrib]
+    _ ≤ ∑ i, |((result i).toVal : ℝ) -
+                softmax (fun j => ((xs j).toVal : ℝ)) i| :=
+          Finset.abs_sum_le_sum_abs _ _
+    _ ≤ ∑ i, softmaxErrorCoeff εsum *
+                softmax (fun j => ((xs j).toVal : ℝ)) i :=
+          Finset.sum_le_sum (fun i _ => hper i)
+    _ = softmaxErrorCoeff εsum * ∑ i, softmax (fun j => ((xs j).toVal : ℝ)) i := by
+          rw [← Finset.mul_sum]
+    _ = softmaxErrorCoeff εsum := by rw [hσ_sum]; ring
+
+/-! ### Argmax preservation
+
+If the math softmax has a sufficiently dominant argmax `i*` — specifically,
+`σ_{i*} - σ_j > softmaxErrorCoeff · (σ_{i*} + σ_j)` for all `j ≠ i*` — then
+the FP softmax has `result_{i*} > result_j` for the same `i*`. -/
+
+/-- Argmax preservation (single pairwise comparison form).
+
+Given the per-component error bound for indices `i*` and `j`, if
+`σ_{i*} - σ_j > c · (σ_{i*} + σ_j)` where `c = softmaxErrorCoeff εsum`,
+then the FP outputs satisfy `result_{i*} > result_j`. -/
+theorem fpSoftmax_preserves_argmax_pair
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp) (denom : FiniteFp)
+    (result : Fin n → FiniteFp) (εsum : ℝ)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_exp_nr : ∀ i, isNormalRange (Real.exp ((xs i).toVal : ℝ)))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_δ_lt : (η : ℝ) + εsum * (1 + (η : ℝ)) < 1)
+    (hd_m : denom.m ≠ 0)
+    (h_quot_nr : ∀ i, isNormalRange (((exps i).toVal : ℝ) / denom.toVal))
+    (h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i))
+    (istar j : Fin n)
+    (h_gap : softmax (fun k => ((xs k).toVal : ℝ)) istar -
+             softmax (fun k => ((xs k).toVal : ℝ)) j >
+              softmaxErrorCoeff εsum *
+                (softmax (fun k => ((xs k).toVal : ℝ)) istar +
+                 softmax (fun k => ((xs k).toVal : ℝ)) j)) :
+    ((result j).toVal : ℝ) < ((result istar).toVal : ℝ) := by
+  set sig : Fin n → ℝ := fun k => softmax (fun k' => ((xs k').toVal : ℝ)) k with hsig_def
+  set c : ℝ := softmaxErrorCoeff εsum with hc_def
+  have h_i : |((result istar).toVal : ℝ) - sig istar| ≤ c * sig istar :=
+    fpSoftmaxOf_error_bound hn xs exps denom result εsum
+      h_exp h_exp_nr h_denom_close h_εsum_nn h_δ_lt hd_m h_quot_nr h_result istar
+  have h_j : |((result j).toVal : ℝ) - sig j| ≤ c * sig j :=
+    fpSoftmaxOf_error_bound hn xs exps denom result εsum
+      h_exp h_exp_nr h_denom_close h_εsum_nn h_δ_lt hd_m h_quot_nr h_result j
+  -- Unpack the absolute values
+  have h_i_lo : sig istar - c * sig istar ≤ ((result istar).toVal : ℝ) := by
+    have := (abs_le.mp h_i).1
+    linarith
+  have h_j_hi : ((result j).toVal : ℝ) ≤ sig j + c * sig j := by
+    have := (abs_le.mp h_j).2
+    linarith
+  -- sig istar * (1 - c) > sig j * (1 + c) iff sig istar - sig j > c * (sig istar + sig j)
+  linarith [h_gap]
 
 end ErrorBound
 
