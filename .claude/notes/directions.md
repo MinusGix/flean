@@ -324,11 +324,44 @@ Rounding/ files but narrow applicability.
       - Pre-shift: `fpMax`, `fpSoftmaxShift` (subtracts c from each)
       - Subnormal-tolerant building blocks: `subnormalConst`, `ulp_half_le_unified`,
         `exps_unified_error_of_correct`, `sum_exps_unified_error`, `denom_unified_error`.
-        Full subnormal-tolerant main theorem (including mixed-additive `S̄` positivity
-        in the ratio analysis) deferred.
+      - [x] **Subnormal-tolerant softmax** — factored around private Sb-parametric core
+        `fpSoftmax_apply_core_bound`. Both main variants derive from core:
+        - `fpSoftmaxOf_error_bound_subnormal` (factor-of-2): `m = (1-δ)S/2`, hypothesis
+          `h_S_margin : (1-δ)S > 2·N·sc`. Bound: `2·softmaxErrorCoeff εsum · σ_i +
+          subnormalSoftmaxAbs xs εsum · subnormalConst`.
+        - `fpSoftmaxOf_error_bound_subnormal_tight` (no factor-of-2 loosening):
+          `m = (1-δ)S - N·sc`, hypothesis `h_m_pos : 0 < subnormalSoftmaxDenomMargin xs εsum`.
+          Coefficients `softmaxErrorCoeff_tight`/`subnormalSoftmaxAbs_tight` reduce to
+          `softmaxErrorCoeff` / `1 + (1+η)/(1-δ)` as `N·sc → 0`.
+        - `fpSoftmaxOf_error_bound_subnormal_shifted` (factor-of-2, S ≥ 1): xs-indep
+          coefficients via `subnormalSoftmaxAbs_le_of_S_ge_one`.
+        - Underflow-tolerant via `fpDivFinite_toVal_zero_of_num_m_zero` (private) +
+          case split on `(exps i).m = 0` inside the core.
+        - `_of_sumBound` wrappers for both variants (take `FpSum.FpSumBound` adapter).
+        - Companions: `fpSoftmax_sum_close_to_one_subnormal{,_tight}`,
+          `fpSoftmax_preserves_argmax_pair_subnormal{,_tight}`.
+        - Bundles: `FpSoftmaxResultSubnormal{,Tight}` with `.error_bound`/
+          `.sum_close_to_one`/`.preserves_argmax_pair` methods.
+        - Helpers: `exps_nonneg_unified`, `exps_pos_of_m_ne_zero`,
+          `softmaxErrorCoeff_tight_le_of_S_ge_one`, `subnormalSoftmaxAbs_tight_le_of_S_ge_one`.
       - Naive-sum step helpers: `fpAddFinite_exists_finite_of_nonneg_bounded`,
         `naiveSum_step_finite_of_nonneg_bounded` — automate per-step `Fp.finite`
         witness. Full automated NaiveSum-from-bounded-list builder deferred.
+      - [ ] **Shifted tight variant** — `fpSoftmaxOf_error_bound_subnormal_tight_shifted`:
+        combine `softmaxErrorCoeff_tight_le_of_S_ge_one` + `subnormalSoftmaxAbs_tight_le_of_S_ge_one`
+        to produce an xs-independent tight bound under S ≥ 1. ~30 lines, mechanical.
+      - [ ] **End-to-end pipeline theorem** — takes raw `xs : Fin n → FiniteFp`, runs
+        `fpMax` + `fpSoftmaxShift` + exp + sum + divide, produces an error bound
+        against the mathematical softmax. Requires `fpMax.toVal` characterization
+        (equals the max of `.toVal`s) and `fpSubFinite` error analysis to bridge
+        the shift step. ~200 lines; would give users a single-call API.
+      - [ ] **Concrete `FpSumBound` instances** — the adapter framework exists but no
+        instances are wired up. Needed for softmax to be usable end-to-end:
+        - `FpSumBound.ofNaiveSum` (basic, γ_n-style bound)
+        - `FpSumBound.ofKahan` (Kahan compensated, 2η + nη² bound via `kahan_higham_bound`)
+        - `FpSumBound.ofNeumaier` (Neumaier variant)
+        Each ~100–200 lines. Biggest practical win — verified softmax with Kahan
+        compensation has real application value.
     - [ ] **Log-sum-exp** — `logsumexp(xs) = max(xs) + log(Σ exp(xs_i - max(xs)))`,
       numerically stable computation of `log(Σ exp(xs_i))`.
     - [ ] **Temperature scaling** — `softmax(xs/T)`, convergence to argmax as T→0.
