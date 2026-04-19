@@ -322,8 +322,13 @@ Rounding/ files but narrow applicability.
       - Bundle: `FpSoftmaxResult` — packages the full pipeline; `.error_bound`, `.sum_close_to_one`, `.preserves_argmax_pair` methods
       - `FpSum.FpSumBound.weaken`/`reindex`/`congr`/`append` — compositional adapters
       - Pre-shift: `fpMax`, `fpSoftmaxShift` (subtracts c from each)
-      - Partial subnormal-tolerant: `exps_ulp_error_of_correct` — subnormal-inclusive exp bound via `Fp.ulp`.
-        Full subnormal-tolerant main theorem deferred.
+      - Subnormal-tolerant building blocks: `subnormalConst`, `ulp_half_le_unified`,
+        `exps_unified_error_of_correct`, `sum_exps_unified_error`, `denom_unified_error`.
+        Full subnormal-tolerant main theorem (including mixed-additive `S̄` positivity
+        in the ratio analysis) deferred.
+      - Naive-sum step helpers: `fpAddFinite_exists_finite_of_nonneg_bounded`,
+        `naiveSum_step_finite_of_nonneg_bounded` — automate per-step `Fp.finite`
+        witness. Full automated NaiveSum-from-bounded-list builder deferred.
     - [ ] **Log-sum-exp** — `logsumexp(xs) = max(xs) + log(Σ exp(xs_i - max(xs)))`,
       numerically stable computation of `log(Σ exp(xs_i))`.
     - [ ] **Temperature scaling** — `softmax(xs/T)`, convergence to argmax as T→0.
