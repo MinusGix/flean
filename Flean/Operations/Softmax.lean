@@ -504,6 +504,89 @@ theorem exps_ge_of_correct {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n →
   have := abs_le.mp h
   linarith [this.1]
 
+/-- Subnormal unit: `2^(min_exp - prec)` — the absolute rounding error in subnormal range. -/
+noncomputable def subnormalConst : ℝ :=
+  (2 : ℝ) ^ (FloatFormat.min_exp - FloatFormat.prec)
+
+omit [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ] [RModeNearest ℝ]
+  [ExpApprox] [ExpApproxSound] in
+theorem subnormalConst_pos : (0 : ℝ) < subnormalConst := by
+  unfold subnormalConst; positivity
+
+omit [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ] [RModeNearest ℝ]
+  [ExpApprox] [ExpApproxSound] in
+theorem subnormalConst_nn : (0 : ℝ) ≤ subnormalConst :=
+  le_of_lt subnormalConst_pos
+
+omit [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ] [RModeNearest ℝ]
+  [ExpApprox] [ExpApproxSound] in
+/-- **Unified ulp bound**: `Fp.ulp v / 2 ≤ η · v + subnormalConst` for positive `v`.
+
+This lets us unify the normal-range (relative error ≤ η·v) and subnormal-range
+(absolute error ≤ subnormalConst) bounds into a single expression that always holds. -/
+theorem ulp_half_le_unified (v : ℝ) (hv_pos : 0 < v) :
+    Fp.ulp v / 2 ≤ (η : ℝ) * v + subnormalConst := by
+  unfold Fp.ulp subnormalConst
+  simp only [FloatFormat.hEps_def]
+  set e : ℤ := max (Int.log 2 |v|) FloatFormat.min_exp with he_def
+  -- e ≥ min_exp, so 2^(e - prec) ≥ 2^(min_exp - prec)
+  have hv_abs : |v| = v := abs_of_pos hv_pos
+  have hη_pos : (0 : ℝ) < (2 : ℝ)^(-(FloatFormat.prec : ℤ)) := by positivity
+  have hsub_pos : (0 : ℝ) < (2 : ℝ)^(FloatFormat.min_exp - FloatFormat.prec) := by positivity
+  -- (2^(e - prec + 1)) / 2 = 2^(e - prec)
+  have halgebra : (2 : ℝ) ^ (e - FloatFormat.prec + 1) / 2 = (2 : ℝ) ^ (e - FloatFormat.prec) := by
+    rw [zpow_add_one₀ (by norm_num : (2 : ℝ) ≠ 0)]
+    ring
+  rw [halgebra]
+  -- Case split: subnormal (v < 2^min_exp) or normal (v ≥ 2^min_exp)
+  by_cases hnormal : (2 : ℝ) ^ FloatFormat.min_exp ≤ v
+  · -- Normal case: e = Int.log 2 v, and 2^e ≤ v, so 2^(e - prec) ≤ v · 2^(-prec)
+    have hlog_ge : FloatFormat.min_exp ≤ Int.log 2 |v| := by
+      rw [hv_abs]
+      exact (Int.zpow_le_iff_le_log (b := 2) (R := ℝ) (by norm_num : (1 : ℕ) < 2) hv_pos).mp
+        hnormal
+    have he_eq : e = Int.log 2 |v| := by
+      rw [he_def]; exact max_eq_left hlog_ge
+    rw [he_eq]
+    -- 2^(Int.log 2 |v|) ≤ |v| = v
+    have hlog_le_v : (2 : ℝ) ^ (Int.log 2 |v|) ≤ v := by
+      have h := Int.zpow_log_le_self (R := ℝ) (b := 2) (by norm_num : (1 : ℕ) < 2) hv_pos
+      calc (2 : ℝ) ^ (Int.log 2 |v|) = (2 : ℝ) ^ (Int.log 2 v) := by rw [hv_abs]
+        _ ≤ v := by exact_mod_cast h
+    -- 2^(Int.log 2 |v| - prec) = 2^(Int.log 2 |v|) * 2^(-prec) ≤ v * 2^(-prec)
+    have h1 : (2 : ℝ) ^ (Int.log 2 |v| - FloatFormat.prec) =
+              (2 : ℝ) ^ (Int.log 2 |v|) * (2 : ℝ) ^ (-(FloatFormat.prec : ℤ)) := by
+      rw [← zpow_add₀ (by norm_num : (2 : ℝ) ≠ 0)]
+      ring_nf
+    rw [h1]
+    calc (2 : ℝ) ^ (Int.log 2 |v|) * (2 : ℝ) ^ (-(FloatFormat.prec : ℤ))
+        ≤ v * (2 : ℝ) ^ (-(FloatFormat.prec : ℤ)) :=
+          mul_le_mul_of_nonneg_right hlog_le_v (le_of_lt hη_pos)
+      _ = (2 : ℝ) ^ (-(FloatFormat.prec : ℤ)) * v := by ring
+      _ ≤ (2 : ℝ) ^ (-(FloatFormat.prec : ℤ)) * v +
+          (2 : ℝ) ^ (FloatFormat.min_exp - FloatFormat.prec) := by linarith
+  · -- Subnormal case: v < 2^min_exp
+    push_neg at hnormal
+    have hlog_lt : Int.log 2 |v| < FloatFormat.min_exp := by
+      rw [hv_abs]
+      -- Int.log 2 v < min_exp iff v < 2^min_exp (when v ≥ 1)
+      -- Hmm, Int.log is tricky for v < 1. Let me use a different argument.
+      by_contra h_ge
+      push_neg at h_ge
+      -- h_ge : min_exp ≤ Int.log 2 v
+      have : (2 : ℝ) ^ FloatFormat.min_exp ≤ v := by
+        have h1 : (2 : ℝ) ^ (FloatFormat.min_exp : ℤ) ≤ (2 : ℝ) ^ Int.log 2 v :=
+          zpow_le_zpow_right₀ (by norm_num : (1 : ℝ) ≤ 2) h_ge
+        have h2 : (2 : ℝ) ^ Int.log 2 v ≤ v :=
+          Int.zpow_log_le_self (by norm_num : (1 : ℕ) < 2) hv_pos
+        linarith
+      linarith
+    have he_eq : e = FloatFormat.min_exp := by
+      rw [he_def]; exact max_eq_right (le_of_lt hlog_lt)
+    rw [he_eq]
+    -- 2^(min_exp - prec) ≤ 2^(-prec) * v + 2^(min_exp - prec)
+    linarith [mul_nonneg (le_of_lt hη_pos) (le_of_lt hv_pos)]
+
 /-- Per-component exp error (subnormal-tolerant form): absolute error ≤ `ulp/2`.
 
 Uses `RModeNearest_abs_error_le_ulp_half_pos`, which holds for any positive exp
@@ -525,6 +608,18 @@ theorem exps_ulp_error_of_correct {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fi
     rw [← hcorr]; exact h_exp i
   have h := RModeNearest_abs_error_le_ulp_half_pos (R := ℝ) _ (Real.exp_pos _) (exps i) hfe
   rwa [abs_sub_comm]
+
+/-- Per-component unified exp error: `|ē_i - e_i| ≤ η · e_i + subnormalConst`.
+
+Subnormal-tolerant: this always holds whether `e_i` is in normal range (where
+`η · e_i` is tight) or subnormal (where `subnormalConst` dominates). -/
+theorem exps_unified_error_of_correct {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i)) (i : Fin n) :
+    |((exps i).toVal : ℝ) - Real.exp ((xs i).toVal : ℝ)| ≤
+      (η : ℝ) * Real.exp ((xs i).toVal : ℝ) + subnormalConst := by
+  have h := exps_ulp_error_of_correct xs exps h_exp i
+  have hbd := ulp_half_le_unified _ (Real.exp_pos ((xs i).toVal : ℝ))
+  linarith
 
 /-- FP exp values are nonneg when inputs give normal-range exp outputs. -/
 theorem exps_nonneg_of_correct {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
@@ -586,6 +681,86 @@ theorem sum_abs_exps_eq_sum {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n �
   apply Finset.sum_congr rfl
   intro j _
   exact abs_of_nonneg (exps_nonneg_of_correct xs exps h_exp h_exp_nr hη j)
+
+/-- **Summed unified exp error** (subnormal-tolerant). -/
+theorem sum_exps_unified_error {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i)) :
+    |∑ j, ((exps j).toVal : ℝ) - ∑ j, Real.exp ((xs j).toVal : ℝ)| ≤
+      (η : ℝ) * ∑ j, Real.exp ((xs j).toVal : ℝ) + (n : ℝ) * subnormalConst := by
+  have hperj : ∀ j, |((exps j).toVal : ℝ) - Real.exp ((xs j).toVal : ℝ)| ≤
+      (η : ℝ) * Real.exp ((xs j).toVal : ℝ) + subnormalConst :=
+    fun j => exps_unified_error_of_correct xs exps h_exp j
+  have hsum_eq : ∑ j, ((exps j).toVal : ℝ) - ∑ j, Real.exp ((xs j).toVal : ℝ) =
+      ∑ j, (((exps j).toVal : ℝ) - Real.exp ((xs j).toVal : ℝ)) := by
+    rw [Finset.sum_sub_distrib]
+  rw [hsum_eq]
+  calc |∑ j, (((exps j).toVal : ℝ) - Real.exp ((xs j).toVal : ℝ))|
+      ≤ ∑ j, |((exps j).toVal : ℝ) - Real.exp ((xs j).toVal : ℝ)| :=
+        Finset.abs_sum_le_sum_abs _ _
+    _ ≤ ∑ j : Fin n, ((η : ℝ) * Real.exp ((xs j).toVal : ℝ) + subnormalConst) :=
+        Finset.sum_le_sum (fun j _ => hperj j)
+    _ = (η : ℝ) * ∑ j, Real.exp ((xs j).toVal : ℝ) + (n : ℝ) * subnormalConst := by
+        rw [Finset.sum_add_distrib, ← Finset.mul_sum, Finset.sum_const,
+          Finset.card_univ, Fintype.card_fin, nsmul_eq_mul]
+
+/-- **Unified denom error** (subnormal-tolerant): combines `εsum · Σ|ē_j|`
+(sum FP error) with `η·S + n·subnormalConst` (sum-of-exps error, unified). -/
+theorem denom_unified_error {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (denom : FiniteFp) (εsum : ℝ)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum) :
+    |(denom.toVal : ℝ) - ∑ j, Real.exp ((xs j).toVal : ℝ)| ≤
+      ((η : ℝ) + εsum * (1 + (η : ℝ))) * ∑ j, Real.exp ((xs j).toVal : ℝ) +
+        (1 + εsum) * (n : ℝ) * subnormalConst := by
+  set S : ℝ := ∑ j, Real.exp ((xs j).toVal : ℝ) with hS_def
+  set Se : ℝ := ∑ j, ((exps j).toVal : ℝ) with hSe_def
+  -- |Σē - S| ≤ η·S + n·subnormalConst
+  have hsum_err := sum_exps_unified_error xs exps h_exp
+  -- |ē_j| ≤ |e_j| + η·e_j + subnormalConst = (1+η)·e_j + subnormalConst (e_j ≥ 0)
+  have habs_bd : ∀ j, |((exps j).toVal : ℝ)| ≤
+                      (1 + (η : ℝ)) * Real.exp ((xs j).toVal : ℝ) + subnormalConst := by
+    intro j
+    have hper := exps_unified_error_of_correct xs exps h_exp j
+    have hexp_nn : (0 : ℝ) ≤ Real.exp ((xs j).toVal : ℝ) := le_of_lt (Real.exp_pos _)
+    have := abs_sub_abs_le_abs_sub ((exps j).toVal : ℝ) (Real.exp ((xs j).toVal : ℝ))
+    have : |((exps j).toVal : ℝ)| ≤ |Real.exp ((xs j).toVal : ℝ)| +
+           ((η : ℝ) * Real.exp ((xs j).toVal : ℝ) + subnormalConst) := by
+      have h := abs_sub_abs_le_abs_sub ((exps j).toVal : ℝ) (Real.exp ((xs j).toVal : ℝ))
+      linarith
+    rw [abs_of_nonneg hexp_nn] at this
+    linarith
+  -- Sum of absolute values ≤ (1+η)·S + n·subnormalConst
+  have habs_sum_bd : ∑ j, |((exps j).toVal : ℝ)| ≤
+                     (1 + (η : ℝ)) * S + (n : ℝ) * subnormalConst := by
+    calc ∑ j, |((exps j).toVal : ℝ)|
+        ≤ ∑ j : Fin n, ((1 + (η : ℝ)) * Real.exp ((xs j).toVal : ℝ) + subnormalConst) :=
+          Finset.sum_le_sum (fun j _ => habs_bd j)
+      _ = (1 + (η : ℝ)) * S + (n : ℝ) * subnormalConst := by
+          rw [Finset.sum_add_distrib, ← Finset.mul_sum, Finset.sum_const,
+            Finset.card_univ, Fintype.card_fin, nsmul_eq_mul, hS_def]
+  have hSe_to_S : |Se - S| ≤ (η : ℝ) * S + (n : ℝ) * subnormalConst := by
+    simp only [hSe_def, hS_def]
+    exact hsum_err
+  -- Triangle: |denom - S| ≤ |denom - Σē| + |Σē - S|
+  --         ≤ εsum · (Σ|ē|) + η·S + n·subnormalConst
+  --         ≤ εsum · ((1+η)S + n·sc) + η·S + n·sc
+  --         = (η + εsum(1+η)) · S + (1+εsum) · n · sc
+  have hn_sc_nn : 0 ≤ (n : ℝ) * subnormalConst :=
+    mul_nonneg (Nat.cast_nonneg _) subnormalConst_nn
+  calc |(denom.toVal : ℝ) - S|
+      = |((denom.toVal : ℝ) - Se) + (Se - S)| := by ring_nf
+    _ ≤ |(denom.toVal : ℝ) - Se| + |Se - S| := abs_add_le _ _
+    _ ≤ εsum * ∑ j, |((exps j).toVal : ℝ)| + ((η : ℝ) * S + (n : ℝ) * subnormalConst) := by
+        linarith [h_denom_close, hSe_to_S]
+    _ ≤ εsum * ((1 + (η : ℝ)) * S + (n : ℝ) * subnormalConst) +
+          ((η : ℝ) * S + (n : ℝ) * subnormalConst) := by
+        have : εsum * ∑ j, |((exps j).toVal : ℝ)| ≤
+               εsum * ((1 + (η : ℝ)) * S + (n : ℝ) * subnormalConst) := by
+          apply mul_le_mul_of_nonneg_left habs_sum_bd h_εsum_nn
+        linarith
+    _ = ((η : ℝ) + εsum * (1 + (η : ℝ))) * S + (1 + εsum) * (n : ℝ) * subnormalConst := by ring
 
 /-- Denominator total error: `|denom.toVal - Σ exp((xs j).toVal)| ≤ (η + εsum(1+η)) · Σ exp(...)`. -/
 theorem denom_error_of_correct {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
