@@ -663,6 +663,41 @@ theorem exps_unified_error_of_correct {n : ℕ} (xs : Fin n → FiniteFp) (exps 
   have hbd := ulp_half_le_unified _ (Real.exp_pos ((xs i).toVal : ℝ))
   linarith
 
+/-- FP exp values are nonneg (subnormal-tolerant: drops the normal-range hypothesis).
+
+Follows from `RModeZero.round_zero + RModeMono.round_mono`: rounding the nonneg
+real `exp(x_i)` to nearest gives a nonneg FP. -/
+theorem exps_nonneg_unified {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (i : Fin n) :
+    0 ≤ ((exps i).toVal : ℝ) := by
+  have hcorr : fpExpFinite (xs i) = ○(Real.exp ((xs i).toVal : ℝ)) :=
+    fpExpFinite_correct (xs i)
+  have hfe : ○(Real.exp ((xs i).toVal : ℝ)) = Fp.finite (exps i) := by
+    rw [← hcorr]; exact h_exp i
+  have hexp_nn : (0 : ℝ) ≤ Real.exp ((xs i).toVal : ℝ) := le_of_lt (Real.exp_pos _)
+  have hzero : RMode.round (R := ℝ) (0 : ℝ) = Fp.finite 0 := RModeZero.round_zero
+  have hmono : RMode.round (R := ℝ) (0 : ℝ) ≤
+               RMode.round (R := ℝ) (Real.exp ((xs i).toVal : ℝ)) :=
+    RModeMono.round_mono hexp_nn
+  rw [hzero, hfe] at hmono
+  have h_fin_le : (0 : FiniteFp) ≤ exps i := (Fp.finite_le_finite_iff _ _).mp hmono
+  have htoVal_le := FiniteFp.le_toVal_le ℝ h_fin_le
+  have h_zero_toVal : ((0 : FiniteFp).toVal : ℝ) = 0 := FiniteFp.toVal_isZero rfl
+  linarith
+
+/-- Positivity from `m ≠ 0`, subnormal-tolerant form: combines `exps_nonneg_unified`
+with the `m = 0 ↔ toVal = 0` equivalence. -/
+theorem exps_pos_of_m_ne_zero {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (i : Fin n) (hm : (exps i).m ≠ 0) :
+    0 < ((exps i).toVal : ℝ) := by
+  have hnn := exps_nonneg_unified xs exps h_exp i
+  have hne : ((exps i).toVal : ℝ) ≠ 0 := by
+    intro heq
+    exact hm ((FiniteFp.toVal_significand_zero_iff (R := ℝ)).mpr heq)
+  exact lt_of_le_of_ne hnn (Ne.symm hne)
+
 /-- FP exp values are nonneg when inputs give normal-range exp outputs. -/
 theorem exps_nonneg_of_correct {n : ℕ} (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
     (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
@@ -1059,6 +1094,671 @@ theorem fpSoftmaxOf_error_bound_of_sumBound
   fpSoftmaxOf_error_bound hn xs exps sum.result result sum.relErr
     h_exp h_exp_nr sum.h_bound sum.h_relErr_nn h_δ_lt hd_m h_quot_nr h_result i
 
+/-- If `fpDivFinite a b = Fp.finite f` and `a.m = 0`, then `f.toVal = 0`.
+
+When the numerator has significand zero, `fpDivFinite` short-circuits to a
+signed zero float (via `roundIntSigM` with `mag = 0`). Both signed zeros have
+`.m = 0`, so `f.toVal = 0`. -/
+private lemma fpDivFinite_toVal_zero_of_num_m_zero
+    (a b : FiniteFp) (ha : a.m = 0) (f : FiniteFp)
+    (hf : fpDivFinite a b = Fp.finite f) : (f.toVal : ℝ) = 0 := by
+  have hscaled : a.m * 2 ^ divShift = 0 := by simp [ha]
+  simp only [fpDivFinite, hscaled, Nat.zero_div, Nat.zero_mod,
+             roundIntSigM] at hf
+  have hfm : f.m = 0 := by
+    rcases Bool.eq_false_or_eq_true (a.s ^^ b.s) with hs | hs <;>
+      simp only [hs, ↓reduceIte] at hf <;>
+      cases (Fp.finite.inj hf) <;> rfl
+  exact FiniteFp.toVal_significand_zero_iff.mp hfm
+
+/-- Additive coefficient for the (factor-of-2) subnormal-tolerant softmax error bound.
+
+Multiplied by `subnormalConst`, this captures the additive terms that do not
+scale with `σ_i`. For typical binary64 (`subnormalConst ≈ 2^(-1075) ≈ 10^(-324)`),
+the resulting additive error is astronomically negligible in practice even with
+large `n`. -/
+noncomputable def subnormalSoftmaxAbs {n : ℕ} (xs : Fin n → FiniteFp) (εsum : ℝ) : ℝ :=
+  1 + 2 * (1 + (η : ℝ) + (1 + εsum) * (n : ℝ)) /
+    ((1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+     ∑ j, Real.exp ((xs j).toVal : ℝ))
+
+/-- Effective denominator margin `m := (1-δ)·S - N·sc` used in the tight bound.
+
+Positivity of this quantity (`h_S_margin_tight`) is the minimal hypothesis
+needed to ensure the FP denominator is strictly positive. -/
+noncomputable def subnormalSoftmaxDenomMargin {n : ℕ} (xs : Fin n → FiniteFp)
+    (εsum : ℝ) : ℝ :=
+  (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+    (∑ j, Real.exp ((xs j).toVal : ℝ)) -
+  (1 + εsum) * (n : ℝ) * subnormalConst
+
+/-- Tight multiplicative coefficient: `((η² + 2η + δ)·S + N·sc) / m`.
+
+When subnormal contributions vanish (`N·sc → 0`), this reduces to
+`softmaxErrorCoeff εsum` — no factor-of-2 looseness. -/
+noncomputable def softmaxErrorCoeff_tight {n : ℕ} (xs : Fin n → FiniteFp) (εsum : ℝ) : ℝ :=
+  (((η : ℝ)^2 + 2 * (η : ℝ) + ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+     (∑ j, Real.exp ((xs j).toVal : ℝ)) +
+   (1 + εsum) * (n : ℝ) * subnormalConst) /
+  subnormalSoftmaxDenomMargin xs εsum
+
+/-- Tight additive coefficient: `1 + (1+η)/m`. -/
+noncomputable def subnormalSoftmaxAbs_tight {n : ℕ} (xs : Fin n → FiniteFp) (εsum : ℝ) : ℝ :=
+  1 + (1 + (η : ℝ)) / subnormalSoftmaxDenomMargin xs εsum
+
+set_option maxHeartbeats 800000 in
+/-- **Core per-component subnormal-tolerant softmax bound**, parametrized over an
+abstract lower bound `m` on the FP denominator.
+
+Specializations with different `m` yield the tight (`m := (1-δ)·S - N·sc`) and
+factor-of-2 (`m := (1-δ)·S/2`) variants as thin corollaries. The conclusion is
+always in the tight form; callers can further relax it via `σ_i ≤ 1` if desired. -/
+private theorem fpSoftmax_apply_core_bound
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp) (denom : FiniteFp)
+    (result : Fin n → FiniteFp) (εsum : ℝ)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum)
+    (hd_m : denom.m ≠ 0)
+    (h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i))
+    (m : ℝ) (h_m_pos : 0 < m)
+    (h_m_le_margin : m ≤ (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+                         (∑ j, Real.exp ((xs j).toVal : ℝ)) -
+                         (1 + εsum) * (n : ℝ) * subnormalConst)
+    (i : Fin n) :
+    |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      (((η : ℝ)^2 + 2 * (η : ℝ) + ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+         (∑ j, Real.exp ((xs j).toVal : ℝ)) +
+       (1 + εsum) * (n : ℝ) * subnormalConst) / m *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      ((1 + (η : ℝ)) / m + 1) * subnormalConst := by
+  -- Shorthand
+  set S : ℝ := ∑ j, Real.exp ((xs j).toVal : ℝ) with hS_def
+  set Sb : ℝ := (denom.toVal : ℝ) with hSb_def
+  set q : ℝ := ((result i).toVal : ℝ) with hq_def
+  set δ : ℝ := (η : ℝ) + εsum * (1 + (η : ℝ)) with hδ_def
+  set ei : ℝ := Real.exp ((xs i).toVal : ℝ) with hei_def
+  set ebi : ℝ := ((exps i).toVal : ℝ) with hebi_def
+  set Nsc : ℝ := (1 + εsum) * (n : ℝ) * subnormalConst with hNsc_def
+  set σi : ℝ := ei / S with hσi_def
+  -- Basic facts
+  have hη_lt : (η : ℝ) < 1 := hEps_lt_one
+  have hη_nn : (0 : ℝ) ≤ η := by positivity
+  have hsc_nn : 0 ≤ subnormalConst := subnormalConst_nn
+  have hsc_pos : 0 < subnormalConst := subnormalConst_pos
+  have hn_nn : (0 : ℝ) ≤ (n : ℝ) := Nat.cast_nonneg _
+  have h1ε_pos : (0 : ℝ) < 1 + εsum := by linarith
+  have hNsc_nn : 0 ≤ Nsc := by show 0 ≤ (1 + εsum) * (n : ℝ) * subnormalConst; positivity
+  have he_pos : ∀ j, 0 < Real.exp ((xs j).toVal : ℝ) := fun j => Real.exp_pos _
+  have he_nn : ∀ j, 0 ≤ Real.exp ((xs j).toVal : ℝ) := fun j => le_of_lt (Real.exp_pos _)
+  have hei_pos : 0 < ei := he_pos i
+  have hei_nn : 0 ≤ ei := he_nn i
+  have hS_pos : 0 < S := by
+    show 0 < ∑ j, Real.exp ((xs j).toVal : ℝ)
+    exact Finset.sum_pos (fun j _ => he_pos j)
+      (Finset.univ_nonempty_iff.mpr (Fin.pos_iff_nonempty.mp hn))
+  have hS_nn : 0 ≤ S := le_of_lt hS_pos
+  have hm_ne : (m : ℝ) ≠ 0 := ne_of_gt h_m_pos
+  -- Fold h_m_le_margin in terms of δ, Nsc
+  have hm_le_margin : m ≤ (1 - δ) * S - Nsc := h_m_le_margin
+  -- Derive 1 - δ > 0 from m > 0 and the margin hypothesis
+  have h1mδ_pos : 0 < 1 - δ := by
+    by_contra h
+    push_neg at h
+    have hle : (1 - δ) * S ≤ 0 := mul_nonpos_of_nonpos_of_nonneg h hS_nn
+    linarith [hm_le_margin, h_m_pos, hNsc_nn]
+  have hδ_nn : 0 ≤ δ := by
+    show (0 : ℝ) ≤ (η : ℝ) + εsum * (1 + (η : ℝ)); positivity
+  have hδ_ge_η : (η : ℝ) ≤ δ := by
+    show (η : ℝ) ≤ (η : ℝ) + εsum * (1 + (η : ℝ))
+    have : 0 ≤ εsum * (1 + (η : ℝ)) := mul_nonneg h_εsum_nn (by linarith)
+    linarith
+  have hm_le_1δS : m ≤ (1 - δ) * S := by linarith
+  -- Exp error (unified)
+  have heb_err_i : |ebi - ei| ≤ (η : ℝ) * ei + subnormalConst :=
+    exps_unified_error_of_correct xs exps h_exp i
+  have hebi_nn : 0 ≤ ebi := exps_nonneg_unified xs exps h_exp i
+  have hdenom_err : |Sb - S| ≤ δ * S + Nsc :=
+    denom_unified_error xs exps denom εsum h_exp h_denom_close h_εsum_nn
+  have hSb_lo : (1 - δ) * S - Nsc ≤ Sb := by
+    have := (abs_le.mp hdenom_err).1; linarith
+  have hSb_ge_m : m ≤ Sb := le_trans hm_le_margin hSb_lo
+  have hSb_pos : 0 < Sb := lt_of_lt_of_le h_m_pos hSb_ge_m
+  have hSb_ne : (Sb : ℝ) ≠ 0 := ne_of_gt hSb_pos
+  have hebi_le : ebi ≤ (1 + (η : ℝ)) * ei + subnormalConst := by
+    have := (abs_le.mp heb_err_i).2; linarith
+  -- Softmax of i
+  have hsigi_eq : softmax (fun j => ((xs j).toVal : ℝ)) i = σi := by
+    show Real.exp ((xs i).toVal : ℝ) / softmaxDenom _ = ei / S
+    simp [softmaxDenom, hS_def, hei_def]
+  have hσi_pos : 0 < σi := div_pos hei_pos hS_pos
+  have hσi_nn : 0 ≤ σi := le_of_lt hσi_pos
+  rw [hsigi_eq]
+  -- Case split on (exps i).m = 0
+  by_cases h_mi : (exps i).m = 0
+  · -- Underflow case: ebi = 0, q = 0
+    have h_ebi_zero : ebi = 0 := by
+      show ((exps i).toVal : ℝ) = 0
+      exact (FiniteFp.toVal_significand_zero_iff (R := ℝ)).mp h_mi
+    have h_q_zero : q = 0 := by
+      show ((result i).toVal : ℝ) = 0
+      exact fpDivFinite_toVal_zero_of_num_m_zero (exps i) denom h_mi (result i) (h_result i)
+    have h1mη_pos : 0 < 1 - (η : ℝ) := by linarith
+    have hei_bd : ei ≤ subnormalConst / (1 - (η : ℝ)) := by
+      have hr : |ebi - ei| ≤ (η : ℝ) * ei + subnormalConst := heb_err_i
+      rw [h_ebi_zero, zero_sub, abs_neg] at hr
+      rw [abs_of_pos hei_pos] at hr
+      rw [le_div_iff₀ h1mη_pos]; linarith
+    have hei_bd' : ei * (1 - (η : ℝ)) ≤ subnormalConst :=
+      (le_div_iff₀ h1mη_pos).mp hei_bd
+    have hσi_bd : σi ≤ subnormalConst / ((1 - (η : ℝ)) * S) := by
+      show ei / S ≤ subnormalConst / ((1 - (η : ℝ)) * S)
+      rw [div_le_div_iff₀ hS_pos (mul_pos h1mη_pos hS_pos)]
+      nlinarith [hei_bd', hS_nn, h1mη_pos, hei_nn]
+    -- Bound: 1/((1-η)·S) ≤ (1+η)/m via m ≤ (1-η²)·S
+    have h1mδ_le_1mη : (1 - δ) ≤ (1 - (η : ℝ)) := by linarith
+    have h_m_le_1ηS : m ≤ (1 - (η : ℝ)) * S := by
+      have : (1 - δ) * S ≤ (1 - (η : ℝ)) * S :=
+        mul_le_mul_of_nonneg_right h1mδ_le_1mη hS_nn
+      linarith
+    have h_ratio_bd : (1 : ℝ) / ((1 - (η : ℝ)) * S) ≤ (1 + (η : ℝ)) / m := by
+      rw [div_le_div_iff₀ (mul_pos h1mη_pos hS_pos) h_m_pos]
+      nlinarith [h_m_le_1ηS, hη_nn, hS_nn]
+    have h_SSAt_bd : subnormalConst / ((1 - (η : ℝ)) * S) ≤
+                     ((1 + (η : ℝ)) / m + 1) * subnormalConst := by
+      have h1 : subnormalConst / ((1 - (η : ℝ)) * S) =
+                1 / ((1 - (η : ℝ)) * S) * subnormalConst := by ring
+      have h2 : 1 / ((1 - (η : ℝ)) * S) * subnormalConst ≤
+                (1 + (η : ℝ)) / m * subnormalConst :=
+        mul_le_mul_of_nonneg_right h_ratio_bd hsc_nn
+      have h3 : (1 + (η : ℝ)) / m * subnormalConst ≤
+                ((1 + (η : ℝ)) / m + 1) * subnormalConst := by
+        have : (1 + (η : ℝ)) / m ≤ (1 + (η : ℝ)) / m + 1 := by linarith
+        exact mul_le_mul_of_nonneg_right this hsc_nn
+      linarith
+    have h_mult_nn :
+        0 ≤ (((η : ℝ)^2 + 2 * (η : ℝ) + δ) * S + Nsc) / m * σi := by
+      apply mul_nonneg _ hσi_nn
+      apply div_nonneg _ (le_of_lt h_m_pos)
+      have : 0 ≤ (η : ℝ)^2 + 2 * (η : ℝ) + δ := by positivity
+      have : 0 ≤ ((η : ℝ)^2 + 2 * (η : ℝ) + δ) * S := mul_nonneg this hS_nn
+      linarith
+    calc |q - σi|
+        = |(-σi : ℝ)| := by rw [h_q_zero, zero_sub]
+      _ = σi := by rw [abs_neg]; exact abs_of_nonneg hσi_nn
+      _ ≤ subnormalConst / ((1 - (η : ℝ)) * S) := hσi_bd
+      _ ≤ ((1 + (η : ℝ)) / m + 1) * subnormalConst := h_SSAt_bd
+      _ ≤ (((η : ℝ)^2 + 2 * (η : ℝ) + δ) * S + Nsc) / m * σi +
+          ((1 + (η : ℝ)) / m + 1) * subnormalConst := by linarith
+  · -- Non-underflow case: 0 < ebi
+    have hebi_pos : 0 < ebi := exps_pos_of_m_ne_zero xs exps h_exp i h_mi
+    have hei_Sb_pos : 0 < ebi / Sb := div_pos hebi_pos hSb_pos
+    have hei_Sb_ne : ebi / Sb ≠ 0 := ne_of_gt hei_Sb_pos
+    have h_fpDiv_eq : fpDivFinite (exps i) denom = ○(ebi / Sb) := by
+      have h := fpDivFinite_correct (R := ℝ) (exps i) denom hd_m hei_Sb_ne
+      simp only [div_eq_fpDiv, fpDiv, hd_m, ↓reduceIte, div_finite_eq_fpDivFinite] at h
+      exact h
+    have h_round_eq : ○(ebi / Sb) = Fp.finite (result i) := by
+      rw [← h_fpDiv_eq]; exact h_result i
+    have hq_err : |q - ebi / Sb| ≤ (η : ℝ) * (ebi / Sb) + subnormalConst := by
+      have h := RModeNearest_abs_error_le_ulp_half_pos (R := ℝ) _ hei_Sb_pos (result i) h_round_eq
+      rw [abs_sub_comm] at h
+      have hbd := ulp_half_le_unified (ebi / Sb) hei_Sb_pos
+      linarith
+    have hebi_Sb_bd : ebi / Sb ≤ ((1 + (η : ℝ)) * ei + subnormalConst) / m := by
+      have h1 : ebi ≤ (1 + (η : ℝ)) * ei + subnormalConst := hebi_le
+      have hnum_nn : (0 : ℝ) ≤ (1 + (η : ℝ)) * ei + subnormalConst := by positivity
+      calc ebi / Sb
+          ≤ ((1 + (η : ℝ)) * ei + subnormalConst) / Sb :=
+            div_le_div_of_nonneg_right h1 (le_of_lt hSb_pos)
+        _ ≤ ((1 + (η : ℝ)) * ei + subnormalConst) / m :=
+            div_le_div_of_nonneg_left hnum_nn h_m_pos hSb_ge_m
+    have h_div_err_bd : |q - ebi / Sb| ≤
+        (η : ℝ) * (1 + (η : ℝ)) * ei / m + (η : ℝ) * subnormalConst / m + subnormalConst := by
+      have step1 : (η : ℝ) * (ebi / Sb) ≤
+          (η : ℝ) * (((1 + (η : ℝ)) * ei + subnormalConst) / m) :=
+        mul_le_mul_of_nonneg_left hebi_Sb_bd hη_nn
+      have step2 : (η : ℝ) * (((1 + (η : ℝ)) * ei + subnormalConst) / m) =
+                   (η : ℝ) * (1 + (η : ℝ)) * ei / m + (η : ℝ) * subnormalConst / m := by
+        field_simp
+      linarith [hq_err]
+    have h_num_decomp : ebi * S - ei * Sb = (ebi - ei) * S - ei * (Sb - S) := by ring
+    have h_num_bd : |ebi * S - ei * Sb| ≤
+        ((η : ℝ) + δ) * (ei * S) + subnormalConst * S + ei * Nsc := by
+      have h1 := heb_err_i
+      have h2 := hdenom_err
+      have hS_abs : |S| = S := abs_of_pos hS_pos
+      have he_abs : |ei| = ei := abs_of_pos hei_pos
+      calc |ebi * S - ei * Sb|
+          = |(ebi - ei) * S - ei * (Sb - S)| := by rw [h_num_decomp]
+        _ = |(ebi - ei) * S + (-(ei * (Sb - S)))| := by ring_nf
+        _ ≤ |(ebi - ei) * S| + |(-(ei * (Sb - S)))| := abs_add_le _ _
+        _ = |ebi - ei| * S + ei * |Sb - S| := by
+            rw [abs_mul, abs_neg, abs_mul, hS_abs, he_abs]
+        _ ≤ ((η : ℝ) * ei + subnormalConst) * S + ei * (δ * S + Nsc) := by
+            apply add_le_add
+            · exact mul_le_mul_of_nonneg_right h1 hS_nn
+            · exact mul_le_mul_of_nonneg_left h2 hei_nn
+        _ = ((η : ℝ) + δ) * (ei * S) + subnormalConst * S + ei * Nsc := by ring
+    have h_diff_eq : ebi / Sb - σi = (ebi * S - ei * Sb) / (Sb * S) := by
+      rw [hσi_def]; field_simp
+    have hSbS_pos : 0 < Sb * S := mul_pos hSb_pos hS_pos
+    have hmS_pos : 0 < m * S := mul_pos h_m_pos hS_pos
+    have hmS_le : m * S ≤ Sb * S :=
+      mul_le_mul_of_nonneg_right hSb_ge_m hS_nn
+    have h_num_bd_nn : 0 ≤
+        ((η : ℝ) + δ) * (ei * S) + subnormalConst * S + ei * Nsc := by
+      have hηδ_nn : 0 ≤ (η : ℝ) + δ := by linarith
+      have ha : 0 ≤ ((η : ℝ) + δ) * (ei * S) :=
+        mul_nonneg hηδ_nn (mul_nonneg hei_nn hS_nn)
+      have hb : 0 ≤ subnormalConst * S := mul_nonneg hsc_nn hS_nn
+      have hc : 0 ≤ ei * Nsc := mul_nonneg hei_nn hNsc_nn
+      linarith
+    have h_ratio_bd : |ebi / Sb - σi| ≤
+        ((η : ℝ) + δ) * ei / m + subnormalConst / m + ei * Nsc / (m * S) := by
+      rw [h_diff_eq, abs_div, abs_of_pos hSbS_pos]
+      calc |ebi * S - ei * Sb| / (Sb * S)
+          ≤ (((η : ℝ) + δ) * (ei * S) + subnormalConst * S + ei * Nsc) / (Sb * S) :=
+            div_le_div_of_nonneg_right h_num_bd (le_of_lt hSbS_pos)
+        _ ≤ (((η : ℝ) + δ) * (ei * S) + subnormalConst * S + ei * Nsc) / (m * S) :=
+            div_le_div_of_nonneg_left h_num_bd_nn hmS_pos hmS_le
+        _ = ((η : ℝ) + δ) * ei / m + subnormalConst / m + ei * Nsc / (m * S) := by
+            field_simp
+    have h_total : |q - σi| ≤
+        ((η : ℝ) * (1 + (η : ℝ)) * ei / m + (η : ℝ) * subnormalConst / m + subnormalConst) +
+        (((η : ℝ) + δ) * ei / m + subnormalConst / m + ei * Nsc / (m * S)) := by
+      calc |q - σi|
+          = |(q - ebi / Sb) + (ebi / Sb - σi)| := by ring_nf
+        _ ≤ |q - ebi / Sb| + |ebi / Sb - σi| := abs_add_le _ _
+        _ ≤ _ := by linarith [h_div_err_bd, h_ratio_bd]
+    calc |q - σi|
+        ≤ ((η : ℝ) * (1 + (η : ℝ)) * ei / m + (η : ℝ) * subnormalConst / m + subnormalConst) +
+          (((η : ℝ) + δ) * ei / m + subnormalConst / m + ei * Nsc / (m * S)) := h_total
+      _ = (((η : ℝ)^2 + 2 * (η : ℝ) + δ) * S + Nsc) / m * σi +
+          ((1 + (η : ℝ)) / m + 1) * subnormalConst := by
+          rw [hσi_def]
+          field_simp
+          ring
+
+set_option maxHeartbeats 800000 in
+/-- **Subnormal-tolerant FP softmax componentwise error bound.**
+
+Drop-in replacement for `fpSoftmaxOf_error_bound` that does *not* assume the
+exp outputs or the quotients are in normal range, *and* tolerates exp outputs
+that underflow fully to zero.
+
+- `h_S_margin` replaces `h_δ_lt`: it ensures that even after absorbing the
+  additive `(1+εsum)·n·subnormalConst` term from the denominator error, the
+  FP denominator stays strictly positive (in fact `≥ (1-δ)·S/2`).
+
+The bound picks up an additive `subnormalSoftmaxAbs xs εsum · subnormalConst`
+term alongside a factor-of-2 loosening of the multiplicative coefficient.
+
+**Quantification.** For binary64 with `n ≤ 10^308` terms, the additive term is
+dwarfed by roundoff even at `η ≈ 10^(-16)`: `subnormalSoftmaxAbs · subnormalConst`
+is typically `≲ 10^(-300)`. The bound is conservative but correct. -/
+theorem fpSoftmaxOf_error_bound_subnormal
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp) (denom : FiniteFp)
+    (result : Fin n → FiniteFp) (εsum : ℝ)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_S_margin : (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+                  (∑ j, Real.exp ((xs j).toVal : ℝ)) >
+                  2 * (1 + εsum) * (n : ℝ) * subnormalConst)
+    (hd_m : denom.m ≠ 0)
+    (h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i))
+    (i : Fin n) :
+    |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      2 * softmaxErrorCoeff εsum *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      subnormalSoftmaxAbs xs εsum * subnormalConst := by
+  -- Abbreviations
+  set S : ℝ := ∑ j, Real.exp ((xs j).toVal : ℝ) with hS_def
+  set δ : ℝ := (η : ℝ) + εsum * (1 + (η : ℝ)) with hδ_def
+  set Nsc : ℝ := (1 + εsum) * (n : ℝ) * subnormalConst with hNsc_def
+  set σi : ℝ := softmax (fun j => ((xs j).toVal : ℝ)) i with hσi_def
+  -- Basic positivity facts
+  have hη_nn : (0 : ℝ) ≤ η := by positivity
+  have hn_nn : (0 : ℝ) ≤ (n : ℝ) := Nat.cast_nonneg _
+  have h1ε_nn : (0 : ℝ) ≤ 1 + εsum := by linarith
+  have hsc_nn : 0 ≤ subnormalConst := subnormalConst_nn
+  have hNsc_nn : 0 ≤ Nsc := by show 0 ≤ (1 + εsum) * (n : ℝ) * subnormalConst; positivity
+  have h_S_margin_Nsc : (1 - δ) * S > 2 * Nsc := by
+    show (1 - δ) * S > 2 * ((1 + εsum) * (n : ℝ) * subnormalConst)
+    have := h_S_margin; linarith
+  have he_pos : ∀ j, 0 < Real.exp ((xs j).toVal : ℝ) := fun j => Real.exp_pos _
+  have hS_pos : 0 < S := by
+    show 0 < ∑ j, Real.exp ((xs j).toVal : ℝ)
+    exact Finset.sum_pos (fun j _ => he_pos j)
+      (Finset.univ_nonempty_iff.mpr (Fin.pos_iff_nonempty.mp hn))
+  have hS_nn : 0 ≤ S := le_of_lt hS_pos
+  have hS_ne : (S : ℝ) ≠ 0 := ne_of_gt hS_pos
+  have h1mδ_pos : 0 < 1 - δ := by
+    by_contra h
+    push_neg at h
+    have hle : (1 - δ) * S ≤ 0 := mul_nonpos_of_nonpos_of_nonneg h hS_nn
+    have hge : (0 : ℝ) ≤ 2 * Nsc := by positivity
+    linarith [h_S_margin_Nsc]
+  have h1δS_pos : 0 < (1 - δ) * S := mul_pos h1mδ_pos hS_pos
+  -- m := (1-δ)·S/2; derive positivity and margin inequality
+  have h_m_pos : 0 < (1 - δ) * S / 2 := by linarith
+  have h_m_le_margin : (1 - δ) * S / 2 ≤
+      (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+        (∑ j, Real.exp ((xs j).toVal : ℝ)) -
+      (1 + εsum) * (n : ℝ) * subnormalConst := by
+    show (1 - δ) * S / 2 ≤ (1 - δ) * S - Nsc
+    linarith [h_S_margin_Nsc]
+  -- Invoke the core tight bound with m = (1-δ)·S/2
+  have h_core := fpSoftmax_apply_core_bound hn xs exps denom result εsum
+    h_exp h_denom_close h_εsum_nn hd_m h_result
+    ((1 - δ) * S / 2) h_m_pos h_m_le_margin i
+  -- σ_i nonneg and ≤ 1
+  have hσi_nn : 0 ≤ σi := softmax_nonneg _ hn i
+  have hσi_le_one : σi ≤ 1 := softmax_le_one _ i
+  -- Core RHS ≤ target RHS via algebra + σ_i ≤ 1
+  -- target - core = 2·Nsc·(1 - σ_i)/((1-δ)·S) ≥ 0
+  have h_bound_diff :
+      (((η : ℝ)^2 + 2 * (η : ℝ) + δ) * S + Nsc) / ((1 - δ) * S / 2) * σi +
+      ((1 + (η : ℝ)) / ((1 - δ) * S / 2) + 1) * subnormalConst ≤
+      2 * softmaxErrorCoeff εsum * σi + subnormalSoftmaxAbs xs εsum * subnormalConst := by
+    have h_target_minus_core :
+        2 * softmaxErrorCoeff εsum * σi +
+        subnormalSoftmaxAbs xs εsum * subnormalConst -
+        ((((η : ℝ)^2 + 2 * (η : ℝ) + δ) * S + Nsc) / ((1 - δ) * S / 2) * σi +
+         ((1 + (η : ℝ)) / ((1 - δ) * S / 2) + 1) * subnormalConst) =
+        2 * Nsc * (1 - σi) / ((1 - δ) * S) := by
+      simp only [softmaxErrorCoeff, subnormalSoftmaxAbs, ← hδ_def, ← hS_def]
+      field_simp
+      ring
+    have hdiff_nn : 0 ≤ 2 * Nsc * (1 - σi) / ((1 - δ) * S) := by
+      have h1sigma : 0 ≤ 1 - σi := by linarith
+      have h2Nsc : 0 ≤ 2 * Nsc := by linarith
+      have hnum : 0 ≤ 2 * Nsc * (1 - σi) := mul_nonneg h2Nsc h1sigma
+      exact div_nonneg hnum (le_of_lt h1δS_pos)
+    linarith
+  -- Combine: |q - σ_i| ≤ core RHS ≤ target RHS
+  have h_core' :
+      |((result i).toVal : ℝ) - σi| ≤
+      (((η : ℝ)^2 + 2 * (η : ℝ) + δ) * S + Nsc) / ((1 - δ) * S / 2) * σi +
+      ((1 + (η : ℝ)) / ((1 - δ) * S / 2) + 1) * subnormalConst := by
+    have : (((η : ℝ)^2 + 2 * (η : ℝ) + ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+             (∑ j, Real.exp ((xs j).toVal : ℝ)) +
+           (1 + εsum) * (n : ℝ) * subnormalConst) / ((1 - δ) * S / 2) =
+           (((η : ℝ)^2 + 2 * (η : ℝ) + δ) * S + Nsc) / ((1 - δ) * S / 2) := by
+      simp only [← hδ_def, ← hS_def, ← hNsc_def]
+    exact this ▸ h_core
+  linarith [h_core', h_bound_diff]
+
+set_option maxHeartbeats 800000 in
+/-- **Tight subnormal-tolerant FP softmax componentwise error bound.**
+
+Uses `Sb ≥ (1-δ)·S - N·subnormalConst` directly (no factor-of-2 looseness).
+Requires only the minimal `h_S_margin_tight : 0 < subnormalSoftmaxDenomMargin xs εsum`,
+which is strictly weaker than the `> 2·N·subnormalConst` margin of the
+factor-of-2 version.
+
+When subnormal contributions vanish (`N·subnormalConst → 0`), the tight mult
+coefficient reduces to `softmaxErrorCoeff εsum` (vs. `2·softmaxErrorCoeff` in
+the factor-of-2 bound). The tight bound is therefore roughly half as loose in
+the typical regime.
+
+The additive coefficient `subnormalSoftmaxAbs_tight` is similarly tighter: it
+does not use `σ_i ≤ 1` to move the `N·sc` cross-term to the additive bucket. -/
+theorem fpSoftmaxOf_error_bound_subnormal_tight
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp) (denom : FiniteFp)
+    (result : Fin n → FiniteFp) (εsum : ℝ)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_m_pos : 0 < subnormalSoftmaxDenomMargin xs εsum)
+    (hd_m : denom.m ≠ 0)
+    (h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i))
+    (i : Fin n) :
+    |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      softmaxErrorCoeff_tight xs εsum *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      subnormalSoftmaxAbs_tight xs εsum * subnormalConst := by
+  -- Apply core with m := subnormalSoftmaxDenomMargin xs εsum (= (1-δ)·S - Nsc)
+  have hm_le : subnormalSoftmaxDenomMargin xs εsum ≤
+      (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+        (∑ j, Real.exp ((xs j).toVal : ℝ)) -
+      (1 + εsum) * (n : ℝ) * subnormalConst := le_of_eq rfl
+  have h_core := fpSoftmax_apply_core_bound hn xs exps denom result εsum
+    h_exp h_denom_close h_εsum_nn hd_m h_result
+    (subnormalSoftmaxDenomMargin xs εsum) h_m_pos hm_le i
+  -- Rewrite core conclusion to match target
+  have h_eq :
+      (((η : ℝ)^2 + 2 * (η : ℝ) + ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+         (∑ j, Real.exp ((xs j).toVal : ℝ)) +
+       (1 + εsum) * (n : ℝ) * subnormalConst) / subnormalSoftmaxDenomMargin xs εsum *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      ((1 + (η : ℝ)) / subnormalSoftmaxDenomMargin xs εsum + 1) * subnormalConst =
+      softmaxErrorCoeff_tight xs εsum *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      subnormalSoftmaxAbs_tight xs εsum * subnormalConst := by
+    simp only [softmaxErrorCoeff_tight, subnormalSoftmaxAbs_tight]
+    ring
+  linarith [h_core, h_eq]
+
+/-- When `S = ∑ exp((xs j).toVal) ≥ 1`, the `xs`-dependent additive coefficient
+`subnormalSoftmaxAbs xs εsum` is bounded by an `xs`-independent quantity.
+
+This situation arises naturally after the subtract-max trick: if `max_j xs_j = 0`,
+then `exp(0) = 1` is among the summands, so `S ≥ 1`. -/
+theorem subnormalSoftmaxAbs_le_of_S_ge_one {n : ℕ} (xs : Fin n → FiniteFp) (εsum : ℝ)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_1mδ_pos : 0 < 1 - ((η : ℝ) + εsum * (1 + (η : ℝ))))
+    (h_S_ge_one : 1 ≤ ∑ j, Real.exp ((xs j).toVal : ℝ)) :
+    subnormalSoftmaxAbs xs εsum ≤
+      1 + 2 * (1 + (η : ℝ) + (1 + εsum) * (n : ℝ)) /
+        (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) := by
+  unfold subnormalSoftmaxAbs
+  have hη_nn : (0 : ℝ) ≤ η := by positivity
+  have hn_nn : (0 : ℝ) ≤ (n : ℝ) := Nat.cast_nonneg _
+  have hnum_nn : 0 ≤ 2 * (1 + (η : ℝ) + (1 + εsum) * (n : ℝ)) := by
+    have : 0 ≤ (1 + εsum) * (n : ℝ) := mul_nonneg (by linarith) hn_nn
+    have : 0 ≤ 1 + (η : ℝ) + (1 + εsum) * (n : ℝ) := by linarith
+    linarith
+  have h_denom_le : (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) ≤
+                    (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+                    (∑ j, Real.exp ((xs j).toVal : ℝ)) := by
+    calc (1 - ((η : ℝ) + εsum * (1 + (η : ℝ))))
+        = (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) * 1 := by ring
+      _ ≤ (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+          (∑ j, Real.exp ((xs j).toVal : ℝ)) :=
+        mul_le_mul_of_nonneg_left h_S_ge_one (le_of_lt h_1mδ_pos)
+  have h_div_le : 2 * (1 + (η : ℝ) + (1 + εsum) * (n : ℝ)) /
+      ((1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+       (∑ j, Real.exp ((xs j).toVal : ℝ))) ≤
+      2 * (1 + (η : ℝ) + (1 + εsum) * (n : ℝ)) /
+      (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) :=
+    div_le_div_of_nonneg_left hnum_nn h_1mδ_pos h_denom_le
+  linarith
+
+/-- Under `S ≥ 1` and `N·sc < 1 - δ`, the `xs`-dependent tight additive
+coefficient is bounded by an `xs`-independent quantity. -/
+theorem subnormalSoftmaxAbs_tight_le_of_S_ge_one
+    {n : ℕ} (xs : Fin n → FiniteFp) (εsum : ℝ)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_margin_ind : (1 + εsum) * (n : ℝ) * subnormalConst <
+                     1 - ((η : ℝ) + εsum * (1 + (η : ℝ))))
+    (h_S_ge_one : 1 ≤ ∑ j, Real.exp ((xs j).toVal : ℝ)) :
+    subnormalSoftmaxAbs_tight xs εsum ≤
+      1 + (1 + (η : ℝ)) /
+        ((1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) -
+         (1 + εsum) * (n : ℝ) * subnormalConst) := by
+  unfold subnormalSoftmaxAbs_tight subnormalSoftmaxDenomMargin
+  have hη_nn : (0 : ℝ) ≤ η := by positivity
+  have hsc_nn : 0 ≤ subnormalConst := subnormalConst_nn
+  have hn_nn : (0 : ℝ) ≤ (n : ℝ) := Nat.cast_nonneg _
+  have hNsc_nn : 0 ≤ (1 + εsum) * (n : ℝ) * subnormalConst := by positivity
+  have h_1mδ_pos : 0 < 1 - ((η : ℝ) + εsum * (1 + (η : ℝ))) := by linarith
+  have h_m_ind_pos : 0 <
+      (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) -
+      (1 + εsum) * (n : ℝ) * subnormalConst := by linarith
+  -- m_xs ≥ m_ind via S ≥ 1
+  have h_m_xs_ge_m_ind :
+      (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) -
+      (1 + εsum) * (n : ℝ) * subnormalConst ≤
+      (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+        (∑ j, Real.exp ((xs j).toVal : ℝ)) -
+      (1 + εsum) * (n : ℝ) * subnormalConst := by
+    have : (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) * 1 ≤
+           (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+             (∑ j, Real.exp ((xs j).toVal : ℝ)) :=
+      mul_le_mul_of_nonneg_left h_S_ge_one (le_of_lt h_1mδ_pos)
+    linarith
+  -- (1+η)/m_xs ≤ (1+η)/m_ind
+  have h1η_nn : (0 : ℝ) ≤ 1 + (η : ℝ) := by linarith
+  have h_div_le : (1 + (η : ℝ)) /
+      ((1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+        (∑ j, Real.exp ((xs j).toVal : ℝ)) -
+       (1 + εsum) * (n : ℝ) * subnormalConst) ≤
+      (1 + (η : ℝ)) /
+      ((1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) -
+       (1 + εsum) * (n : ℝ) * subnormalConst) :=
+    div_le_div_of_nonneg_left h1η_nn h_m_ind_pos h_m_xs_ge_m_ind
+  linarith
+
+/-- Under `S ≥ 1` and `N·sc < 1 - δ`, the tight mult coefficient is bounded
+by an `xs`-independent quantity.
+
+The function `S ↦ ((η²+2η+δ)·S + N·sc) / ((1-δ)·S - N·sc)` is decreasing in `S`,
+so the maximum over `S ≥ 1` is attained at `S = 1`. -/
+theorem softmaxErrorCoeff_tight_le_of_S_ge_one
+    {n : ℕ} (xs : Fin n → FiniteFp) (εsum : ℝ)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_margin_ind : (1 + εsum) * (n : ℝ) * subnormalConst <
+                     1 - ((η : ℝ) + εsum * (1 + (η : ℝ))))
+    (h_S_ge_one : 1 ≤ ∑ j, Real.exp ((xs j).toVal : ℝ)) :
+    softmaxErrorCoeff_tight xs εsum ≤
+      ((η : ℝ)^2 + 2 * (η : ℝ) + ((η : ℝ) + εsum * (1 + (η : ℝ))) +
+       (1 + εsum) * (n : ℝ) * subnormalConst) /
+      ((1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) -
+       (1 + εsum) * (n : ℝ) * subnormalConst) := by
+  unfold softmaxErrorCoeff_tight subnormalSoftmaxDenomMargin
+  have hη_nn : (0 : ℝ) ≤ η := by positivity
+  have hsc_nn : 0 ≤ subnormalConst := subnormalConst_nn
+  have hn_nn : (0 : ℝ) ≤ (n : ℝ) := Nat.cast_nonneg _
+  have hNsc_nn : 0 ≤ (1 + εsum) * (n : ℝ) * subnormalConst := by positivity
+  have h1ε_nn : (0 : ℝ) ≤ 1 + εsum := by linarith
+  have h_1mδ_pos : 0 < 1 - ((η : ℝ) + εsum * (1 + (η : ℝ))) := by linarith
+  have he_pos : ∀ j, 0 < Real.exp ((xs j).toVal : ℝ) := fun j => Real.exp_pos _
+  have hS_pos : 0 < ∑ j, Real.exp ((xs j).toVal : ℝ) := by
+    have hn0 : 1 ≤ ∑ j, Real.exp ((xs j).toVal : ℝ) := h_S_ge_one
+    linarith
+  -- Abbreviations
+  set S : ℝ := ∑ j, Real.exp ((xs j).toVal : ℝ) with hS_def
+  set δ : ℝ := (η : ℝ) + εsum * (1 + (η : ℝ)) with hδ_def
+  set Nsc : ℝ := (1 + εsum) * (n : ℝ) * subnormalConst with hNsc_def
+  set a : ℝ := (η : ℝ)^2 + 2 * (η : ℝ) + δ with ha_def
+  have ha_nn : 0 ≤ a := by show 0 ≤ (η : ℝ)^2 + 2 * (η : ℝ) + δ; positivity
+  have h_m_xs_pos : 0 < (1 - δ) * S - Nsc := by
+    have h1 : (1 - δ) * 1 ≤ (1 - δ) * S :=
+      mul_le_mul_of_nonneg_left h_S_ge_one (le_of_lt h_1mδ_pos)
+    linarith [h_margin_ind]
+  have h_m_ind_pos : 0 < (1 - δ) - Nsc := by linarith [h_margin_ind]
+  -- Cross-multiply: show (a·S + Nsc)·((1-δ) - Nsc) ≤ (a + Nsc)·((1-δ)·S - Nsc)
+  rw [div_le_div_iff₀ h_m_xs_pos h_m_ind_pos]
+  -- Difference: RHS - LHS = Nsc · (a + (1-δ)) · (S - 1) ≥ 0
+  have h_S_ge_1 : 1 ≤ S := h_S_ge_one
+  nlinarith [hNsc_nn, ha_nn, h_1mδ_pos, h_S_ge_1, mul_nonneg hNsc_nn ha_nn,
+             mul_nonneg hNsc_nn (le_of_lt h_1mδ_pos)]
+
+set_option maxHeartbeats 800000 in
+/-- **Shifted subnormal-tolerant softmax error bound** (S ≥ 1 case).
+
+Variant of `fpSoftmaxOf_error_bound_subnormal` whose hypotheses are purely
+`xs`-independent: `h_margin` uses `(1 - δ)` (not `(1-δ)·S`), and `h_S_ge_one`
+states `1 ≤ ∑ exp((xs j).toVal)` — guaranteed after the subtract-max trick.
+
+The resulting additive coefficient is correspondingly `xs`-independent. -/
+theorem fpSoftmaxOf_error_bound_subnormal_shifted
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp) (denom : FiniteFp)
+    (result : Fin n → FiniteFp) (εsum : ℝ)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_S_ge_one : 1 ≤ ∑ j, Real.exp ((xs j).toVal : ℝ))
+    (h_margin : (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) >
+                2 * (1 + εsum) * (n : ℝ) * subnormalConst)
+    (hd_m : denom.m ≠ 0)
+    (h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i))
+    (i : Fin n) :
+    |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      2 * softmaxErrorCoeff εsum *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      (1 + 2 * (1 + (η : ℝ) + (1 + εsum) * (n : ℝ)) /
+         (1 - ((η : ℝ) + εsum * (1 + (η : ℝ))))) * subnormalConst := by
+  have hNsc_nn : 0 ≤ 2 * (1 + εsum) * (n : ℝ) * subnormalConst := by
+    have h1 : 0 ≤ 1 + εsum := by linarith
+    have h2 : 0 ≤ (n : ℝ) := Nat.cast_nonneg _
+    have h3 : 0 ≤ subnormalConst := subnormalConst_nn
+    positivity
+  have h_1mδ_pos : 0 < 1 - ((η : ℝ) + εsum * (1 + (η : ℝ))) := by linarith
+  -- Upgrade h_margin to the xs-dep form using S ≥ 1
+  have h_S_margin : (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+                    (∑ j, Real.exp ((xs j).toVal : ℝ)) >
+                    2 * (1 + εsum) * (n : ℝ) * subnormalConst := by
+    calc 2 * (1 + εsum) * (n : ℝ) * subnormalConst
+        < 1 - ((η : ℝ) + εsum * (1 + (η : ℝ))) := h_margin
+      _ = (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) * 1 := by ring
+      _ ≤ (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+          (∑ j, Real.exp ((xs j).toVal : ℝ)) :=
+          mul_le_mul_of_nonneg_left h_S_ge_one (le_of_lt h_1mδ_pos)
+  have h_main := fpSoftmaxOf_error_bound_subnormal hn xs exps denom result εsum
+    h_exp h_denom_close h_εsum_nn h_S_margin hd_m h_result i
+  have h_SSA_le := subnormalSoftmaxAbs_le_of_S_ge_one xs εsum h_εsum_nn h_1mδ_pos h_S_ge_one
+  have hsc_nn : 0 ≤ subnormalConst := subnormalConst_nn
+  linarith [mul_le_mul_of_nonneg_right h_SSA_le hsc_nn]
+
+/-- **FpSumBound-taking wrapper** for the subnormal-tolerant bound. -/
+theorem fpSoftmaxOf_error_bound_subnormal_of_sumBound
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (sum : FpSum.FpSumBound exps ℝ)
+    (result : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_S_margin : (1 - ((η : ℝ) + sum.relErr * (1 + (η : ℝ)))) *
+                  (∑ j, Real.exp ((xs j).toVal : ℝ)) >
+                  2 * (1 + sum.relErr) * (n : ℝ) * subnormalConst)
+    (hd_m : sum.result.m ≠ 0)
+    (h_result : ∀ i, fpDivFinite (exps i) sum.result = Fp.finite (result i))
+    (i : Fin n) :
+    |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      2 * softmaxErrorCoeff sum.relErr *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      subnormalSoftmaxAbs xs sum.relErr * subnormalConst :=
+  fpSoftmaxOf_error_bound_subnormal hn xs exps sum.result result sum.relErr
+    h_exp sum.h_bound sum.h_relErr_nn h_S_margin hd_m h_result i
+
+/-- **FpSumBound-taking wrapper** for the tight subnormal-tolerant bound. -/
+theorem fpSoftmaxOf_error_bound_subnormal_tight_of_sumBound
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (sum : FpSum.FpSumBound exps ℝ)
+    (result : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_m_pos : 0 < subnormalSoftmaxDenomMargin xs sum.relErr)
+    (hd_m : sum.result.m ≠ 0)
+    (h_result : ∀ i, fpDivFinite (exps i) sum.result = Fp.finite (result i))
+    (i : Fin n) :
+    |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      softmaxErrorCoeff_tight xs sum.relErr *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      subnormalSoftmaxAbs_tight xs sum.relErr * subnormalConst :=
+  fpSoftmaxOf_error_bound_subnormal_tight hn xs exps sum.result result sum.relErr
+    h_exp sum.h_bound sum.h_relErr_nn h_m_pos hd_m h_result i
+
 /-- **Convenience theorem**: combines exp-extraction, result-extraction, and error
 bound in one. User supplies just `xs`, `h_nonpos`, `h_exp_nr`, a sum method,
 and normal-range hypotheses for the quotient; gets the error bound for auto-extracted
@@ -1194,6 +1894,179 @@ theorem fpSoftmax_preserves_argmax_pair
   -- sig istar * (1 - c) > sig j * (1 + c) iff sig istar - sig j > c * (sig istar + sig j)
   linarith [h_gap]
 
+/-- **Sum-close-to-1** for the subnormal-tolerant error bound.
+
+`|Σ result_i - 1| ≤ 2·softmaxErrorCoeff εsum + n · subnormalSoftmaxAbs xs εsum · subnormalConst`. -/
+theorem fpSoftmax_sum_close_to_one_subnormal
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp) (denom : FiniteFp)
+    (result : Fin n → FiniteFp) (εsum : ℝ)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_S_margin : (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+                  (∑ j, Real.exp ((xs j).toVal : ℝ)) >
+                  2 * (1 + εsum) * (n : ℝ) * subnormalConst)
+    (hd_m : denom.m ≠ 0)
+    (h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i)) :
+    |(∑ i, ((result i).toVal : ℝ)) - 1| ≤
+      2 * softmaxErrorCoeff εsum +
+      (n : ℝ) * (subnormalSoftmaxAbs xs εsum * subnormalConst) := by
+  have hσ_sum : ∑ i, softmax (fun j => ((xs j).toVal : ℝ)) i = 1 :=
+    softmax_sum_eq_one _ hn
+  have hper : ∀ i, |((result i).toVal : ℝ) -
+                    softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+                   2 * softmaxErrorCoeff εsum *
+                     softmax (fun j => ((xs j).toVal : ℝ)) i +
+                   subnormalSoftmaxAbs xs εsum * subnormalConst := by
+    intro i
+    exact fpSoftmaxOf_error_bound_subnormal hn xs exps denom result εsum
+      h_exp h_denom_close h_εsum_nn h_S_margin hd_m h_result i
+  calc |(∑ i, ((result i).toVal : ℝ)) - 1|
+      = |(∑ i, ((result i).toVal : ℝ)) -
+          ∑ i, softmax (fun j => ((xs j).toVal : ℝ)) i| := by rw [hσ_sum]
+    _ = |∑ i, (((result i).toVal : ℝ) -
+                softmax (fun j => ((xs j).toVal : ℝ)) i)| := by
+          rw [Finset.sum_sub_distrib]
+    _ ≤ ∑ i, |((result i).toVal : ℝ) -
+                softmax (fun j => ((xs j).toVal : ℝ)) i| :=
+          Finset.abs_sum_le_sum_abs _ _
+    _ ≤ ∑ i, (2 * softmaxErrorCoeff εsum *
+                softmax (fun j => ((xs j).toVal : ℝ)) i +
+              subnormalSoftmaxAbs xs εsum * subnormalConst) :=
+          Finset.sum_le_sum (fun i _ => hper i)
+    _ = 2 * softmaxErrorCoeff εsum *
+          (∑ i, softmax (fun j => ((xs j).toVal : ℝ)) i) +
+        (n : ℝ) * (subnormalSoftmaxAbs xs εsum * subnormalConst) := by
+          rw [Finset.sum_add_distrib, ← Finset.mul_sum, Finset.sum_const,
+              Finset.card_univ, Fintype.card_fin, nsmul_eq_mul]
+    _ = 2 * softmaxErrorCoeff εsum +
+        (n : ℝ) * (subnormalSoftmaxAbs xs εsum * subnormalConst) := by
+          rw [hσ_sum]; ring
+
+/-- **Argmax preservation** for the subnormal-tolerant error bound.
+
+The gap condition picks up a `2·subnormalSoftmaxAbs·subnormalConst` term on the
+right-hand side, accounting for the worst-case additive errors at both indices. -/
+theorem fpSoftmax_preserves_argmax_pair_subnormal
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp) (denom : FiniteFp)
+    (result : Fin n → FiniteFp) (εsum : ℝ)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_S_margin : (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+                  (∑ j, Real.exp ((xs j).toVal : ℝ)) >
+                  2 * (1 + εsum) * (n : ℝ) * subnormalConst)
+    (hd_m : denom.m ≠ 0)
+    (h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i))
+    (istar j : Fin n)
+    (h_gap : softmax (fun k => ((xs k).toVal : ℝ)) istar -
+             softmax (fun k => ((xs k).toVal : ℝ)) j >
+              2 * softmaxErrorCoeff εsum *
+                (softmax (fun k => ((xs k).toVal : ℝ)) istar +
+                 softmax (fun k => ((xs k).toVal : ℝ)) j) +
+              2 * (subnormalSoftmaxAbs xs εsum * subnormalConst)) :
+    ((result j).toVal : ℝ) < ((result istar).toVal : ℝ) := by
+  set sig : Fin n → ℝ := fun k => softmax (fun k' => ((xs k').toVal : ℝ)) k with hsig_def
+  set c : ℝ := 2 * softmaxErrorCoeff εsum with hc_def
+  set a : ℝ := subnormalSoftmaxAbs xs εsum * subnormalConst with ha_def
+  have h_i : |((result istar).toVal : ℝ) - sig istar| ≤ c * sig istar + a :=
+    fpSoftmaxOf_error_bound_subnormal hn xs exps denom result εsum
+      h_exp h_denom_close h_εsum_nn h_S_margin hd_m h_result istar
+  have h_j : |((result j).toVal : ℝ) - sig j| ≤ c * sig j + a :=
+    fpSoftmaxOf_error_bound_subnormal hn xs exps denom result εsum
+      h_exp h_denom_close h_εsum_nn h_S_margin hd_m h_result j
+  have h_i_lo : sig istar - (c * sig istar + a) ≤ ((result istar).toVal : ℝ) := by
+    have := (abs_le.mp h_i).1; linarith
+  have h_j_hi : ((result j).toVal : ℝ) ≤ sig j + (c * sig j + a) := by
+    have := (abs_le.mp h_j).2; linarith
+  linarith [h_gap]
+
+/-- **Sum-close-to-1** for the tight subnormal-tolerant error bound. -/
+theorem fpSoftmax_sum_close_to_one_subnormal_tight
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp) (denom : FiniteFp)
+    (result : Fin n → FiniteFp) (εsum : ℝ)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_m_pos : 0 < subnormalSoftmaxDenomMargin xs εsum)
+    (hd_m : denom.m ≠ 0)
+    (h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i)) :
+    |(∑ i, ((result i).toVal : ℝ)) - 1| ≤
+      softmaxErrorCoeff_tight xs εsum +
+      (n : ℝ) * (subnormalSoftmaxAbs_tight xs εsum * subnormalConst) := by
+  have hσ_sum : ∑ i, softmax (fun j => ((xs j).toVal : ℝ)) i = 1 :=
+    softmax_sum_eq_one _ hn
+  have hper : ∀ i, |((result i).toVal : ℝ) -
+                    softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+                   softmaxErrorCoeff_tight xs εsum *
+                     softmax (fun j => ((xs j).toVal : ℝ)) i +
+                   subnormalSoftmaxAbs_tight xs εsum * subnormalConst := by
+    intro i
+    exact fpSoftmaxOf_error_bound_subnormal_tight hn xs exps denom result εsum
+      h_exp h_denom_close h_εsum_nn h_m_pos hd_m h_result i
+  calc |(∑ i, ((result i).toVal : ℝ)) - 1|
+      = |(∑ i, ((result i).toVal : ℝ)) -
+          ∑ i, softmax (fun j => ((xs j).toVal : ℝ)) i| := by rw [hσ_sum]
+    _ = |∑ i, (((result i).toVal : ℝ) -
+                softmax (fun j => ((xs j).toVal : ℝ)) i)| := by
+          rw [Finset.sum_sub_distrib]
+    _ ≤ ∑ i, |((result i).toVal : ℝ) -
+                softmax (fun j => ((xs j).toVal : ℝ)) i| :=
+          Finset.abs_sum_le_sum_abs _ _
+    _ ≤ ∑ i, (softmaxErrorCoeff_tight xs εsum *
+                softmax (fun j => ((xs j).toVal : ℝ)) i +
+              subnormalSoftmaxAbs_tight xs εsum * subnormalConst) :=
+          Finset.sum_le_sum (fun i _ => hper i)
+    _ = softmaxErrorCoeff_tight xs εsum *
+          (∑ i, softmax (fun j => ((xs j).toVal : ℝ)) i) +
+        (n : ℝ) * (subnormalSoftmaxAbs_tight xs εsum * subnormalConst) := by
+          rw [Finset.sum_add_distrib, ← Finset.mul_sum, Finset.sum_const,
+              Finset.card_univ, Fintype.card_fin, nsmul_eq_mul]
+    _ = softmaxErrorCoeff_tight xs εsum +
+        (n : ℝ) * (subnormalSoftmaxAbs_tight xs εsum * subnormalConst) := by
+          rw [hσ_sum]; ring
+
+/-- **Argmax preservation** for the tight subnormal-tolerant error bound. -/
+theorem fpSoftmax_preserves_argmax_pair_subnormal_tight
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp) (denom : FiniteFp)
+    (result : Fin n → FiniteFp) (εsum : ℝ)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_m_pos : 0 < subnormalSoftmaxDenomMargin xs εsum)
+    (hd_m : denom.m ≠ 0)
+    (h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i))
+    (istar j : Fin n)
+    (h_gap : softmax (fun k => ((xs k).toVal : ℝ)) istar -
+             softmax (fun k => ((xs k).toVal : ℝ)) j >
+              softmaxErrorCoeff_tight xs εsum *
+                (softmax (fun k => ((xs k).toVal : ℝ)) istar +
+                 softmax (fun k => ((xs k).toVal : ℝ)) j) +
+              2 * (subnormalSoftmaxAbs_tight xs εsum * subnormalConst)) :
+    ((result j).toVal : ℝ) < ((result istar).toVal : ℝ) := by
+  set sig : Fin n → ℝ := fun k => softmax (fun k' => ((xs k').toVal : ℝ)) k with hsig_def
+  set c : ℝ := softmaxErrorCoeff_tight xs εsum with hc_def
+  set a : ℝ := subnormalSoftmaxAbs_tight xs εsum * subnormalConst with ha_def
+  have h_i : |((result istar).toVal : ℝ) - sig istar| ≤ c * sig istar + a :=
+    fpSoftmaxOf_error_bound_subnormal_tight hn xs exps denom result εsum
+      h_exp h_denom_close h_εsum_nn h_m_pos hd_m h_result istar
+  have h_j : |((result j).toVal : ℝ) - sig j| ≤ c * sig j + a :=
+    fpSoftmaxOf_error_bound_subnormal_tight hn xs exps denom result εsum
+      h_exp h_denom_close h_εsum_nn h_m_pos hd_m h_result j
+  have h_i_lo : sig istar - (c * sig istar + a) ≤ ((result istar).toVal : ℝ) := by
+    have := (abs_le.mp h_i).1; linarith
+  have h_j_hi : ((result j).toVal : ℝ) ≤ sig j + (c * sig j + a) := by
+    have := (abs_le.mp h_j).2; linarith
+  linarith [h_gap]
+
 end ErrorBound
 
 /-! ## `FpSoftmaxResult` Bundle
@@ -1257,6 +2130,113 @@ theorem FpSoftmaxResult.preserves_argmax_pair {n : ℕ} (hn : 0 < n)
     ((r.result j).toVal : ℝ) < ((r.result istar).toVal : ℝ) :=
   fpSoftmax_preserves_argmax_pair hn xs r.exps r.denom r.result r.εsum
     r.h_exp r.h_exp_nr r.h_denom_close r.εsum_nn r.h_δ_lt r.hd_m r.h_quot_nr r.h_result istar j h_gap
+
+/-- A subnormal-tolerant FP softmax computation for a given `xs`.
+
+Unlike `FpSoftmaxResult`, drops the normal-range assumptions on exp outputs and
+quotients in favor of the `h_S_margin` denominator-positivity witness.
+Tolerates exp underflow to zero. -/
+structure FpSoftmaxResultSubnormal {n : ℕ} (xs : Fin n → FiniteFp) where
+  /-- FP exp values. -/
+  exps : Fin n → FiniteFp
+  /-- FP denominator. -/
+  denom : FiniteFp
+  /-- FP softmax outputs. -/
+  result : Fin n → FiniteFp
+  /-- Relative error coefficient of the sum. -/
+  εsum : ℝ
+  εsum_nn : 0 ≤ εsum
+  h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i)
+  h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                   εsum * ∑ j, |((exps j).toVal : ℝ)|
+  h_S_margin : (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+               (∑ j, Real.exp ((xs j).toVal : ℝ)) >
+               2 * (1 + εsum) * (n : ℝ) * subnormalConst
+  hd_m : denom.m ≠ 0
+  h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i)
+
+/-- Subnormal-tolerant error bound, applied to a bundled result. -/
+theorem FpSoftmaxResultSubnormal.error_bound {n : ℕ} (hn : 0 < n)
+    {xs : Fin n → FiniteFp} (r : FpSoftmaxResultSubnormal xs) (i : Fin n) :
+    |((r.result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      2 * softmaxErrorCoeff r.εsum *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      subnormalSoftmaxAbs xs r.εsum * subnormalConst :=
+  fpSoftmaxOf_error_bound_subnormal hn xs r.exps r.denom r.result r.εsum
+    r.h_exp r.h_denom_close r.εsum_nn r.h_S_margin r.hd_m r.h_result i
+
+/-- Sum-close-to-1 bound, applied to a bundled subnormal-tolerant result. -/
+theorem FpSoftmaxResultSubnormal.sum_close_to_one {n : ℕ} (hn : 0 < n)
+    {xs : Fin n → FiniteFp} (r : FpSoftmaxResultSubnormal xs) :
+    |(∑ i, ((r.result i).toVal : ℝ)) - 1| ≤
+      2 * softmaxErrorCoeff r.εsum +
+      (n : ℝ) * (subnormalSoftmaxAbs xs r.εsum * subnormalConst) :=
+  fpSoftmax_sum_close_to_one_subnormal hn xs r.exps r.denom r.result r.εsum
+    r.h_exp r.h_denom_close r.εsum_nn r.h_S_margin r.hd_m r.h_result
+
+/-- Argmax preservation, applied to a bundled subnormal-tolerant result. -/
+theorem FpSoftmaxResultSubnormal.preserves_argmax_pair {n : ℕ} (hn : 0 < n)
+    {xs : Fin n → FiniteFp} (r : FpSoftmaxResultSubnormal xs) (istar j : Fin n)
+    (h_gap : softmax (fun k => ((xs k).toVal : ℝ)) istar -
+             softmax (fun k => ((xs k).toVal : ℝ)) j >
+              2 * softmaxErrorCoeff r.εsum *
+                (softmax (fun k => ((xs k).toVal : ℝ)) istar +
+                 softmax (fun k => ((xs k).toVal : ℝ)) j) +
+              2 * (subnormalSoftmaxAbs xs r.εsum * subnormalConst)) :
+    ((r.result j).toVal : ℝ) < ((r.result istar).toVal : ℝ) :=
+  fpSoftmax_preserves_argmax_pair_subnormal hn xs r.exps r.denom r.result r.εsum
+    r.h_exp r.h_denom_close r.εsum_nn r.h_S_margin r.hd_m r.h_result istar j h_gap
+
+/-- A tight subnormal-tolerant FP softmax computation for a given `xs`.
+
+Variant of `FpSoftmaxResultSubnormal` using the minimal margin hypothesis
+`h_m_pos : 0 < subnormalSoftmaxDenomMargin xs εsum`. The coefficients are
+`xs`-dependent but tight — `softmaxErrorCoeff_tight` reduces to `softmaxErrorCoeff`
+when `N·subnormalConst → 0`. -/
+structure FpSoftmaxResultSubnormalTight {n : ℕ} (xs : Fin n → FiniteFp) where
+  exps : Fin n → FiniteFp
+  denom : FiniteFp
+  result : Fin n → FiniteFp
+  εsum : ℝ
+  εsum_nn : 0 ≤ εsum
+  h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i)
+  h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                   εsum * ∑ j, |((exps j).toVal : ℝ)|
+  h_m_pos : 0 < subnormalSoftmaxDenomMargin xs εsum
+  hd_m : denom.m ≠ 0
+  h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i)
+
+/-- Tight error bound, applied to a bundled result. -/
+theorem FpSoftmaxResultSubnormalTight.error_bound {n : ℕ} (hn : 0 < n)
+    {xs : Fin n → FiniteFp} (r : FpSoftmaxResultSubnormalTight xs) (i : Fin n) :
+    |((r.result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      softmaxErrorCoeff_tight xs r.εsum *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      subnormalSoftmaxAbs_tight xs r.εsum * subnormalConst :=
+  fpSoftmaxOf_error_bound_subnormal_tight hn xs r.exps r.denom r.result r.εsum
+    r.h_exp r.h_denom_close r.εsum_nn r.h_m_pos r.hd_m r.h_result i
+
+/-- Tight sum-close-to-1 bound, applied to a bundled result. -/
+theorem FpSoftmaxResultSubnormalTight.sum_close_to_one {n : ℕ} (hn : 0 < n)
+    {xs : Fin n → FiniteFp} (r : FpSoftmaxResultSubnormalTight xs) :
+    |(∑ i, ((r.result i).toVal : ℝ)) - 1| ≤
+      softmaxErrorCoeff_tight xs r.εsum +
+      (n : ℝ) * (subnormalSoftmaxAbs_tight xs r.εsum * subnormalConst) :=
+  fpSoftmax_sum_close_to_one_subnormal_tight hn xs r.exps r.denom r.result r.εsum
+    r.h_exp r.h_denom_close r.εsum_nn r.h_m_pos r.hd_m r.h_result
+
+/-- Tight argmax preservation, applied to a bundled result. -/
+theorem FpSoftmaxResultSubnormalTight.preserves_argmax_pair {n : ℕ} (hn : 0 < n)
+    {xs : Fin n → FiniteFp} (r : FpSoftmaxResultSubnormalTight xs) (istar j : Fin n)
+    (h_gap : softmax (fun k => ((xs k).toVal : ℝ)) istar -
+             softmax (fun k => ((xs k).toVal : ℝ)) j >
+              softmaxErrorCoeff_tight xs r.εsum *
+                (softmax (fun k => ((xs k).toVal : ℝ)) istar +
+                 softmax (fun k => ((xs k).toVal : ℝ)) j) +
+              2 * (subnormalSoftmaxAbs_tight xs r.εsum * subnormalConst)) :
+    ((r.result j).toVal : ℝ) < ((r.result istar).toVal : ℝ) :=
+  fpSoftmax_preserves_argmax_pair_subnormal_tight hn xs r.exps r.denom r.result r.εsum
+    r.h_exp r.h_denom_close r.εsum_nn r.h_m_pos r.hd_m r.h_result istar j h_gap
 
 end Bundle
 

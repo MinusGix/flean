@@ -42,7 +42,24 @@
       "Bash(grep -rn \"theorem.*sum_add_tsum_subtype_compl\\\\|lemma.*sum_add_tsum_subtype_compl\\\\|theorem.*sum_add_tsum_nat_add\\\\|lemma.*sum_add_tsum_nat_add\" /workspaces/flean/.lake/packages/mathlib/ --include=\"*.lean\" 2>/dev/null | head -20)",
       "Bash(grep -rn \"HasSum.*sub\\\\b\\\\|\\\\.sub\\\\b.*HasSum\" /workspaces/flean/.lake/packages/mathlib/Mathlib/Topology/Algebra/InfiniteSum/ --include=\"*.lean\" 2>/dev/null | head -20)",
       "Bash(find /workspaces/flean/.lake/packages/mathlib/Mathlib -name \"*.lean\" -exec grep -l \"namespace Summable\" {} \\\\; | head -10)",
-      "Bash(grep -r \"import.*InfiniteSum.Order\" .lake/packages/mathlib/Mathlib/Analysis/Normed/Ring/InfiniteSum.lean .lake/packages/mathlib/Mathlib/Analysis/SpecialFunctions/Exponential.lean 2>/dev/null | head -5)"
+      "Bash(grep -r \"import.*InfiniteSum.Order\" .lake/packages/mathlib/Mathlib/Analysis/Normed/Ring/InfiniteSum.lean .lake/packages/mathlib/Mathlib/Analysis/SpecialFunctions/Exponential.lean 2>/dev/null | head -5)",
+      "Bash(lake env:*)",
+      "Bash(grep:*)",
+      "Bash(python3:*)",
+      "Bash(chmod +x:*)",
+      "Bash(cargo build:*)",
+      "Bash(time ./target/release/lean-extract:*)",
+      "Bash(./target/release/lean-extract:*)",
+      "Bash(perf:*)",
+      "Bash(../lean-extract/target/release/lean-extract:*)",
+      "Bash(cargo test:*)",
+      "Bash(/tmp/test_pow.lean:*)",
+      "WebSearch",
+      "Bash(pdftotext:*)",
+      "Bash(../lean-extract-bin Flean/Operations/KahanSum.lean --kinds \"def,theorem,structure,inductive,class\" 2>&1 | head -80)",
+      "Read(//home/minus/Kairos/Code/Lean/**)",
+      "Read(//home/minus/Kairos/Code/Lean/lean-extract/target/release/**)",
+      "Bash(echo \"exit: $?\")"
     ]
   }
 }
