@@ -54,4 +54,7 @@ import Flean.Operations.BackwardError
 import Flean.Operations.CompensatedNewton
 import Flean.Operations.PolynomialConnection
 import Flean.Operations.FpSum
+import Flean.Operations.FpDotProduct
+import Flean.Operations.FpMatVec
 import Flean.Operations.Softmax
+import Flean.Operations.LogSumExp
