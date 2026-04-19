@@ -336,6 +336,33 @@ theorem fpDivFinite_exists_finite_of_bounded (a b : FiniteFp)
     exact round_exists_finite_of_nonneg_bounded _ h_nn h_le
 
 omit [ExpApprox] [ExpApproxSound] in
+/-- **Safe fpAddFinite**: returns `Fp.finite` under nonneg bounded operands. -/
+theorem fpAddFinite_exists_finite_of_nonneg_bounded (a b : FiniteFp)
+    (h_nn_a : 0 ≤ (a.toVal : ℝ)) (h_nn_b : 0 ≤ (b.toVal : ℝ))
+    (h_le : (a.toVal : ℝ) + b.toVal ≤ FiniteFp.largestFiniteFloat.toVal (R := ℝ)) :
+    ∃ f, fpAddFinite a b = Fp.finite f := by
+  by_cases hzero : ((a.toVal : ℝ) + b.toVal) = 0
+  · -- Real sum is 0; both operands have toVal = 0 (they're both nonneg)
+    have hav_z : (a.toVal : ℝ) = 0 := le_antisymm (by linarith) h_nn_a
+    have hbv_z : (b.toVal : ℝ) = 0 := le_antisymm (by linarith) h_nn_b
+    have ham : a.m = 0 := (FiniteFp.toVal_significand_zero_iff (R := ℝ)).mpr hav_z
+    have hbm : b.m = 0 := (FiniteFp.toVal_significand_zero_iff (R := ℝ)).mpr hbv_z
+    -- With a.m = 0 and b.m = 0, the aligned integer sums are both 0
+    refine ⟨⟨exactCancelSign a.s b.s, FloatFormat.min_exp, 0, IsValidFiniteVal.zero⟩, ?_⟩
+    simp only [fpAddFinite, ham, hbm, Nat.cast_zero, condNeg]
+    -- condNeg s 0 = 0 regardless of s
+    have h_condZero : ∀ s : Bool, (if s then -0 else 0 : ℤ) = 0 := by
+      intro s; cases s <;> simp
+    simp only [h_condZero, zero_mul, add_zero, ↓reduceIte]
+  · have hcorr : fpAddFinite a b = ○((a.toVal : ℝ) + b.toVal) := by
+      have h := fpAddFinite_correct (R := ℝ) a b hzero
+      simp only [add_finite_eq_fpAddFinite] at h
+      exact h
+    rw [hcorr]
+    have hsum_nn : 0 ≤ ((a.toVal : ℝ) + b.toVal) := add_nonneg h_nn_a h_nn_b
+    exact round_exists_finite_of_nonneg_bounded _ hsum_nn h_le
+
+omit [ExpApprox] [ExpApproxSound] in
 /-- `fpSoftmaxOf exps denom i` is a finite FP value when the quotient is bounded. -/
 theorem fpSoftmaxOf_exists_finite {n : ℕ} (exps : Fin n → FiniteFp) (denom : FiniteFp)
     (hd : denom.m ≠ 0)
@@ -345,6 +372,21 @@ theorem fpSoftmaxOf_exists_finite {n : ℕ} (exps : Fin n → FiniteFp) (denom :
     ∃ f, fpSoftmaxOf exps denom i = Fp.finite f := by
   simp only [fpSoftmaxOf_apply]
   exact fpDivFinite_exists_finite_of_bounded (exps i) denom hd h_nn h_le
+
+omit [ExpApprox] [ExpApproxSound] in
+/-- **NaiveSum step extension** for bounded nonneg operands.
+
+Given any prior `NaiveSum` trace and a new nonneg element with partial sum bounded
+by `largestFiniteFloat`, produces the fpAdd result as a `Fp.finite` — the witness
+needed to invoke `NaiveSum.step`. This automates the per-step finiteness proof
+when all inputs are nonneg and the partial-sum bound holds. -/
+theorem naiveSum_step_finite_of_nonneg_bounded (acc : FiniteFp) (x : FiniteFp)
+    (h_nn_acc : 0 ≤ (acc.toVal : ℝ))
+    (h_nn_x : 0 ≤ (x.toVal : ℝ))
+    (h_le : (acc.toVal : ℝ) + x.toVal ≤ FiniteFp.largestFiniteFloat.toVal (R := ℝ)) :
+    ∃ next : FiniteFp, acc + x = Fp.finite next := by
+  obtain ⟨f, hf⟩ := fpAddFinite_exists_finite_of_nonneg_bounded acc x h_nn_acc h_nn_x h_le
+  exact ⟨f, hf⟩
 
 /-- Extract FiniteFp exp values automatically from nonpos-shifted FP inputs.
 
