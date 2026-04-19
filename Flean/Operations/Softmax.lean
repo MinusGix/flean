@@ -1721,6 +1721,65 @@ theorem fpSoftmaxOf_error_bound_subnormal_shifted
   have hsc_nn : 0 ≤ subnormalConst := subnormalConst_nn
   linarith [mul_le_mul_of_nonneg_right h_SSA_le hsc_nn]
 
+set_option maxHeartbeats 800000 in
+/-- **Shifted tight subnormal-tolerant softmax error bound** (S ≥ 1 case).
+
+Variant of `fpSoftmaxOf_error_bound_subnormal_tight` whose hypotheses and
+conclusion are purely `xs`-independent: `h_margin_ind` uses `(1 - δ)` (not
+`(1-δ)·S`), and `h_S_ge_one` states `1 ≤ ∑ exp((xs j).toVal)` — guaranteed
+after the subtract-max trick.
+
+The mult coefficient reduces to `softmaxErrorCoeff` as `N·sc → 0`, giving a
+factor-of-2 improvement over `fpSoftmaxOf_error_bound_subnormal_shifted` in
+the typical regime. -/
+theorem fpSoftmaxOf_error_bound_subnormal_tight_shifted
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp) (denom : FiniteFp)
+    (result : Fin n → FiniteFp) (εsum : ℝ)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_S_ge_one : 1 ≤ ∑ j, Real.exp ((xs j).toVal : ℝ))
+    (h_margin_ind : (1 + εsum) * (n : ℝ) * subnormalConst <
+                     1 - ((η : ℝ) + εsum * (1 + (η : ℝ))))
+    (hd_m : denom.m ≠ 0)
+    (h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i))
+    (i : Fin n) :
+    |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      (((η : ℝ)^2 + 2 * (η : ℝ) + ((η : ℝ) + εsum * (1 + (η : ℝ))) +
+        (1 + εsum) * (n : ℝ) * subnormalConst) /
+       ((1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) -
+        (1 + εsum) * (n : ℝ) * subnormalConst)) *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      (1 + (1 + (η : ℝ)) /
+        ((1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) -
+         (1 + εsum) * (n : ℝ) * subnormalConst)) * subnormalConst := by
+  have hsc_nn : 0 ≤ subnormalConst := subnormalConst_nn
+  have hn_nn : (0 : ℝ) ≤ (n : ℝ) := Nat.cast_nonneg _
+  have hη_nn : (0 : ℝ) ≤ η := by positivity
+  have hNsc_nn : 0 ≤ (1 + εsum) * (n : ℝ) * subnormalConst := by positivity
+  have h_1mδ_pos : 0 < 1 - ((η : ℝ) + εsum * (1 + (η : ℝ))) := by linarith
+  -- Derive `h_m_pos` from `h_S_ge_one` and `h_margin_ind`.
+  have h_m_pos : 0 < subnormalSoftmaxDenomMargin xs εsum := by
+    unfold subnormalSoftmaxDenomMargin
+    have h1 : (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) * 1 ≤
+              (1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) *
+                (∑ j, Real.exp ((xs j).toVal : ℝ)) :=
+      mul_le_mul_of_nonneg_left h_S_ge_one (le_of_lt h_1mδ_pos)
+    linarith
+  have h_main := fpSoftmaxOf_error_bound_subnormal_tight hn xs exps denom result εsum
+    h_exp h_denom_close h_εsum_nn h_m_pos hd_m h_result i
+  have h_coeff_le := softmaxErrorCoeff_tight_le_of_S_ge_one xs εsum h_εsum_nn
+    h_margin_ind h_S_ge_one
+  have h_abs_le := subnormalSoftmaxAbs_tight_le_of_S_ge_one xs εsum h_εsum_nn
+    h_margin_ind h_S_ge_one
+  have h_sig_nn : 0 ≤ softmax (fun j => ((xs j).toVal : ℝ)) i :=
+    softmax_nonneg _ hn i
+  have h_step1 := mul_le_mul_of_nonneg_right h_coeff_le h_sig_nn
+  have h_step2 := mul_le_mul_of_nonneg_right h_abs_le hsc_nn
+  linarith
+
 /-- **FpSumBound-taking wrapper** for the subnormal-tolerant bound. -/
 theorem fpSoftmaxOf_error_bound_subnormal_of_sumBound
     {n : ℕ} (hn : 0 < n)
@@ -2238,6 +2297,27 @@ theorem FpSoftmaxResultSubnormalTight.preserves_argmax_pair {n : ℕ} (hn : 0 < 
   fpSoftmax_preserves_argmax_pair_subnormal_tight hn xs r.exps r.denom r.result r.εsum
     r.h_exp r.h_denom_close r.εsum_nn r.h_m_pos r.hd_m r.h_result istar j h_gap
 
+/-- **Shifted tight error bound** applied to a bundled result. Produces a
+purely `xs`-independent bound under `S ≥ 1` and the `xs`-free margin
+hypothesis. -/
+theorem FpSoftmaxResultSubnormalTight.shifted {n : ℕ} (hn : 0 < n)
+    {xs : Fin n → FiniteFp} (r : FpSoftmaxResultSubnormalTight xs)
+    (h_S_ge_one : 1 ≤ ∑ j, Real.exp ((xs j).toVal : ℝ))
+    (h_margin_ind : (1 + r.εsum) * (n : ℝ) * subnormalConst <
+                     1 - ((η : ℝ) + r.εsum * (1 + (η : ℝ))))
+    (i : Fin n) :
+    |((r.result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      (((η : ℝ)^2 + 2 * (η : ℝ) + ((η : ℝ) + r.εsum * (1 + (η : ℝ))) +
+        (1 + r.εsum) * (n : ℝ) * subnormalConst) /
+       ((1 - ((η : ℝ) + r.εsum * (1 + (η : ℝ)))) -
+        (1 + r.εsum) * (n : ℝ) * subnormalConst)) *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      (1 + (1 + (η : ℝ)) /
+        ((1 - ((η : ℝ) + r.εsum * (1 + (η : ℝ)))) -
+         (1 + r.εsum) * (n : ℝ) * subnormalConst)) * subnormalConst :=
+  fpSoftmaxOf_error_bound_subnormal_tight_shifted hn xs r.exps r.denom r.result r.εsum
+    r.h_exp r.h_denom_close r.εsum_nn h_S_ge_one h_margin_ind r.hd_m r.h_result i
+
 end Bundle
 
 /-! ## Pre-shift Helpers: `fpMax` and `fpSoftmaxShift` -/
@@ -2259,5 +2339,297 @@ def fpSoftmaxShift {n : ℕ} (xs : Fin n → FiniteFp) (c : FiniteFp) : Fin n �
     fpSoftmaxShift xs c i = fpSubFinite (xs i) c := rfl
 
 end Shift
+
+/-! ## End-to-End Pipeline
+
+`fpSoftmax_end_to_end_error_bound` takes raw inputs `xs` (not pre-shifted) and
+produces the `xs`-independent tight subnormal-tolerant bound. The shift step
+`xs' i = fpSubFinite (xs i) (fpMax xs hn)` is assumed exact via `h_shift_exact`
+— this typically holds under Sterbenz when the max is close in magnitude to
+each input, and is the regime the subtract-max trick was designed for.
+
+Users needing to track the shift rounding error separately should combine
+`fpSoftmaxOf_error_bound_subnormal_tight_shifted` directly with their own
+analysis of `fpSubFinite`. -/
+
+section EndToEnd
+
+variable [FloatFormat] [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+  [RModeNearest ℝ] [ExpApprox] [ExpApproxSound]
+
+/-- The FP-order max `fpMax xs hn` is attained at some index `i₀`. -/
+private lemma fpMax_attained {n : ℕ} (xs : Fin n → FiniteFp) (hn : 0 < n) :
+    ∃ i₀ : Fin n, fpMax xs hn = xs i₀ := by
+  have h_ne : (Finset.univ : Finset (Fin n)).Nonempty :=
+    Finset.univ_nonempty_iff.mpr (Fin.pos_iff_nonempty.mp hn)
+  obtain ⟨i₀, _, h_max⟩ := Finset.exists_max_image Finset.univ xs h_ne
+  refine ⟨i₀, le_antisymm ?_ ?_⟩
+  · exact Finset.sup'_le h_ne xs (fun j _ => h_max j (Finset.mem_univ j))
+  · exact Finset.le_sup' xs (Finset.mem_univ i₀)
+
+/-- **End-to-end softmax error bound**: raw `xs` input, with exact shift
+witness `xs'`. Conclusion is purely `xs`-independent.
+
+Takes an explicit shifted-input function `xs' : Fin n → FiniteFp` satisfying
+`(xs' j).toVal = (xs j).toVal - (fpMax xs hn).toVal`. In practice the user
+computes `xs' i` from `fpSoftmaxShift xs (fpMax xs hn) i` plus a finiteness
+witness; exactness comes from Sterbenz or from the caller's own analysis.
+
+The FP pipeline `xs' → exps → sum → result` is identical to the one in
+`fpSoftmaxOf_error_bound_subnormal_tight_shifted`, so `exps`, `denom`, and
+`result` plus their witnesses are standard. -/
+theorem fpSoftmax_end_to_end_error_bound
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp)
+    (xs' : Fin n → FiniteFp)
+    (h_shift_exact : ∀ j,
+      ((xs' j).toVal : ℝ) = ((xs j).toVal : ℝ) - ((fpMax xs hn).toVal : ℝ))
+    (exps : Fin n → FiniteFp) (denom : FiniteFp)
+    (result : Fin n → FiniteFp) (εsum : ℝ)
+    (h_exp : ∀ i, fpExpFinite (xs' i) = Fp.finite (exps i))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_margin_ind : (1 + εsum) * (n : ℝ) * subnormalConst <
+                     1 - ((η : ℝ) + εsum * (1 + (η : ℝ))))
+    (hd_m : denom.m ≠ 0)
+    (h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i))
+    (i : Fin n) :
+    |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      (((η : ℝ)^2 + 2 * (η : ℝ) + ((η : ℝ) + εsum * (1 + (η : ℝ))) +
+        (1 + εsum) * (n : ℝ) * subnormalConst) /
+       ((1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) -
+        (1 + εsum) * (n : ℝ) * subnormalConst)) *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      (1 + (1 + (η : ℝ)) /
+        ((1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) -
+         (1 + εsum) * (n : ℝ) * subnormalConst)) * subnormalConst := by
+  -- The softmax on `xs'` matches the softmax on `xs` via `shift`.
+  have h_fun_eq :
+      (fun j => ((xs' j).toVal : ℝ)) =
+      shift (fun j => ((xs j).toVal : ℝ)) ((fpMax xs hn).toVal : ℝ) := by
+    funext j; exact h_shift_exact j
+  have h_sm_eq : softmax (fun j => ((xs' j).toVal : ℝ)) i =
+                 softmax (fun j => ((xs j).toVal : ℝ)) i := by
+    rw [h_fun_eq]; exact softmax_shift_eq _ _ _
+  -- Σ exp((xs' j).toVal) ≥ 1: argmax i₀ gives (xs' i₀).toVal = 0.
+  have h_S_ge_one : 1 ≤ ∑ j, Real.exp ((xs' j).toVal : ℝ) := by
+    obtain ⟨i₀, h_i₀⟩ := fpMax_attained xs hn
+    have h_zero : ((xs' i₀).toVal : ℝ) = 0 := by
+      rw [h_shift_exact i₀]
+      have : ((fpMax xs hn).toVal : ℝ) = ((xs i₀).toVal : ℝ) := by rw [h_i₀]
+      linarith
+    have h_exp_zero : Real.exp ((xs' i₀).toVal : ℝ) = 1 := by
+      rw [h_zero]; exact Real.exp_zero
+    calc (1 : ℝ) = Real.exp ((xs' i₀).toVal : ℝ) := h_exp_zero.symm
+      _ ≤ ∑ j, Real.exp ((xs' j).toVal : ℝ) :=
+        Finset.single_le_sum
+          (f := fun j => Real.exp ((xs' j).toVal : ℝ))
+          (fun j _ => le_of_lt (Real.exp_pos _)) (Finset.mem_univ i₀)
+  -- Apply the shifted tight bound on `xs'`, then rewrite the softmax.
+  have h_main := fpSoftmaxOf_error_bound_subnormal_tight_shifted hn xs' exps denom
+    result εsum h_exp h_denom_close h_εsum_nn h_S_ge_one h_margin_ind hd_m h_result i
+  rw [h_sm_eq] at h_main
+  exact h_main
+
+end EndToEnd
+
+/-! ## Concrete Adapters
+
+Demonstrates plugging `FpSumBound.ofNaive` into the softmax error framework.
+These theorems make the library usable end-to-end with no manual bridging:
+given a `NaiveSum` witness on the `exps`, you get a softmax error bound directly. -/
+
+section Demo
+
+variable [FloatFormat] [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+  [RModeNearest ℝ] [ExpApprox] [ExpApproxSound]
+
+/-- **NaiveSum demo** (tight subnormal-tolerant): a `NaiveSum` witness on the
+`exps` composes with `fpSoftmaxOf_error_bound_subnormal_tight_of_sumBound` via
+`FpSumBound.ofNaive`. The resulting `sum.relErr = (1+η)^(trace.toPairwise.depth) - 1`,
+with `trace.toPairwise.depth + 1 = n` (see `NaiveSum.toPairwise_depth`). -/
+theorem fpSoftmax_naiveSum_error_bound
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    {sumResult : FiniteFp}
+    (trace : FpSum.NaiveSum (List.ofFn exps) sumResult)
+    (hnr : trace.AllNormalRange (R := ℝ))
+    (h_m_pos : 0 < subnormalSoftmaxDenomMargin xs
+      (FpSum.FpSumBound.ofNaive exps trace hnr).relErr)
+    (hd_m : sumResult.m ≠ 0)
+    (result : Fin n → FiniteFp)
+    (h_result : ∀ i, fpDivFinite (exps i) sumResult = Fp.finite (result i))
+    (i : Fin n) :
+    |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      softmaxErrorCoeff_tight xs
+        (FpSum.FpSumBound.ofNaive exps trace hnr).relErr *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      subnormalSoftmaxAbs_tight xs
+        (FpSum.FpSumBound.ofNaive exps trace hnr).relErr * subnormalConst :=
+  fpSoftmaxOf_error_bound_subnormal_tight_of_sumBound hn xs exps
+    (FpSum.FpSumBound.ofNaive exps trace hnr) result
+    h_exp h_m_pos hd_m h_result i
+
+/-- **NaiveSum demo** (shifted tight, xs-independent bound): same as
+`fpSoftmax_naiveSum_error_bound` but with the xs-independent shifted variant.
+Requires `S ≥ 1` (e.g. after subtract-max) and an xs-free margin. -/
+theorem fpSoftmax_naiveSum_error_bound_shifted
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    {sumResult : FiniteFp}
+    (trace : FpSum.NaiveSum (List.ofFn exps) sumResult)
+    (hnr : trace.AllNormalRange (R := ℝ))
+    (h_S_ge_one : 1 ≤ ∑ j, Real.exp ((xs j).toVal : ℝ))
+    (h_margin_ind :
+      (1 + (FpSum.FpSumBound.ofNaive exps trace hnr).relErr) * (n : ℝ) *
+          subnormalConst <
+        1 - ((η : ℝ) +
+          (FpSum.FpSumBound.ofNaive exps trace hnr).relErr * (1 + (η : ℝ))))
+    (hd_m : sumResult.m ≠ 0)
+    (result : Fin n → FiniteFp)
+    (h_result : ∀ i, fpDivFinite (exps i) sumResult = Fp.finite (result i))
+    (i : Fin n) :
+    letI sum := FpSum.FpSumBound.ofNaive exps trace hnr
+    |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      (((η : ℝ)^2 + 2 * (η : ℝ) + ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
+        (1 + sum.relErr) * (n : ℝ) * subnormalConst) /
+       ((1 - ((η : ℝ) + sum.relErr * (1 + (η : ℝ)))) -
+        (1 + sum.relErr) * (n : ℝ) * subnormalConst)) *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      (1 + (1 + (η : ℝ)) /
+        ((1 - ((η : ℝ) + sum.relErr * (1 + (η : ℝ)))) -
+         (1 + sum.relErr) * (n : ℝ) * subnormalConst)) * subnormalConst := by
+  have hsum_bound : |(sumResult.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                    (FpSum.FpSumBound.ofNaive exps trace hnr).relErr *
+                      ∑ j, |((exps j).toVal : ℝ)| :=
+    (FpSum.FpSumBound.ofNaive exps trace hnr).h_bound
+  exact fpSoftmaxOf_error_bound_subnormal_tight_shifted hn xs exps sumResult result
+    (FpSum.FpSumBound.ofNaive exps trace hnr).relErr
+    h_exp hsum_bound
+    (FpSum.FpSumBound.ofNaive exps trace hnr).h_relErr_nn
+    h_S_ge_one h_margin_ind hd_m h_result i
+
+/-- **Kahan demo** (tight subnormal-tolerant): a Kahan compensated-summation
+`Trace` on `exps` composes with the softmax framework via
+`FpSumBound.ofKahanTrace`. The resulting `sum.relErr = 2η + n·η²`. -/
+theorem fpSoftmax_kahanSum_error_bound
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    {init final : KahanSum.State}
+    (trace : KahanSum.Trace (List.ofFn exps) init final)
+    (hinit_sum : init.sum.toVal (R := ℝ) = 0)
+    (hinit_comp : init.comp.toVal (R := ℝ) = 0)
+    (hexact : ∀ (st : KahanSum.State) (x : FiniteFp)
+                (step : KahanSum.StepWitness st x),
+      KahanSum.StepTwoSumExact (R := ℝ) st x step)
+    (hnr : ∀ (st : KahanSum.State) (x : FiniteFp)
+             (step : KahanSum.StepWitness st x),
+      KahanSum.StepNormalRange (R := ℝ) st x step)
+    (hM : ∀ (st : KahanSum.State) (x : FiniteFp)
+            (step : KahanSum.StepWitness st x),
+      |(st.sum.toVal : ℝ) + step.y.toVal| ≤
+        ((List.ofFn exps).map (fun x => |x.toVal (R := ℝ)|)).sum)
+    (h_m_pos : 0 < subnormalSoftmaxDenomMargin xs
+      (FpSum.FpSumBound.ofKahanTrace exps trace
+        hinit_sum hinit_comp hexact hnr hM).relErr)
+    (hd_m : final.sum.m ≠ 0)
+    (result : Fin n → FiniteFp)
+    (h_result : ∀ i, fpDivFinite (exps i) final.sum = Fp.finite (result i))
+    (i : Fin n) :
+    letI sum := FpSum.FpSumBound.ofKahanTrace exps trace
+                  hinit_sum hinit_comp hexact hnr hM
+    |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      softmaxErrorCoeff_tight xs sum.relErr *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      subnormalSoftmaxAbs_tight xs sum.relErr * subnormalConst :=
+  fpSoftmaxOf_error_bound_subnormal_tight_of_sumBound hn xs exps
+    (FpSum.FpSumBound.ofKahanTrace exps trace
+      hinit_sum hinit_comp hexact hnr hM) result
+    h_exp h_m_pos hd_m h_result i
+
+/-- **Neumaier demo** (loose): a Neumaier `NTrace` on `exps` composes with the
+softmax framework via `FpSumBound.ofNeumaierTrace`. See the `NeumaierAdapter`
+docstring in `FpSum.lean`: the bound is loose because `FpSumBound` cannot
+expose the compensator. For tight bounds prefer `fpSoftmax_kahanSum_error_bound`. -/
+theorem fpSoftmax_neumaierSum_error_bound
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    {init final : NeumaierSum.NState}
+    (trace : NeumaierSum.NTrace (R := ℝ) (List.ofFn exps) init final)
+    (hinit_sum : init.sum.toVal (R := ℝ) = 0)
+    (hinit_comp : init.comp.toVal (R := ℝ) = 0)
+    (hnr : ∀ (st : NeumaierSum.NState) (x : FiniteFp)
+             (step : NeumaierSum.NStepWitness (R := ℝ) st x),
+      NeumaierSum.NStepNormalRange (R := ℝ) st x step)
+    (hM : ∀ (st : NeumaierSum.NState) (x : FiniteFp)
+            (_step : NeumaierSum.NStepWitness (R := ℝ) st x),
+      |(st.sum.toVal : ℝ) + x.toVal| ≤
+        ((List.ofFn exps).map (fun x => |x.toVal (R := ℝ)|)).sum)
+    (h_m_pos : 0 < subnormalSoftmaxDenomMargin xs
+      (FpSum.FpSumBound.ofNeumaierTrace exps trace
+        hinit_sum hinit_comp hnr hM).relErr)
+    (hd_m : final.sum.m ≠ 0)
+    (result : Fin n → FiniteFp)
+    (h_result : ∀ i, fpDivFinite (exps i) final.sum = Fp.finite (result i))
+    (i : Fin n) :
+    letI sum := FpSum.FpSumBound.ofNeumaierTrace exps trace
+                  hinit_sum hinit_comp hnr hM
+    |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      softmaxErrorCoeff_tight xs sum.relErr *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      subnormalSoftmaxAbs_tight xs sum.relErr * subnormalConst :=
+  fpSoftmaxOf_error_bound_subnormal_tight_of_sumBound hn xs exps
+    (FpSum.FpSumBound.ofNeumaierTrace exps trace
+      hinit_sum hinit_comp hnr hM) result
+    h_exp h_m_pos hd_m h_result i
+
+/-- **Compensated-Neumaier demo** (tight): Neumaier via
+`FpSumBoundCompensated.ofNeumaierTrace` + `compensateAndRound`. Unlike
+`fpSoftmax_neumaierSum_error_bound` (loose, discards the compensator), this
+preserves Neumaier's `O(n²η²)` accuracy at the cost of one extra
+`fpAdd(sum, comp)` step. Final `relErr = η + O(n²η²)` — Kahan-comparable. -/
+theorem fpSoftmax_neumaierCompensated_error_bound
+    {n : ℕ} (hn : 0 < n)
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    {init final : NeumaierSum.NState}
+    (trace : NeumaierSum.NTrace (R := ℝ) (List.ofFn exps) init final)
+    (hinit_sum : init.sum.toVal (R := ℝ) = 0)
+    (hinit_comp : init.comp.toVal (R := ℝ) = 0)
+    (hnr : ∀ (st : NeumaierSum.NState) (x : FiniteFp)
+             (step : NeumaierSum.NStepWitness (R := ℝ) st x),
+      NeumaierSum.NStepNormalRange (R := ℝ) st x step)
+    (hM : ∀ (st : NeumaierSum.NState) (x : FiniteFp)
+            (_step : NeumaierSum.NStepWitness (R := ℝ) st x),
+      |(st.sum.toVal : ℝ) + x.toVal| ≤
+        ((List.ofFn exps).map (fun x => |x.toVal (R := ℝ)|)).sum)
+    {combinedResult : FiniteFp}
+    (hadd : final.sum + final.comp = Fp.finite combinedResult)
+    (hnr_add : isNormalRange ((final.sum.toVal : ℝ) + final.comp.toVal) ∨
+               (final.sum.toVal : ℝ) + final.comp.toVal = 0)
+    (h_m_pos : 0 < subnormalSoftmaxDenomMargin xs
+      ((FpSum.FpSumBoundCompensated.ofNeumaierTrace exps trace
+          hinit_sum hinit_comp hnr hM).compensateAndRound hadd hnr_add).relErr)
+    (hd_m : combinedResult.m ≠ 0)
+    (result : Fin n → FiniteFp)
+    (h_result : ∀ i, fpDivFinite (exps i) combinedResult = Fp.finite (result i))
+    (i : Fin n) :
+    letI sum := (FpSum.FpSumBoundCompensated.ofNeumaierTrace exps trace
+                   hinit_sum hinit_comp hnr hM).compensateAndRound hadd hnr_add
+    |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      softmaxErrorCoeff_tight xs sum.relErr *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      subnormalSoftmaxAbs_tight xs sum.relErr * subnormalConst :=
+  fpSoftmaxOf_error_bound_subnormal_tight_of_sumBound hn xs exps
+    ((FpSum.FpSumBoundCompensated.ofNeumaierTrace exps trace
+        hinit_sum hinit_comp hnr hM).compensateAndRound hadd hnr_add) result
+    h_exp h_m_pos hd_m h_result i
+
+end Demo
 
 end Softmax

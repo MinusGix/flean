@@ -51,6 +51,24 @@ Tracked iteratively. Priorities ordered top-to-bottom within each tier.
   - `LogComputable.lean`: final assembly + `OpRefExecSound logTarget` instance
 - [x] **Fuel**: `600 * ab^4 * 2^ab` (exponential, not polynomial like exp). See docstring in LogComputableDefs.lean for paths to polynomial fuel via Padé for log(1+z).
 
+## LogApprox / fpLogFinite — TODO (big session, capstone)
+- [ ] **`LogApprox` typeclass + `fpLogFinite` + soundness** — the missing
+  parallel to `ExpApprox`/`fpExpFinite` in `Flean/Operations/Exp.lean`. Would:
+  1. Unblock the abstract `h_log_close` in `fpLogSumExp_end_to_end_error_bound`
+     (LogSumExp.lean) — a thin wrapper around `fpLogFinite_correct` would
+     supply the witness mechanically, making LSE concrete.
+  2. Enable verified `log`-based algorithms (negative-log-likelihood, log-softmax,
+     etc.) without per-use abstract hypotheses.
+  3. Mirror exp structure: `LogApproxData` (exact/sticky variants),
+     `LogApprox.approx`, `LogApproxSound`, `fpLogFinite`, `fpLog`, unified
+     error bound `|fpLog(a) - log(a.toVal)| ≤ η·|log a.toVal| + subnormalConst`.
+  - Building blocks exist: `logComputableRun` (arbitrary-precision) in
+    LogComputable.lean, sticky infrastructure in StickyExtract/StickyTermination.
+  - Estimated size: ~500-800 lines per the LSE session plan.
+  - Session-ready but substantial — mostly template work, few new ideas,
+    but careful with the additive `logSubConst` tail (log's subnormal
+    behavior differs from exp's).
+
 ## Shared Infrastructure (exp + log)
 - `StickyTermination.lean`: `stickyExtractLoop_sound`, `stickyExtractLoop_pos_of_success`, `uniform_gap_from_pointwise`
 - `Util.lean`: `Rat.den_lt_num_of_one_lt`, `Real.log_abs_sub_ge_div_max`, `geom_decay_bound`, `cube_lt_two_pow`, `two_mul_sq_lt_two_pow`
@@ -347,23 +365,75 @@ Rounding/ files but narrow applicability.
       - Naive-sum step helpers: `fpAddFinite_exists_finite_of_nonneg_bounded`,
         `naiveSum_step_finite_of_nonneg_bounded` — automate per-step `Fp.finite`
         witness. Full automated NaiveSum-from-bounded-list builder deferred.
-      - [ ] **Shifted tight variant** — `fpSoftmaxOf_error_bound_subnormal_tight_shifted`:
-        combine `softmaxErrorCoeff_tight_le_of_S_ge_one` + `subnormalSoftmaxAbs_tight_le_of_S_ge_one`
-        to produce an xs-independent tight bound under S ≥ 1. ~30 lines, mechanical.
-      - [ ] **End-to-end pipeline theorem** — takes raw `xs : Fin n → FiniteFp`, runs
-        `fpMax` + `fpSoftmaxShift` + exp + sum + divide, produces an error bound
-        against the mathematical softmax. Requires `fpMax.toVal` characterization
-        (equals the max of `.toVal`s) and `fpSubFinite` error analysis to bridge
-        the shift step. ~200 lines; would give users a single-call API.
-      - [ ] **Concrete `FpSumBound` instances** — the adapter framework exists but no
-        instances are wired up. Needed for softmax to be usable end-to-end:
-        - `FpSumBound.ofNaiveSum` (basic, γ_n-style bound)
-        - `FpSumBound.ofKahan` (Kahan compensated, 2η + nη² bound via `kahan_higham_bound`)
-        - `FpSumBound.ofNeumaier` (Neumaier variant)
-        Each ~100–200 lines. Biggest practical win — verified softmax with Kahan
-        compensation has real application value.
-    - [ ] **Log-sum-exp** — `logsumexp(xs) = max(xs) + log(Σ exp(xs_i - max(xs)))`,
-      numerically stable computation of `log(Σ exp(xs_i))`.
+      - [x] **Shifted tight variant** — `fpSoftmaxOf_error_bound_subnormal_tight_shifted`
+        in Softmax.lean (+ `FpSoftmaxResultSubnormalTight.shifted` bundle wrapper).
+        Uses `softmaxErrorCoeff_tight_le_of_S_ge_one` + `subnormalSoftmaxAbs_tight_le_of_S_ge_one`
+        to produce the xs-independent tight bound under S ≥ 1.
+      - [x] **End-to-end pipeline theorem** — `fpSoftmax_end_to_end_error_bound`
+        in Softmax.lean (section `EndToEnd`). Takes raw `xs`, an exact-shift
+        witness `xs'` satisfying `(xs' j).toVal = (xs j).toVal - (fpMax xs hn).toVal`,
+        plus the standard pipeline components; produces the xs-independent tight
+        bound. S ≥ 1 is derived from the argmax via private `fpMax_attained`.
+      - [ ] **Non-exact-shift regime** for the end-to-end softmax — track the
+        `fpSubFinite (xs i) c` rounding error all the way through. Currently
+        the pipeline theorem requires exactness via Sterbenz, which fails when
+        `|xs i|` and `|c|` differ by more than a factor of 2. Plan: introduce
+        `xs' i = xs i - c + δᵢ` with `|δᵢ| ≤ η·|xs i - c| + subnormalConst`,
+        push through `exp` (where a relative perturbation becomes
+        `exp(x'+δ)/exp(x') = exp(δ) ≈ 1 + δ`), then through the sum, and bound
+        the difference `softmax(xs'.toVal) - softmax(xs.toVal - c)`. ~200-400
+        lines. Tighter pipeline but narrower gain — defer unless a user hits
+        the Sterbenz constraint in practice.
+      - [x] **Concrete `FpSumBound` instances**:
+        - `FpSumBound.ofNaive` (already existed — `(1+η)^(n-1) - 1` via right-spine PairwiseSum)
+        - `FpSumBound.ofKahanTrace` in `FpSum.lean` (tight `2η + n·η²` via `kahan_higham_bound`)
+        - Demos: `fpSoftmax_naiveSum_error_bound` (+ `_shifted`), `fpSoftmax_kahanSum_error_bound`
+          in `Softmax.lean`, wiring each into `_tight_of_sumBound`.
+        - [x] `FpSumBound.ofNeumaierTrace` in `FpSum.lean` — loose
+          `n·η·((1+η)^{n+1}-1) + (1+η)·((1+η)^n-1)` bound via
+          `neumaier_concrete_bound + comp_growth + triangle`. Drops the
+          compensator, so bound is O((n+1)·η·S) leading — worse than
+          `ofKahanTrace` and roughly matching `ofNaive`. Docstring flags this.
+          Demo: `fpSoftmax_neumaierSum_error_bound` in `Softmax.lean`.
+        - [x] **`FpSumBoundCompensated` struct** in `FpSum.lean` with
+          `ofNeumaierTrace` (tight `O(n²η²)` via `neumaier_concrete_bound`)
+          + `compensateAndRound` bridge to `FpSumBound` via one final
+          `fpAdd(sum, comp)` (new `relErr = cb.relErr·(1+η) + η`). Demo
+          `fpSoftmax_neumaierCompensated_error_bound` in `Softmax.lean`.
+          Adapters: `weaken`, `weakenComp`, `reindex`, `congr`, `append`
+          (compensated-preserving via separate sum/comp `fpAdd`s;
+          `new_relErr = εM(1+η) + η(1+2cεM)`, `new_compErr = (1+η)cεM`),
+          `appendCollapsed` (→ `FpSumBound`). Struct now carries `compErr`
+          + `h_comp_bound` as a second bound on `|comp|` alone; helper
+          lemmas `sigma_abs_le`, `sum_abs_le`.
+    - [x] **Log-sum-exp** — `LogSumExp.lean` (~715 lines, sorry-free).
+      - Real-valued: `logsumexp`, `logsumexp_shift_eq`, `logsumexp_ge`.
+      - Helper: `log_rel_error_bound` — `|log y - log x| ≤ ε/(1-ε)` when `|y-x| ≤ ε·x`.
+      - Main: `fpLogSumExp_end_to_end_error_bound` — raw `xs`, exact-shift witness,
+        abstract `(logResult, η_log, logSubConst, h_log_close)` witness, `fpAddFinite`
+        final step, `h_final_ne` (sign-symmetric via `[RModeConj ℝ]`). Effective sum
+        error `ε_sum = (η + relErr(1+η)) + (1+relErr)·n·sc`, induced log error
+        `D_log = ε_sum/(1-ε_sum)`. Bound:
+        `η·|LSE| + (1+η)·(η_log·(LSE-c) + (1+η_log)·D_log + logSubConst) + subnormalConst`.
+      - Bundle: `FpLogSumExpResult xs hn` with `.error_bound` method.
+      - Demos: `fpLogSumExp_naiveSum_error_bound`, `_kahanSum_error_bound`,
+        `_neumaierSum_error_bound` (loose), `_neumaierCompensated_error_bound` (tight).
+      - Log step stays abstract (no `fpLogFinite`/`LogApprox` exists yet); when
+        one lands, a thin wrapper supplies `h_log_close`.
+    - [ ] **Dot-product `FpSumBound` adapter** (session-ready: plumbing only)
+      — `FpSumBound.ofDotProduct` + `FpSumBound.ofDotProductFMA` using existing
+      `dp_error_bound` / `fma_horner_error_bound` from `DotProduct.lean` /
+      `DotProductFMA.lean`. Would let matmul/attention accumulators plug into
+      the same framework that softmax/LSE consume. Parallels the Kahan/Neumaier
+      adapters. ~150-250 lines per constructor. **Good next-session pick** —
+      no new design, direct ML value.
+    - [ ] **Cross-entropy loss** — `CE(y, x) = -Σ y_i · (x_i - LSE(x))`. All
+      pieces exist: LSE (done), softmax (done), FP dot-product. End-to-end
+      verified ML loss function that demonstrates the framework's
+      compositionality. Ideal follow-up to dot-product adapters (uses them for
+      the `Σ y_i · r_i` step). ~300-500 lines. Would surface rough edges where
+      softmax/LSE/dot-product compose. Natural capstone for the ML-primitives
+      arc (softmax + LSE + cross-entropy).
     - [ ] **Temperature scaling** — `softmax(xs/T)`, convergence to argmax as T→0.
 
 ## Mid-Term — Mixed-Precision & ML
