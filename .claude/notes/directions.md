@@ -461,30 +461,39 @@ Rounding/ files but narrow applicability.
   with *tag-specialized error bounds* that tighten when a caller has extra
   structural info. Detailed plan: [tag-framework-plan.md](tag-framework-plan.md).
   Phased rollout:
-  - [x] **Phase 0 (pilot)** — `Flean/Tags/Simplex.lean` (171 lines) +
-    `Flean/Tags/Normal.lean` (128 lines), both sorry-free, not yet wired
-    into `Flean.lean`. Two tags, two preservations, two specialized bounds.
-    Key findings (assessment lives at the top of each file):
-    - **`IsSimplex` alone does NOT tighten** `FpDotProductBound` on absolute
-      magnitude — `Σ|wᵢxᵢ| ≤ max|xᵢ|` for simplex `ws`, so the specialized
-      RHS is strictly *larger* than the general one. The win is
-      **structural isolation**: the new RHS depends only on `xs`, letting
-      downstream composition use an `xs`-local invariant. Plan language
-      about "tighter bounds" needs revision — sell *structural isolation*,
-      not raw shrinkage.
-    - **`IsNormal` DOES strictly tighten**: `Fp.ulp v / 2 ≤ η · v` (tagged)
-      vs `η · v + subnormalConst` (general `ulp_half_le_unified` in
-      `Softmax.lean`). Strictly smaller by exactly `subnormalConst > 0`.
-      This is the right template for real tightening stories.
-    - **Nonempty-domain precondition can be derived from tag**:
-      `IsSimplex.pos : IsSimplex ws → 0 < n` (empty sum ≠ 1). Consumer
-      theorems drop `hn : 0 < n` entirely. Pattern: structural tags should
-      *absorb* degeneracy preconditions they already imply.
+  - [x] **Phase 0 (pilots)** — three plain-theorem pilots, all sorry-free
+    and wired into `Flean/Tags.lean` aggregator:
+    - `Flean/Tags/Simplex.lean` (~185 lines): `IsSimplex` + permutation
+      preservation + `FpDotProductBound.simplex_bound` (bound in `max|xᵢ|`).
+    - `Flean/Tags/Normal.lean` (~128 lines): `IsNormal` + `add_nonneg`
+      preservation + `ulp_half_le_of_normal` (drops `+ subnormalConst` tail).
+    - `Flean/Tags/Sterbenz.lean` (~145 lines): `IsSterbenz` + negation
+      preservation + `fpSubFinite_exact_of_sterbenz` (error = 0 exactly).
+    Together they span three flavors of tag-specialized bound:
+    - **Structural isolation** (`IsSimplex`): bound's RHS shape changes
+      but magnitude doesn't shrink. Win is fewer joint dependencies.
+    - **Additive-tail elimination** (`IsNormal`): drop a `+ c` term
+      (`subnormalConst`). Strict tightening.
+    - **Multiplicative-tail elimination** (`IsSterbenz`): drop a `· ε`
+      factor — full rounding error collapses to 0. Strongest tightening.
+    Key cross-pilot findings (full assessments at the top of each file):
+    - Plan's "tag-specialized bounds are tighter" framing is misleading
+      as a blanket statement. Some tags isolate structure, others tighten
+      magnitude, others force exactness. Phase 1 language should be
+      careful to distinguish.
+    - Nonempty-domain preconditions can be absorbed into tags
+      (`IsSimplex.pos`). Pattern: structural tags should eat degeneracy
+      preconditions they already imply.
+    - Tag-as-structure vs. tag-as-wrapper is fine either way; three
+      pilots used structures with 1, 2, and 5 fields each.
+    - Preservation lemmas so far are all simple (permutation, add-nonneg,
+      negation) — no composition test yet. Phase 1 entry-point question.
   - [ ] **Phase 1 (framework)** — introduce `Preserves` typeclass +
-    composition + weakening. Blocked-adjacent: consider first writing 2-3
-    more plain-theorem pilots (e.g. `IsSterbenz` + `fpSubFinite` for
-    exact-subtraction tightening, `IsNonneg` + `fpMul` composition) to
-    stress-test the pattern before typeclass investment.
+    composition + weakening. Blocked-adjacent: consider first writing
+    an `IsNonneg` + `fpMul` / `fpAdd` pilot that actually composes
+    (chain two tagged ops) before typeclass investment — the three
+    current pilots each test only one op, so composition is still
+    unvalidated.
   - [ ] **Phase 2 (specialized bounds)** — drop `subnormalConst` from
     Softmax/LogSumExp under `IsNormal` on `exps`, drop `fpSubFinite`
     rounding under `IsSterbenz`, etc. These are the load-bearing payoffs.
