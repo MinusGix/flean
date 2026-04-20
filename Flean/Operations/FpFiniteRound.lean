@@ -1,5 +1,6 @@
 import Flean.Operations.Add
 import Flean.Operations.Mul
+import Flean.Operations.FMA
 
 /-!
 # Unified rounding witnesses for `fpAddFinite` / `fpMulFinite`
@@ -118,6 +119,51 @@ theorem fpMulFinite_round_witness
   · -- Nonzero-product case: use `fpMulFinite_correct`.
     have hcorr := fpMulFinite_correct (R := R) x y hprod
     simp only [mul_eq_fpMul, fpMul_coe_coe] at hcorr
+    rw [hcorr] at hf
+    exact ⟨f, hf, rfl⟩
+
+/-! ## `fpFMAFinite` unified witness -/
+
+/-- When `fpFMAFinite a b c` is finite, there is a finite float `g`
+such that rounding `a.toVal * b.toVal + c.toVal` yields `Fp.finite g`
+with `g.toVal = f.toVal`.
+
+Structure parallels `fpAddFinite_round_witness`.  The zero-sum case
+(`a*b + c = 0`) is reached when the aligned integer sum cancels; the
+result is a signed-zero float with `toVal = 0`. -/
+theorem fpFMAFinite_round_witness
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeZero R]
+    (a b c : FiniteFp) {f : FiniteFp}
+    (hf : fpFMAFinite a b c = Fp.finite f) :
+    ∃ g : FiniteFp,
+      (RMode.round ((a.toVal : R) * b.toVal + c.toVal) : Fp) = Fp.finite g ∧
+      (g.toVal : R) = f.toVal := by
+  by_cases hsum : (a.toVal : R) * b.toVal + c.toVal = 0
+  · -- Zero-sum case: derive `fmaAlignedSumInt = 0`, then use
+    -- `fpFMAFinite_exact_cancel_sign`.
+    have hexact := fpFMAFinite_exact_sum R a b c
+    rw [hsum] at hexact
+    have h2_pos : (0 : R) < (2 : R) ^ (fmaEMin a b c - prec + 1) := by positivity
+    have h2_ne : (2 : R) ^ (fmaEMin a b c - prec + 1) ≠ 0 := ne_of_gt h2_pos
+    have h_int_cast_zero : ((fmaAlignedSumInt a b c : ℤ) : R) = 0 := by
+      have h_prod_zero : ((fmaAlignedSumInt a b c : ℤ) : R) *
+          (2 : R) ^ (fmaEMin a b c - prec + 1) = 0 := hexact.symm
+      exact (mul_eq_zero.mp h_prod_zero).resolve_right h2_ne
+    have hsum_int_zero : fmaAlignedSumInt a b c = 0 := by
+      exact_mod_cast h_int_cast_zero
+    have hcancel := fpFMAFinite_exact_cancel_sign a b c hsum_int_zero
+    rw [hcancel] at hf
+    have hf_eq : f = ⟨exactCancelSign (a.s ^^ b.s) c.s, FloatFormat.min_exp, 0,
+                      IsValidFiniteVal.zero⟩ :=
+      (Fp.finite.inj hf).symm
+    have hfm : f.m = 0 := by rw [hf_eq]
+    have hf_toVal : (f.toVal : R) = 0 :=
+      (FiniteFp.toVal_significand_zero_iff (R := R)).mp hfm
+    refine ⟨(0 : FiniteFp), ?_, ?_⟩
+    · rw [hsum]; exact RModeZero.round_zero
+    · rw [FiniteFp.toVal_zero, hf_toVal]
+  · -- Nonzero-sum case: use `fpFMAFinite_correct`.
+    have hcorr := fpFMAFinite_correct (R := R) a b c hsum
     rw [hcorr] at hf
     exact ⟨f, hf, rfl⟩
 

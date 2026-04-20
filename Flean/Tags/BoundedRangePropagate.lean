@@ -1,5 +1,6 @@
 import Flean.Operations.Add
 import Flean.Operations.Mul
+import Flean.Operations.FMA
 import Flean.Operations.FpFiniteRound
 import Flean.Rounding.ModeClass
 import Flean.Rounding.RoundPreserves
@@ -11,9 +12,9 @@ import Flean.Tags.BoundedRange
 Per `.claude/notes/tag-framework-phase1-design.md` §1.4 / §3.4.
 
 Propagation lemmas threading `IsBoundedRange lo hi xs` through the
-primitive FP ops `fpAddFinite` / `fpMulFinite`.  The input-interval
-bounds widen outward to absorb the rounding slack contributed by the
-op.
+primitive FP ops `fpAddFinite` / `fpMulFinite` / `fpFMAFinite`.  The
+input-interval bounds widen outward to absorb the rounding slack
+contributed by the op.
 
 Both lemmas assume the exact real result (sum or product) lies in the
 sign-agnostic normal range, i.e.
@@ -37,6 +38,13 @@ meta-lemma `round_preserves_abs_error_normal`.
     locked signature does not require any outward-bound invariant
     (since a mixed-sign product has no natural one-sided relation to
     the input endpoints).
+- **`IsBoundedRange.fpFMA`**:
+  - let `M := max |lo₁| |hi₁| · max |lo₂| |hi₂| + max |lo₃| |hi₃|`.
+  - `lo' := -((1 + η) · M)`,  `hi' := (1 + η) · M`.
+  - Single rounding step over exact `a·b + c`; same symmetric form as
+    `fpMul` since the embedded product already loses directional
+    structure.  Compared to separate `mul` + `add`, FMA absorbs two
+    rounding errors into one.
 
 ## Scope
 
@@ -214,6 +222,82 @@ theorem IsBoundedRange.fpMul
     rw [← hg_eq]
     exact (abs_le.mp hg_abs_le).2
 
+/-! ## FMA propagation
+
+`fpFMA(a, b, c) = round(a·b + c)` — single rounding step over the
+exact real `a·b + c`.  The output interval is symmetric-around-zero
+(mirroring `fpMul`), since the product component `a·b` already loses
+directional structure under sign mixing, and the final bound is
+dominated by the max-magnitude of `a·b + c`. -/
+
+/-- `IsBoundedRange` propagates through `fpFMAFinite` in the
+normal-range regime (exact `a·b + c` has `2^min_exp ≤ |·|`).
+
+Output interval: `[-(1+η)·M, (1+η)·M]` where
+`M := max |lo₁| |hi₁| · max |lo₂| |hi₂| + max |lo₃| |hi₃|` — the
+worst-case magnitude of `a·b + c`. -/
+theorem IsBoundedRange.fpFMA
+    [RMode R] [RModeExec] [RoundIntSigMSound R]
+    [RModeNearest R] [RModeConj R] [RModeZero R]
+    {lo₁ hi₁ lo₂ hi₂ lo₃ hi₃ : R} {a b c f : FiniteFp}
+    (ha : IsBoundedRange (R := R) lo₁ hi₁ (fun (_ : Fin 1) => a))
+    (hb : IsBoundedRange (R := R) lo₂ hi₂ (fun (_ : Fin 1) => b))
+    (hc : IsBoundedRange (R := R) lo₃ hi₃ (fun (_ : Fin 1) => c))
+    (h_normal : (2 : R) ^ FloatFormat.min_exp ≤
+                |(a.toVal : R) * b.toVal + c.toVal|)
+    (hf : fpFMAFinite a b c = Fp.finite f) :
+    ∃ (lo' hi' : R),
+      IsBoundedRange (R := R) lo' hi' (fun (_ : Fin 1) => f) := by
+  set e : R := (a.toVal : R) * b.toVal + c.toVal with he_def
+  set M₁ : R := max |lo₁| |hi₁| with hM₁_def
+  set M₂ : R := max |lo₂| |hi₂| with hM₂_def
+  set M₃ : R := max |lo₃| |hi₃| with hM₃_def
+  set M : R := M₁ * M₂ + M₃ with hM_def
+  -- Input magnitude bounds.
+  have ha_abs_le : |(a.toVal : R)| ≤ M₁ :=
+    abs_le_max_abs_of_le_le (ha.lower 0) (ha.upper 0)
+  have hb_abs_le : |(b.toVal : R)| ≤ M₂ :=
+    abs_le_max_abs_of_le_le (hb.lower 0) (hb.upper 0)
+  have hc_abs_le : |(c.toVal : R)| ≤ M₃ :=
+    abs_le_max_abs_of_le_le (hc.lower 0) (hc.upper 0)
+  have hM₁_nn : (0 : R) ≤ M₁ := le_trans (abs_nonneg _) (le_max_left _ _)
+  have hM₂_nn : (0 : R) ≤ M₂ := le_trans (abs_nonneg _) (le_max_left _ _)
+  have hM₃_nn : (0 : R) ≤ M₃ := le_trans (abs_nonneg _) (le_max_left _ _)
+  have hM_nn : (0 : R) ≤ M := by rw [hM_def]; positivity
+  -- `|e| ≤ M`.
+  have he_abs_le : |e| ≤ M := by
+    have h_ab_prod : |(a.toVal : R) * b.toVal| ≤ M₁ * M₂ := by
+      rw [abs_mul]
+      exact mul_le_mul ha_abs_le hb_abs_le (abs_nonneg _) hM₁_nn
+    calc |e|
+        = |(a.toVal : R) * b.toVal + c.toVal| := rfl
+      _ ≤ |(a.toVal : R) * b.toVal| + |(c.toVal : R)| := abs_add_le _ _
+      _ ≤ M₁ * M₂ + M₃ := add_le_add h_ab_prod hc_abs_le
+      _ = M := rfl
+  -- Rounding error bound.
+  obtain ⟨g, hg_round, hg_eq⟩ := fpFMAFinite_round_witness (R := R) a b c hf
+  have h_err : |(g.toVal : R) - e| ≤ η * |e| :=
+    round_preserves_abs_error_normal h_normal hg_round
+  have hη_nn : (0 : R) ≤ η := by positivity
+  have h1η_nn : (0 : R) ≤ 1 + η := by linarith
+  -- `|g.toVal| ≤ (1+η)·M`.
+  have hg_abs_le : |(g.toVal : R)| ≤ (1 + η) * M := by
+    have h_step1 : |(g.toVal : R)| ≤ |g.toVal - e| + |e| := by
+      have : |((g.toVal - e) + e : R)| ≤ |g.toVal - e| + |e| := abs_add_le _ _
+      convert this using 2; ring
+    calc |(g.toVal : R)|
+        ≤ |g.toVal - e| + |e| := h_step1
+      _ ≤ η * |e| + |e| := by linarith
+      _ = (1 + η) * |e| := by ring
+      _ ≤ (1 + η) * M := mul_le_mul_of_nonneg_left he_abs_le h1η_nn
+  refine ⟨-((1 + η) * M), (1 + η) * M, ?_, ?_⟩
+  · intro _
+    show -((1 + η) * M) ≤ (f.toVal : R)
+    rw [← hg_eq]; exact (abs_le.mp hg_abs_le).1
+  · intro _
+    show (f.toVal : R) ≤ (1 + η) * M
+    rw [← hg_eq]; exact (abs_le.mp hg_abs_le).2
+
 /-! ## Subnormal-tolerant variants
 
 Drop the `(2:R)^min_exp ≤ |exact|` precondition from `fpAdd` / `fpMul`
@@ -338,6 +422,73 @@ theorem IsBoundedRange.fpMul_unified
     show (f.toVal : R) ≤ (1 + η) * M + sc
     rw [← hg_eq]; exact (abs_le.mp hg_abs_le).2
 
+/-- `IsBoundedRange` propagates through `fpFMAFinite`, subnormal-tolerant.
+
+Drops the normal-range hypothesis of `IsBoundedRange.fpFMA` at the
+cost of an additive `2^(min_exp - prec)` tail.  Output:
+  `[-((1+η)·M + sc), (1+η)·M + sc]`
+where `M := max |lo₁| |hi₁| · max |lo₂| |hi₂| + max |lo₃| |hi₃|`
+and `sc := 2^(min_exp - prec)`. -/
+theorem IsBoundedRange.fpFMA_unified
+    [RMode R] [RModeExec] [RoundIntSigMSound R]
+    [RModeNearest R] [RModeConj R] [RModeZero R]
+    {lo₁ hi₁ lo₂ hi₂ lo₃ hi₃ : R} {a b c f : FiniteFp}
+    (ha : IsBoundedRange (R := R) lo₁ hi₁ (fun (_ : Fin 1) => a))
+    (hb : IsBoundedRange (R := R) lo₂ hi₂ (fun (_ : Fin 1) => b))
+    (hc : IsBoundedRange (R := R) lo₃ hi₃ (fun (_ : Fin 1) => c))
+    (hf : fpFMAFinite a b c = Fp.finite f) :
+    ∃ (lo' hi' : R),
+      IsBoundedRange (R := R) lo' hi' (fun (_ : Fin 1) => f) := by
+  set e : R := (a.toVal : R) * b.toVal + c.toVal with he_def
+  set M₁ : R := max |lo₁| |hi₁| with hM₁_def
+  set M₂ : R := max |lo₂| |hi₂| with hM₂_def
+  set M₃ : R := max |lo₃| |hi₃| with hM₃_def
+  set M : R := M₁ * M₂ + M₃ with hM_def
+  set sc : R := (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) with hsc_def
+  have ha_abs_le : |(a.toVal : R)| ≤ M₁ :=
+    abs_le_max_abs_of_le_le (ha.lower 0) (ha.upper 0)
+  have hb_abs_le : |(b.toVal : R)| ≤ M₂ :=
+    abs_le_max_abs_of_le_le (hb.lower 0) (hb.upper 0)
+  have hc_abs_le : |(c.toVal : R)| ≤ M₃ :=
+    abs_le_max_abs_of_le_le (hc.lower 0) (hc.upper 0)
+  have hM₁_nn : (0 : R) ≤ M₁ := le_trans (abs_nonneg _) (le_max_left _ _)
+  have hM₂_nn : (0 : R) ≤ M₂ := le_trans (abs_nonneg _) (le_max_left _ _)
+  have hM₃_nn : (0 : R) ≤ M₃ := le_trans (abs_nonneg _) (le_max_left _ _)
+  have hM_nn : (0 : R) ≤ M := by rw [hM_def]; positivity
+  have hsc_nn : (0 : R) ≤ sc := by rw [hsc_def]; positivity
+  have he_abs_le : |e| ≤ M := by
+    have h_ab_prod : |(a.toVal : R) * b.toVal| ≤ M₁ * M₂ := by
+      rw [abs_mul]
+      exact mul_le_mul ha_abs_le hb_abs_le (abs_nonneg _) hM₁_nn
+    calc |e|
+        = |(a.toVal : R) * b.toVal + c.toVal| := rfl
+      _ ≤ |(a.toVal : R) * b.toVal| + |(c.toVal : R)| := abs_add_le _ _
+      _ ≤ M₁ * M₂ + M₃ := add_le_add h_ab_prod hc_abs_le
+      _ = M := rfl
+  obtain ⟨g, hg_round, hg_eq⟩ := fpFMAFinite_round_witness (R := R) a b c hf
+  have h_err : |(g.toVal : R) - e| ≤ η * |e| + sc :=
+    round_preserves_abs_error_unified (R := R) e hg_round
+  have hη_nn : (0 : R) ≤ η := by positivity
+  have h1η_nn : (0 : R) ≤ 1 + η := by linarith
+  have hg_abs_le : |(g.toVal : R)| ≤ (1 + η) * M + sc := by
+    have h_step1 : |(g.toVal : R)| ≤ |g.toVal - e| + |e| := by
+      have : |((g.toVal - e) + e : R)| ≤ |g.toVal - e| + |e| := abs_add_le _ _
+      convert this using 2; ring
+    calc |(g.toVal : R)|
+        ≤ |g.toVal - e| + |e| := h_step1
+      _ ≤ (η * |e| + sc) + |e| := by linarith
+      _ = (1 + η) * |e| + sc := by ring
+      _ ≤ (1 + η) * M + sc := by
+          have := mul_le_mul_of_nonneg_left he_abs_le h1η_nn
+          linarith
+  refine ⟨-((1 + η) * M + sc), (1 + η) * M + sc, ?_, ?_⟩
+  · intro _
+    show -((1 + η) * M + sc) ≤ (f.toVal : R)
+    rw [← hg_eq]; exact (abs_le.mp hg_abs_le).1
+  · intro _
+    show (f.toVal : R) ≤ (1 + η) * M + sc
+    rw [← hg_eq]; exact (abs_le.mp hg_abs_le).2
+
 end Unified
 
 /-! ## Demo: 3-op chain validates design doc §3.4 success criterion
@@ -419,6 +570,28 @@ theorem IsBoundedRange.demo_mul_mul_add_unified
   obtain ⟨_, _, hm₂_tag⟩ := IsBoundedRange.fpMul_unified hz hw hm₂
   obtain ⟨lo_r, hi_r, _, _, hr_tag⟩ :=
     IsBoundedRange.fpAdd_unified hm₁_tag hm₂_tag hr
+  exact ⟨lo_r, hi_r, hr_tag⟩
+
+/-- Two-FMA chain `r = fpFMA x y (fpFMA z w c)` computing
+`x·y + z·w + c` via two FMAs = two rounding steps, vs the three
+rounding steps of the mul-mul-add chain in
+`demo_mul_mul_add_unified`.  Each FMA absorbs one multiplication +
+one addition into a single rounding step with a single error. -/
+theorem IsBoundedRange.demo_fma_chain_unified
+    [RMode R] [RModeExec] [RoundIntSigMSound R]
+    [RModeNearest R] [RModeConj R] [RModeZero R]
+    {lox hix loy hiy loz hiz low hiw loc hic : R}
+    {x y z w c t r : FiniteFp}
+    (hx : IsBoundedRange (R := R) lox hix (fun (_ : Fin 1) => x))
+    (hy : IsBoundedRange (R := R) loy hiy (fun (_ : Fin 1) => y))
+    (hz : IsBoundedRange (R := R) loz hiz (fun (_ : Fin 1) => z))
+    (hw : IsBoundedRange (R := R) low hiw (fun (_ : Fin 1) => w))
+    (hc : IsBoundedRange (R := R) loc hic (fun (_ : Fin 1) => c))
+    (ht : fpFMAFinite z w c = Fp.finite t)
+    (hr : fpFMAFinite x y t = Fp.finite r) :
+    ∃ lo hi : R, IsBoundedRange (R := R) lo hi (fun (_ : Fin 1) => r) := by
+  obtain ⟨_, _, ht_tag⟩ := IsBoundedRange.fpFMA_unified hz hw hc ht
+  obtain ⟨lo_r, hi_r, hr_tag⟩ := IsBoundedRange.fpFMA_unified hx hy ht_tag hr
   exact ⟨lo_r, hi_r, hr_tag⟩
 
 end Demo

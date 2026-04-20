@@ -476,8 +476,16 @@ sorry-free).
   `M = max |lo₁| |hi₁| · max |lo₂| |hi₂|`. Symmetric-around-0 form —
   the locked signature doesn't require an outward-bound invariant, so
   the formula falls back cleanly to the worst-case magnitude.
-- `IsBoundedRange.fpFMA` — not yet. Signature will mirror the above
-  once a focused session lands it.
+- `IsBoundedRange.fpFMA` — **done**. Output interval
+  `[-(1+η)·M, (1+η)·M]` where
+  `M = max |lo₁| |hi₁| · max |lo₂| |hi₂| + max |lo₃| |hi₃|` — the
+  worst-case magnitude of the exact FMA value `a·b + c`.  Same
+  symmetric-around-0 form as `fpMul` (single rounding step over a
+  product-plus-addend whose directional structure is already lost).
+  Unified variant `fpFMA_unified` mirrors `fp{Add,Mul}_unified` —
+  drops the normal-range hypothesis in exchange for a `+ sc` tail.
+  Supporting infrastructure: `fpFMAFinite_round_witness` added to
+  `Flean/Operations/FpFiniteRound.lean`.
 
 Both lemmas take an additional hypothesis
 `(2 : R)^min_exp ≤ |exact result|` — the sign-agnostic normal-range
