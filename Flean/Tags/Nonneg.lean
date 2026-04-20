@@ -1,5 +1,6 @@
 import Flean.Operations.Add
 import Flean.Operations.Mul
+import Flean.Operations.FpFiniteRound
 import Flean.Rounding.ModeClass
 
 /-!
@@ -43,15 +44,18 @@ the pattern's open questions on composition are:
   (for fpAdd) and inline unfolding (for fpMul). A tag framework should
   factor this out as a reusable `round_preserves_nonneg` lemma.
 
-## Friction points surfaced
+## Retrofit (Phase 1 §3.2 step)
 
-* `fpMulFinite_correct` requires `(x.toVal * y.toVal) ≠ 0`; the
-  zero-product case needs separate treatment. A `fpMulFinite_toVal`
-  lemma covering both cases (like `fpAddFinite_zero_left_val` does for
-  zero-sum) would smooth this.
-* `round_nonneg_of_nonneg` is genuinely reusable infrastructure — it's
-  what ties `RModeMono` + `RModeZero` together for nonneg-propagation.
-  Should live in `Rounding/` eventually.
+The zero-case friction flagged in the original pilot header has since
+been absorbed by `Flean/Operations/FpFiniteRound.lean`'s unified
+witnesses (`fpAddFinite_round_witness`, `fpMulFinite_round_witness`).
+The preservation proofs below dropped from ~15 lines each to ~5,
+validating the §1.6 design decision: one uniform rounding-witness per
+op, consumed identically by every tag preservation.
+
+`round_nonneg_of_nonneg` remains local here. Phase 1 §3.1 still plans
+to promote it to `Flean/Rounding/RoundPreserves.lean` once a second
+"round preserves P" meta-lemma needs the same infrastructure.
 -/
 
 set_option autoImplicit false
@@ -90,47 +94,30 @@ private theorem round_nonneg_of_nonneg [RMode R] [RModeMono R] [RModeZero R]
   have := FiniteFp.le_toVal_le R hle
   rwa [FiniteFp.toVal_zero] at this
 
-/-! ## Preservation: `fpAddFinite` -/
+/-! ## Preservation: `fpAddFinite`
+
+After the §1.6 unified-round-witness helper (`fpAddFinite_round_witness`)
+landed in `Flean/Operations/FpFiniteRound.lean`, these preservations no
+longer need to case-split on zero vs nonzero sum / product — the helper
+absorbs both cases via an existential witness `g` whose `toVal` matches
+the result's.
+
+See `.claude/notes/tag-framework-phase1-design.md` §3.2 for the retrofit
+measurement: ~15 line proof bodies drop to ~5 lines each. -/
 
 /-- Adding two non-negative floats yields a non-negative result,
 conditional on finiteness. -/
 theorem IsNonneg.fpAdd [RMode R] [RModeExec] [RoundIntSigMSound R]
-    [RModeMono R] [RModeZero R] [RModeIdem R]
+    [RModeMono R] [RModeZero R]
     {x y f : FiniteFp} (hx : IsNonneg (R := R) x) (hy : IsNonneg (R := R) y)
     (hf : fpAddFinite x y = Fp.finite f) :
     IsNonneg (R := R) f := by
-  refine ⟨?_⟩
-  by_cases hsum : (x.toVal : R) + y.toVal = 0
-  · -- `x.toVal + y.toVal = 0` with both ≥ 0 forces both to be zero.
-    have hx_val : (x.toVal : R) = 0 := by linarith [hx.toVal_nonneg, hy.toVal_nonneg]
-    have hy_val : (y.toVal : R) = 0 := by linarith [hx.toVal_nonneg, hy.toVal_nonneg]
-    have hxm : x.m = 0 := (FiniteFp.toVal_significand_zero_iff (R := R)).mpr hx_val
-    have hadd' : x + y = Fp.finite f := by simpa using hf
-    have hfval := fpAddFinite_zero_left_val (R := R) x y hxm f hadd'
-    rw [hfval]; exact le_of_eq hy_val.symm
-  · have hcorr := fpAddFinite_correct (R := R) x y hsum
-    simp only [add_eq_fpAdd, fpAdd_coe_coe] at hcorr
-    rw [hcorr] at hf
-    exact round_nonneg_of_nonneg (add_nonneg hx.toVal_nonneg hy.toVal_nonneg) hf
+  obtain ⟨g, hg_round, hg_eq⟩ := fpAddFinite_round_witness (R := R) x y hf
+  have hsum_nn : (0 : R) ≤ x.toVal + y.toVal :=
+    add_nonneg hx.toVal_nonneg hy.toVal_nonneg
+  exact ⟨hg_eq ▸ round_nonneg_of_nonneg hsum_nn hg_round⟩
 
-/-! ## Preservation: `fpMulFinite`
-
-The zero-product case is handled inline by unfolding `fpMulFinite` to
-`roundIntSigM`, which returns a signed zero when the magnitude is 0. -/
-
-omit [FloorRing R] in
-/-- `roundIntSigM` with a zero magnitude returns a finite signed zero
-whose significand is 0. Local helper for the mul preservation below. -/
-private lemma roundIntSigM_mag_zero_m [RModeExec]
-    {sign : Bool} {e_base : ℤ} {f : FiniteFp}
-    (hf : roundIntSigM sign 0 e_base = Fp.finite f) :
-    f.m = 0 := by
-  unfold roundIntSigM at hf
-  simp only at hf
-  have : f = (if sign then (-0 : FiniteFp) else (0 : FiniteFp)) := by
-    exact (Fp.finite.inj hf).symm
-  rw [this]
-  cases sign <;> simp [FiniteFp.neg_def]
+/-! ## Preservation: `fpMulFinite` -/
 
 /-- Multiplying two non-negative floats yields a non-negative result,
 conditional on finiteness. -/
@@ -139,23 +126,10 @@ theorem IsNonneg.fpMul [RMode R] [RModeExec] [RoundIntSigMSound R]
     {x y f : FiniteFp} (hx : IsNonneg (R := R) x) (hy : IsNonneg (R := R) y)
     (hf : fpMulFinite x y = Fp.finite f) :
     IsNonneg (R := R) f := by
-  refine ⟨?_⟩
-  by_cases hprod : (x.toVal : R) * y.toVal = 0
-  · -- `x.toVal * y.toVal = 0` means one operand is zero; the FP mul
-    -- returns a signed zero, hence `f.m = 0` and `f.toVal = 0`.
-    have hmag : x.m * y.m = 0 := by
-      rcases mul_eq_zero.mp hprod with hx0 | hy0
-      · rw [(FiniteFp.toVal_significand_zero_iff (R := R)).mpr hx0, zero_mul]
-      · rw [(FiniteFp.toVal_significand_zero_iff (R := R)).mpr hy0, mul_zero]
-    have hf' : roundIntSigM (x.s ^^ y.s) (x.m * y.m)
-        (x.e + y.e - 2 * FloatFormat.prec + 2) = Fp.finite f := hf
-    rw [hmag] at hf'
-    have hfm : f.m = 0 := roundIntSigM_mag_zero_m hf'
-    rw [(FiniteFp.toVal_significand_zero_iff (R := R)).mp hfm]
-  · have hcorr := fpMulFinite_correct (R := R) x y hprod
-    simp only [mul_eq_fpMul, fpMul_coe_coe] at hcorr
-    rw [hcorr] at hf
-    exact round_nonneg_of_nonneg (mul_nonneg hx.toVal_nonneg hy.toVal_nonneg) hf
+  obtain ⟨g, hg_round, hg_eq⟩ := fpMulFinite_round_witness (R := R) x y hf
+  have hprod_nn : (0 : R) ≤ x.toVal * y.toVal :=
+    mul_nonneg hx.toVal_nonneg hy.toVal_nonneg
+  exact ⟨hg_eq ▸ round_nonneg_of_nonneg hprod_nn hg_round⟩
 
 /-! ## Composition demo: mul then add -/
 
@@ -163,7 +137,7 @@ theorem IsNonneg.fpMul [RMode R] [RModeExec] [RoundIntSigMSound R]
 inputs are non-negative. The tag threads through `fpMulFinite` then
 `fpAddFinite`, requiring two separate preservation applications. -/
 theorem fpMulAdd_isNonneg [RMode R] [RModeExec] [RoundIntSigMSound R]
-    [RModeMono R] [RModeZero R] [RModeIdem R]
+    [RModeMono R] [RModeZero R]
     {x y bias prod result : FiniteFp}
     (hx : IsNonneg (R := R) x) (hy : IsNonneg (R := R) y)
     (hbias : IsNonneg (R := R) bias)

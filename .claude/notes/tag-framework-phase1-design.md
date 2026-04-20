@@ -158,31 +158,43 @@ unless Phase 2 shows it matters.
 
 ### 1.4 Parametric tags propagate via per-op theorem libraries
 
-**Decision**: for each parametric tag, write per-op propagation theorems
-that compute the output parameters from the input parameters + the op's
-rounding slack.
+**Decision**: for each parametric tag, Phase 1 specifies the *shape* of
+the propagation lemmas; Phase 2 (or a dedicated focused session) works
+out the exact rounding-slack formulas.
 
-**Example** (to be built):
+**Scope discipline**: this design doc is about *architecture*, not *new
+regimes*. The framework's job is to make the per-op propagation proofs
+easy to write when the user (or a follow-up session) sits down to do
+them. Deriving the correct output interval for `IsBoundedRange.fpAdd`
+is real FP-error-analysis work that belongs in its own session, not
+bundled with framework-building.
+
+**What Phase 1 DOES deliver**:
+- The TAG (struct + R-parameterized — see §1.8).
+- The *signature* of per-op propagation lemmas (expected input tags,
+  expected output tag shape).
+- Stubs / `sorry`-placeholder versions if useful to validate the
+  framework shape before the proofs land.
+- Integration with the bridges and meta-lemma machinery.
+
+**Example signature** (to be proven in a later session):
 
 ```lean
--- In Flean/Tags/BoundedRange.lean (or wherever IsBoundedRange lives)
-theorem IsBoundedRange.fpAdd [...]
-    {lo₁ hi₁ lo₂ hi₂ : ℝ} {x y f : FiniteFp}
-    (hx : IsBoundedRange lo₁ hi₁ x) (hy : IsBoundedRange lo₂ hi₂ y)
+-- In Flean/Tags/BoundedRange.lean (Phase 1 STUB permitted)
+theorem IsBoundedRange.fpAdd {R : Type*} [...]
+    {lo₁ hi₁ lo₂ hi₂ : R} {x y f : FiniteFp}
+    (hx : IsBoundedRange (R := R) lo₁ hi₁ x)
+    (hy : IsBoundedRange (R := R) lo₂ hi₂ y)
     (hf : fpAddFinite x y = Fp.finite f) :
-    IsBoundedRange ((1-η)·(lo₁+lo₂)) ((1+η)·(hi₁+hi₂)) f
+    IsBoundedRange (R := R) (<lo-formula>) (<hi-formula>) f
+    := sorry  -- Phase 2 / focused session
 ```
-
-(Exact slack formula TBD; the above is schematic.)
 
 **Rationale**: the only alternative — interval arithmetic as a first-class
 abstraction — is over-engineered for the FP-error domain. Pilots work
 directly with concrete bounds; the framework preserves that style.
 
-**Addresses**: finding 9.
-
-**Caveat**: the rounding-slack formulas are per-op and non-trivial. This
-is genuinely new work, not a mechanical port of single-tag preservations.
+**Addresses**: finding 9 (architecturally; proofs come later).
 
 ### 1.5 Finiteness stays explicit
 
@@ -232,6 +244,82 @@ is the opposite of what this design doc is meant to prevent.
 observe users manually weakening `IsSimplex → IsNonneg` etc., that's the
 signal to add.
 
+### 1.8 All tags parameterize over `R` (no ℝ hardcoding)
+
+**Decision**: every tag carries `{R : Type*}` as a type parameter.
+`IsBoundedRange` (currently ℝ-hardcoded) gets refactored to
+`IsBoundedRange (R := R) lo hi xs` as part of the Phase 1 retrofit.
+
+**Rationale**: matches the rest of the Flean codebase (`FpSumBound`,
+`FpDotProductBound`, etc. are all R-parametric). Also:
+- **Generality** — tags work in ℚ, ℝ, etc. without duplication.
+- **Computability / constructivity** — ℚ computations stay computable;
+  ℝ results follow the codebase's existing `(R := R)` discipline.
+- **Consistency** — tag-to-hypothesis bridges can produce hypotheses
+  in whichever R the caller is working in.
+
+**Caveat**: some bridges will need real-analysis lemmas that are
+ℝ-specific (e.g., `Real.exp`). In those cases the bridge is stated at
+R = ℝ but the tag remains R-parametric; an R-generic bridge exists
+for bounds that don't involve transcendentals.
+
+**Retrofit**: `IsBoundedRange` in `SoftmaxBounded.lean` gets rewritten
+to carry `R`. The `exp_isNormalRange` bridge stays ℝ-specific.
+
+**Addresses**: finding that was previously §5.4 (open question),
+now resolved.
+
+### 1.9 Degeneracy absorption into tags
+
+**Decision**: adopt ad-hoc + struct-dot-notation approach (Option A+C
+below). Revisit if we see multiple tags discharging the same precondition.
+
+Finding 2 noted that `IsSimplex.pos : IsSimplex ws → 0 < n` absorbs the
+nonempty-vector precondition directly into the tag. Should this be a
+general framework pattern?
+
+**Options considered**:
+
+- **A. Ad-hoc lemmas per tag.** What `IsSimplex.pos` currently is. Each
+  tag gets its own `Foo.implies_Bar` lemmas as they're needed.
+  - Pros: simple; zero infrastructure cost; discoverable via file
+    navigation of the tag's own file.
+  - Cons: user hitting `0 < n` elsewhere can't ask "which tags give me
+    this?"; potential repetition if multiple tags imply the same
+    precondition.
+
+- **B. Target-indexed derivation library** (parallel to §1.3 bridges).
+  Organize "tag → precondition" lemmas by target, like bridges.
+  `Flean/Tags/Derived/Pos.lean` would hold all "→ `0 < n`" style lemmas.
+  - Pros: discoverable by target; parallel structure to bridges.
+  - Cons: subtle distinction from bridges — bridges go "tag on X →
+    hypothesis on external value," derivations go "tag on X → extra
+    property of X." Framework grows twin directories with overlapping
+    intent.
+
+- **C. Struct dot-notation API.** Absorb as methods on the tag struct.
+  `IsSimplex.pos` is already this.
+  - Pros: idiomatic Lean; dot-notation discovery; each tag owns its API.
+  - Cons: relies on user knowing which tag to look at.
+
+- **D. Subsume into bridges.** Treat `IsSimplex ws → 0 < n` as a special
+  case of "tag → hypothesis," filed alongside other bridges.
+  - Pros: unified framework; single discharge mechanism.
+  - Cons: conflates meta-properties (size, structure) with
+    value-hypotheses; bridges directory grows heterogeneous.
+
+**Chosen**: **A + C** in combination. Tag-method dot-notation
+(`IsSimplex.pos`) is the natural primary API; ad-hoc lemmas for anything
+that doesn't fit as a struct method. Don't build Option B or D
+infrastructure until we see the specific pain point they'd address —
+which requires multiple tags implying the same precondition, which
+hasn't happened yet.
+
+**Revisit trigger**: first time two distinct tags discharge the same
+precondition, add Option B directory.
+
+**Addresses**: finding 2.
+
 ---
 
 ## 2. Non-goals (explicit)
@@ -268,13 +356,32 @@ Ordered by dependencies:
 **Success criterion**: Nonneg pilot refactors to use this, saving ~10
 lines per preservation lemma.
 
-### 3.2 `Flean/Operations/{Add,Mul}.lean` zero-case helpers (~40 lines each)
+### 3.2 `Flean/Operations/FpFiniteRound.lean` zero-case helpers — DONE
 
-- Signatures per §1.6 (prototype first).
-- Preservations in Nonneg pilot stop case-splitting.
+Prototyped in `Flean/Operations/FpFiniteRound.lean` (124 lines, both
+`fpAddFinite_round_witness` and `fpMulFinite_round_witness`). Signature:
 
-**Success criterion**: `IsNonneg.fpMul` proof drops from ~40 lines to
-~15.
+```lean
+theorem fpAddFinite_round_witness [RModeZero R] ...
+    (hf : fpAddFinite x y = Fp.finite f) :
+    ∃ g : FiniteFp,
+      (RMode.round ((x.toVal : R) + y.toVal) : Fp) = Fp.finite g ∧
+      (g.toVal : R) = f.toVal
+```
+
+The existential wraps the signed-zero ambiguity: `g` may differ from
+`f` only in sign bit, but `g.toVal = f.toVal` in `R`. Consumer
+preservations no longer case-split.
+
+**Measurement**: retrofitting `Nonneg.lean`:
+- `Nonneg.lean`: 175 → 149 lines (−26, ~15%).
+- Per-preservation proof body: ~18 → ~7 lines each.
+- Local `roundIntSigM_mag_zero_m` helper (9 lines) eliminated entirely.
+- `RModeIdem` typeclass requirement dropped (zero-case no longer
+  needs idempotence — `RModeZero` suffices via the helper).
+
+Infrastructure cost: 124 lines in new file, amortized across all
+future tag preservations using `fp{Add,Mul}Finite`.
 
 ### 3.3 `Flean/Tags/Bridges/` directory
 
@@ -311,8 +418,8 @@ mechanical.
 This design is successful if:
 
 - [ ] Every one of the 9 Phase 0 findings maps to a specific decision
-  above (check: 1→§1.1+§1.2, 2→not addressed (deferred), 3→§1.2,
-  4→§1.5, 5→§1.6, 6→§1.3, 7→§2, 8→§1.1, 9→§1.4).
+  above (check: 1→§1.1+§1.2, 2→§1.9, 3→§1.2, 4→§1.5, 5→§1.6, 6→§1.3,
+  7→§2, 8→§1.1, 9→§1.4).
 - [ ] Non-goals are explicit enough that Phase 1 work cannot drift into
   framework-for-its-own-sake.
 - [ ] Each sequence item in §3 has a measurable success criterion.
@@ -326,9 +433,9 @@ This design is successful if:
 These are the genuine uncertainties in the design. Flagging them rather
 than handwaving.
 
-1. **Finding 2 (degeneracy absorption) is unaddressed.** Should the
-   framework have a general pattern for "tag implies precondition P"
-   lemmas beyond `IsSimplex.pos`? Or is that always ad-hoc per tag?
+1. ~~**Finding 2 (degeneracy absorption) is unaddressed.**~~ — RESOLVED
+   (§1.9): ad-hoc + struct dot-notation (Options A+C), revisit if
+   multiple tags share a precondition.
 
 2. **§1.6 signature is unknown.** `fpAddFinite_toVal` needs prototyping
    to find the right shape. Could be blocking for §3.2.
@@ -339,19 +446,16 @@ than handwaving.
    existing machinery in `Flean/RelativeError.lean` for this, or do we
    derive from scratch?
 
-4. **Tags that carry `R`** (`IsSimplex`, `IsNonneg`) vs those hardcoded
-   to ℝ (`IsBoundedRange`). Should Phase 1 unify? Currently they just
-   live side-by-side; it works. Phase 2 concern most likely.
+4. ~~**Tags that carry `R`**~~ — RESOLVED (§1.8): all tags parameterize
+   over R. Retrofit `IsBoundedRange` accordingly.
 
 5. **Discoverability of bridges** without an attribute or tactic.
    Mitigation: doc comments and the `Flean/Tags/Bridges/` layout.
    Worth evaluating after Phase 1 lands — can users actually find
    what they need?
 
-6. **Retrofitting vs. leaving pilots alone.** §3.5 proposes retrofitting
-   `Nonneg.lean`. Alternative: leave pilots as-is (they work), and only
-   use the new infrastructure for NEW tags. Tradeoff: retrofit provides
-   success evidence; leaving-alone avoids churn.
+6. ~~**Retrofitting vs. leaving pilots alone.**~~ — RESOLVED: retrofit
+   for experimental evidence of LOC reduction. §3.5 stays in sequence.
 
 ---
 
