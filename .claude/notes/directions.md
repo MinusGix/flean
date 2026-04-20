@@ -461,7 +461,7 @@ Rounding/ files but narrow applicability.
   with *tag-specialized error bounds* that tighten when a caller has extra
   structural info. Detailed plan: [tag-framework-plan.md](tag-framework-plan.md).
   Phased rollout:
-  - [x] **Phase 0 (pilots)** — three plain-theorem pilots, all sorry-free
+  - [x] **Phase 0 (pilots)** — four plain-theorem pilots, all sorry-free
     and wired into `Flean/Tags.lean` aggregator:
     - `Flean/Tags/Simplex.lean` (~185 lines): `IsSimplex` + permutation
       preservation + `FpDotProductBound.simplex_bound` (bound in `max|xᵢ|`).
@@ -469,13 +469,19 @@ Rounding/ files but narrow applicability.
       preservation + `ulp_half_le_of_normal` (drops `+ subnormalConst` tail).
     - `Flean/Tags/Sterbenz.lean` (~145 lines): `IsSterbenz` + negation
       preservation + `fpSubFinite_exact_of_sterbenz` (error = 0 exactly).
-    Together they span three flavors of tag-specialized bound:
+    - `Flean/Tags/Nonneg.lean` (~175 lines): `IsNonneg` + `fpMul`/`fpAdd`
+      preservations + composition demo `fpMulAdd_isNonneg` threading the
+      tag through two different ops.
+    Pilots span three flavors of tag-specialized bound plus one
+    composition test:
     - **Structural isolation** (`IsSimplex`): bound's RHS shape changes
       but magnitude doesn't shrink. Win is fewer joint dependencies.
     - **Additive-tail elimination** (`IsNormal`): drop a `+ c` term
       (`subnormalConst`). Strict tightening.
     - **Multiplicative-tail elimination** (`IsSterbenz`): drop a `· ε`
       factor — full rounding error collapses to 0. Strongest tightening.
+    - **Cross-op composition** (`IsNonneg`): tag propagates through mul
+      then add. Two preservation applications compose cleanly.
     Key cross-pilot findings (full assessments at the top of each file):
     - Plan's "tag-specialized bounds are tighter" framing is misleading
       as a blanket statement. Some tags isolate structure, others tighten
@@ -484,16 +490,31 @@ Rounding/ files but narrow applicability.
     - Nonempty-domain preconditions can be absorbed into tags
       (`IsSimplex.pos`). Pattern: structural tags should eat degeneracy
       preconditions they already imply.
-    - Tag-as-structure vs. tag-as-wrapper is fine either way; three
-      pilots used structures with 1, 2, and 5 fields each.
-    - Preservation lemmas so far are all simple (permutation, add-nonneg,
-      negation) — no composition test yet. Phase 1 entry-point question.
+    - Tag-as-structure vs. tag-as-wrapper is fine either way; four
+      pilots used structures with 1, 2, and 5 fields.
+    - **Preservation lemmas are boilerplate** — each fp-op preservation
+      for `IsNonneg` is "round preserves nonneg via monotonicity +
+      zero." A meta-lemma (`round_preserves_nonneg : RModeMono +
+      RModeZero → IsNonneg x → fp_op x = Fp.finite f → IsNonneg f`) could
+      discharge the family once. Phase 1 typeclass work should factor
+      this.
+    - **Finiteness is orthogonal to the tag**. Tags track semantic
+      structure; finiteness tracks numerical well-definedness. The
+      preservation lemmas all take finiteness as a separate hypothesis.
+      Framework should not bundle these.
+    - **Zero-case handling is ad-hoc per op**. `fpAddFinite` has
+      `fpAddFinite_zero_left_val`; `fpMulFinite` needed inline unfolding.
+      A uniform `fp_op_finite_toVal` covering both zero and nonzero
+      cases would simplify all future tag-preservation work.
   - [ ] **Phase 1 (framework)** — introduce `Preserves` typeclass +
-    composition + weakening. Blocked-adjacent: consider first writing
-    an `IsNonneg` + `fpMul` / `fpAdd` pilot that actually composes
-    (chain two tagged ops) before typeclass investment — the three
-    current pilots each test only one op, so composition is still
-    unvalidated.
+    composition + weakening. With four pilots in hand and the
+    boilerplate-lemma / finiteness-orthogonality / zero-case findings
+    above, the class should be designed to:
+    1. Factor `round_preserves_nonneg`-style meta-lemmas so each
+       tag×op combination doesn't need a bespoke proof.
+    2. Keep finiteness a separate concern (not a tag field).
+    3. Provide a uniform zero-case handler for `fp*Finite` correctness
+       lemmas.
   - [ ] **Phase 2 (specialized bounds)** — drop `subnormalConst` from
     Softmax/LogSumExp under `IsNormal` on `exps`, drop `fpSubFinite`
     rounding under `IsSterbenz`, etc. These are the load-bearing payoffs.
