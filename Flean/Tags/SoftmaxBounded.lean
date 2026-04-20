@@ -14,10 +14,10 @@ only the downstream wrapper theorem.
 
 ## What this file delivers
 
-`fpSoftmax_bound_of_bounded` — user supplies `IsBoundedRange lo hi xs`
-+ log-bound conditions on `lo, hi` + the remaining softmax hypotheses
-(denominator closeness, non-zero significand, quotient-in-normal-range,
-finiteness of division); the clean
+`fpSoftmax_bound_of_bounded` — user supplies `IsBoundedRange I xs`
++ log-bound conditions on `I.lo`, `I.hi` + the remaining softmax
+hypotheses (denominator closeness, non-zero significand,
+quotient-in-normal-range, finiteness of division); the clean
 `fpSoftmaxOf_error_bound` (no `subnormalConst` tail) applies via the
 exp-bridge, without the user ever writing `isNormalRange (exp ·)` by
 hand.
@@ -47,12 +47,12 @@ discharges `h_exp_nr` via the `exp_isNormalRange` bridge; `h_quot_nr`
 stays manual pending the locked `quot_isNormalRange` bridge (design
 doc §3.3). -/
 theorem fpSoftmax_bound_of_bounded
-    {n : ℕ} (hn : 0 < n) {lo hi : ℝ}
+    {n : ℕ} (hn : 0 < n) {I : FpInterval ℝ}
     (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp) (denom : FiniteFp)
     (result : Fin n → FiniteFp) (εsum : ℝ)
-    (hxs : IsBoundedRange (R := ℝ) lo hi xs)
-    (hlo : (FloatFormat.min_exp : ℝ) * Real.log 2 ≤ lo)
-    (hhi : hi < ((FloatFormat.max_exp + 1 : ℤ) : ℝ) * Real.log 2)
+    (hxs : IsBoundedRange (R := ℝ) I xs)
+    (hlo : (FloatFormat.min_exp : ℝ) * Real.log 2 ≤ I.lo)
+    (hhi : I.hi < ((FloatFormat.max_exp + 1 : ℤ) : ℝ) * Real.log 2)
     (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
     (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
                      εsum * ∑ j, |((exps j).toVal : ℝ)|)

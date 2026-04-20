@@ -16,8 +16,8 @@ design doc §1.3:
 
 ## Current contents
 
-- `IsBoundedRange.exp_isNormalRange` — if `xs` is in `[lo, hi]` with
-  `lo ≥ min_exp · log 2` and `hi < (max_exp + 1) · log 2`, then
+- `IsBoundedRange.exp_isNormalRange` — if `xs` is in `I : FpInterval ℝ`
+  with `I.lo ≥ min_exp · log 2` and `I.hi < (max_exp + 1) · log 2`, then
   `isNormalRange (Real.exp ((xs i).toVal : ℝ))` for all `i`.
 
 ## Future additions (locked signatures in design doc §3.3)
@@ -34,17 +34,17 @@ namespace Flean.Tags
 
 variable [FloatFormat]
 
-/-- **Bridge theorem**: if `xs` lies in `[lo, hi]` (measured in ℝ) with
-`lo ≥ min_exp · log 2` and `hi < (max_exp+1) · log 2`, then
+/-- **Bridge theorem**: if `xs` lies in `I : FpInterval ℝ` with
+`I.lo ≥ min_exp · log 2` and `I.hi < (max_exp+1) · log 2`, then
 `Real.exp ((xs i).toVal)` is in the normal range for all `i`.
 
 Discharges the `h_exp_nr` precondition of `fpSoftmaxOf_error_bound`
 from an input `IsBoundedRange` tag automatically. -/
 theorem IsBoundedRange.exp_isNormalRange
-    {n : ℕ} {lo hi : ℝ} {xs : Fin n → FiniteFp}
-    (h : IsBoundedRange (R := ℝ) lo hi xs)
-    (hlo : (FloatFormat.min_exp : ℝ) * Real.log 2 ≤ lo)
-    (hhi : hi < ((FloatFormat.max_exp + 1 : ℤ) : ℝ) * Real.log 2)
+    {n : ℕ} {I : FpInterval ℝ} {xs : Fin n → FiniteFp}
+    (h : IsBoundedRange (R := ℝ) I xs)
+    (hlo : (FloatFormat.min_exp : ℝ) * Real.log 2 ≤ I.lo)
+    (hhi : I.hi < ((FloatFormat.max_exp + 1 : ℤ) : ℝ) * Real.log 2)
     (i : Fin n) : isNormalRange (Real.exp ((xs i).toVal : ℝ)) := by
   refine ⟨?_, ?_⟩
   · have hy_ge : (FloatFormat.min_exp : ℝ) * Real.log 2 ≤ ((xs i).toVal : ℝ) :=

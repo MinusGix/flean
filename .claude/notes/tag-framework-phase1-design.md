@@ -177,37 +177,46 @@ bundled with framework-building.
   framework shape before the proofs land.
 - Integration with the bridges and meta-lemma machinery.
 
-**Canonical signatures** (locked here; library stays sorry-free per
-the codebase invariant — proofs land in a focused session):
+**Canonical signatures** (post-refactor): the existential form was
+retired once the focused session pinned down the output-interval
+formulas.  Those formulas now live as interval-algebra operations on
+a dedicated `FpInterval R := { lo : R; hi : R }` structure
+(`Flean/Tags/FpInterval.lean`), and `IsBoundedRange` takes an
+`FpInterval` directly:
 
 ```lean
--- Intended location: Flean/Tags/BoundedRange.lean (or a propagation
--- sibling file). Current home: recorded here only.
+-- Flean/Tags/BoundedRange.lean
+structure IsBoundedRange {n : ℕ} (I : FpInterval R) (xs : Fin n → FiniteFp) : Prop where
+  lower : ∀ i, I.lo ≤ ((xs i).toVal : R)
+  upper : ∀ i, ((xs i).toVal : R) ≤ I.hi
 
-theorem IsBoundedRange.fpAdd {R : Type*} [Field R] [LinearOrder R]
-    [IsStrictOrderedRing R] [FloorRing R] [FloatFormat]
-    [RMode R] [RModeExec] [RoundIntSigMSound R]
-    {lo₁ hi₁ lo₂ hi₂ : R} {x y : FiniteFp} {f : FiniteFp}
-    (hx : IsBoundedRange (R := R) lo₁ hi₁ (fun (_ : Fin 1) => x))
-    (hy : IsBoundedRange (R := R) lo₂ hi₂ (fun (_ : Fin 1) => y))
-    (hf : fpAddFinite x y = Fp.finite f) :
-    ∃ (lo' hi' : R),
-      lo' ≤ lo₁ + lo₂ ∧ hi₁ + hi₂ ≤ hi' ∧
-      IsBoundedRange (R := R) lo' hi' (fun (_ : Fin 1) => f)
-
-theorem IsBoundedRange.fpMul {R : Type*} [...]
-    {lo₁ hi₁ lo₂ hi₂ : R} {x y f : FiniteFp}
-    (hx : IsBoundedRange (R := R) lo₁ hi₁ (fun (_ : Fin 1) => x))
-    (hy : IsBoundedRange (R := R) lo₂ hi₂ (fun (_ : Fin 1) => y))
-    (hf : fpMulFinite x y = Fp.finite f) :
-    ∃ (lo' hi' : R),
-      IsBoundedRange (R := R) lo' hi' (fun (_ : Fin 1) => f)
+-- Flean/Tags/BoundedRangePropagate.lean
+theorem IsBoundedRange.fpAdd_unified ... :
+    IsBoundedRange (A ⊞ B) (fun (_ : Fin 1) => f)
+theorem IsBoundedRange.fpMul_unified ... :
+    IsBoundedRange (A ⊠ B) (fun (_ : Fin 1) => f)
+theorem IsBoundedRange.fpFMA_unified ... :
+    IsBoundedRange (FpInterval.fpFMA A B C) (fun (_ : Fin 1) => f)
 ```
 
-The ∃-form lets the focused session pin down exact output intervals
-without committing to a closed-form expression in the signature. If
-closed forms are found, the theorem can be re-stated without the
-existential.
+where `⊞` / `⊠` are scoped unicode notation for `FpInterval.fpAdd` /
+`FpInterval.fpMul` (subnormal-tolerant).  Normal-range variants use
+`fpAddN` / `fpMulN` / `fpFMAN` explicitly.
+
+Chained propagation reads as algebra: `(A ⊠ B) ⊞ (C ⊠ D)` in the
+output type of the 3-op demo, `FpInterval.fpFMA A B (FpInterval.fpFMA C D E)`
+for the 2-FMA chain.  No `obtain` dance; tags chain via function
+composition.
+
+**Outward-widening invariants** (`lo' ≤ A.lo + B.lo`, etc.) are no
+longer part of the theorem conclusion — they fall out of the
+`FpInterval.fpAdd` definition and are available as separate lemmas
+(`FpInterval.fpAdd_lo_le` / `fpAdd_hi_ge`) when callers need them.
+
+**Magnitude corollary**: `IsBoundedRange.toVal_abs_le` in
+`BoundedRange.lean` gives `|((xs i).toVal : R)| ≤ I.maxMag` for any
+tagged vector.  Per-op magnitude bounds fall out by applying this to
+the output interval of the propagation lemma.
 
 **Rationale**: the only alternative — interval arithmetic as a first-class
 abstraction — is over-engineered for the FP-error domain. Pilots work
@@ -443,17 +452,17 @@ implementation):
 -- Intended location: Flean/Tags/Bridges/ToIsNormalRange.lean
 theorem IsBoundedRange.quot_isNormalRange [FloatFormat]
     [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [ExpApprox] [ExpApproxSound]
-    {n : ℕ} (hn : 0 < n) {lo hi : ℝ}
+    {n : ℕ} (hn : 0 < n) {I : FpInterval ℝ}
     {xs : Fin n → FiniteFp} {exps : Fin n → FiniteFp} {denom : FiniteFp}
-    (hxs : IsBoundedRange (R := ℝ) lo hi xs)
-    (hlo : (FloatFormat.min_exp : ℝ) * Real.log 2 ≤ lo)
-    (hhi : hi < ((FloatFormat.max_exp + 1 : ℤ) : ℝ) * Real.log 2)
+    (hxs : IsBoundedRange (R := ℝ) I xs)
+    (hlo : (FloatFormat.min_exp : ℝ) * Real.log 2 ≤ I.lo)
+    (hhi : I.hi < ((FloatFormat.max_exp + 1 : ℤ) : ℝ) * Real.log 2)
     (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
     (hd_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
                 (η : ℝ) * ∑ j, |((exps j).toVal : ℝ)|)
     (hd_pos : 0 < (denom.toVal : ℝ))
     (h_separation : (2 : ℝ) * n * (2 : ℝ) ^ (FloatFormat.min_exp : ℤ) ≤
-                    Real.exp (lo - hi))
+                    Real.exp (I.lo - I.hi))
     (i : Fin n) :
     isNormalRange (((exps i).toVal : ℝ) / denom.toVal)
 ```
@@ -467,25 +476,20 @@ not necessary; the focused session will tighten if needed.
 Implemented in `Flean/Tags/BoundedRangePropagate.lean` (~190 lines,
 sorry-free).
 
-- `IsBoundedRange.fpAdd` — **done**. Output interval
-  `[lo₁+lo₂ - η·M, hi₁+hi₂ + η·M]` where
-  `M = max |lo₁+lo₂| |hi₁+hi₂|`. Satisfies the locked invariants
-  `lo' ≤ lo₁+lo₂` and `hi₁+hi₂ ≤ hi'`.
-- `IsBoundedRange.fpMul` — **done**. Output interval
-  `[-(1+η)·M, (1+η)·M]` where
-  `M = max |lo₁| |hi₁| · max |lo₂| |hi₂|`. Symmetric-around-0 form —
-  the locked signature doesn't require an outward-bound invariant, so
-  the formula falls back cleanly to the worst-case magnitude.
-- `IsBoundedRange.fpFMA` — **done**. Output interval
-  `[-(1+η)·M, (1+η)·M]` where
-  `M = max |lo₁| |hi₁| · max |lo₂| |hi₂| + max |lo₃| |hi₃|` — the
-  worst-case magnitude of the exact FMA value `a·b + c`.  Same
-  symmetric-around-0 form as `fpMul` (single rounding step over a
-  product-plus-addend whose directional structure is already lost).
-  Unified variant `fpFMA_unified` mirrors `fp{Add,Mul}_unified` —
-  drops the normal-range hypothesis in exchange for a `+ sc` tail.
-  Supporting infrastructure: `fpFMAFinite_round_witness` added to
+- `IsBoundedRange.fpAdd` / `fpAdd_unified` — **done**.  Output
+  intervals `A.fpAddN B` / `A ⊞ B` respectively.
+- `IsBoundedRange.fpMul` / `fpMul_unified` — **done**.  Output
+  intervals `A.fpMulN B` / `A ⊠ B` respectively.  Symmetric-around-0.
+- `IsBoundedRange.fpFMA` / `fpFMA_unified` — **done**.  Output
+  intervals `A.fpFMAN B C` / `FpInterval.fpFMA A B C` respectively.
+  Same symmetric-around-0 form as `fpMul` (single rounding step over
+  `a·b + c` whose directional structure is lost via the product).
+  Supporting infrastructure: `fpFMAFinite_round_witness` in
   `Flean/Operations/FpFiniteRound.lean`.
+
+All six live in `Flean/Tags/BoundedRangePropagate.lean`; output
+formulas are in `FpInterval.{fpAddN, fpAdd, fpMulN, fpMul, fpFMAN, fpFMA}`
+in `Flean/Tags/FpInterval.lean`.
 
 Both lemmas take an additional hypothesis
 `(2 : R)^min_exp ≤ |exact result|` — the sign-agnostic normal-range
