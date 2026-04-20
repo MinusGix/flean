@@ -445,13 +445,13 @@ slot in alongside without hunting across files.
 The reorganization proves the framework's organizational principle is
 implementable, not just paper-plan.
 
-**Canonical `h_quot_nr` bridge signature** (locked here for future
-implementation):
+**`IsBoundedRange.quot_isNormalRange` — DONE** (landed in
+`Flean/Tags/Bridges/ToIsNormalRange.lean`).  Final signature:
 
 ```lean
--- Intended location: Flean/Tags/Bridges/ToIsNormalRange.lean
-theorem IsBoundedRange.quot_isNormalRange [FloatFormat]
-    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [ExpApprox] [ExpApproxSound]
+theorem IsBoundedRange.quot_isNormalRange
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+    [RModeNearest ℝ] [ExpApprox] [ExpApproxSound]
     {n : ℕ} (hn : 0 < n) {I : FpInterval ℝ}
     {xs : Fin n → FiniteFp} {exps : Fin n → FiniteFp} {denom : FiniteFp}
     (hxs : IsBoundedRange (R := ℝ) I xs)
@@ -461,15 +461,29 @@ theorem IsBoundedRange.quot_isNormalRange [FloatFormat]
     (hd_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
                 (η : ℝ) * ∑ j, |((exps j).toVal : ℝ)|)
     (hd_pos : 0 < (denom.toVal : ℝ))
-    (h_separation : (2 : ℝ) * n * (2 : ℝ) ^ (FloatFormat.min_exp : ℤ) ≤
+    (h_separation : 4 * (n : ℝ) * (2 : ℝ) ^ (FloatFormat.min_exp : ℤ) ≤
                     Real.exp (I.lo - I.hi))
     (i : Fin n) :
     isNormalRange (((exps i).toVal : ℝ) / denom.toVal)
 ```
 
+**Separation constant**: tightened from the originally-sketched `2·n·2^min_exp`
+to `4·n·2^min_exp`.  The lower-bound chain needs `4·(1−η) ≥ (1+η)²`, which
+holds for `η ≤ 1/4` (i.e., `prec ≥ 2` — universal given `FloatFormat.valid_prec`).
+The original constant 2 was tight only for `prec ≥ 3`; 4 is the smallest
+clean integer that works universally.  Tighter formats admit smaller
+constants, but 4 is chosen for robustness and cleanness.
+
+**Consumer wrapper**: `fpSoftmax_bound_of_separated` in
+`Flean/Tags/SoftmaxBounded.lean` is the lighter companion to
+`fpSoftmax_bound_of_bounded` — also discharges `h_quot_nr` via this
+bridge, so callers supply only `IsBoundedRange` + separation + the
+usual denom/div hypotheses.  Specific to `εsum = η` (single-fp-add-
+equivalent denominator).  Summation-based denoms (Kahan etc., `εsum > η`)
+continue to use `_of_bounded` with manual `h_quot_nr`.
+
 The `h_separation` hypothesis says "the spread of xs is not so extreme
-that the smallest softmax entry underflows." Sufficient but possibly
-not necessary; the focused session will tighten if needed.
+that the smallest softmax entry underflows."
 
 ### 3.4 Parametric propagation library (per §1.4) — PARTIAL DONE
 

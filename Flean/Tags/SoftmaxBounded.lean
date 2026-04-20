@@ -7,28 +7,28 @@ import Flean.Tags.Bridges.ToIsNormalRange
 
 **Status**: Phase 1 bridge-consumer file. Post-reorganization per
 design doc §3.3, the `IsBoundedRange` tag lives in
-`Flean/Tags/BoundedRange.lean`, the bridge
-`IsBoundedRange.exp_isNormalRange` lives in
+`Flean/Tags/BoundedRange.lean`, the bridges
+`IsBoundedRange.exp_isNormalRange` and `quot_isNormalRange` live in
 `Flean/Tags/Bridges/ToIsNormalRange.lean`, and this file contains
-only the downstream wrapper theorem.
+only the downstream wrapper theorems.
 
 ## What this file delivers
 
-`fpSoftmax_bound_of_bounded` — user supplies `IsBoundedRange I xs`
-+ log-bound conditions on `I.lo`, `I.hi` + the remaining softmax
-hypotheses (denominator closeness, non-zero significand,
-quotient-in-normal-range, finiteness of division); the clean
-`fpSoftmaxOf_error_bound` (no `subnormalConst` tail) applies via the
-exp-bridge, without the user ever writing `isNormalRange (exp ·)` by
-hand.
+- `fpSoftmax_bound_of_bounded` — user supplies `IsBoundedRange I xs`
+  + log-bound conditions on `I.lo`, `I.hi` + the remaining softmax
+  hypotheses (denominator closeness, non-zero significand,
+  quotient-in-normal-range, finiteness of division); the clean
+  `fpSoftmaxOf_error_bound` (no `subnormalConst` tail) applies via
+  the exp-bridge, without the user ever writing
+  `isNormalRange (exp ·)` by hand.
 
-## Deferred
-
-The `h_quot_nr` precondition remains a manual hypothesis. Its bridge
-(`IsBoundedRange.quot_isNormalRange`) has a locked signature in the
-design doc §3.3; once a focused FP-error-analysis session proves it,
-this wrapper gets a lighter companion that consumes only the bounded-
-input tag plus the separation condition.
+- `fpSoftmax_bound_of_separated` — lighter companion that also
+  discharges `h_quot_nr` via `IsBoundedRange.quot_isNormalRange`,
+  trading it for a `h_separation : 4·n·2^min_exp ≤ exp(I.lo − I.hi)`
+  hypothesis.  Specific to `εsum = η` (single-fp-add-equivalent denom
+  closeness); callers with a summation-based denom error bound
+  (Kahan, Neumaier, …) use the heavier `_of_bounded` wrapper and
+  supply `h_quot_nr` another way.
 -/
 
 set_option autoImplicit false
@@ -69,5 +69,42 @@ theorem fpSoftmax_bound_of_bounded
     hxs.exp_isNormalRange hlo hhi
   exact fpSoftmaxOf_error_bound hn xs exps denom result εsum h_exp h_exp_nr
     h_denom_close h_εsum_nn h_δ_lt hd_m h_quot_nr h_result i
+
+/-- **Lighter composition**: bounded-input tag + log-bound conditions
++ separation condition + remaining softmax hypotheses → clean softmax
+bound.  Both `h_exp_nr` (via `exp_isNormalRange`) and `h_quot_nr`
+(via `quot_isNormalRange`) are discharged automatically.  Specific to
+`εsum = η`: the denominator closeness takes the form
+`|denom − Σ exps| ≤ η · Σ |exps|`, matching the bridge's requirement.
+
+Input-side requirement beyond `_of_bounded`: a separation witness
+`4·n·2^min_exp ≤ exp(I.lo − I.hi)` ensuring the smallest softmax
+quotient doesn't underflow.  Positivity of `denom.toVal` is also
+explicit here (otherwise we can't meaningfully ratio). -/
+theorem fpSoftmax_bound_of_separated
+    {n : ℕ} (hn : 0 < n) {I : FpInterval ℝ}
+    (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp) (denom : FiniteFp)
+    (result : Fin n → FiniteFp)
+    (hxs : IsBoundedRange (R := ℝ) I xs)
+    (hlo : (FloatFormat.min_exp : ℝ) * Real.log 2 ≤ I.lo)
+    (hhi : I.hi < ((FloatFormat.max_exp + 1 : ℤ) : ℝ) * Real.log 2)
+    (h_separation : 4 * (n : ℝ) * (2 : ℝ) ^ (FloatFormat.min_exp : ℤ) ≤
+                    Real.exp (I.lo - I.hi))
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     (η : ℝ) * ∑ j, |((exps j).toVal : ℝ)|)
+    (hd_pos : 0 < (denom.toVal : ℝ))
+    (h_δ_lt : (η : ℝ) + (η : ℝ) * (1 + (η : ℝ)) < 1)
+    (hd_m : denom.m ≠ 0)
+    (h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i))
+    (i : Fin n) :
+    |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      softmaxErrorCoeff (η : ℝ) *
+        softmax (fun j => ((xs j).toVal : ℝ)) i := by
+  have h_quot_nr : ∀ i, isNormalRange (((exps i).toVal : ℝ) / denom.toVal) :=
+    fun i =>
+      hxs.quot_isNormalRange hn hlo hhi h_exp h_denom_close hd_pos h_separation i
+  exact fpSoftmax_bound_of_bounded hn xs exps denom result (η : ℝ)
+    hxs hlo hhi h_exp h_denom_close (by positivity) h_δ_lt hd_m h_quot_nr h_result i
 
 end Flean.Tags
