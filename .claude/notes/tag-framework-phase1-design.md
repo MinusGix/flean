@@ -415,16 +415,26 @@ of kernel, reused by both `HasAbsBound.fpAdd_nonneg_normal` and
 `HasAbsBound.fpMul_nonneg_normal`. Pattern validated: one meta-lemma
 per tag, N=2 ops supported from it.
 
-### 3.3 `Flean/Tags/Bridges/` directory
+### 3.3 `Flean/Tags/Bridges/` directory — DONE
 
-- Move `IsBoundedRange.exp_isNormalRange` from `SoftmaxBounded.lean` to
-  `ToIsNormalRange.lean`.
-- Add the `h_quot_nr` bridge (signature below; proof in a focused
-  session — library stays sorry-free).
-- Leave `SoftmaxBounded.lean` as the consumer-side wrapper.
+Split implemented. Current layout:
+- `Flean/Tags/BoundedRange.lean` (~41 lines): `IsBoundedRange` tag
+  definition only. Minimal imports.
+- `Flean/Tags/Bridges/ToIsNormalRange.lean` (~64 lines):
+  `IsBoundedRange.exp_isNormalRange` bridge. Module docstring calls
+  out the "organize by target hypothesis" principle and flags
+  `quot_isNormalRange` as the next addition (signature locked below).
+- `Flean/Tags/SoftmaxBounded.lean` (~73 lines): consumer wrapper
+  `fpSoftmax_bound_of_bounded` only.
 
-**Success criterion**: user hitting `h_exp_nr` can find all discharging
-bridges in one file.
+**Success criterion met**: a user hitting `h_exp_nr : isNormalRange (...)`
+can navigate to `Flean/Tags/Bridges/ToIsNormalRange.lean` and find
+every discharging bridge (currently one) in one place; future bridges
+to `isNormalRange` targets (including the locked `quot_isNormalRange`)
+slot in alongside without hunting across files.
+
+The reorganization proves the framework's organizational principle is
+implementable, not just paper-plan.
 
 **Canonical `h_quot_nr` bridge signature** (locked here for future
 implementation):
