@@ -528,29 +528,26 @@ Rounding/ files but narrow applicability.
       should acknowledge that some hypotheses remain manual and not
       force everything through the tag surface.
   - **Phase 0.5 — items queued before Phase 1 framework commitment**:
-    - [ ] **Phase 1 design doc** (top priority). Synthesize the 5 pilots
+    - [x] **Phase 1 design doc** (top priority). Synthesize the 5 pilots
       into a concrete framework proposal covering: tag representation
       (struct vs class), preservation-lemma factoring, bridge library
       structure, parametric-tag composition, zero-case handler,
       finiteness separation, and explicit non-goals. Drafted at
-      `.claude/notes/tag-framework-phase1-design.md`. Forces findings
-      into a reviewable artifact before building infrastructure.
-    - [ ] **Close the `h_quot_nr` gap**. Extend `SoftmaxBounded.lean`
-      with a second bridge from input bounds + denom positivity to
-      `isNormalRange ((exps i).toVal / denom.toVal)`. First test of
-      bridge *composition* (quot bridge consumes exp bridge). Completes
-      the "bounded input → full clean softmax bound" pipeline.
-    - [ ] **Parametric tag propagation through ops**. The load-bearing
-      test missing from Phase 0: `IsBoundedRange lo₁ hi₁ x +
-      IsBoundedRange lo₂ hi₂ y → IsBoundedRange (lo₁+lo₂) (hi₁+hi₂)
-      (fpAdd x y)` (with rounding error absorbed into the output interval).
-      Tests whether tag *parameters* compose through ops, not just the
-      tag kind.
-    - [ ] **Promote `round_nonneg_of_nonneg` into `Rounding/`**. Small
-      cleanup. That private lemma in `Flean/Tags/Nonneg.lean` is the
-      universal "round preserves semantic tag via `RModeMono` +
-      `RModeZero`" kernel and will want to be reused by any future
-      `round_preserves_P` meta-lemmas.
+      `.claude/notes/tag-framework-phase1-design.md`. Later updates
+      folded in review decisions (§§1.8, 1.9) and the `h_quot_nr` /
+      `IsBoundedRange.fpAdd` canonical signatures (locked in §§3.3,
+      3.4 as code blocks — library stays sorry-free).
+    - [~] **Close the `h_quot_nr` gap**. Signature **locked** in the
+      design doc §3.3 (Phase 1 architecture deliverable). Proof
+      deferred to a focused FP-error-analysis session; not added to
+      library as a `sorry` stub (preserves sorry-free invariant).
+    - [~] **Parametric tag propagation through ops**. Signatures for
+      `IsBoundedRange.fpAdd` / `.fpMul` **locked** in design doc §3.4
+      (as ∃-form to avoid pinning output-interval formulas prematurely).
+      Proofs deferred to a focused session. Not added as `sorry` stubs.
+    - [x] **Promote `round_nonneg_of_nonneg` into `Rounding/`**. Done
+      as `Flean/Rounding/RoundPreserves.lean::round_preserves_nonneg`.
+      `Nonneg.lean` updated to import + use the kernel.
   - [ ] **Phase 1 (framework)** — introduce `Preserves` typeclass +
     composition + weakening. With five pilots in hand and the
     boilerplate-lemma / finiteness-orthogonality / zero-case /

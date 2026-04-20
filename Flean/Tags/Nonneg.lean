@@ -2,6 +2,7 @@ import Flean.Operations.Add
 import Flean.Operations.Mul
 import Flean.Operations.FpFiniteRound
 import Flean.Rounding.ModeClass
+import Flean.Rounding.RoundPreserves
 
 /-!
 # Phase 0 Pilot: Constraint-Tagged Values — IsNonneg (Composition)
@@ -53,9 +54,9 @@ The preservation proofs below dropped from ~15 lines each to ~5,
 validating the §1.6 design decision: one uniform rounding-witness per
 op, consumed identically by every tag preservation.
 
-`round_nonneg_of_nonneg` remains local here. Phase 1 §3.1 still plans
-to promote it to `Flean/Rounding/RoundPreserves.lean` once a second
-"round preserves P" meta-lemma needs the same infrastructure.
+The kernel lemma `round_preserves_nonneg` (previously `round_preserves_nonneg`
+and private here) has been promoted to `Flean/Rounding/RoundPreserves.lean`
+per Phase 1 §3.1. This file now imports + uses it.
 -/
 
 set_option autoImplicit false
@@ -78,22 +79,6 @@ omit [IsStrictOrderedRing R] [FloorRing R] in
 theorem IsNonneg.zero : IsNonneg (R := R) (0 : FiniteFp) :=
   ⟨by rw [FiniteFp.toVal_zero]⟩
 
-/-! ## Rounding helper
-
-`round_nonneg_of_nonneg` is the core fact tying tag preservation through
-any rounded op to `RModeMono` + `RModeZero`. -/
-
-omit [FloorRing R] in
-private theorem round_nonneg_of_nonneg [RMode R] [RModeMono R] [RModeZero R]
-    {x : R} (hx : 0 ≤ x) {f : FiniteFp}
-    (hf : (RMode.round x : Fp) = Fp.finite f) :
-    (0 : R) ≤ f.toVal := by
-  have h_mono := RModeMono.round_mono (R := R) hx
-  rw [RModeZero.round_zero (R := R), hf] at h_mono
-  have hle : (0 : FiniteFp) ≤ f := (Fp.finite_le_finite_iff 0 f).mp h_mono
-  have := FiniteFp.le_toVal_le R hle
-  rwa [FiniteFp.toVal_zero] at this
-
 /-! ## Preservation: `fpAddFinite`
 
 After the §1.6 unified-round-witness helper (`fpAddFinite_round_witness`)
@@ -115,7 +100,7 @@ theorem IsNonneg.fpAdd [RMode R] [RModeExec] [RoundIntSigMSound R]
   obtain ⟨g, hg_round, hg_eq⟩ := fpAddFinite_round_witness (R := R) x y hf
   have hsum_nn : (0 : R) ≤ x.toVal + y.toVal :=
     add_nonneg hx.toVal_nonneg hy.toVal_nonneg
-  exact ⟨hg_eq ▸ round_nonneg_of_nonneg hsum_nn hg_round⟩
+  exact ⟨hg_eq ▸ round_preserves_nonneg hsum_nn hg_round⟩
 
 /-! ## Preservation: `fpMulFinite` -/
 
@@ -129,7 +114,7 @@ theorem IsNonneg.fpMul [RMode R] [RModeExec] [RoundIntSigMSound R]
   obtain ⟨g, hg_round, hg_eq⟩ := fpMulFinite_round_witness (R := R) x y hf
   have hprod_nn : (0 : R) ≤ x.toVal * y.toVal :=
     mul_nonneg hx.toVal_nonneg hy.toVal_nonneg
-  exact ⟨hg_eq ▸ round_nonneg_of_nonneg hprod_nn hg_round⟩
+  exact ⟨hg_eq ▸ round_preserves_nonneg hprod_nn hg_round⟩
 
 /-! ## Composition demo: mul then add -/
 

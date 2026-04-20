@@ -177,18 +177,37 @@ bundled with framework-building.
   framework shape before the proofs land.
 - Integration with the bridges and meta-lemma machinery.
 
-**Example signature** (to be proven in a later session):
+**Canonical signatures** (locked here; library stays sorry-free per
+the codebase invariant — proofs land in a focused session):
 
 ```lean
--- In Flean/Tags/BoundedRange.lean (Phase 1 STUB permitted)
-theorem IsBoundedRange.fpAdd {R : Type*} [...]
-    {lo₁ hi₁ lo₂ hi₂ : R} {x y f : FiniteFp}
-    (hx : IsBoundedRange (R := R) lo₁ hi₁ x)
-    (hy : IsBoundedRange (R := R) lo₂ hi₂ y)
+-- Intended location: Flean/Tags/BoundedRange.lean (or a propagation
+-- sibling file). Current home: recorded here only.
+
+theorem IsBoundedRange.fpAdd {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] [FloorRing R] [FloatFormat]
+    [RMode R] [RModeExec] [RoundIntSigMSound R]
+    {lo₁ hi₁ lo₂ hi₂ : R} {x y : FiniteFp} {f : FiniteFp}
+    (hx : IsBoundedRange (R := R) lo₁ hi₁ (fun (_ : Fin 1) => x))
+    (hy : IsBoundedRange (R := R) lo₂ hi₂ (fun (_ : Fin 1) => y))
     (hf : fpAddFinite x y = Fp.finite f) :
-    IsBoundedRange (R := R) (<lo-formula>) (<hi-formula>) f
-    := sorry  -- Phase 2 / focused session
+    ∃ (lo' hi' : R),
+      lo' ≤ lo₁ + lo₂ ∧ hi₁ + hi₂ ≤ hi' ∧
+      IsBoundedRange (R := R) lo' hi' (fun (_ : Fin 1) => f)
+
+theorem IsBoundedRange.fpMul {R : Type*} [...]
+    {lo₁ hi₁ lo₂ hi₂ : R} {x y f : FiniteFp}
+    (hx : IsBoundedRange (R := R) lo₁ hi₁ (fun (_ : Fin 1) => x))
+    (hy : IsBoundedRange (R := R) lo₂ hi₂ (fun (_ : Fin 1) => y))
+    (hf : fpMulFinite x y = Fp.finite f) :
+    ∃ (lo' hi' : R),
+      IsBoundedRange (R := R) lo' hi' (fun (_ : Fin 1) => f)
 ```
+
+The ∃-form lets the focused session pin down exact output intervals
+without committing to a closed-form expression in the signature. If
+closed forms are found, the theorem can be re-stated without the
+existential.
 
 **Rationale**: the only alternative — interval arithmetic as a first-class
 abstraction — is over-engineered for the FP-error domain. Pilots work
@@ -387,11 +406,38 @@ future tag preservations using `fp{Add,Mul}Finite`.
 
 - Move `IsBoundedRange.exp_isNormalRange` from `SoftmaxBounded.lean` to
   `ToIsNormalRange.lean`.
-- Add `h_quot_nr` bridge (Phase 0.5 item) when Phase 1 starts.
+- Add the `h_quot_nr` bridge (signature below; proof in a focused
+  session — library stays sorry-free).
 - Leave `SoftmaxBounded.lean` as the consumer-side wrapper.
 
 **Success criterion**: user hitting `h_exp_nr` can find all discharging
 bridges in one file.
+
+**Canonical `h_quot_nr` bridge signature** (locked here for future
+implementation):
+
+```lean
+-- Intended location: Flean/Tags/Bridges/ToIsNormalRange.lean
+theorem IsBoundedRange.quot_isNormalRange [FloatFormat]
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [ExpApprox] [ExpApproxSound]
+    {n : ℕ} (hn : 0 < n) {lo hi : ℝ}
+    {xs : Fin n → FiniteFp} {exps : Fin n → FiniteFp} {denom : FiniteFp}
+    (hxs : IsBoundedRange (R := ℝ) lo hi xs)
+    (hlo : (FloatFormat.min_exp : ℝ) * Real.log 2 ≤ lo)
+    (hhi : hi < ((FloatFormat.max_exp + 1 : ℤ) : ℝ) * Real.log 2)
+    (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (hd_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                (η : ℝ) * ∑ j, |((exps j).toVal : ℝ)|)
+    (hd_pos : 0 < (denom.toVal : ℝ))
+    (h_separation : (2 : ℝ) * n * (2 : ℝ) ^ (FloatFormat.min_exp : ℤ) ≤
+                    Real.exp (lo - hi))
+    (i : Fin n) :
+    isNormalRange (((exps i).toVal : ℝ) / denom.toVal)
+```
+
+The `h_separation` hypothesis says "the spread of xs is not so extreme
+that the smallest softmax entry underflows." Sufficient but possibly
+not necessary; the focused session will tighten if needed.
 
 ### 3.4 Parametric propagation library (per §1.4)
 
