@@ -472,8 +472,14 @@ Rounding/ files but narrow applicability.
     - `Flean/Tags/Nonneg.lean` (~175 lines): `IsNonneg` + `fpMul`/`fpAdd`
       preservations + composition demo `fpMulAdd_isNonneg` threading the
       tag through two different ops.
-    Pilots span three flavors of tag-specialized bound plus one
-    composition test:
+    - `Flean/Tags/SoftmaxBounded.lean` (~153 lines): first contact with
+      a real downstream consumer. `IsBoundedRange lo hi xs` input tag
+      + bridge `→ ∀ i, isNormalRange (exp xs_i)` (real-analysis step via
+      `exp_int_mul_log2`) + `fpSoftmax_bound_of_bounded` wrapper that
+      consumes the tag and delegates to `fpSoftmaxOf_error_bound` (the
+      existing clean variant). Validates that natural input tags feed
+      downstream hypotheses via a single bridge theorem.
+    Pilots span four flavors of tag-specialized bound + two threading tests:
     - **Structural isolation** (`IsSimplex`): bound's RHS shape changes
       but magnitude doesn't shrink. Win is fewer joint dependencies.
     - **Additive-tail elimination** (`IsNormal`): drop a `+ c` term
@@ -482,6 +488,10 @@ Rounding/ files but narrow applicability.
       factor — full rounding error collapses to 0. Strongest tightening.
     - **Cross-op composition** (`IsNonneg`): tag propagates through mul
       then add. Two preservation applications compose cleanly.
+    - **Input-tag → existing-theorem bridge** (`IsBoundedRange`): a
+      natural input constraint tag generates the `isNormalRange (exp ·)`
+      hypothesis that the clean softmax bound already requires. First
+      validation that tags survive contact with a pre-existing proof.
     Key cross-pilot findings (full assessments at the top of each file):
     - Plan's "tag-specialized bounds are tighter" framing is misleading
       as a blanket statement. Some tags isolate structure, others tighten
@@ -506,15 +516,31 @@ Rounding/ files but narrow applicability.
       `fpAddFinite_zero_left_val`; `fpMulFinite` needed inline unfolding.
       A uniform `fp_op_finite_toVal` covering both zero and nonzero
       cases would simplify all future tag-preservation work.
+    - **Bridge theorems to existing codebase are natural**. The
+      `IsBoundedRange → isNormalRange(exp ·)` bridge in
+      `SoftmaxBounded.lean` is one real-analysis lemma (~15 lines) that
+      discharges a real Softmax precondition automatically. The
+      framework just needs a clean "tag-to-hypothesis" surface — no
+      extra machinery required.
+    - **Not all preconditions factor cleanly**. Softmax's `h_quot_nr`
+      (quotient in normal range) depends on `denom`, a computed
+      quantity — not derivable from input tags alone. Phase 1 design
+      should acknowledge that some hypotheses remain manual and not
+      force everything through the tag surface.
   - [ ] **Phase 1 (framework)** — introduce `Preserves` typeclass +
-    composition + weakening. With four pilots in hand and the
-    boilerplate-lemma / finiteness-orthogonality / zero-case findings
-    above, the class should be designed to:
+    composition + weakening. With five pilots in hand and the
+    boilerplate-lemma / finiteness-orthogonality / zero-case /
+    bridge-feasibility / quot-nr-manual findings above, the class
+    should be designed to:
     1. Factor `round_preserves_nonneg`-style meta-lemmas so each
        tag×op combination doesn't need a bespoke proof.
     2. Keep finiteness a separate concern (not a tag field).
     3. Provide a uniform zero-case handler for `fp*Finite` correctness
        lemmas.
+    4. Support bridges from input tags to pre-existing hypotheses
+       (the `IsBoundedRange → isNormalRange(exp ·)` pattern).
+    5. Accept that some preconditions remain manual (e.g. computed-
+       quantity tags like `h_quot_nr`); don't force everything.
   - [ ] **Phase 2 (specialized bounds)** — drop `subnormalConst` from
     Softmax/LogSumExp under `IsNormal` on `exps`, drop `fpSubFinite`
     rounding under `IsSterbenz`, etc. These are the load-bearing payoffs.
