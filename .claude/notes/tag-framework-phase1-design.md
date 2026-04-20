@@ -502,15 +502,18 @@ propagation lemmas + one `exact`.  Reads as interval arithmetic.
 
 **UX findings from the demo**:
 
-- **One normal-range hypothesis per op.**  Three `(2:R)^min_exp ≤ |·|`
-  hypotheses are needed for a 3-op chain — one per FP step.  This is
-  the concrete justification for a subnormal-tolerant
-  `round_preserves_abs_error` variant (already flagged in
-  `RoundPreserves.lean`'s future-additions list): it would let users
-  drop these preconditions in exchange for an additive
-  `subnormalConst` tail.  Without it, chains don't compose cleanly
-  because the intermediate products/sums in normal range must be
-  manually verified.
+- **One normal-range hypothesis per op — ADDRESSED by unified
+  variants.**  The first demo needed three `(2:R)^min_exp ≤ |·|`
+  hypotheses.  `IsBoundedRange.fp{Add,Mul}_unified` drop these in
+  exchange for an additive `sc := 2^(min_exp - prec)` tail in the
+  slack.  A side-by-side `demo_mul_mul_add_unified` in the file has
+  no normal-range hypotheses at all.  Infrastructure: new meta-lemma
+  `round_preserves_abs_error_unified` in `RoundPreserves.lean`
+  (subnormal-tolerant sign-agnostic `|f.toVal - x| ≤ η·|x| + sc`,
+  handling `x = 0` / subnormal / normal uniformly via `RModeZero` +
+  `RModeConj` + `RModeNearest`).  Helper: R-generic
+  `ulp_half_le_unified_gen` (generalizes `Softmax.ulp_half_le_unified`
+  from ℝ to any `Field + LinearOrder + FloorRing`).
 
 - **Existential unpacking is manual but tolerable.**  Each
   propagation lemma returns `∃ lo' hi', ...`; the user `obtain`s to

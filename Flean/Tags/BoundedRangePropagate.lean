@@ -43,6 +43,17 @@ meta-lemma `round_preserves_abs_error_normal`.
 Sign-general inputs are handled — negative intervals go through the
 `RModeConj` branch of `round_preserves_abs_error_normal` automatically.
 No sign restriction on `lo*`, `hi*`, `x.toVal`, or `y.toVal`.
+
+## Two regimes
+
+- **Normal-range variants** (`IsBoundedRange.fp{Add,Mul}`) — take a
+  `(2:R)^min_exp ≤ |exact|` hypothesis.  Slack: `η·M`.
+- **Unified / subnormal-tolerant variants**
+  (`IsBoundedRange.fp{Add,Mul}_unified`) — drop the precondition,
+  slack grows to `η·M + sc` where `sc := 2^(min_exp - prec)`.
+  Chain composes without per-step normal-range discharge — see the
+  `demo_mul_mul_add_unified` in the `Demo` section for the side-by-side
+  with the normal-range variant.
 -/
 
 set_option autoImplicit false
@@ -203,6 +214,132 @@ theorem IsBoundedRange.fpMul
     rw [← hg_eq]
     exact (abs_le.mp hg_abs_le).2
 
+/-! ## Subnormal-tolerant variants
+
+Drop the `(2:R)^min_exp ≤ |exact|` precondition from `fpAdd` / `fpMul`
+in exchange for an additive `subnormalConst := 2^(min_exp - prec)`
+tail in the output-interval widening.  These are the versions a
+chained call-site normally wants: they compose without requiring
+manual normal-range discharge at every intermediate. -/
+
+section Unified
+
+/-- `IsBoundedRange` propagates through `fpAddFinite`, subnormal-tolerant.
+
+Drops the normal-range hypothesis of `IsBoundedRange.fpAdd` at the
+cost of an additive `2^(min_exp - prec)` tail in the slack.  Final
+output interval:
+  `[lo₁+lo₂ − (η·M + sc), hi₁+hi₂ + (η·M + sc)]`
+where `M := max |lo₁+lo₂| |hi₁+hi₂|` and `sc := 2^(min_exp - prec)`. -/
+theorem IsBoundedRange.fpAdd_unified
+    [RMode R] [RModeExec] [RoundIntSigMSound R]
+    [RModeNearest R] [RModeConj R] [RModeZero R]
+    {lo₁ hi₁ lo₂ hi₂ : R} {x y f : FiniteFp}
+    (hx : IsBoundedRange (R := R) lo₁ hi₁ (fun (_ : Fin 1) => x))
+    (hy : IsBoundedRange (R := R) lo₂ hi₂ (fun (_ : Fin 1) => y))
+    (hf : fpAddFinite x y = Fp.finite f) :
+    ∃ (lo' hi' : R),
+      lo' ≤ lo₁ + lo₂ ∧ hi₁ + hi₂ ≤ hi' ∧
+      IsBoundedRange (R := R) lo' hi' (fun (_ : Fin 1) => f) := by
+  set s : R := (x.toVal : R) + y.toVal with hs_def
+  set M : R := max |lo₁ + lo₂| |hi₁ + hi₂| with hM_def
+  set sc : R := (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) with hsc_def
+  set slack : R := η * M + sc with hslack_def
+  -- Input bounds on `s`.
+  have hs_lb : lo₁ + lo₂ ≤ s := by
+    have h1 := hx.lower 0; have h2 := hy.lower 0
+    simp only at h1 h2; linarith
+  have hs_ub : s ≤ hi₁ + hi₂ := by
+    have h1 := hx.upper 0; have h2 := hy.upper 0
+    simp only at h1 h2; linarith
+  have hs_abs_le_M : |s| ≤ M := abs_le_max_abs_of_le_le hs_lb hs_ub
+  -- Rounding error bound via the unified meta-lemma.
+  obtain ⟨g, hg_round, hg_eq⟩ := fpAddFinite_round_witness (R := R) x y hf
+  have h_err : |(g.toVal : R) - s| ≤ η * |s| + sc :=
+    round_preserves_abs_error_unified (R := R) s hg_round
+  -- Non-negativity of slack.
+  have hη_nn : (0 : R) ≤ η := by positivity
+  have hsc_nn : (0 : R) ≤ sc := by rw [hsc_def]; positivity
+  have hM_nn : (0 : R) ≤ M := le_trans (abs_nonneg _) (le_max_left _ _)
+  have hslack_nn : (0 : R) ≤ slack := by
+    rw [hslack_def]; exact add_nonneg (mul_nonneg hη_nn hM_nn) hsc_nn
+  have h_err_le_slack : |(g.toVal : R) - s| ≤ slack := by
+    have hstep : η * |s| ≤ η * M := mul_le_mul_of_nonneg_left hs_abs_le_M hη_nn
+    linarith
+  have h_err_bounds :
+      -slack ≤ (g.toVal : R) - s ∧ (g.toVal : R) - s ≤ slack :=
+    ⟨(abs_le.mp h_err_le_slack).1, (abs_le.mp h_err_le_slack).2⟩
+  refine ⟨(lo₁ + lo₂) - slack, (hi₁ + hi₂) + slack, ?_, ?_, ?_⟩
+  · linarith
+  · linarith
+  · refine ⟨?_, ?_⟩
+    · intro _
+      show lo₁ + lo₂ - slack ≤ (f.toVal : R)
+      rw [← hg_eq]; linarith [h_err_bounds.1]
+    · intro _
+      show (f.toVal : R) ≤ hi₁ + hi₂ + slack
+      rw [← hg_eq]; linarith [h_err_bounds.2]
+
+/-- `IsBoundedRange` propagates through `fpMulFinite`, subnormal-tolerant.
+
+Drops the normal-range hypothesis at the cost of an additive
+`2^(min_exp - prec)` tail.  Final output interval:
+  `[-((1+η)·M + sc), (1+η)·M + sc]`
+where `M := max |lo₁| |hi₁| · max |lo₂| |hi₂|` and
+`sc := 2^(min_exp - prec)`. -/
+theorem IsBoundedRange.fpMul_unified
+    [RMode R] [RModeExec] [RoundIntSigMSound R]
+    [RModeNearest R] [RModeConj R] [RModeZero R]
+    {lo₁ hi₁ lo₂ hi₂ : R} {x y f : FiniteFp}
+    (hx : IsBoundedRange (R := R) lo₁ hi₁ (fun (_ : Fin 1) => x))
+    (hy : IsBoundedRange (R := R) lo₂ hi₂ (fun (_ : Fin 1) => y))
+    (hf : fpMulFinite x y = Fp.finite f) :
+    ∃ (lo' hi' : R),
+      IsBoundedRange (R := R) lo' hi' (fun (_ : Fin 1) => f) := by
+  set p : R := (x.toVal : R) * y.toVal with hp_def
+  set M₁ : R := max |lo₁| |hi₁| with hM₁_def
+  set M₂ : R := max |lo₂| |hi₂| with hM₂_def
+  set M : R := M₁ * M₂ with hM_def
+  set sc : R := (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) with hsc_def
+  -- Input magnitude bounds.
+  have hx_abs_le : |(x.toVal : R)| ≤ M₁ :=
+    abs_le_max_abs_of_le_le (hx.lower 0) (hx.upper 0)
+  have hy_abs_le : |(y.toVal : R)| ≤ M₂ :=
+    abs_le_max_abs_of_le_le (hy.lower 0) (hy.upper 0)
+  have hM₁_nn : (0 : R) ≤ M₁ := le_trans (abs_nonneg _) (le_max_left _ _)
+  have hM₂_nn : (0 : R) ≤ M₂ := le_trans (abs_nonneg _) (le_max_left _ _)
+  have hsc_nn : (0 : R) ≤ sc := by rw [hsc_def]; positivity
+  have hp_abs_le_M : |p| ≤ M := by
+    rw [hp_def, abs_mul]
+    exact mul_le_mul hx_abs_le hy_abs_le (abs_nonneg _) hM₁_nn
+  -- Rounding error bound.
+  obtain ⟨g, hg_round, hg_eq⟩ := fpMulFinite_round_witness (R := R) x y hf
+  have h_err : |(g.toVal : R) - p| ≤ η * |p| + sc :=
+    round_preserves_abs_error_unified (R := R) p hg_round
+  have hη_nn : (0 : R) ≤ η := by positivity
+  have h1η_nn : (0 : R) ≤ 1 + η := by linarith
+  -- `|g.toVal| ≤ (1+η)·M + sc`.
+  have hg_abs_le : |(g.toVal : R)| ≤ (1 + η) * M + sc := by
+    have h_step1 : |(g.toVal : R)| ≤ |g.toVal - p| + |p| := by
+      have : |((g.toVal - p) + p : R)| ≤ |g.toVal - p| + |p| := abs_add_le _ _
+      convert this using 2; ring
+    calc |(g.toVal : R)|
+        ≤ |g.toVal - p| + |p| := h_step1
+      _ ≤ (η * |p| + sc) + |p| := by linarith
+      _ = (1 + η) * |p| + sc := by ring
+      _ ≤ (1 + η) * M + sc := by
+          have := mul_le_mul_of_nonneg_left hp_abs_le_M h1η_nn
+          linarith
+  refine ⟨-((1 + η) * M + sc), (1 + η) * M + sc, ?_, ?_⟩
+  · intro _
+    show -((1 + η) * M + sc) ≤ (f.toVal : R)
+    rw [← hg_eq]; exact (abs_le.mp hg_abs_le).1
+  · intro _
+    show (f.toVal : R) ≤ (1 + η) * M + sc
+    rw [← hg_eq]; exact (abs_le.mp hg_abs_le).2
+
+end Unified
+
 /-! ## Demo: 3-op chain validates design doc §3.4 success criterion
 
 The design-doc success criterion for parametric propagation is: "a 3-op
@@ -257,6 +394,31 @@ theorem IsBoundedRange.demo_mul_mul_add
   obtain ⟨_, _, hm₂_tag⟩ := IsBoundedRange.fpMul hz hw h_zw_normal hm₂
   obtain ⟨lo_r, hi_r, _, _, hr_tag⟩ :=
     IsBoundedRange.fpAdd hm₁_tag hm₂_tag h_sum_normal hr
+  exact ⟨lo_r, hi_r, hr_tag⟩
+
+/-- Same three-op chain, subnormal-tolerant form.  The three
+`(2:R)^min_exp ≤ |·|` preconditions are gone: the unified propagation
+lemmas absorb subnormal rounding into a per-step `sc` tail in the
+output slack.  Hypothesis surface: four interval tags + three
+finiteness witnesses.  Compare to `demo_mul_mul_add` above, which adds
+three normal-range preconditions on top. -/
+theorem IsBoundedRange.demo_mul_mul_add_unified
+    [RMode R] [RModeExec] [RoundIntSigMSound R]
+    [RModeNearest R] [RModeConj R] [RModeZero R]
+    {lox hix loy hiy loz hiz low hiw : R}
+    {x y z w m₁ m₂ r : FiniteFp}
+    (hx : IsBoundedRange (R := R) lox hix (fun (_ : Fin 1) => x))
+    (hy : IsBoundedRange (R := R) loy hiy (fun (_ : Fin 1) => y))
+    (hz : IsBoundedRange (R := R) loz hiz (fun (_ : Fin 1) => z))
+    (hw : IsBoundedRange (R := R) low hiw (fun (_ : Fin 1) => w))
+    (hm₁ : fpMulFinite x y = Fp.finite m₁)
+    (hm₂ : fpMulFinite z w = Fp.finite m₂)
+    (hr : fpAddFinite m₁ m₂ = Fp.finite r) :
+    ∃ lo hi : R, IsBoundedRange (R := R) lo hi (fun (_ : Fin 1) => r) := by
+  obtain ⟨_, _, hm₁_tag⟩ := IsBoundedRange.fpMul_unified hx hy hm₁
+  obtain ⟨_, _, hm₂_tag⟩ := IsBoundedRange.fpMul_unified hz hw hm₂
+  obtain ⟨lo_r, hi_r, _, _, hr_tag⟩ :=
+    IsBoundedRange.fpAdd_unified hm₁_tag hm₂_tag hr
   exact ⟨lo_r, hi_r, hr_tag⟩
 
 end Demo

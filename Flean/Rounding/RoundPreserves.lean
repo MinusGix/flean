@@ -26,13 +26,18 @@ Currently populated:
   `2^min_exp ≤ |x|`, via `RModeNearest` + `RModeConj`. Underpins the
   parametric interval-propagation lemmas in
   `Flean/Tags/BoundedRangePropagate.lean`.
+- `round_preserves_abs_error_unified` — subnormal-tolerant
+  sign-agnostic bound
+  `|f.toVal - x| ≤ η·|x| + 2^(min_exp - prec)`
+  holding unconditionally (handles `x = 0`, subnormal, and normal
+  ranges).  Trades the `2^min_exp ≤ |x|` precondition for an additive
+  `subnormalConst`-style tail.  Underpins
+  `IsBoundedRange.fp{Add,Mul}_unified`.
 
 Future additions (as tags demand):
 - `round_preserves_pos` — `IsPos` is NOT generally round-preserved
   (tiny positives underflow to 0); a useful variant would add a
   lower-magnitude hypothesis that avoids the underflow zone.
-- Subnormal-tolerant `round_preserves_abs_bound` — drops the
-  `isNormalRange` hypothesis at the cost of a `subnormalConst` tail.
 - etc.
 -/
 
@@ -145,5 +150,124 @@ theorem round_preserves_abs_error_normal [FloorRing R]
       · rwa [abs_of_pos hpos] at hx_lb
       · rwa [abs_of_pos hpos] at hx_lt_max
     exact KahanSum.standard_error_additive x hNR f hf
+
+/-! ## Subnormal-tolerant unified bound -/
+
+/-- R-generic subnormal-tolerant ulp-half bound.  For any positive `v`,
+`ulp v / 2 ≤ η·v + 2^(min_exp - prec)`.  Mirrors
+`Softmax.ulp_half_le_unified` (ℝ-specific) but holds over any ordered
+field with a `FloorRing`.  Case-splits on normal vs subnormal `v`. -/
+private theorem ulp_half_le_unified_gen [FloorRing R] (v : R) (hv_pos : 0 < v) :
+    Fp.ulp v / 2 ≤
+      (η : R) * v + (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) := by
+  unfold Fp.ulp
+  simp only [FloatFormat.hEps_def]
+  set e : ℤ := max (Int.log 2 |v|) FloatFormat.min_exp with he_def
+  have hv_abs : |v| = v := abs_of_pos hv_pos
+  have hη_pos : (0 : R) < (2 : R) ^ (-(FloatFormat.prec : ℤ)) := by positivity
+  have hsub_pos : (0 : R) < (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) := by
+    positivity
+  have halgebra : (2 : R) ^ (e - FloatFormat.prec + 1) / 2 =
+      (2 : R) ^ (e - FloatFormat.prec) := by
+    rw [zpow_add_one₀ (by norm_num : (2 : R) ≠ 0)]; ring
+  rw [halgebra]
+  by_cases hnormal : (2 : R) ^ FloatFormat.min_exp ≤ v
+  · -- Normal-range branch.
+    have hlog_ge : FloatFormat.min_exp ≤ Int.log 2 |v| := by
+      rw [hv_abs]
+      exact (Int.zpow_le_iff_le_log (b := 2) (R := R)
+        (by norm_num : (1 : ℕ) < 2) hv_pos).mp hnormal
+    have he_eq : e = Int.log 2 |v| := by
+      rw [he_def]; exact max_eq_left hlog_ge
+    rw [he_eq]
+    have hlog_le_v : (2 : R) ^ (Int.log 2 |v|) ≤ v := by
+      have h := Int.zpow_log_le_self (R := R) (b := 2)
+        (by norm_num : (1 : ℕ) < 2) hv_pos
+      calc (2 : R) ^ (Int.log 2 |v|) = (2 : R) ^ (Int.log 2 v) := by rw [hv_abs]
+        _ ≤ v := by exact_mod_cast h
+    have h1 : (2 : R) ^ (Int.log 2 |v| - FloatFormat.prec) =
+        (2 : R) ^ (Int.log 2 |v|) * (2 : R) ^ (-(FloatFormat.prec : ℤ)) := by
+      rw [← zpow_add₀ (by norm_num : (2 : R) ≠ 0)]; ring_nf
+    rw [h1]
+    calc (2 : R) ^ (Int.log 2 |v|) * (2 : R) ^ (-(FloatFormat.prec : ℤ))
+        ≤ v * (2 : R) ^ (-(FloatFormat.prec : ℤ)) :=
+          mul_le_mul_of_nonneg_right hlog_le_v (le_of_lt hη_pos)
+      _ = (2 : R) ^ (-(FloatFormat.prec : ℤ)) * v := by ring
+      _ ≤ (2 : R) ^ (-(FloatFormat.prec : ℤ)) * v +
+          (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) := by linarith
+  · -- Subnormal-range branch: 0 < v < 2^min_exp.
+    push_neg at hnormal
+    have hlog_lt : Int.log 2 |v| < FloatFormat.min_exp := by
+      rw [hv_abs]
+      by_contra h_ge
+      push_neg at h_ge
+      have : (2 : R) ^ FloatFormat.min_exp ≤ v := by
+        have h1 : (2 : R) ^ (FloatFormat.min_exp : ℤ) ≤ (2 : R) ^ Int.log 2 v :=
+          zpow_le_zpow_right₀ (by norm_num : (1 : R) ≤ 2) h_ge
+        have h2 : (2 : R) ^ Int.log 2 v ≤ v :=
+          Int.zpow_log_le_self (R := R) (b := 2)
+            (by norm_num : (1 : ℕ) < 2) hv_pos
+        linarith
+      linarith
+    have he_eq : e = FloatFormat.min_exp := by
+      rw [he_def]; exact max_eq_right (le_of_lt hlog_lt)
+    rw [he_eq]
+    linarith [mul_nonneg (le_of_lt hη_pos) (le_of_lt hv_pos)]
+
+/-- Subnormal-tolerant sign-agnostic additive error bound:
+`|f.toVal - x| ≤ η·|x| + 2^(min_exp - prec)` for *any* real `x` whose
+rounded image is finite, via `RModeNearest` + `RModeConj` + `RModeZero`.
+
+Drops the `2^min_exp ≤ |x|` hypothesis of
+`round_preserves_abs_error_normal` in exchange for a `subnormalConst`
+tail (`2^(min_exp - prec)`), which absorbs the absolute rounding error
+in the subnormal range.  Handles `x = 0`, subnormal `x`, and normal `x`
+uniformly.
+
+The companion of `Softmax.ulp_half_le_unified`'s role in LogSumExp,
+now at tag-framework meta-lemma level.  Underpins
+`IsBoundedRange.fp{Add,Mul}_unified`. -/
+theorem round_preserves_abs_error_unified [FloorRing R]
+    [RMode R] [RModeNearest R] [RModeConj R] [RModeZero R]
+    (x : R) {f : FiniteFp}
+    (hf : (RMode.round x : Fp) = Fp.finite f) :
+    |(f.toVal : R) - x| ≤
+      (η : R) * |x| +
+        (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) := by
+  have hsub_nn : (0 : R) ≤ (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) := by
+    positivity
+  by_cases hx_zero : x = 0
+  · -- Zero-case: `f.toVal = 0` by `RModeZero`.
+    subst hx_zero
+    have hround0 : (RMode.round (0 : R) : Fp) = Fp.finite 0 := RModeZero.round_zero
+    rw [hround0] at hf
+    have hf_eq : f = (0 : FiniteFp) := (Fp.finite.inj hf).symm
+    rw [hf_eq, FiniteFp.toVal_zero, sub_zero, abs_zero]
+    linarith
+  rcases lt_or_gt_of_ne hx_zero with hneg | hpos
+  · -- Negative input: conjugate to positive.
+    have hneg_pos : 0 < -x := by linarith
+    have h_round_neg : (RMode.round (-x) : Fp) = Fp.finite (-f) := by
+      rw [RModeConj.round_neg x hx_zero, hf, Fp.neg_finite]
+    have h_err_neg : |(-x) - ((-f).toVal : R)| ≤ Fp.ulp (-x) / 2 :=
+      RModeNearest_abs_error_le_ulp_half_pos (-x) hneg_pos (-f) h_round_neg
+    have hulp_bound := ulp_half_le_unified_gen (R := R) (-x) hneg_pos
+    have habs_x : |x| = -x := abs_of_neg hneg
+    rw [FiniteFp.toVal_neg_eq_neg (R := R) f] at h_err_neg
+    have hrewrite :
+        |(-x) - (-(f.toVal : R))| = |(f.toVal : R) - x| := by
+      rw [show (-x) - (-(f.toVal : R)) = (f.toVal : R) - x from by ring]
+    rw [hrewrite] at h_err_neg
+    rw [habs_x]
+    linarith
+  · -- Positive input: direct application.
+    have h_err : |x - (f.toVal : R)| ≤ Fp.ulp x / 2 :=
+      RModeNearest_abs_error_le_ulp_half_pos x hpos f hf
+    have hulp_bound := ulp_half_le_unified_gen (R := R) x hpos
+    have habs_x : |x| = x := abs_of_pos hpos
+    have hsymm : |x - (f.toVal : R)| = |(f.toVal : R) - x| := abs_sub_comm _ _
+    rw [hsymm] at h_err
+    rw [habs_x]
+    linarith
 
 end RoundPreserves
