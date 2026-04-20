@@ -25,10 +25,9 @@ only the downstream wrapper theorems.
 - `fpSoftmax_bound_of_separated` — lighter companion that also
   discharges `h_quot_nr` via `IsBoundedRange.quot_isNormalRange`,
   trading it for a `h_separation : 4·n·2^min_exp ≤ exp(I.lo − I.hi)`
-  hypothesis.  Specific to `εsum = η` (single-fp-add-equivalent denom
-  closeness); callers with a summation-based denom error bound
-  (Kahan, Neumaier, …) use the heavier `_of_bounded` wrapper and
-  supply `h_quot_nr` another way.
+  hypothesis and an `εsum ≤ 1/4` bound on the denom-closeness error.
+  Summation-based denoms (Kahan's `2η + nη²`, Neumaier, …) plug in
+  directly as long as their `εsum` stays below `1/4`.
 -/
 
 set_option autoImplicit false
@@ -73,18 +72,21 @@ theorem fpSoftmax_bound_of_bounded
 /-- **Lighter composition**: bounded-input tag + log-bound conditions
 + separation condition + remaining softmax hypotheses → clean softmax
 bound.  Both `h_exp_nr` (via `exp_isNormalRange`) and `h_quot_nr`
-(via `quot_isNormalRange`) are discharged automatically.  Specific to
-`εsum = η`: the denominator closeness takes the form
-`|denom − Σ exps| ≤ η · Σ |exps|`, matching the bridge's requirement.
+(via `quot_isNormalRange`) are discharged automatically.
 
-Input-side requirement beyond `_of_bounded`: a separation witness
-`4·n·2^min_exp ≤ exp(I.lo − I.hi)` ensuring the smallest softmax
-quotient doesn't underflow.  Positivity of `denom.toVal` is also
-explicit here (otherwise we can't meaningfully ratio). -/
+The `εsum ≤ 1/4` bound captures any practical summation-based denom
+error: single fp-add (`εsum = η`), Kahan (`εsum = 2η + nη²`), Neumaier,
+etc. — plugs in directly as long as it stays below `1/4`.
+
+Input-side requirements beyond `_of_bounded`:
+- separation witness `4·n·2^min_exp ≤ exp(I.lo − I.hi)` preventing
+  softmax underflow,
+- explicit `0 < denom.toVal` (to ratio meaningfully),
+- explicit `εsum ≤ 1/4` on the denom-closeness error. -/
 theorem fpSoftmax_bound_of_separated
     {n : ℕ} (hn : 0 < n) {I : FpInterval ℝ}
     (xs : Fin n → FiniteFp) (exps : Fin n → FiniteFp) (denom : FiniteFp)
-    (result : Fin n → FiniteFp)
+    (result : Fin n → FiniteFp) (εsum : ℝ)
     (hxs : IsBoundedRange (R := ℝ) I xs)
     (hlo : (FloatFormat.min_exp : ℝ) * Real.log 2 ≤ I.lo)
     (hhi : I.hi < ((FloatFormat.max_exp + 1 : ℤ) : ℝ) * Real.log 2)
@@ -92,19 +94,21 @@ theorem fpSoftmax_bound_of_separated
                     Real.exp (I.lo - I.hi))
     (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
     (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
-                     (η : ℝ) * ∑ j, |((exps j).toVal : ℝ)|)
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum) (h_εsum_le : εsum ≤ 1/4)
     (hd_pos : 0 < (denom.toVal : ℝ))
-    (h_δ_lt : (η : ℝ) + (η : ℝ) * (1 + (η : ℝ)) < 1)
+    (h_δ_lt : (η : ℝ) + εsum * (1 + (η : ℝ)) < 1)
     (hd_m : denom.m ≠ 0)
     (h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i))
     (i : Fin n) :
     |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
-      softmaxErrorCoeff (η : ℝ) *
+      softmaxErrorCoeff εsum *
         softmax (fun j => ((xs j).toVal : ℝ)) i := by
   have h_quot_nr : ∀ i, isNormalRange (((exps i).toVal : ℝ) / denom.toVal) :=
     fun i =>
-      hxs.quot_isNormalRange hn hlo hhi h_exp h_denom_close hd_pos h_separation i
-  exact fpSoftmax_bound_of_bounded hn xs exps denom result (η : ℝ)
-    hxs hlo hhi h_exp h_denom_close (by positivity) h_δ_lt hd_m h_quot_nr h_result i
+      hxs.quot_isNormalRange hn hlo hhi h_exp h_εsum_nn h_εsum_le
+        h_denom_close hd_pos h_separation i
+  exact fpSoftmax_bound_of_bounded hn xs exps denom result εsum
+    hxs hlo hhi h_exp h_denom_close h_εsum_nn h_δ_lt hd_m h_quot_nr h_result i
 
 end Flean.Tags

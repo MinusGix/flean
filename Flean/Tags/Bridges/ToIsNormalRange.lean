@@ -69,31 +69,35 @@ for each `i`.
 
 ### Why the separation constant is 4
 
-The proof needs `4·(1−η) ≥ (1+η)²` (for the `2^min_exp` lower bound)
-and `(1+η) ≤ 3·(1−η)²` (for the `< 2^(max_exp+1)` upper bound, giving
-quotient `≤ 3 < 4 ≤ 2^(max_exp+1)`).  Both hold for `η ≤ 1/4`, i.e.
-for any format with `prec ≥ 2` — which is guaranteed by
-`FloatFormat.valid_prec`.  The separation constant 4 is the smallest
-clean integer that makes the `2^min_exp` lower bound work at
-`prec = 2` (`η = 1/4`); tighter formats permit smaller constants but
-4 suffices universally.
+The proof needs `4(1−t) ≥ (1+u)(1+t)` (for the `2^min_exp` lower
+bound, with `t := η`, `u := εsum`) and `(1+t) ≤ 3(1−u)(1−t)` (for
+the `< 2^(max_exp+1)` upper bound, giving quotient
+`≤ 3 < 4 ≤ 2^(max_exp+1)`).  Both hold for `0 ≤ t, u ≤ 1/4`.
+`η ≤ 1/4` is universal via `FloatFormat.valid_prec` (`prec ≥ 2`);
+`εsum ≤ 1/4` is a user hypothesis (satisfied by any practical
+summation with `n·η ≤ 1/4`, e.g. Kahan's `2η + nη²`).  The separation
+constant 4 is the smallest clean integer that makes the `2^min_exp`
+lower bound work at `t = u = 1/4`; tighter formats or tighter `εsum`
+permit smaller constants but 4 suffices universally.
 -/
 
 omit [FloatFormat] in
-/-- Scalar lemma: `4(1−t) ≥ (1+t)²` for `0 ≤ t ≤ 1/4`.  (`t` avoids
-the `η` notation collision — this is applied with `t := (η : ℝ)`.) -/
-private theorem four_one_sub_le_one_add_sq
-    {t : ℝ} (ht_nn : 0 ≤ t) (ht_le : t ≤ 1/4) :
-    (1 + t)^2 ≤ 4 * (1 - t) := by
-  nlinarith [sq_nonneg t, sq_nonneg (1 - t)]
+/-- Scalar lemma: `4(1−t) ≥ (1+u)(1+t)` for `0 ≤ t, u ≤ 1/4`.  Used
+with `t := (η : ℝ)`, `u := εsum` in the quotient lower-bound chain. -/
+private theorem four_one_sub_ge_one_add_mul_one_add
+    {t u : ℝ} (ht_nn : 0 ≤ t) (ht_le : t ≤ 1/4)
+    (_hu_nn : 0 ≤ u) (hu_le : u ≤ 1/4) :
+    (1 + u) * (1 + t) ≤ 4 * (1 - t) := by
+  nlinarith [mul_nonneg ht_nn ht_nn]
 
 omit [FloatFormat] in
-/-- Scalar lemma: `(1+t) ≤ 3(1−t)²` for `0 ≤ t ≤ 1/4`.  Used for the
-upper-bound chain, giving quotient `≤ 3 < 4 ≤ 2^(max_exp+1)`. -/
-private theorem one_add_le_three_one_sub_sq
-    {t : ℝ} (_ht_nn : 0 ≤ t) (ht_le : t ≤ 1/4) :
-    1 + t ≤ 3 * (1 - t)^2 := by
-  nlinarith [sq_nonneg t, sq_nonneg (1 - t)]
+/-- Scalar lemma: `(1+t) ≤ 3(1−u)(1−t)` for `0 ≤ t, u ≤ 1/4`.  Used
+with `t := (η : ℝ)`, `u := εsum` in the quotient upper-bound chain. -/
+private theorem one_add_le_three_one_sub_mul_one_sub
+    {t u : ℝ} (ht_nn : 0 ≤ t) (ht_le : t ≤ 1/4)
+    (hu_nn : 0 ≤ u) (hu_le : u ≤ 1/4) :
+    1 + t ≤ 3 * ((1 - u) * (1 - t)) := by
+  nlinarith [mul_nonneg hu_nn ht_nn]
 
 /-- `η = 2^(−prec) ≤ 1/4` for any format (since `prec ≥ 2`). -/
 private theorem eta_le_quarter : (η : ℝ) ≤ 1/4 := by
@@ -110,23 +114,27 @@ private theorem eta_le_quarter : (η : ℝ) ≤ 1/4 := by
 correctness + exp correctness → each rounded softmax quotient is in
 the normal range.
 
-The separation constant `4·n·2^min_exp ≤ exp(I.lo − I.hi)` is sufficient
-for `prec ≥ 2` (i.e., every valid format); tighter formats admit smaller
-constants (see module doc).  Discharges the `h_quot_nr` precondition of
+The `εsum ≤ 1/4` hypothesis captures any practical summation-based
+denom error bound (single fp-add gives `εsum = η`; Kahan gives
+`εsum = 2η + nη²`; as long as this stays `≤ 1/4`).  Separation constant
+`4·n·2^min_exp ≤ exp(I.lo − I.hi)` is sufficient for `prec ≥ 2`
+(universal); tighter formats or tighter `εsum` admit smaller constants
+(see module doc).  Discharges the `h_quot_nr` precondition of
 `fpSoftmaxOf_error_bound` from inputs that already carry an
 `IsBoundedRange` tag, a separation witness, and the usual
 denominator-closeness hypothesis. -/
 theorem IsBoundedRange.quot_isNormalRange
     [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
     [RModeNearest ℝ] [ExpApprox] [ExpApproxSound]
-    {n : ℕ} (hn : 0 < n) {I : FpInterval ℝ}
+    {n : ℕ} (hn : 0 < n) {I : FpInterval ℝ} {εsum : ℝ}
     {xs : Fin n → FiniteFp} {exps : Fin n → FiniteFp} {denom : FiniteFp}
     (hxs : IsBoundedRange (R := ℝ) I xs)
     (hlo : (FloatFormat.min_exp : ℝ) * Real.log 2 ≤ I.lo)
     (hhi : I.hi < ((FloatFormat.max_exp + 1 : ℤ) : ℝ) * Real.log 2)
     (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_εsum_nn : 0 ≤ εsum) (h_εsum_le : εsum ≤ 1/4)
     (hd_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
-                (η : ℝ) * ∑ j, |((exps j).toVal : ℝ)|)
+                εsum * ∑ j, |((exps j).toVal : ℝ)|)
     (hd_pos : 0 < (denom.toVal : ℝ))
     (h_separation : 4 * (n : ℝ) * (2 : ℝ) ^ (FloatFormat.min_exp : ℤ) ≤
                     Real.exp (I.lo - I.hi))
@@ -139,12 +147,15 @@ theorem IsBoundedRange.quot_isNormalRange
   -- Bridge: h_exp_nr from IsBoundedRange.
   have h_exp_nr : ∀ i, isNormalRange (Real.exp ((xs i).toVal : ℝ)) :=
     hxs.exp_isNormalRange hlo hhi
-  -- η bookkeeping.
+  -- η / εsum bookkeeping.
   have hη_nn : (0 : ℝ) ≤ η := by positivity
   have hη_le_q : (η : ℝ) ≤ 1/4 := eta_le_quarter
   have hη_lt_one : (η : ℝ) < 1 := by linarith
-  have h1mη_pos : (0 : ℝ) < 1 - η := by linarith
-  have h1pη_pos : (0 : ℝ) < 1 + η := by linarith
+  have h1mη_pos : (0 : ℝ) < 1 - (η : ℝ) := by linarith
+  have h1pη_pos : (0 : ℝ) < 1 + (η : ℝ) := by linarith
+  have h_εsum_lt_one : εsum < 1 := by linarith
+  have h1m_εsum_pos : (0 : ℝ) < 1 - εsum := by linarith
+  have h1p_εsum_pos : (0 : ℝ) < 1 + εsum := by linarith
   -- Per-exp multiplicative error.
   have h_ei_ge : ∀ j, (1 - (η : ℝ)) * Real.exp ((xs j).toVal : ℝ) ≤
                       ((exps j).toVal : ℝ) :=
@@ -172,8 +183,8 @@ theorem IsBoundedRange.quot_isNormalRange
     exact ⟨⟨0, hn⟩, Finset.mem_univ _⟩
   -- Closeness-derived bounds on d.
   have hd_bounds := abs_le.mp hd_close
-  have hd_ge : (1 - (η : ℝ)) * S ≤ d := by nlinarith [hd_bounds.1]
-  have hd_le : d ≤ (1 + (η : ℝ)) * S := by nlinarith [hd_bounds.2]
+  have hd_ge : (1 - εsum) * S ≤ d := by nlinarith [hd_bounds.1]
+  have hd_le : d ≤ (1 + εsum) * S := by nlinarith [hd_bounds.2]
   -- Rounded sum / exact sum bounds via per-exp bounds.
   have hS_le_E : S ≤ (1 + (η : ℝ)) * E := by
     rw [Finset.mul_sum]
@@ -210,20 +221,23 @@ theorem IsBoundedRange.quot_isNormalRange
   · -- LOWER BOUND: 2^min_exp ≤ d̂_i / denom.
     rw [le_div_iff₀ hd_pos]
     -- Goal: 2^min_exp * d ≤ (exps i).toVal.
-    -- Strategy: show (exps i).toVal ≥ (1−η)·exp(xs_i), and d ≤ (1+η)²·E ≤ (1+η)²·n·exp(I.hi).
-    have hd_le_n_hi : d ≤ (1 + (η : ℝ))^2 * ((n : ℝ) * Real.exp I.hi) := by
-      calc d ≤ (1 + (η : ℝ)) * S := hd_le
-        _ ≤ (1 + (η : ℝ)) * ((1 + (η : ℝ)) * E) := by
-            apply mul_le_mul_of_nonneg_left hS_le_E
-            linarith
-        _ = (1 + (η : ℝ))^2 * E := by ring
-        _ ≤ (1 + (η : ℝ))^2 * ((n : ℝ) * Real.exp I.hi) := by
-            have h1p_sq_nn : (0 : ℝ) ≤ (1 + (η : ℝ))^2 := sq_nonneg _
-            exact mul_le_mul_of_nonneg_left hE_le_n_hi h1p_sq_nn
-    -- Target inequality: (2^min_exp) * d ≤ (exps i).toVal.
-    -- We'll show: (2^min_exp) * d ≤ (2^min_exp) * (1+η)² · n · exp(I.hi)
-    -- and (2^min_exp) * (1+η)² · n · exp(I.hi) ≤ (1−η) · exp(I.lo) ≤ (exps i).toVal.
-    -- Middle step uses h_separation: 4·n·2^min_exp ≤ exp(I.lo−I.hi).
+    -- Strategy: show (exps i).toVal ≥ (1−η)·exp(xs_i), and
+    -- d ≤ (1+εsum)(1+η)·n·exp(I.hi).
+    have hd_le_n_hi :
+        d ≤ (1 + εsum) * (1 + (η : ℝ)) * ((n : ℝ) * Real.exp I.hi) := by
+      calc d ≤ (1 + εsum) * S := hd_le
+        _ ≤ (1 + εsum) * ((1 + (η : ℝ)) * E) :=
+            mul_le_mul_of_nonneg_left hS_le_E (le_of_lt h1p_εsum_pos)
+        _ = (1 + εsum) * (1 + (η : ℝ)) * E := by ring
+        _ ≤ (1 + εsum) * (1 + (η : ℝ)) * ((n : ℝ) * Real.exp I.hi) := by
+            have h_nn : (0 : ℝ) ≤ (1 + εsum) * (1 + (η : ℝ)) :=
+              mul_nonneg (le_of_lt h1p_εsum_pos) (le_of_lt h1pη_pos)
+            exact mul_le_mul_of_nonneg_left hE_le_n_hi h_nn
+    -- Target chain:
+    -- 2^min_exp · d ≤ 2^min_exp · (1+εsum)(1+η) · n · exp(I.hi)
+    --              ≤ (1+εsum)(1+η)/4 · exp(I.lo)    [from h_separation]
+    --              ≤ (1−η) · exp(I.lo)              [from scalar helper]
+    --              ≤ (exps i).toVal                [from h_ei_ge]
     have h_sep_mul : 4 * (n : ℝ) * (2 : ℝ)^(FloatFormat.min_exp : ℤ) *
                       Real.exp I.hi ≤ Real.exp I.lo := by
       have h_diff : Real.exp (I.lo - I.hi) * Real.exp I.hi = Real.exp I.lo := by
@@ -232,66 +246,65 @@ theorem IsBoundedRange.quot_isNormalRange
           ≤ Real.exp (I.lo - I.hi) * Real.exp I.hi :=
             mul_le_mul_of_nonneg_right h_separation (le_of_lt hexp_hi_pos)
         _ = Real.exp I.lo := h_diff
-    -- Now the key inequality:
-    -- 2^min_exp · d ≤ 2^min_exp · (1+η)² · n · exp(I.hi)
-    --              ≤ (1+η)²/4 · exp(I.lo)      [from h_sep_mul, multiplying out]
-    --              ≤ (1−η) · exp(I.lo)           [since (1+η)²/4 ≤ (1−η)]
-    --              ≤ (exps i).toVal             [from h_ei_ge]
     have step1 : (2 : ℝ)^(FloatFormat.min_exp : ℤ) * d ≤
                   (2 : ℝ)^(FloatFormat.min_exp : ℤ) *
-                    ((1 + (η : ℝ))^2 * ((n : ℝ) * Real.exp I.hi)) :=
+                    ((1 + εsum) * (1 + (η : ℝ)) * ((n : ℝ) * Real.exp I.hi)) :=
       mul_le_mul_of_nonneg_left hd_le_n_hi (le_of_lt h_two_min_exp_pos)
-    have hkey : (1 + (η : ℝ))^2 ≤ 4 * (1 - (η : ℝ)) :=
-      four_one_sub_le_one_add_sq hη_nn hη_le_q
+    have hkey : (1 + εsum) * (1 + (η : ℝ)) ≤ 4 * (1 - (η : ℝ)) :=
+      four_one_sub_ge_one_add_mul_one_add hη_nn hη_le_q h_εsum_nn h_εsum_le
     have step2 :
         (2 : ℝ)^(FloatFormat.min_exp : ℤ) *
-          ((1 + (η : ℝ))^2 * ((n : ℝ) * Real.exp I.hi)) ≤
+          ((1 + εsum) * (1 + (η : ℝ)) * ((n : ℝ) * Real.exp I.hi)) ≤
         (1 - (η : ℝ)) * Real.exp I.lo := by
-      have h_sep_rearrange : (2 : ℝ)^(FloatFormat.min_exp : ℤ) * ((n : ℝ) * Real.exp I.hi) ≤
-          Real.exp I.lo / 4 := by
+      have h_sep_rearrange :
+          (2 : ℝ)^(FloatFormat.min_exp : ℤ) * ((n : ℝ) * Real.exp I.hi) ≤
+            Real.exp I.lo / 4 := by
         rw [le_div_iff₀ (by norm_num : (0 : ℝ) < 4)]
         linarith [h_sep_mul]
+      have h_coef_nn : (0 : ℝ) ≤ (1 + εsum) * (1 + (η : ℝ)) :=
+        mul_nonneg (le_of_lt h1p_εsum_pos) (le_of_lt h1pη_pos)
       calc (2 : ℝ)^(FloatFormat.min_exp : ℤ) *
-            ((1 + (η : ℝ))^2 * ((n : ℝ) * Real.exp I.hi))
-          = (1 + (η : ℝ))^2 * ((2 : ℝ)^(FloatFormat.min_exp : ℤ) *
-              ((n : ℝ) * Real.exp I.hi)) := by ring
-        _ ≤ (1 + (η : ℝ))^2 * (Real.exp I.lo / 4) := by
-            have h_sq_nn : (0 : ℝ) ≤ (1 + (η : ℝ))^2 := sq_nonneg _
-            exact mul_le_mul_of_nonneg_left h_sep_rearrange h_sq_nn
-        _ = (1 + (η : ℝ))^2 / 4 * Real.exp I.lo := by ring
+            ((1 + εsum) * (1 + (η : ℝ)) * ((n : ℝ) * Real.exp I.hi))
+          = (1 + εsum) * (1 + (η : ℝ)) *
+              ((2 : ℝ)^(FloatFormat.min_exp : ℤ) *
+                ((n : ℝ) * Real.exp I.hi)) := by ring
+        _ ≤ (1 + εsum) * (1 + (η : ℝ)) * (Real.exp I.lo / 4) :=
+            mul_le_mul_of_nonneg_left h_sep_rearrange h_coef_nn
+        _ = (1 + εsum) * (1 + (η : ℝ)) / 4 * Real.exp I.lo := by ring
         _ ≤ (1 - (η : ℝ)) * Real.exp I.lo := by
             have hlo_pos : (0 : ℝ) < Real.exp I.lo := Real.exp_pos _
-            have h_coef : (1 + (η : ℝ))^2 / 4 ≤ 1 - (η : ℝ) := by linarith
-            exact mul_le_mul_of_nonneg_right h_coef (le_of_lt hlo_pos)
+            have h_div_le : (1 + εsum) * (1 + (η : ℝ)) / 4 ≤ 1 - (η : ℝ) := by
+              linarith
+            exact mul_le_mul_of_nonneg_right h_div_le (le_of_lt hlo_pos)
     have step3 : (1 - (η : ℝ)) * Real.exp I.lo ≤ ((exps i).toVal : ℝ) := by
       calc (1 - (η : ℝ)) * Real.exp I.lo
-          ≤ (1 - (η : ℝ)) * Real.exp ((xs i).toVal : ℝ) := by
-            exact mul_le_mul_of_nonneg_left h_ei_ge_lo (le_of_lt h1mη_pos)
+          ≤ (1 - (η : ℝ)) * Real.exp ((xs i).toVal : ℝ) :=
+            mul_le_mul_of_nonneg_left h_ei_ge_lo (le_of_lt h1mη_pos)
         _ ≤ ((exps i).toVal : ℝ) := h_ei_ge i
     linarith
   · -- UPPER BOUND: d̂_i / denom < 2^(max_exp+1).
     rw [div_lt_iff₀ hd_pos]
-    -- Goal: (exps i).toVal < 2^(max_exp+1) * denom.
     -- Strategy: show (exps i).toVal ≤ (1+η)·eᵢ ≤ (1+η)·E
-    -- and (1-η)²·E ≤ d, so (exps i).toVal / d ≤ (1+η)/(1-η)² ≤ 3.
-    have hd_ge_E : (1 - (η : ℝ))^2 * E ≤ d := by
-      calc (1 - (η : ℝ))^2 * E
-          = (1 - (η : ℝ)) * ((1 - (η : ℝ)) * E) := by ring
-        _ ≤ (1 - (η : ℝ)) * S := by
-            exact mul_le_mul_of_nonneg_left hS_ge_E (le_of_lt h1mη_pos)
+    -- and (1−εsum)(1−η)·E ≤ d, so (exps i).toVal / d
+    --     ≤ (1+η)/((1−εsum)(1−η)) ≤ 3 < 4 ≤ 2^(max_exp+1).
+    have hd_ge_E : (1 - εsum) * (1 - (η : ℝ)) * E ≤ d := by
+      calc (1 - εsum) * (1 - (η : ℝ)) * E
+          = (1 - εsum) * ((1 - (η : ℝ)) * E) := by ring
+        _ ≤ (1 - εsum) * S :=
+            mul_le_mul_of_nonneg_left hS_ge_E (le_of_lt h1m_εsum_pos)
         _ ≤ d := hd_ge
-    have hei_le_3 : ((exps i).toVal : ℝ) ≤ (3 : ℝ) * ((1 - (η : ℝ))^2 * E) := by
-      -- (exps i).toVal ≤ (1+η)·eᵢ ≤ (1+η)·E ≤ 3·(1-η)²·E.
+    have hei_le_3 :
+        ((exps i).toVal : ℝ) ≤ (3 : ℝ) * ((1 - εsum) * (1 - (η : ℝ)) * E) := by
       calc ((exps i).toVal : ℝ)
           ≤ (1 + (η : ℝ)) * Real.exp ((xs i).toVal : ℝ) := h_ei_le i
-        _ ≤ (1 + (η : ℝ)) * E := by
-            exact mul_le_mul_of_nonneg_left h_ei_le_E (le_of_lt h1pη_pos)
-        _ ≤ (3 : ℝ) * (1 - (η : ℝ))^2 * E := by
-            have h_coef : 1 + (η : ℝ) ≤ (3 : ℝ) * (1 - (η : ℝ))^2 :=
-              one_add_le_three_one_sub_sq (t := (η : ℝ)) hη_nn hη_le_q
+        _ ≤ (1 + (η : ℝ)) * E :=
+            mul_le_mul_of_nonneg_left h_ei_le_E (le_of_lt h1pη_pos)
+        _ ≤ (3 : ℝ) * ((1 - εsum) * (1 - (η : ℝ))) * E := by
+            have h_coef : 1 + (η : ℝ) ≤ (3 : ℝ) * ((1 - εsum) * (1 - (η : ℝ))) :=
+              one_add_le_three_one_sub_mul_one_sub
+                hη_nn hη_le_q h_εsum_nn h_εsum_le
             exact mul_le_mul_of_nonneg_right h_coef (le_of_lt hE_pos)
-        _ = (3 : ℝ) * ((1 - (η : ℝ))^2 * E) := by ring
-    -- So (exps i).toVal ≤ 3 * ((1-η)²·E) ≤ 3 * d < 4 * d ≤ 2^(max_exp+1) * d.
+        _ = (3 : ℝ) * ((1 - εsum) * (1 - (η : ℝ)) * E) := by ring
     have hei_le_3d : ((exps i).toVal : ℝ) ≤ (3 : ℝ) * d :=
       le_trans hei_le_3
         (mul_le_mul_of_nonneg_left hd_ge_E (by norm_num : (0 : ℝ) ≤ (3 : ℝ)))

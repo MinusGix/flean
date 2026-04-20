@@ -446,20 +446,22 @@ The reorganization proves the framework's organizational principle is
 implementable, not just paper-plan.
 
 **`IsBoundedRange.quot_isNormalRange` — DONE** (landed in
-`Flean/Tags/Bridges/ToIsNormalRange.lean`).  Final signature:
+`Flean/Tags/Bridges/ToIsNormalRange.lean`).  Final signature (after
+Phase 1 εsum generalization):
 
 ```lean
 theorem IsBoundedRange.quot_isNormalRange
     [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
     [RModeNearest ℝ] [ExpApprox] [ExpApproxSound]
-    {n : ℕ} (hn : 0 < n) {I : FpInterval ℝ}
+    {n : ℕ} (hn : 0 < n) {I : FpInterval ℝ} {εsum : ℝ}
     {xs : Fin n → FiniteFp} {exps : Fin n → FiniteFp} {denom : FiniteFp}
     (hxs : IsBoundedRange (R := ℝ) I xs)
     (hlo : (FloatFormat.min_exp : ℝ) * Real.log 2 ≤ I.lo)
     (hhi : I.hi < ((FloatFormat.max_exp + 1 : ℤ) : ℝ) * Real.log 2)
     (h_exp : ∀ i, fpExpFinite (xs i) = Fp.finite (exps i))
+    (h_εsum_nn : 0 ≤ εsum) (h_εsum_le : εsum ≤ 1/4)
     (hd_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
-                (η : ℝ) * ∑ j, |((exps j).toVal : ℝ)|)
+                εsum * ∑ j, |((exps j).toVal : ℝ)|)
     (hd_pos : 0 < (denom.toVal : ℝ))
     (h_separation : 4 * (n : ℝ) * (2 : ℝ) ^ (FloatFormat.min_exp : ℤ) ≤
                     Real.exp (I.lo - I.hi))
@@ -467,20 +469,28 @@ theorem IsBoundedRange.quot_isNormalRange
     isNormalRange (((exps i).toVal : ℝ) / denom.toVal)
 ```
 
-**Separation constant**: tightened from the originally-sketched `2·n·2^min_exp`
-to `4·n·2^min_exp`.  The lower-bound chain needs `4·(1−η) ≥ (1+η)²`, which
-holds for `η ≤ 1/4` (i.e., `prec ≥ 2` — universal given `FloatFormat.valid_prec`).
-The original constant 2 was tight only for `prec ≥ 3`; 4 is the smallest
-clean integer that works universally.  Tighter formats admit smaller
-constants, but 4 is chosen for robustness and cleanness.
+**Separation constant**: `4·n·2^min_exp` (tightened from the
+originally-sketched `2·n·2^min_exp`).  The lower-bound chain needs
+`4(1−η) ≥ (1+εsum)(1+η)`, which holds for both `η, εsum ≤ 1/4` (η's
+bound is universal via `FloatFormat.valid_prec`; εsum's is explicit).
+The original constant 2 was tight only for `prec ≥ 3` and `εsum = η`;
+4 is the smallest clean integer that works universally.  Tighter
+formats or tighter `εsum` admit smaller constants.
+
+**εsum generalization**: the single-fp-add-equivalent (`εsum = η`) case
+was the original focus, but summation-based denoms (Kahan's
+`εsum = 2η + nη²`, Neumaier, etc.) plug in directly as long as their
+`εsum` stays `≤ 1/4`.  This covers every practical summation at any
+reasonable `n·η` budget — e.g., Kahan at `n·η ≤ 1/4` gives
+`εsum ≤ 2η + η/4 ≤ 1/4 + ...` (tight at small `η`).
 
 **Consumer wrapper**: `fpSoftmax_bound_of_separated` in
 `Flean/Tags/SoftmaxBounded.lean` is the lighter companion to
-`fpSoftmax_bound_of_bounded` — also discharges `h_quot_nr` via this
-bridge, so callers supply only `IsBoundedRange` + separation + the
-usual denom/div hypotheses.  Specific to `εsum = η` (single-fp-add-
-equivalent denominator).  Summation-based denoms (Kahan etc., `εsum > η`)
-continue to use `_of_bounded` with manual `h_quot_nr`.
+`fpSoftmax_bound_of_bounded` — discharges both `h_exp_nr` and
+`h_quot_nr` automatically, taking `εsum` as a parameter so any
+summation-based denom works.  Callers supply:
+`IsBoundedRange` + log-bounds + separation + denom closeness +
+`εsum ≤ 1/4` + the usual div/finiteness hypotheses.
 
 The `h_separation` hypothesis says "the spread of xs is not so extreme
 that the smallest softmax entry underflows."
