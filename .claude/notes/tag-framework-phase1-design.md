@@ -393,7 +393,7 @@ The existential wraps the signed-zero ambiguity: `g` may differ from
 preservations no longer case-split.
 
 **Measurement**: retrofitting `Nonneg.lean`:
-- `Nonneg.lean`: 175 → 149 lines (−26, ~15%).
+- `Nonneg.lean`: 175 → 149 → 132 lines (−43 cumulative, ~25%).
 - Per-preservation proof body: ~18 → ~7 lines each.
 - Local `roundIntSigM_mag_zero_m` helper (9 lines) eliminated entirely.
 - `RModeIdem` typeclass requirement dropped (zero-case no longer
@@ -401,6 +401,19 @@ preservations no longer case-split.
 
 Infrastructure cost: 124 lines in new file, amortized across all
 future tag preservations using `fp{Add,Mul}Finite`.
+
+**Greenfield validation (`Flean/Tags/AbsBound.lean`)**: a new
+parametric tag `HasAbsBound c` built on the same infrastructure.
+Preservation proofs are ~9 lines each (vs ~18 for the pre-infrastructure
+style). The 2-line excess over `IsNonneg`'s ~7 is genuine parametric-tag
+arithmetic (`|x+y| ≤ c₁ + c₂`), not infrastructure overhead — the
+case-split / round-witness / meta-lemma plumbing is ~0 lines per
+preservation, confirming the design claim.
+
+Meta-lemma addition (`round_preserves_abs_bound_normal`): ~20 lines
+of kernel, reused by both `HasAbsBound.fpAdd_nonneg_normal` and
+`HasAbsBound.fpMul_nonneg_normal`. Pattern validated: one meta-lemma
+per tag, N=2 ops supported from it.
 
 ### 3.3 `Flean/Tags/Bridges/` directory
 
