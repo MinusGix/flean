@@ -493,7 +493,35 @@ the magnitude-only `round_preserves_abs_bound_normal`.
 
 **Success criterion**: a 3-op chain (e.g., `fpAdd (fpMul x y) bias`) can
 thread `IsBoundedRange` through via three explicit calls, and the proof
-reads as interval arithmetic.
+reads as interval arithmetic. — **MET**
+
+`IsBoundedRange.demo_mul_mul_add` in `BoundedRangePropagate.lean`
+threads the tag through `r = fpAdd (fpMul x y) (fpMul z w)` via three
+explicit propagation calls.  Proof body: three `obtain`s on the
+propagation lemmas + one `exact`.  Reads as interval arithmetic.
+
+**UX findings from the demo**:
+
+- **One normal-range hypothesis per op.**  Three `(2:R)^min_exp ≤ |·|`
+  hypotheses are needed for a 3-op chain — one per FP step.  This is
+  the concrete justification for a subnormal-tolerant
+  `round_preserves_abs_error` variant (already flagged in
+  `RoundPreserves.lean`'s future-additions list): it would let users
+  drop these preconditions in exchange for an additive
+  `subnormalConst` tail.  Without it, chains don't compose cleanly
+  because the intermediate products/sums in normal range must be
+  manually verified.
+
+- **Existential unpacking is manual but tolerable.**  Each
+  propagation lemma returns `∃ lo' hi', ...`; the user `obtain`s to
+  thread the downstream tag.  Scales linearly, no obvious framework
+  fix warranted yet.
+
+- **No tag-weakening step needed.**  Because `IsBoundedRange` is
+  parametric over `lo`/`hi`, the downstream `fpAdd` call accepts the
+  `fpMul` output intervals directly — no explicit bridge.  Confirms
+  §1.7's deferral (no typeclass weakening infrastructure) was the
+  right call for same-tag chains.
 
 ### 3.5 Retrofit pilots
 

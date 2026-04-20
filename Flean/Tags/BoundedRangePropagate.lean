@@ -203,4 +203,62 @@ theorem IsBoundedRange.fpMul
     rw [← hg_eq]
     exact (abs_le.mp hg_abs_le).2
 
+/-! ## Demo: 3-op chain validates design doc §3.4 success criterion
+
+The design-doc success criterion for parametric propagation is: "a 3-op
+chain can thread `IsBoundedRange` through via three explicit calls, and
+the proof reads as interval arithmetic."  The demo below threads the
+tag through `r = fpAdd (fpMul x y) (fpMul z w)` via three named
+propagation calls.  The proof body is essentially four lines of
+`obtain` after the three `IsBoundedRange.fp{Mul,Add}` applications.
+
+### UX findings surfaced by this demo
+
+1. **One normal-range hypothesis per op.**  The chain needs three
+   separate `(2:R)^min_exp ≤ |·|` hypotheses (one per FP op).  A
+   subnormal-tolerant meta-lemma would let users drop these in exchange
+   for an additive `subnormalConst`-style tail.
+
+2. **Existential unpacking is manual.**  Each `IsBoundedRange.fp*`
+   call returns `∃ lo' hi', ...`; the user `obtain`s to thread the
+   downstream tag.  Tolerable for short chains but scales linearly.
+   A wrapper returning a struct-of-intervals (or a `Σ`-type) could
+   reduce this, though the current ∃-form keeps the signature honest
+   about the output being existentially bound.
+
+3. **No tag-weakening needed in the add.**  Because `IsBoundedRange`'s
+   input position is parametric over `lo`/`hi`, the downstream
+   `IsBoundedRange.fpAdd` accepts the `fpMul` output intervals
+   directly — no explicit `lo' ≤ lo` bridging step.  This confirms
+   the design doc's §1.7 stance (defer tag-weakening infrastructure)
+   was correct: for same-tag chains, nothing to weaken. -/
+
+section Demo
+
+/-- Three-op chain `r = fpAdd (fpMul x y) (fpMul z w)` threads
+`IsBoundedRange` through via three explicit propagation calls. -/
+theorem IsBoundedRange.demo_mul_mul_add
+    [RMode R] [RModeExec] [RoundIntSigMSound R]
+    [RModeNearest R] [RModeConj R] [RModeZero R]
+    {lox hix loy hiy loz hiz low hiw : R}
+    {x y z w m₁ m₂ r : FiniteFp}
+    (hx : IsBoundedRange (R := R) lox hix (fun (_ : Fin 1) => x))
+    (hy : IsBoundedRange (R := R) loy hiy (fun (_ : Fin 1) => y))
+    (hz : IsBoundedRange (R := R) loz hiz (fun (_ : Fin 1) => z))
+    (hw : IsBoundedRange (R := R) low hiw (fun (_ : Fin 1) => w))
+    (h_xy_normal : (2 : R) ^ FloatFormat.min_exp ≤ |(x.toVal : R) * y.toVal|)
+    (h_zw_normal : (2 : R) ^ FloatFormat.min_exp ≤ |(z.toVal : R) * w.toVal|)
+    (h_sum_normal : (2 : R) ^ FloatFormat.min_exp ≤ |(m₁.toVal : R) + m₂.toVal|)
+    (hm₁ : fpMulFinite x y = Fp.finite m₁)
+    (hm₂ : fpMulFinite z w = Fp.finite m₂)
+    (hr : fpAddFinite m₁ m₂ = Fp.finite r) :
+    ∃ lo hi : R, IsBoundedRange (R := R) lo hi (fun (_ : Fin 1) => r) := by
+  obtain ⟨_, _, hm₁_tag⟩ := IsBoundedRange.fpMul hx hy h_xy_normal hm₁
+  obtain ⟨_, _, hm₂_tag⟩ := IsBoundedRange.fpMul hz hw h_zw_normal hm₂
+  obtain ⟨lo_r, hi_r, _, _, hr_tag⟩ :=
+    IsBoundedRange.fpAdd hm₁_tag hm₂_tag h_sum_normal hr
+  exact ⟨lo_r, hi_r, hr_tag⟩
+
+end Demo
+
 end Flean.Tags
