@@ -454,6 +454,54 @@ Rounding/ files but narrow applicability.
   Would need new `BlockFormat` structure + conversion correctness + error bounds.
 
 ## Mid-Term — Infrastructure & Automation
+- [ ] **Constraint-tagged values framework** — generalize the "normalness
+  certificate" idea to a full framework of structural `P : FiniteFp → Prop`
+  tags (`IsNonneg`, `IsSimplex_ε`, `IsProb`, `IsUnit_ε`, `HasRangeBound`,
+  `IsPostReLU`, etc.) propagated through ops via a `Preserves` typeclass,
+  with *tag-specialized error bounds* that tighten when a caller has extra
+  structural info. Detailed plan: [tag-framework-plan.md](tag-framework-plan.md).
+  Phased rollout:
+  - [x] **Phase 0 (pilot)** — `Flean/Tags/Simplex.lean` (171 lines) +
+    `Flean/Tags/Normal.lean` (128 lines), both sorry-free, not yet wired
+    into `Flean.lean`. Two tags, two preservations, two specialized bounds.
+    Key findings (assessment lives at the top of each file):
+    - **`IsSimplex` alone does NOT tighten** `FpDotProductBound` on absolute
+      magnitude — `Σ|wᵢxᵢ| ≤ max|xᵢ|` for simplex `ws`, so the specialized
+      RHS is strictly *larger* than the general one. The win is
+      **structural isolation**: the new RHS depends only on `xs`, letting
+      downstream composition use an `xs`-local invariant. Plan language
+      about "tighter bounds" needs revision — sell *structural isolation*,
+      not raw shrinkage.
+    - **`IsNormal` DOES strictly tighten**: `Fp.ulp v / 2 ≤ η · v` (tagged)
+      vs `η · v + subnormalConst` (general `ulp_half_le_unified` in
+      `Softmax.lean`). Strictly smaller by exactly `subnormalConst > 0`.
+      This is the right template for real tightening stories.
+    - **Nonempty-domain precondition can be derived from tag**:
+      `IsSimplex.pos : IsSimplex ws → 0 < n` (empty sum ≠ 1). Consumer
+      theorems drop `hn : 0 < n` entirely. Pattern: structural tags should
+      *absorb* degeneracy preconditions they already imply.
+  - [ ] **Phase 1 (framework)** — introduce `Preserves` typeclass +
+    composition + weakening. Blocked-adjacent: consider first writing 2-3
+    more plain-theorem pilots (e.g. `IsSterbenz` + `fpSubFinite` for
+    exact-subtraction tightening, `IsNonneg` + `fpMul` composition) to
+    stress-test the pattern before typeclass investment.
+  - [ ] **Phase 2 (specialized bounds)** — drop `subnormalConst` from
+    Softmax/LogSumExp under `IsNormal` on `exps`, drop `fpSubFinite`
+    rounding under `IsSterbenz`, etc. These are the load-bearing payoffs.
+- [ ] **Normalness certificate** — a predicate on `Fin n → FiniteFp` (and single
+  `FiniteFp` values) asserting all values stay in a bounded-exponent range
+  (no subnormals, no near-overflow), with propagation lemmas through the basic
+  ops (add/mul/FMA/div/sqrt) and through the algorithm-level structures
+  (`FpSumBound`, `FpDotProductBound`, `FpMatVecBound`, etc.). Consumers of
+  current bounds carry a `subnormalConst` additive tail (e.g. Softmax,
+  LogSumExp); a normalness witness would let them drop it, making the bound
+  purely multiplicative `|result − exact| ≤ relErr · |exact|`. High leverage:
+  (a) makes "if inputs are normal, accuracy is obscenely better" a provable
+  statement suitable for a suggestion tool, (b) tightens all downstream ML
+  bounds, (c) the right primitive for real-vs-FP divergence quantification.
+  Complements the "Overflow condition formalization" entry below (normalness
+  implies no overflow at the format's edges, so sharing the same API makes
+  sense). Natural first tag in the tag-framework plan above.
 - [ ] **Straight-line program verifier** — given a sequence of FP ops as a `List FpOp`
   (where `FpOp = add | mul | fma | ...`), auto-derive the error bound by chaining
   per-op lemmas. Could be a tactic (`fp_bound`) or a verified interpreter. We have all

@@ -17,3 +17,4 @@ import «Flean».ERat
 import «Flean».MinMax
 import «Flean».Operations
 import «Flean».StorageFormats
+import «Flean».Tags
