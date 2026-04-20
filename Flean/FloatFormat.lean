@@ -564,6 +564,25 @@ theorem overflowThreshold_lt_zpow_max_exp_succ [FloatFormat] {R : Type*} [Field 
 notation "ε" => eps _
 notation "η" => hEps _
 
+/-! ### Explicit-type variants
+
+`η[R]` / `ε[R]` force the ambient type at the notation level, avoiding
+the `notation "η" => hEps _` elaboration ambiguity that surfaces in
+tactic blocks — e.g.
+
+```
+have h : (1 + η[ℝ])^2 / 4 ≤ 1 - η[ℝ] := by linarith
+```
+
+— where `(1 + η)^2` without a cast can default `η`'s type parameter
+inconsistently.  Use `η[R]` (or `η[ℝ]` / `η[ℚ]`) when the ambient
+elaboration context needs a concrete type hint, particularly inside
+scalar helper proofs or `have` statements that `linarith` / `nlinarith`
+consume. -/
+
+notation:max "η[" R "]" => (FloatFormat.hEps R : R)
+notation:max "ε[" R "]" => (FloatFormat.eps R : R)
+
 end FloatFormat
 
 namespace StdFloatFormat

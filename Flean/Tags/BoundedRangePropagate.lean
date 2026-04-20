@@ -62,6 +62,53 @@ open scoped Flean.Tags -- for ⊞ / ⊠
 variable [FloatFormat]
 variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
 
+/-! ## Proof-closing macros
+
+Two macros that capture the mechanical finale of every propagation
+theorem: split `IsBoundedRange` into `.lower` / `.upper`, introduce the
+`Fin 1` index, rewrite `(f.toVal : R)` to `(g.toVal : R)` via the
+round-witness equality, then unfold the FpInterval op to close. -/
+
+/-- Close both output-interval sub-goals when the bound comes from a
+single `|g.toVal| ≤ ...` hypothesis (symmetric-around-0 intervals, as
+for `fpMul` / `fpFMA`).  Usage:
+```
+close_interval_via_abs rw:hg_eq from:hg_abs_le unfolding FpInterval.fpMul
+```
+-/
+macro "close_interval_via_abs"
+    "rw:" hg_eq:term "from:" h_abs:term
+    "unfolding" unfold_target:ident : tactic => `(tactic|(
+  refine ⟨?_, ?_⟩
+  · intro _
+    rw [← $hg_eq]
+    unfold $unfold_target
+    exact (abs_le.mp $h_abs).1
+  · intro _
+    rw [← $hg_eq]
+    unfold $unfold_target
+    exact (abs_le.mp $h_abs).2))
+
+/-- Close both output-interval sub-goals when the bound comes from a
+`-slack ≤ g.toVal - s ∧ g.toVal - s ≤ slack` pair (asymmetric
+intervals widened from an exact sum, as for `fpAdd`).  Usage:
+```
+close_interval_via_slack rw:hg_eq from:h_err_bounds unfolding FpInterval.fpAdd
+```
+-/
+macro "close_interval_via_slack"
+    "rw:" hg_eq:term "from:" h_pair:term
+    "unfolding" unfold_target:ident : tactic => `(tactic|(
+  refine ⟨?_, ?_⟩
+  · intro _
+    rw [← $hg_eq]
+    unfold $unfold_target
+    linarith [($h_pair).1]
+  · intro _
+    rw [← $hg_eq]
+    unfold $unfold_target
+    linarith [($h_pair).2]))
+
 /-! ## `FpInterval` widening facts
 
 The propagation signatures don't carry the outward-widening invariant
@@ -158,15 +205,7 @@ theorem IsBoundedRange.fpAdd
   have h_err_bounds :
       -slack ≤ (g.toVal : R) - s ∧ (g.toVal : R) - s ≤ slack :=
     ⟨(abs_le.mp h_err_le_slack).1, (abs_le.mp h_err_le_slack).2⟩
-  refine ⟨?_, ?_⟩
-  · intro _
-    show (A.fpAddN B).lo ≤ (f.toVal : R)
-    rw [← hg_eq]; unfold FpInterval.fpAddN
-    linarith [h_err_bounds.1]
-  · intro _
-    show (f.toVal : R) ≤ (A.fpAddN B).hi
-    rw [← hg_eq]; unfold FpInterval.fpAddN
-    linarith [h_err_bounds.2]
+  close_interval_via_slack rw:hg_eq from:h_err_bounds unfolding FpInterval.fpAddN
 
 /-- `IsBoundedRange` propagates through `fpAddFinite`, subnormal-tolerant.
 Output interval: `A ⊞ B`.  Drops the normal-range precondition in
@@ -209,15 +248,7 @@ theorem IsBoundedRange.fpAdd_unified
   have h_err_bounds :
       -slack ≤ (g.toVal : R) - s ∧ (g.toVal : R) - s ≤ slack :=
     ⟨(abs_le.mp h_err_le_slack).1, (abs_le.mp h_err_le_slack).2⟩
-  refine ⟨?_, ?_⟩
-  · intro _
-    show (A ⊞ B).lo ≤ (f.toVal : R)
-    rw [← hg_eq]; unfold FpInterval.fpAdd
-    linarith [h_err_bounds.1]
-  · intro _
-    show (f.toVal : R) ≤ (A ⊞ B).hi
-    rw [← hg_eq]; unfold FpInterval.fpAdd
-    linarith [h_err_bounds.2]
+  close_interval_via_slack rw:hg_eq from:h_err_bounds unfolding FpInterval.fpAdd
 
 /-! ## Multiplication propagation -/
 
@@ -255,15 +286,7 @@ theorem IsBoundedRange.fpMul
       _ = (1 + η) * |p| := by ring
       _ ≤ (1 + η) * (A.maxMag * B.maxMag) :=
           mul_le_mul_of_nonneg_left hp_abs_le h1η_nn
-  refine ⟨?_, ?_⟩
-  · intro _
-    show (A.fpMulN B).lo ≤ (f.toVal : R)
-    rw [← hg_eq]; unfold FpInterval.fpMulN
-    exact (abs_le.mp hg_abs_le).1
-  · intro _
-    show (f.toVal : R) ≤ (A.fpMulN B).hi
-    rw [← hg_eq]; unfold FpInterval.fpMulN
-    exact (abs_le.mp hg_abs_le).2
+  close_interval_via_abs rw:hg_eq from:hg_abs_le unfolding FpInterval.fpMulN
 
 /-- `IsBoundedRange` propagates through `fpMulFinite`, subnormal-tolerant.
 Output: `A ⊠ B`. -/
@@ -301,15 +324,7 @@ theorem IsBoundedRange.fpMul_unified
       _ ≤ (1 + η) * (A.maxMag * B.maxMag) + FpInterval.subnormalConst := by
           have := mul_le_mul_of_nonneg_left hp_abs_le h1η_nn
           linarith
-  refine ⟨?_, ?_⟩
-  · intro _
-    show (A ⊠ B).lo ≤ (f.toVal : R)
-    rw [← hg_eq]; unfold FpInterval.fpMul
-    exact (abs_le.mp hg_abs_le).1
-  · intro _
-    show (f.toVal : R) ≤ (A ⊠ B).hi
-    rw [← hg_eq]; unfold FpInterval.fpMul
-    exact (abs_le.mp hg_abs_le).2
+  close_interval_via_abs rw:hg_eq from:hg_abs_le unfolding FpInterval.fpMul
 
 /-! ## FMA propagation -/
 
@@ -358,15 +373,7 @@ theorem IsBoundedRange.fpFMA
       _ ≤ η * |e| + |e| := by linarith
       _ = (1 + η) * |e| := by ring
       _ ≤ (1 + η) * M := mul_le_mul_of_nonneg_left he_abs_le h1η_nn
-  refine ⟨?_, ?_⟩
-  · intro _
-    show (A.fpFMAN B C).lo ≤ (f.toVal : R)
-    rw [← hg_eq]; unfold FpInterval.fpFMAN
-    exact (abs_le.mp hg_abs_le).1
-  · intro _
-    show (f.toVal : R) ≤ (A.fpFMAN B C).hi
-    rw [← hg_eq]; unfold FpInterval.fpFMAN
-    exact (abs_le.mp hg_abs_le).2
+  close_interval_via_abs rw:hg_eq from:hg_abs_le unfolding FpInterval.fpFMAN
 
 /-- `IsBoundedRange` propagates through `fpFMAFinite`, subnormal-tolerant.
 Output: `FpInterval.fpFMA A B C`. -/
@@ -414,15 +421,7 @@ theorem IsBoundedRange.fpFMA_unified
       _ ≤ (1 + η) * M + FpInterval.subnormalConst := by
           have := mul_le_mul_of_nonneg_left he_abs_le h1η_nn
           linarith
-  refine ⟨?_, ?_⟩
-  · intro _
-    show (FpInterval.fpFMA A B C).lo ≤ (f.toVal : R)
-    rw [← hg_eq]; unfold FpInterval.fpFMA
-    exact (abs_le.mp hg_abs_le).1
-  · intro _
-    show (f.toVal : R) ≤ (FpInterval.fpFMA A B C).hi
-    rw [← hg_eq]; unfold FpInterval.fpFMA
-    exact (abs_le.mp hg_abs_le).2
+  close_interval_via_abs rw:hg_eq from:hg_abs_le unfolding FpInterval.fpFMA
 
 /-! ## Demos: 3-op chains
 
