@@ -4,5 +4,6 @@ import Flean.Tags.Sterbenz
 import Flean.Tags.Nonneg
 import Flean.Tags.AbsBound
 import Flean.Tags.BoundedRange
+import Flean.Tags.BoundedRangePropagate
 import Flean.Tags.Bridges.ToIsNormalRange
 import Flean.Tags.SoftmaxBounded

@@ -462,11 +462,34 @@ The `h_separation` hypothesis says "the spread of xs is not so extreme
 that the smallest softmax entry underflows." Sufficient but possibly
 not necessary; the focused session will tighten if needed.
 
-### 3.4 Parametric propagation library (per §1.4)
+### 3.4 Parametric propagation library (per §1.4) — PARTIAL DONE
 
-- Start with `IsBoundedRange.{fpAdd, fpMul, fpFMA}`.
-- Exact rounding-slack formulas derived from `RelativeError.lean`.
-- Separate file: `Flean/Tags/BoundedRangePropagate.lean`.
+Implemented in `Flean/Tags/BoundedRangePropagate.lean` (~190 lines,
+sorry-free).
+
+- `IsBoundedRange.fpAdd` — **done**. Output interval
+  `[lo₁+lo₂ - η·M, hi₁+hi₂ + η·M]` where
+  `M = max |lo₁+lo₂| |hi₁+hi₂|`. Satisfies the locked invariants
+  `lo' ≤ lo₁+lo₂` and `hi₁+hi₂ ≤ hi'`.
+- `IsBoundedRange.fpMul` — **done**. Output interval
+  `[-(1+η)·M, (1+η)·M]` where
+  `M = max |lo₁| |hi₁| · max |lo₂| |hi₂|`. Symmetric-around-0 form —
+  the locked signature doesn't require an outward-bound invariant, so
+  the formula falls back cleanly to the worst-case magnitude.
+- `IsBoundedRange.fpFMA` — not yet. Signature will mirror the above
+  once a focused session lands it.
+
+Both lemmas take an additional hypothesis
+`(2 : R)^min_exp ≤ |exact result|` — the sign-agnostic normal-range
+lower bound. The upper bound of the normal range is derived inside
+the meta-lemma from finiteness of the rounded result. Subnormal and
+zero inputs are not covered (punted, per the session prompt's
+"scope drift" guidance).
+
+Infrastructure added: `round_preserves_abs_error_normal` in
+`Flean/Rounding/RoundPreserves.lean` (~55 lines) — sign-agnostic
+additive error bound via `RModeNearest` + `RModeConj`. Companion to
+the magnitude-only `round_preserves_abs_bound_normal`.
 
 **Success criterion**: a 3-op chain (e.g., `fpAdd (fpMul x y) bias`) can
 thread `IsBoundedRange` through via three explicit calls, and the proof
