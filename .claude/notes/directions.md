@@ -420,20 +420,25 @@ Rounding/ files but narrow applicability.
         `_neumaierSum_error_bound` (loose), `_neumaierCompensated_error_bound` (tight).
       - Log step stays abstract (no `fpLogFinite`/`LogApprox` exists yet); when
         one lands, a thin wrapper supplies `h_log_close`.
-    - [ ] **Dot-product `FpSumBound` adapter** (session-ready: plumbing only)
-      — `FpSumBound.ofDotProduct` + `FpSumBound.ofDotProductFMA` using existing
-      `dp_error_bound` / `fma_horner_error_bound` from `DotProduct.lean` /
-      `DotProductFMA.lean`. Would let matmul/attention accumulators plug into
-      the same framework that softmax/LSE consume. Parallels the Kahan/Neumaier
-      adapters. ~150-250 lines per constructor. **Good next-session pick** —
-      no new design, direct ML value.
+    - [x] **Dot-product bound adapters** — `FpDotProductBound.ofDotProduct`
+      + `.ofDotProductFMA` in `Flean/Operations/FpDotProduct.lean` (the
+      work previously tracked as a to-do "FpSumBound.ofDotProduct" —
+      that name was a misnomer, since `FpSumBound` bounds `Σ xs_i.toVal`
+      while the dot product bound is against `Σ xs_i·ys_i`; the right
+      output type is `FpDotProductBound`, which already exists).  Both
+      adapters wrap `DPTrace` / `FMADPTrace` with `relErr = (1+η)^n − 1`.
+      `ofDotProduct` needs `RModeIdem` for the zero-init exact-step trick;
+      `ofDotProductFMA` doesn't.  Also already shipped:
+      `FpDotProductBoundCompensated` + `.ofProducts` + `.compensateAndRound`.
     - [ ] **Cross-entropy loss** — `CE(y, x) = -Σ y_i · (x_i - LSE(x))`. All
-      pieces exist: LSE (done), softmax (done), FP dot-product. End-to-end
-      verified ML loss function that demonstrates the framework's
-      compositionality. Ideal follow-up to dot-product adapters (uses them for
-      the `Σ y_i · r_i` step). ~300-500 lines. Would surface rough edges where
-      softmax/LSE/dot-product compose. Natural capstone for the ML-primitives
-      arc (softmax + LSE + cross-entropy).
+      pieces exist: LSE (done), softmax (done), `FpDotProductBound` (done).
+      End-to-end verified ML loss function that demonstrates the
+      framework's compositionality.  Uses `FpDotProductBound` for the
+      `Σ y_i · r_i` step after shifting by LSE. ~300-500 lines. Would
+      surface rough edges where softmax/LSE/dot-product compose.  Natural
+      capstone for the ML-primitives arc (softmax + LSE + cross-entropy).
+      **Session-ready next pick.**  Session prompt:
+      `.claude/notes/cross-entropy-session-prompt.md`.
     - [ ] **Temperature scaling** — `softmax(xs/T)`, convergence to argmax as T→0.
 
 ## Mid-Term — Mixed-Precision & ML
