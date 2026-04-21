@@ -1,6 +1,7 @@
 # Tag Framework — Phase 2 Design
 
-**Status**: IN PROGRESS (started 2026-04-20).
+**Status**: Stages 1–6 LANDED (2026-04-20).  Stage 7 (concrete demo)
+remains; see closing note.
 
 **Chosen target**: Candidate B — LayerNorm as a new tagged ML primitive.
 
@@ -250,3 +251,84 @@ New file: `Flean/Tags/LayerNorm.lean`.
 
 One commit per stage that builds.  Stage 1 (definitions) alone can
 commit before any bound lands — the definitions are self-contained.
+
+---
+
+## 6. What actually landed (2026-04-20 close)
+
+### Files added
+- `Flean/Operations/LayerNorm.lean` (~560 lines, sorry-free).
+- `Flean/Tags/LayerNorm.lean` (~100 lines, sorry-free).
+
+### Theorems delivered
+
+**Pure-math**: `mean`, `variance`, `layerNorm` + `variance_nonneg`,
+`variance_plus_eps_pos`, `sqrt_var_plus_eps_pos`, `sum_shift_eq_zero`.
+
+**Per-step FP error bounds** (normal-range regime, all sorry-free):
+1. `fpMean_error_bound` — division step after `FpSumBound` adapter.
+2. `fpShift_error_bound` — `fpSubFinite` per-component step.
+3. `fpSqDiff_step_error_bound` — `fpMulFinite` squaring step.
+4. `fpVar_step_error_bound` — variance divide (thin wrapper of
+   `fpMean_error_bound`).
+5. `fpVarPlusEps_step_error_bound` — `fpAddFinite` eps-add step.
+6. `fpStddev_step_error_bound` — `fpSqrtFinite` step.
+7. `fpNormalize_step_error_bound` — final per-component divide.
+
+**End-to-end composition**:
+- `fpLayerNorm_composition_bound` — triangle-inequality composition
+  of the three main error terms (shift, stddev, final divide) into
+  a forward-error bound.
+- `fpLayerNorm_end_to_end_error_bound` — `layerNorm`-tied wrapper.
+
+**Tag wrapper**:
+- `fpLayerNorm_tagged_bound` — `IsBoundedRange`-aware end-to-end.
+- `fpLayerNorm_input_abs_le` — tag magnitude corollary.
+
+### What the tag currently delivers
+
+`IsBoundedRange I xs` exposes `|xs_i| ≤ I.maxMag`, available to
+downstream bounds via `.toVal_abs_le`.  The tag is carried through
+the wrapper but does not yet automatically discharge normal-range
+preconditions on every per-step theorem — that's Phase 3 work
+requiring:
+- `IsBoundedRange.fpSub` propagation lemma (mirror of existing
+  `IsBoundedRange.fpAdd`).
+- Lower-bound magnitude reasoning for products and sums
+  (`(x_i − μ̂)²` needs `|x_i − μ̂| ≥ 2^(min_exp/2)`, i.e. a
+  separation hypothesis on spread of `xs` vs. `μ̂`).
+- A `separation`-style hypothesis analogous to softmax's
+  `4·n·2^min_exp ≤ exp(I.lo − I.hi)`, tailored to LayerNorm's
+  quotient regime.
+
+### What's missing (Stage 7 todos)
+
+- **Concrete demo**: a small test theorem instantiating
+  `fpLayerNorm_tagged_bound` with `FpSum.FpSumBound.ofNaive` for both
+  summations.  Scaffolding for this is all in place — just didn't
+  land this session due to heartbeat-budget concerns on struct
+  elaboration.  Can be added in a brief follow-up commit.
+
+### Signal about framework durability
+
+Positive:
+- Seven new per-step error-bound theorems, all following the same
+  `round_witness + round_preserves_abs_error_normal` template —
+  confirms that the Phase 1 meta-lemma kernel scales to a new
+  workload.
+- `FpSumBound` adapter slotted in cleanly — no modifications needed
+  to `Flean/Operations/FpSum.lean`.
+- Composition via triangle inequality over three main error terms —
+  clean, each per-step δ appears explicitly in the final bound.
+
+Neutral:
+- The tag currently plays a minor role in the Phase 2 delivery
+  (magnitude corollary only).  Broader tag automation needs
+  infrastructure additions flagged above.  This matches the pattern
+  in Phase 1 where `SoftmaxBounded.lean` bridges landed incrementally.
+
+Negative:
+- Struct elaboration with many `FpSumBound`-valued fields hit
+  `whnf` heartbeat limits; had to flatten to unbundled hypotheses.
+  Worth investigating whether `FpSumBound` reducibility annotations
+  would help future bundle structs.

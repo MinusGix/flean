@@ -8,3 +8,4 @@ import Flean.Tags.BoundedRange
 import Flean.Tags.BoundedRangePropagate
 import Flean.Tags.Bridges.ToIsNormalRange
 import Flean.Tags.SoftmaxBounded
+import Flean.Tags.LayerNorm

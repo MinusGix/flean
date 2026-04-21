@@ -671,14 +671,35 @@ than handwaving.
 
 ---
 
-## 6. Out of scope (for clarity)
+## 6. Out of scope / deferred
 
-- Phase 2 (tag-specialized bounds that actually tighten end-to-end
-  theorems like Softmax's `subnormalConst`).
-- ML primitives (attention, layer norm, etc.).
+Moved out of scope at Phase 1 close; deferred targets annotated with
+landing status as of Phase 2.
+
+### Phase 2: partially landed (2026-04-20)
+
+- ~~Tag-specialized bounds that tighten end-to-end theorems like
+  Softmax's `subnormalConst`~~ — **delivered in Phase 1** via
+  `fpSoftmax_bound_of_separated` (`IsBoundedRange` + log-bound +
+  separation → clean softmax form with no `sc` tail).
+- **LayerNorm as a new tagged ML primitive** — Phase 2 Stages 1–6
+  landed in `Flean/Operations/LayerNorm.lean` + `Flean/Tags/LayerNorm.lean`.
+  Per-step rounding error bounds for mean, shift, square, variance,
+  eps-add, sqrt, and normalize are sorry-free; an end-to-end composition
+  theorem threads the per-step δ's into a forward error bound against
+  the real-valued `layerNorm`.  The tag wrapper currently exposes
+  `|xs_i| ≤ I.maxMag` via `.toVal_abs_le`; full automatic normal-range
+  discharging is deferred (requires `IsBoundedRange.fpSub` + lower-bound
+  magnitude reasoning).  Design in
+  `.claude/notes/tag-framework-phase2-design.md`.
+
+### Still out of scope
+
+- Other ML primitives (attention, cross-attention, etc.).
 - Tag export to external tools.
 - Any tactic or elaborator work.
-
-These come later. Keeping this doc scoped to "what does Phase 1
-infrastructure look like" prevents the scope creep the pilot phase was
-designed to prevent.
+- Candidate A-partitioned (per-index `IsBoundedRange` subsetting in
+  softmax).  Framework-novel but unrequested — deferred pending
+  evidence that per-subset bounds are needed in practice.
+- Automatic discharging of LayerNorm's normal-range preconditions
+  from `IsBoundedRange` + separation (Phase 3 work).
