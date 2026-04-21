@@ -106,6 +106,23 @@ def fpAdd (A B : FpInterval R) : FpInterval R :=
   let slack : R := (η : R) * M + subnormalConst
   ⟨(A.lo + B.lo) - slack, (A.hi + B.hi) + slack⟩
 
+/-! ## Negation and subtraction
+
+Subtraction is `fpAdd` on the negated right operand.  We expose both
+the negation operator on intervals and the composed `fpSub{,N}` for
+direct use. -/
+
+/-- Interval negation: `[lo, hi] ↦ [-hi, -lo]`.  Preserves the
+invariant that the lower endpoint is `≤` the upper (when the input
+does). -/
+def neg (A : FpInterval R) : FpInterval R := ⟨-A.hi, -A.lo⟩
+
+/-- Normal-range subtract: `A.fpSubN B = A.fpAddN (neg B)`. -/
+def fpSubN (A B : FpInterval R) : FpInterval R := A.fpAddN B.neg
+
+/-- Unified (subnormal-tolerant) subtract: `A ⊟ B = A ⊞ (neg B)`. -/
+def fpSub (A B : FpInterval R) : FpInterval R := fpAdd A B.neg
+
 /-! ## Multiplication
 
 Symmetric-around-0 bounds: mixed-sign products have no natural one-sided
@@ -151,5 +168,8 @@ scoped infixl:65 " ⊞ " => FpInterval.fpAdd
 
 @[inherit_doc FpInterval.fpMul]
 scoped infixl:70 " ⊠ " => FpInterval.fpMul
+
+@[inherit_doc FpInterval.fpSub]
+scoped infixl:65 " ⊟ " => FpInterval.fpSub
 
 end Flean.Tags

@@ -1,5 +1,6 @@
 import Flean.Operations.LayerNorm
 import Flean.Tags.BoundedRange
+import Flean.Tags.Normal
 
 /-!
 # Tag-Specialized LayerNorm: `IsBoundedRange` Wrapper
@@ -100,5 +101,125 @@ theorem fpLayerNorm_input_abs_le
     (hxs : IsBoundedRange (R := ℝ) I xs) (i : Fin n) :
     |((xs i).toVal : ℝ)| ≤ I.maxMag :=
   hxs.toVal_abs_le i
+
+/-! ## Tag-dematerialized per-step bounds
+
+The helpers below discharge normal-range preconditions on per-step
+LayerNorm theorems automatically from an `IsNormal eps` tag on the
+stability constant + the (free) nonnegativity of the real variance.
+These are the concrete tag-tightening demos for LayerNorm.
+
+**What gets discharged**:
+- `fpVarPlusEps_step_error_bound`'s normal-range hypothesis: derivable
+  from `IsNormal eps` + `0 ≤ var.toVal` (variance is always a nonneg
+  sum divided by n, so the real var is nonneg; its FP approximation
+  stays nonneg under the unified-round preservation).
+-/
+
+/-- **Normal-range on `var + eps` from `IsNormal eps`**.
+
+Under `IsNormal eps.toVal` + nonnegativity of the FP variance, the sum
+`var + eps` is ≥ `2^min_exp`, so its absolute value lies above the
+normal-range lower bound.  Used to discharge
+`fpVarPlusEps_step_error_bound`'s normal-range hypothesis. -/
+theorem varPlusEps_normal_of_eps_normal {var eps : FiniteFp}
+    (heps : IsNormal (R := ℝ) eps.toVal)
+    (hvar_nn : 0 ≤ (var.toVal : ℝ)) :
+    (2 : ℝ) ^ FloatFormat.min_exp ≤ |((var.toVal : ℝ)) + eps.toVal| := by
+  have hsum_normal : IsNormal (R := ℝ) (var.toVal + eps.toVal) := by
+    have h_swap : (var.toVal : ℝ) + eps.toVal = eps.toVal + var.toVal := by ring
+    rw [h_swap]
+    exact heps.add_nonneg hvar_nn
+  have hsum_pos : 0 < (var.toVal : ℝ) + eps.toVal := hsum_normal.pos
+  have habs : |((var.toVal : ℝ)) + eps.toVal| = (var.toVal : ℝ) + eps.toVal :=
+    abs_of_pos hsum_pos
+  rw [habs]
+  exact hsum_normal.ge_min
+
+/-- **Tag-tightened eps-add error bound**.
+
+`fpVarPlusEps_step_error_bound` with the normal-range precondition
+discharged automatically from `IsNormal eps` + `0 ≤ var.toVal`.
+First concrete Phase 2-style tightening for LayerNorm: the tag
+dematerializes one of the seven per-step preconditions. -/
+theorem fpVarPlusEps_tagged_step_error_bound
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ]
+    [RModeNearest ℝ] [RModeConj ℝ] [RModeZero ℝ]
+    {var eps varPlusEps : FiniteFp}
+    (heps : IsNormal (R := ℝ) eps.toVal)
+    (hvar_nn : 0 ≤ (var.toVal : ℝ))
+    (h_varPlusEps : fpAddFinite var eps = Fp.finite varPlusEps) :
+    |((varPlusEps.toVal : ℝ)) - (var.toVal + eps.toVal)| ≤
+      (η : ℝ) * |((var.toVal : ℝ)) + eps.toVal| :=
+  fpVarPlusEps_step_error_bound h_varPlusEps
+    (varPlusEps_normal_of_eps_normal heps hvar_nn)
+
+/-- **Normal-range on `√(varPlusEps)` from `IsNormal varPlusEps` +
+`min_exp ≤ 0`**.
+
+For standard FP formats (fp16/32/64/etc.), `min_exp` is negative, so
+`2^(2·min_exp) ≤ 2^min_exp` and the normal-range hypothesis on
+`√varPlusEps` follows from `IsNormal varPlusEps`.  This discharges
+`fpStddev_step_error_bound`'s normal-range hypothesis under the
+`min_exp ≤ 0` side condition.
+
+The side condition is explicit (not derived) to keep the theorem
+format-agnostic — if a pathological FloatFormat has `min_exp > 0`,
+the caller must supply the stronger sqrt-side hypothesis directly. -/
+theorem sqrtVarPlusEps_normal_of_tagged
+    {varPlusEps : FiniteFp}
+    (hvpe : IsNormal (R := ℝ) varPlusEps.toVal)
+    (hme : FloatFormat.min_exp ≤ 0) :
+    (2 : ℝ) ^ FloatFormat.min_exp ≤ |Real.sqrt ((varPlusEps.toVal : ℝ))| := by
+  have hvpe_pos : 0 < (varPlusEps.toVal : ℝ) := hvpe.pos
+  have hsqrt_nn : 0 ≤ Real.sqrt ((varPlusEps.toVal : ℝ)) :=
+    Real.sqrt_nonneg _
+  rw [abs_of_nonneg hsqrt_nn]
+  -- Need: 2^min_exp ≤ √varPlusEps
+  -- Both sides positive; equivalent to (2^min_exp)² ≤ varPlusEps, i.e., 2^(2·min_exp) ≤ varPlusEps.
+  have h2me_pos : (0 : ℝ) < (2 : ℝ) ^ FloatFormat.min_exp := by positivity
+  have hgoal_sq :
+      ((2 : ℝ) ^ FloatFormat.min_exp) ^ 2 ≤ (varPlusEps.toVal : ℝ) := by
+    -- ((2:ℝ)^min_exp)^2 = 2^(2·min_exp) ≤ 2^min_exp ≤ varPlusEps.
+    have hpow_sq : ((2 : ℝ) ^ FloatFormat.min_exp) ^ 2 =
+        (2 : ℝ) ^ (2 * FloatFormat.min_exp : ℤ) := by
+      rw [show (2 * FloatFormat.min_exp : ℤ) = FloatFormat.min_exp + FloatFormat.min_exp from by ring]
+      rw [zpow_add₀ (by norm_num : (2 : ℝ) ≠ 0)]
+      ring
+    rw [hpow_sq]
+    have hpow_le :
+        (2 : ℝ) ^ (2 * FloatFormat.min_exp : ℤ) ≤ (2 : ℝ) ^ FloatFormat.min_exp := by
+      apply zpow_le_zpow_right₀ (by norm_num : (1 : ℝ) ≤ 2)
+      linarith
+    exact le_trans hpow_le hvpe.ge_min
+  -- √varPlusEps ≥ 2^min_exp via monotonicity of √ applied to hgoal_sq.
+  have h_sqrt_mono :
+      Real.sqrt (((2 : ℝ) ^ FloatFormat.min_exp) ^ 2) ≤
+        Real.sqrt ((varPlusEps.toVal : ℝ)) :=
+    Real.sqrt_le_sqrt hgoal_sq
+  have h_sqrt_sq :
+      Real.sqrt (((2 : ℝ) ^ FloatFormat.min_exp) ^ 2) =
+        (2 : ℝ) ^ FloatFormat.min_exp := by
+    rw [Real.sqrt_sq (le_of_lt h2me_pos)]
+  linarith
+
+/-- **Tag-tightened sqrt error bound**.
+
+`fpStddev_step_error_bound` with normal-range precondition on
+`√varPlusEps` discharged automatically from `IsNormal varPlusEps` +
+`min_exp ≤ 0`. -/
+theorem fpStddev_tagged_step_error_bound
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+    [RModeNearest ℝ] [RModeConj ℝ]
+    {varPlusEps stddev : FiniteFp}
+    (hvpe : IsNormal (R := ℝ) varPlusEps.toVal)
+    (hme : FloatFormat.min_exp ≤ 0)
+    (h_ve_pos : varPlusEps.s = false)
+    (h_ve_m_ne : varPlusEps.m ≠ 0)
+    (h_stddev : fpSqrtFinite varPlusEps = Fp.finite stddev) :
+    |((stddev.toVal : ℝ)) - Real.sqrt ((varPlusEps.toVal : ℝ))| ≤
+      (η : ℝ) * |Real.sqrt ((varPlusEps.toVal : ℝ))| :=
+  fpStddev_step_error_bound h_ve_pos h_ve_m_ne h_stddev
+    (sqrtVarPlusEps_normal_of_tagged hvpe hme)
 
 end Flean.Tags

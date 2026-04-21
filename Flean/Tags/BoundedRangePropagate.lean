@@ -250,6 +250,61 @@ theorem IsBoundedRange.fpAdd_unified
     ⟨(abs_le.mp h_err_le_slack).1, (abs_le.mp h_err_le_slack).2⟩
   close_interval_via_slack rw:hg_eq from:h_err_bounds unfolding FpInterval.fpAdd
 
+/-! ## Subtraction propagation
+
+`fpSubFinite` is defined as `fpAddFinite (·) (-·)`, so subtraction
+propagation reduces to (1) negation propagation on the interval side
+and (2) the existing addition propagation.  We expose both a
+normal-range and a subnormal-tolerant variant. -/
+
+omit [FloorRing R] in
+/-- Negation preserves `IsBoundedRange`: the interval endpoints swap
+sign (lo ↔ -hi, hi ↔ -lo). -/
+theorem IsBoundedRange.neg {A : FpInterval R} {m : ℕ}
+    {xs : Fin m → FiniteFp} (h : IsBoundedRange (R := R) A xs) :
+    IsBoundedRange (R := R) A.neg (fun i => -(xs i)) := by
+  refine ⟨?_, ?_⟩
+  · intro i
+    show (A.neg.lo : R) ≤ ((-(xs i)).toVal : R)
+    rw [FpInterval.neg, FiniteFp.toVal_neg_eq_neg (R := R)]
+    exact neg_le_neg (h.upper i)
+  · intro i
+    show ((-(xs i)).toVal : R) ≤ A.neg.hi
+    rw [FpInterval.neg, FiniteFp.toVal_neg_eq_neg (R := R)]
+    exact neg_le_neg (h.lower i)
+
+/-- `IsBoundedRange` propagates through `fpSubFinite` in the normal-range
+regime.  Output interval: `A.fpSubN B = A.fpAddN B.neg`. -/
+theorem IsBoundedRange.fpSub
+    [RMode R] [RModeExec] [RoundIntSigMSound R]
+    [RModeNearest R] [RModeConj R] [RModeZero R]
+    {A B : FpInterval R} {x y f : FiniteFp}
+    (hx : IsBoundedRange (R := R) A (fun (_ : Fin 1) => x))
+    (hy : IsBoundedRange (R := R) B (fun (_ : Fin 1) => y))
+    (h_normal : (2 : R) ^ FloatFormat.min_exp ≤ |(x.toVal : R) - y.toVal|)
+    (hf : fpSubFinite x y = Fp.finite f) :
+    IsBoundedRange (R := R) (A.fpSubN B) (fun (_ : Fin 1) => f) := by
+  have hy_neg : IsBoundedRange (R := R) B.neg (fun (_ : Fin 1) => -y) := hy.neg
+  have hf_add : fpAddFinite x (-y) = Fp.finite f := hf
+  have h_normal' : (2 : R) ^ FloatFormat.min_exp ≤ |(x.toVal : R) + (-y).toVal| := by
+    rw [FiniteFp.toVal_neg_eq_neg (R := R)]
+    convert h_normal using 2; ring
+  exact IsBoundedRange.fpAdd hx hy_neg h_normal' hf_add
+
+/-- `IsBoundedRange` propagates through `fpSubFinite`, subnormal-tolerant.
+Output: `A ⊟ B`. -/
+theorem IsBoundedRange.fpSub_unified
+    [RMode R] [RModeExec] [RoundIntSigMSound R]
+    [RModeNearest R] [RModeConj R] [RModeZero R]
+    {A B : FpInterval R} {x y f : FiniteFp}
+    (hx : IsBoundedRange (R := R) A (fun (_ : Fin 1) => x))
+    (hy : IsBoundedRange (R := R) B (fun (_ : Fin 1) => y))
+    (hf : fpSubFinite x y = Fp.finite f) :
+    IsBoundedRange (R := R) (A ⊟ B) (fun (_ : Fin 1) => f) := by
+  have hy_neg : IsBoundedRange (R := R) B.neg (fun (_ : Fin 1) => -y) := hy.neg
+  have hf_add : fpAddFinite x (-y) = Fp.finite f := hf
+  exact IsBoundedRange.fpAdd_unified hx hy_neg hf_add
+
 /-! ## Multiplication propagation -/
 
 /-- `IsBoundedRange` propagates through `fpMulFinite` in the normal-range
