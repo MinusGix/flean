@@ -378,4 +378,89 @@ theorem fpStddev_cascaded_tagged_bound
     abs_sub_le _ _ _
   linarith
 
+/-! ## Fully-tagged end-to-end LayerNorm bound
+
+Glues the cascaded stddev bound into
+`fpLayerNorm_end_to_end_error_bound` so the user no longer supplies
+`δ_stddev` — that's computed internally from the tag pair + upstream
+`δ_var`.  This is the most-tag-tightened LayerNorm forward-error
+bound the current framework delivers.
+
+What the user supplies:
+- Tag hypotheses: `IsNormal eps.toVal`, `IsNormal varPlusEps.toVal`,
+  `min_exp ≤ 0`.
+- Framework hypotheses: `0 < n`, `0 < stddev.toVal`, `0 ≤ var.toVal`.
+- Upstream δ's: `δ_var` (variance chain), `δ_shift` (shift chain),
+  `δ_final` (final divide).
+- FP rounding witnesses for eps-add, sqrt (the ones whose
+  normal-range hypotheses the tags discharge).
+
+What the user no longer supplies:
+- `δ_stddev` — derived via `fpStddev_cascaded_tagged_bound`.
+- eps-add normal-range hypothesis.
+- sqrt-side normal-range hypothesis.
+- sqrt-Lipschitz denominator lower bound.
+
+Before/after: Phase 1-era bound would require all three discharged
+preconditions manually, plus the user would need `δ_stddev` as a
+derived quantity.  Phase 2 cascaded form: three preconditions gone,
+`δ_stddev` auto-composed. -/
+theorem fpLayerNorm_fully_tagged_end_to_end_bound
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+    [RModeNearest ℝ] [RModeConj ℝ] [RModeZero ℝ]
+    {n : ℕ} {xs : Fin n → FiniteFp}
+    {var varPlusEps stddev eps_fp : FiniteFp}
+    {shifted : Fin n → FiniteFp}
+    {result : Fin n → FiniteFp}
+    (i : Fin n)
+    (heps : IsNormal (R := ℝ) eps_fp.toVal)
+    (hvpe : IsNormal (R := ℝ) varPlusEps.toVal)
+    (hme : FloatFormat.min_exp ≤ 0)
+    (hn_pos_r : 0 < (n : ℝ))
+    (h_stddev_pos : 0 < (stddev.toVal : ℝ))
+    (hvar_nn : 0 ≤ (var.toVal : ℝ))
+    {δ_var δ_shift δ_final : ℝ}
+    (h_var_err :
+      |((var.toVal : ℝ)) -
+          variance (fun j => ((xs j).toVal : ℝ))| ≤ δ_var)
+    (h_shift :
+      |((shifted i).toVal : ℝ) -
+          (((xs i).toVal : ℝ) -
+            mean (fun j => ((xs j).toVal : ℝ)))| ≤ δ_shift)
+    (h_final :
+      |((result i).toVal : ℝ) -
+          (shifted i).toVal / stddev.toVal| ≤ δ_final)
+    (h_varPlusEps : fpAddFinite var eps_fp = Fp.finite varPlusEps)
+    (h_ve_s : varPlusEps.s = false)
+    (h_ve_m_ne : varPlusEps.m ≠ 0)
+    (h_stddev_witness : fpSqrtFinite varPlusEps = Fp.finite stddev) :
+    |((result i).toVal : ℝ) -
+        layerNorm (fun j => ((xs j).toVal : ℝ)) eps_fp.toVal i| ≤
+      δ_final + δ_shift / stddev.toVal +
+        |((xs i).toVal : ℝ) -
+            mean (fun j => ((xs j).toVal : ℝ))| *
+        ((η : ℝ) * Real.sqrt ((varPlusEps.toVal : ℝ)) +
+          ((η : ℝ) * |((var.toVal : ℝ)) + eps_fp.toVal| + δ_var) /
+            (2 * Real.sqrt ((2 : ℝ) ^ FloatFormat.min_exp))) /
+          ((stddev.toVal : ℝ) *
+            Real.sqrt (variance (fun j => ((xs j).toVal : ℝ)) +
+                       eps_fp.toVal)) := by
+  have hsigma_sq_nn :
+      0 ≤ variance (fun j => ((xs j).toVal : ℝ)) :=
+    variance_nonneg _ (le_of_lt hn_pos_r)
+  have heps_pos : 0 < (eps_fp.toVal : ℝ) := heps.pos
+  -- Cascaded stddev bound via the tag.
+  have h_stddev_bound :
+      |((stddev.toVal : ℝ)) -
+          Real.sqrt (variance (fun j => ((xs j).toVal : ℝ)) +
+                     eps_fp.toVal)| ≤
+        (η : ℝ) * Real.sqrt ((varPlusEps.toVal : ℝ)) +
+        ((η : ℝ) * |((var.toVal : ℝ)) + eps_fp.toVal| + δ_var) /
+          (2 * Real.sqrt ((2 : ℝ) ^ FloatFormat.min_exp)) :=
+    fpStddev_cascaded_tagged_bound heps hvpe hme hvar_nn hsigma_sq_nn
+      h_var_err h_varPlusEps h_ve_s h_ve_m_ne h_stddev_witness
+  -- Plug into the pre-existing end-to-end theorem.
+  exact fpLayerNorm_end_to_end_error_bound i heps_pos hn_pos_r
+    h_stddev_pos h_shift h_stddev_bound h_final
+
 end Flean.Tags
