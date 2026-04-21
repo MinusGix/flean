@@ -676,22 +676,23 @@ than handwaving.
 Moved out of scope at Phase 1 close; deferred targets annotated with
 landing status as of Phase 2.
 
-### Phase 2: partially landed (2026-04-20)
+### Phase 2: substantially landed (2026-04-20)
 
 - ~~Tag-specialized bounds that tighten end-to-end theorems like
   Softmax's `subnormalConst`~~ — **delivered in Phase 1** via
   `fpSoftmax_bound_of_separated` (`IsBoundedRange` + log-bound +
   separation → clean softmax form with no `sc` tail).
 - **LayerNorm as a new tagged ML primitive** — Phase 2 Stages 1–6
-  landed in `Flean/Operations/LayerNorm.lean` + `Flean/Tags/LayerNorm.lean`.
-  Per-step rounding error bounds for mean, shift, square, variance,
-  eps-add, sqrt, and normalize are sorry-free; an end-to-end composition
-  theorem threads the per-step δ's into a forward error bound against
-  the real-valued `layerNorm`.  The tag wrapper currently exposes
-  `|xs_i| ≤ I.maxMag` via `.toVal_abs_le`; full automatic normal-range
-  discharging is deferred (requires `IsBoundedRange.fpSub` + lower-bound
-  magnitude reasoning).  Design in
-  `.claude/notes/tag-framework-phase2-design.md`.
+  + follow-up tag-tightening push all landed sorry-free.  Seven
+  per-step rounding error bounds (mean, shift, square, variance,
+  eps-add, sqrt, normalize), an end-to-end composition theorem, a
+  cascaded tag-tightened stddev bound, and a fully-tagged end-to-end
+  wrapper that dematerializes 4/9 preconditions under `IsNormal` tag
+  pair.  `IsBoundedRange.fpSub` propagation added to close the
+  framework gap.  Full scorecard + honest limits
+  (5 remaining preconditions tied to LayerNorm's `(x_i − μ)` factor
+  that can be arbitrarily small) in
+  `.claude/notes/tag-framework-phase2-design.md` §7.
 
 ### Still out of scope
 

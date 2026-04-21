@@ -1,7 +1,9 @@
 # Tag Framework — Phase 2 Design
 
-**Status**: Stages 1–6 LANDED (2026-04-20).  Stage 7 (concrete demo)
-remains; see closing note.
+**Status**: Stages 1–6 LANDED (2026-04-20), plus a follow-up
+tag-tightening push the same day that delivers the cascaded +
+fully-tagged end-to-end bounds.  Stage 7 (concrete
+`FpSum.FpSumBound.ofNaive` demo) remains; see §7.
 
 **Chosen target**: Candidate B — LayerNorm as a new tagged ML primitive.
 
@@ -332,3 +334,142 @@ Negative:
   `whnf` heartbeat limits; had to flatten to unbundled hypotheses.
   Worth investigating whether `FpSumBound` reducibility annotations
   would help future bundle structs.
+
+---
+
+## 7. Follow-up push: tag tightening at the end-to-end level
+
+After the Stage-1-through-6 close, the honest critique was that the
+tag was carrying through the final wrapper without *dematerializing*
+any term — i.e., Phase 2's core ethos wasn't demonstrated for
+LayerNorm.  A same-day follow-up pushed on this, landing three
+additional commits.
+
+### Framework additions (cross-cutting)
+
+- `FpInterval.neg` / `fpSubN` / `fpSub` + scoped `⊟` notation
+  (`Flean/Tags/FpInterval.lean`).  Subtraction defined as
+  `fpAdd · (neg ·)` to reuse the existing add slack analysis.
+- `IsBoundedRange.neg`, `IsBoundedRange.fpSub`,
+  `IsBoundedRange.fpSub_unified`
+  (`Flean/Tags/BoundedRangePropagate.lean`) — propagation through
+  `fpSubFinite` via negation + add-propagation.  Closes the
+  framework gap flagged in §4 as a prerequisite for LayerNorm
+  tag automation.
+
+### Per-step tag-tightened bounds
+
+New theorems in `Flean/Tags/LayerNorm.lean`:
+
+1. `varPlusEps_normal_of_eps_normal` — `IsNormal eps` + `0 ≤ var` →
+   `2^min_exp ≤ |var + eps|`.  Uses `IsNormal.add_nonneg`.
+2. `fpVarPlusEps_tagged_step_error_bound` — wraps the eps-add
+   per-step bound, discharges normal-range from the tag.
+3. `sqrtVarPlusEps_normal_of_tagged` — `IsNormal varPlusEps` +
+   `min_exp ≤ 0` → sqrt-side normal-range.  Uses
+   `Real.sqrt_le_sqrt` + `Real.sqrt_sq`.  The `min_exp ≤ 0`
+   side condition holds for all standard formats (fp16/32/64/etc.)
+   but is explicit to stay format-agnostic.
+4. `fpStddev_tagged_step_error_bound` — wraps the sqrt per-step
+   bound, discharges normal-range from the tag pair.
+
+### Cascaded composition theorem
+
+`fpStddev_cascaded_tagged_bound` — composes the eps-add + sqrt
+tag-tightened bounds with a sqrt-Lipschitz step to bound
+`|stddev − √(σ² + eps)|` directly from `|var − σ²| ≤ δ_var` + the
+tag hypotheses.
+
+Supporting private lemma: `sqrt_sub_sqrt_le_of_lb` — if `c ≤ a` and
+`c ≤ b` with `c > 0`, then `|√a − √b| ≤ |a − b| / (2·√c)`.  Proved
+via `(√a − √b)·(√a + √b) = a − b` and denominator substitution.
+
+Result shape:
+```
+|stddev − √(σ² + eps)| ≤
+    η · √varPlusEps
+  + (η · (var + eps) + δ_var) / (2 · √(2^min_exp))
+```
+
+Three tag-discharged preconditions collapse into one cleanly-stated
+bound; the variance-side error `δ_var` stays as the one
+user-supplied upstream quantity.
+
+### Fully-tagged end-to-end theorem
+
+`fpLayerNorm_fully_tagged_end_to_end_bound` — final user-facing
+wrapper.  Takes:
+- Tags: `IsNormal eps.toVal`, `IsNormal varPlusEps.toVal`,
+  `min_exp ≤ 0`.
+- Framework hypotheses: `0 < n`, `0 < stddev.toVal`,
+  `0 ≤ var.toVal`.
+- Upstream δ's: `δ_var`, `δ_shift`, `δ_final`.
+- FP rounding witnesses for eps-add and sqrt.
+
+Produces: a forward-error bound on `|result_i − layerNorm xs eps i|`
+where `eps = eps_fp.toVal`, with the `δ_stddev` field of the earlier
+end-to-end bound now auto-composed internally.
+
+### Final scorecard (preconditions dematerialized)
+
+| Per-step precondition | Untagged | Tagged |
+|---|---|---|
+| eps-add normal-range | manual | ✓ tag |
+| sqrt-side normal-range | manual | ✓ tag pair + min_exp |
+| sqrt-Lipschitz denom lower bound | manual | ✓ tag pair |
+| `δ_stddev` composition | manual | ✓ cascaded |
+| mean-div normal-range | manual | still manual |
+| shift normal-range | manual | still manual |
+| square normal-range | manual | still manual |
+| variance-div normal-range | manual | still manual |
+| normalize normal-range | manual | still manual |
+
+**4 of 9 preconditions + 1 upstream-derived quantity** are now
+automatic under the tag pair.  The 5 that remain are tied to
+LayerNorm's `(x_i − μ)` factor, which can be arbitrarily small
+for inputs close to the mean — no input-side tag can rule that out
+without strong input-spread assumptions (stronger than
+`IsBoundedRange`).  This is a property of LayerNorm's math, not a
+framework gap; softmax's cleaner tightening story relied on
+`exp(x) > 0` providing a natural magnitude floor that
+subtraction-based primitives lack.
+
+### What this follow-up validates
+
+Positive about the framework:
+- Tag pairs (`IsNormal eps` + `IsNormal varPlusEps`) compose
+  cleanly to discharge multiple preconditions at once.
+- Cascaded tag-tightened theorems are practical to write:
+  ~150 lines for the sqrt composition, using standard mathlib
+  `Real.sqrt_*` + algebraic identity on `(√a − √b)(√a + √b)`.
+- Fully-tagged end-to-end wrapper reuses the prior unbundled
+  theorem (`fpLayerNorm_end_to_end_error_bound`) verbatim by
+  just substituting the cascaded δ_stddev — no re-proving.
+
+Honest about the limits:
+- The five manual preconditions are a structural limitation,
+  not a future deliverable.  LayerNorm will always need
+  spread/non-collapse assumptions for the small-difference steps.
+  Honest framing in future documentation should lead with this.
+- The tag-discharge ratio (4/9) is a meaningful Phase 2 win but
+  not complete automation.  Softmax's bridge is richer because
+  its primitives have friendlier magnitude behavior.
+
+### Final footprint
+
+- `Flean/Operations/LayerNorm.lean`: 560 lines, 7 per-step theorems
+  + 2 composition theorems, all sorry-free.
+- `Flean/Tags/LayerNorm.lean`: ~470 lines, 7+ tag-related theorems
+  covering per-step tightening, cascaded composition, and
+  fully-tagged end-to-end.
+- `Flean/Tags/FpInterval.lean` / `Flean/Tags/BoundedRangePropagate.lean`:
+  small additions (neg + fpSub propagation).
+- Full Flean build: 2809 jobs green, sorry-free.
+- Commit chain (7 Phase 2 commits):
+  `9f6b384` Stage 1 — pure-math + scope plan
+  `512f0c8` Stage 2 — mean + shift error bounds
+  `e2cb5ee` Stages 3–5 — per-step bounds + end-to-end
+  `2c73269` Stage 6 — IsBoundedRange tagged wrapper
+  `ab91218` tag tightening — eps-add + sqrt preconditions
+  `5caae4f` cascaded tag-tightening — composed stddev bound
+  `4eac832` fully-tagged end-to-end bound
