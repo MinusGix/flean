@@ -222,4 +222,160 @@ theorem fpStddev_tagged_step_error_bound
   fpStddev_step_error_bound h_ve_pos h_ve_m_ne h_stddev
     (sqrtVarPlusEps_normal_of_tagged hvpe hme)
 
+/-! ## Cascaded tag-tightened composition
+
+One level up from the per-step tagged bounds: compose the eps-add
+and sqrt steps into a single `|stddev − √(σ² + eps)|` bound,
+taking a user-supplied `|var − σ²| ≤ δ_var` for the upstream
+variance error.
+
+Key lemma: `|√a − √b| = |a − b| / (√a + √b)`, with the denominator
+lower-bounded by `2·√(2^min_exp)` when `a, b ≥ 2^min_exp`.  Both
+endpoints of our sqrt are ≥ `2^min_exp`: `varPlusEps` by
+`IsNormal varPlusEps`, and `σ² + eps` by `σ² ≥ 0` + `IsNormal eps`. -/
+
+omit [FloatFormat] in
+private theorem sqrt_sub_sqrt_le_of_lb {a b c : ℝ}
+    (ha : c ≤ a) (hb : c ≤ b) (hc_pos : 0 < c) :
+    |Real.sqrt a - Real.sqrt b| ≤ |a - b| / (2 * Real.sqrt c) := by
+  have ha_pos : 0 < a := lt_of_lt_of_le hc_pos ha
+  have hb_pos : 0 < b := lt_of_lt_of_le hc_pos hb
+  have ha_nn : 0 ≤ a := le_of_lt ha_pos
+  have hb_nn : 0 ≤ b := le_of_lt hb_pos
+  have hc_nn : 0 ≤ c := le_of_lt hc_pos
+  have hsqrt_a_pos : 0 < Real.sqrt a := Real.sqrt_pos.mpr ha_pos
+  have hsqrt_b_pos : 0 < Real.sqrt b := Real.sqrt_pos.mpr hb_pos
+  have hsqrt_c_pos : 0 < Real.sqrt c := Real.sqrt_pos.mpr hc_pos
+  have hsqrt_c_le_a : Real.sqrt c ≤ Real.sqrt a := Real.sqrt_le_sqrt ha
+  have hsqrt_c_le_b : Real.sqrt c ≤ Real.sqrt b := Real.sqrt_le_sqrt hb
+  -- √a + √b ≥ 2·√c.
+  have hsum_ge : 2 * Real.sqrt c ≤ Real.sqrt a + Real.sqrt b := by linarith
+  have hsum_pos : 0 < Real.sqrt a + Real.sqrt b := by linarith
+  -- (√a - √b)·(√a + √b) = a - b.
+  have h_ident : (Real.sqrt a - Real.sqrt b) * (Real.sqrt a + Real.sqrt b) = a - b := by
+    have ha_sq : Real.sqrt a * Real.sqrt a = a :=
+      Real.mul_self_sqrt ha_nn
+    have hb_sq : Real.sqrt b * Real.sqrt b = b :=
+      Real.mul_self_sqrt hb_nn
+    ring_nf
+    rw [show Real.sqrt a ^ 2 = Real.sqrt a * Real.sqrt a from sq _,
+        show Real.sqrt b ^ 2 = Real.sqrt b * Real.sqrt b from sq _,
+        ha_sq, hb_sq]
+  -- |√a - √b| = |a - b| / (√a + √b).
+  have h_diff_eq :
+      Real.sqrt a - Real.sqrt b = (a - b) / (Real.sqrt a + Real.sqrt b) := by
+    field_simp
+    linarith [h_ident]
+  rw [h_diff_eq, abs_div]
+  have habs_sum : |Real.sqrt a + Real.sqrt b| = Real.sqrt a + Real.sqrt b :=
+    abs_of_pos hsum_pos
+  rw [habs_sum]
+  -- |a - b| / (√a + √b) ≤ |a - b| / (2·√c) — denominator got smaller, numerator same.
+  have h2sqrtc_pos : 0 < 2 * Real.sqrt c := by linarith
+  have habs_ab_nn : 0 ≤ |a - b| := abs_nonneg _
+  exact div_le_div_of_nonneg_left habs_ab_nn h2sqrtc_pos hsum_ge
+
+/-- **Cascaded tag-tightened stddev error bound**.
+
+Composes `fpVarPlusEps_tagged_step_error_bound` +
+`fpStddev_tagged_step_error_bound` + sqrt Lipschitz into a single
+bound on `|stddev.toVal − √(σ² + eps)|`, taking a user-supplied
+`|var.toVal − σ²| ≤ δ_var` for the upstream variance error.
+
+Under the tag hypotheses, both `varPlusEps` and `σ² + eps` are ≥
+`2^min_exp`, so the sqrt-Lipschitz denominator is ≥ `2·√(2^min_exp)`.
+
+Result:
+```
+|stddev − √(σ² + eps)| ≤ η · √varPlusEps +
+                         (η · (var + eps) + δ_var) / (2 · √(2^min_exp))
+```
+
+Two of the three error contributions come from tag-discharged per-step
+bounds; the third is the propagated variance error `δ_var`. -/
+theorem fpStddev_cascaded_tagged_bound
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+    [RModeNearest ℝ] [RModeConj ℝ] [RModeZero ℝ]
+    {var eps varPlusEps stddev : FiniteFp}
+    {sigma_sq_exact δ_var : ℝ}
+    (heps : IsNormal (R := ℝ) eps.toVal)
+    (hvpe : IsNormal (R := ℝ) varPlusEps.toVal)
+    (hme : FloatFormat.min_exp ≤ 0)
+    (hvar_nn : 0 ≤ (var.toVal : ℝ))
+    (hsigma_sq_nn : 0 ≤ sigma_sq_exact)
+    (h_var_err : |((var.toVal : ℝ)) - sigma_sq_exact| ≤ δ_var)
+    (h_varPlusEps : fpAddFinite var eps = Fp.finite varPlusEps)
+    (h_ve_s : varPlusEps.s = false) (h_ve_m_ne : varPlusEps.m ≠ 0)
+    (h_stddev : fpSqrtFinite varPlusEps = Fp.finite stddev) :
+    |((stddev.toVal : ℝ)) - Real.sqrt (sigma_sq_exact + eps.toVal)| ≤
+      (η : ℝ) * Real.sqrt ((varPlusEps.toVal : ℝ)) +
+      ((η : ℝ) * |((var.toVal : ℝ)) + eps.toVal| + δ_var) /
+        (2 * Real.sqrt ((2 : ℝ) ^ FloatFormat.min_exp)) := by
+  -- Tag-discharged per-step bounds.
+  have h_ve_err :
+      |((varPlusEps.toVal : ℝ)) - (var.toVal + eps.toVal)| ≤
+        (η : ℝ) * |((var.toVal : ℝ)) + eps.toVal| :=
+    fpVarPlusEps_tagged_step_error_bound heps hvar_nn h_varPlusEps
+  have h_stddev_err :
+      |((stddev.toVal : ℝ)) - Real.sqrt ((varPlusEps.toVal : ℝ))| ≤
+        (η : ℝ) * |Real.sqrt ((varPlusEps.toVal : ℝ))| :=
+    fpStddev_tagged_step_error_bound hvpe hme h_ve_s h_ve_m_ne h_stddev
+  have h_sqrt_vpe_nn : 0 ≤ Real.sqrt ((varPlusEps.toVal : ℝ)) :=
+    Real.sqrt_nonneg _
+  have h_stddev_err' :
+      |((stddev.toVal : ℝ)) - Real.sqrt ((varPlusEps.toVal : ℝ))| ≤
+        (η : ℝ) * Real.sqrt ((varPlusEps.toVal : ℝ)) := by
+    rw [abs_of_nonneg h_sqrt_vpe_nn] at h_stddev_err; exact h_stddev_err
+  -- Both varPlusEps and σ² + eps are ≥ 2^min_exp (for the sqrt Lipschitz).
+  have h2me_pos : (0 : ℝ) < (2 : ℝ) ^ FloatFormat.min_exp := by positivity
+  have h_σeps_lb : (2 : ℝ) ^ FloatFormat.min_exp ≤ sigma_sq_exact + eps.toVal := by
+    have : eps.toVal ≤ sigma_sq_exact + eps.toVal := by linarith
+    exact le_trans heps.ge_min this
+  have h_vpe_lb : (2 : ℝ) ^ FloatFormat.min_exp ≤ (varPlusEps.toVal : ℝ) :=
+    hvpe.ge_min
+  -- Sqrt Lipschitz.
+  have h_sqrt_lip :
+      |Real.sqrt ((varPlusEps.toVal : ℝ)) - Real.sqrt (sigma_sq_exact + eps.toVal)| ≤
+        |((varPlusEps.toVal : ℝ)) - (sigma_sq_exact + eps.toVal)| /
+          (2 * Real.sqrt ((2 : ℝ) ^ FloatFormat.min_exp)) :=
+    sqrt_sub_sqrt_le_of_lb h_vpe_lb h_σeps_lb h2me_pos
+  -- Combine ve-err + var-err to bound |varPlusEps - (σ² + eps)|.
+  have h_inner :
+      |((varPlusEps.toVal : ℝ)) - (sigma_sq_exact + eps.toVal)| ≤
+        (η : ℝ) * |((var.toVal : ℝ)) + eps.toVal| + δ_var := by
+    have hdiff :
+        ((varPlusEps.toVal : ℝ)) - (sigma_sq_exact + eps.toVal) =
+          (((varPlusEps.toVal : ℝ)) - ((var.toVal : ℝ) + eps.toVal)) +
+          (((var.toVal : ℝ)) - sigma_sq_exact) := by ring
+    calc |((varPlusEps.toVal : ℝ)) - (sigma_sq_exact + eps.toVal)|
+        = |(((varPlusEps.toVal : ℝ)) - ((var.toVal : ℝ) + eps.toVal)) +
+            (((var.toVal : ℝ)) - sigma_sq_exact)| := by rw [hdiff]
+      _ ≤ |((varPlusEps.toVal : ℝ)) - ((var.toVal : ℝ) + eps.toVal)| +
+          |((var.toVal : ℝ)) - sigma_sq_exact| := abs_add_le _ _
+      _ ≤ (η : ℝ) * |((var.toVal : ℝ)) + eps.toVal| + δ_var := by
+          linarith
+  have h2sqrtc_pos :
+      (0 : ℝ) < 2 * Real.sqrt ((2 : ℝ) ^ FloatFormat.min_exp) := by
+    have : 0 < Real.sqrt ((2 : ℝ) ^ FloatFormat.min_exp) :=
+      Real.sqrt_pos.mpr h2me_pos
+    linarith
+  have h_lip_bound :
+      |Real.sqrt ((varPlusEps.toVal : ℝ)) - Real.sqrt (sigma_sq_exact + eps.toVal)| ≤
+        ((η : ℝ) * |((var.toVal : ℝ)) + eps.toVal| + δ_var) /
+          (2 * Real.sqrt ((2 : ℝ) ^ FloatFormat.min_exp)) := by
+    calc |Real.sqrt ((varPlusEps.toVal : ℝ)) -
+            Real.sqrt (sigma_sq_exact + eps.toVal)|
+        ≤ |((varPlusEps.toVal : ℝ)) - (sigma_sq_exact + eps.toVal)| /
+            (2 * Real.sqrt ((2 : ℝ) ^ FloatFormat.min_exp)) := h_sqrt_lip
+      _ ≤ ((η : ℝ) * |((var.toVal : ℝ)) + eps.toVal| + δ_var) /
+            (2 * Real.sqrt ((2 : ℝ) ^ FloatFormat.min_exp)) :=
+          div_le_div_of_nonneg_right h_inner (le_of_lt h2sqrtc_pos)
+  -- Triangle inequality: |stddev − √(σ² + eps)| ≤ |stddev − √vpe| + |√vpe − √(σ² + eps)|.
+  have htri :
+      |((stddev.toVal : ℝ)) - Real.sqrt (sigma_sq_exact + eps.toVal)| ≤
+        |((stddev.toVal : ℝ)) - Real.sqrt ((varPlusEps.toVal : ℝ))| +
+        |Real.sqrt ((varPlusEps.toVal : ℝ)) - Real.sqrt (sigma_sq_exact + eps.toVal)| :=
+    abs_sub_le _ _ _
+  linarith
+
 end Flean.Tags
