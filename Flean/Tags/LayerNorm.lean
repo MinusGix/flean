@@ -1,6 +1,7 @@
 import Flean.Operations.LayerNorm
 import Flean.Tags.BoundedRange
 import Flean.Tags.Normal
+import Flean.Operations.FpSum
 
 /-!
 # Tag-Specialized LayerNorm: `IsBoundedRange` Wrapper
@@ -438,7 +439,7 @@ theorem fpLayerNorm_fully_tagged_end_to_end_bound
         layerNorm (fun j => ((xs j).toVal : ℝ)) eps_fp.toVal i| ≤
       δ_final + δ_shift / stddev.toVal +
         |((xs i).toVal : ℝ) -
-            mean (fun j => ((xs j).toVal : ℝ))| *
+            LayerNorm.mean (fun j => ((xs j).toVal : ℝ))| *
         ((η : ℝ) * Real.sqrt ((varPlusEps.toVal : ℝ)) +
           ((η : ℝ) * |((var.toVal : ℝ)) + eps_fp.toVal| + δ_var) /
             (2 * Real.sqrt ((2 : ℝ) ^ FloatFormat.min_exp))) /
@@ -462,5 +463,217 @@ theorem fpLayerNorm_fully_tagged_end_to_end_bound
   -- Plug into the pre-existing end-to-end theorem.
   exact fpLayerNorm_end_to_end_error_bound i heps_pos hn_pos_r
     h_stddev_pos h_shift h_stddev_bound h_final
+
+/-! ## Concrete adapter: LayerNorm with `NaiveSum` on both sums
+
+Stage 7 demo.  Shows the framework wires together when both the mean
+sum and the variance sum are supplied as `FpSum.NaiveSum` traces: the
+`FpSum.FpSumBound.ofNaive` adapter threads each trace into the
+per-step error bounds, and the whole chain composes via
+`fpLayerNorm_fully_tagged_end_to_end_bound`.
+
+The variance-side approximation `|Σ sqDiffs_j / n − variance(xs.toVal)|`
+is supplied as a user hypothesis `h_sqDiffs_approx`.  Deriving it from
+the per-index squaring error `|sqDiffs_j − shifted_j²|` + the shift
+error `|shifted_j − (xs_j − μ)|` is a mechanical but bulky composition
+(involving `|a² − b²| = |a − b|·|a + b|` across `n` indices) that we
+leave to callers; see the docstring for the expected shape. -/
+
+section Demo
+
+open FpSum
+
+/-- **LayerNorm demo: both sums via `NaiveSum`** (Stage 7).
+
+Instantiates `fpLayerNorm_fully_tagged_end_to_end_bound` using
+`FpSumBound.ofNaive` for the mean sum (over `xs`) and the variance
+sum (over the squared-difference vector `sqDiffs`).  The per-step
+rounding chain is supplied directly; the only "glue" the demo pulls
+out of the NaiveSum adapter is the summation relative-error
+coefficient `(1+η)^{n-1} − 1`.
+
+**Caller supplies**:
+
+- Two `NaiveSum` traces (mean and variance sums), with
+  `AllNormalRange` predicates.
+- Tag hypotheses discharged by the fully-tagged framework:
+  `IsNormal eps_fp.toVal`, `IsNormal varPlusEps.toVal`, `min_exp ≤ 0`.
+- FP-rounding witnesses + remaining normal-range preconditions for
+  mean-div, shift, and normalize-div (the tag does not discharge
+  these — see the scorecard in the Phase 2 design doc).
+- `h_sqDiffs_approx`: a bound on how close the sum of `sqDiffs` is to
+  the true variance.  In practice, derived from
+  `fpSqDiff_step_error_bound` + shift-error composition across the
+  `n` indices; not automated in this demo.
+
+**Produces**: the same end-to-end forward-error bound that
+`fpLayerNorm_fully_tagged_end_to_end_bound` produces, with
+`δ_var`, `δ_shift`, `δ_final` materialised from the concrete adapters. -/
+theorem fpLayerNorm_naiveSum_demo
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+    [RModeNearest ℝ] [RModeConj ℝ] [RModeZero ℝ]
+    {n : ℕ} {xs : Fin n → FiniteFp}
+    {meanFp var varPlusEps stddev eps_fp nFp : FiniteFp}
+    {sumMeanResult sumVarResult : FiniteFp}
+    {shifted sqDiffs result : Fin n → FiniteFp}
+    (i : Fin n)
+    (hn_pos : 0 < n)
+    -- Tag hypotheses
+    (heps : IsNormal (R := ℝ) eps_fp.toVal)
+    (hvpe : IsNormal (R := ℝ) varPlusEps.toVal)
+    (hme : FloatFormat.min_exp ≤ 0)
+    -- FP-representation of `n`
+    (hNFp_toVal : (nFp.toVal : ℝ) = (n : ℝ))
+    (hNFp_m_ne : nFp.m ≠ 0)
+    -- NaiveSum traces
+    (tμ : NaiveSum (List.ofFn xs) sumMeanResult)
+    (hnr_μ : tμ.AllNormalRange (R := ℝ))
+    (tσ : NaiveSum (List.ofFn sqDiffs) sumVarResult)
+    (hnr_σ : tσ.AllNormalRange (R := ℝ))
+    -- Mean step
+    (h_mean : fpDivFinite sumMeanResult nFp = Fp.finite meanFp)
+    (h_quot_ne_μ : (sumMeanResult.toVal : ℝ) / nFp.toVal ≠ 0)
+    (h_quot_normal_μ :
+      (2 : ℝ) ^ FloatFormat.min_exp ≤
+        |(sumMeanResult.toVal : ℝ) / nFp.toVal|)
+    -- Shift step (for index i)
+    (h_shifted : ∀ j, fpSubFinite (xs j) meanFp = Fp.finite (shifted j))
+    (h_shift_normal :
+      (2 : ℝ) ^ FloatFormat.min_exp ≤ |((xs i).toVal : ℝ) - meanFp.toVal|)
+    -- Squaring step.  The witnesses live in the signature as
+    -- documentation — consumers need them to derive the upstream
+    -- `h_sqDiffs_approx` hypothesis — but the demo body proves its
+    -- bound without opening the squaring chain, so the parameter is
+    -- named with a leading underscore to suppress the unused-variable
+    -- linter.
+    (_h_sqDiffs : ∀ j,
+      fpMulFinite (shifted j) (shifted j) = Fp.finite (sqDiffs j))
+    -- Variance divide step
+    (h_var : fpDivFinite sumVarResult nFp = Fp.finite var)
+    (h_quot_ne_σ : (sumVarResult.toVal : ℝ) / nFp.toVal ≠ 0)
+    (h_quot_normal_σ :
+      (2 : ℝ) ^ FloatFormat.min_exp ≤
+        |(sumVarResult.toVal : ℝ) / nFp.toVal|)
+    -- Bound on `|Σ sqDiffs_j/n − variance(xs.toVal)|` (user-supplied;
+    -- see the module docstring).
+    {δ_sqDiffs_approx : ℝ}
+    (h_sqDiffs_approx :
+      |(∑ j, ((sqDiffs j).toVal : ℝ)) / (n : ℝ) -
+          variance (fun j => ((xs j).toVal : ℝ))| ≤ δ_sqDiffs_approx)
+    -- Eps-add + sqrt steps (tag discharges these preconditions)
+    (h_varPlusEps : fpAddFinite var eps_fp = Fp.finite varPlusEps)
+    (h_ve_s : varPlusEps.s = false)
+    (h_ve_m_ne : varPlusEps.m ≠ 0)
+    (h_stddev_witness : fpSqrtFinite varPlusEps = Fp.finite stddev)
+    -- Nonnegativity of the FP variance (user-supplied; e.g., via
+    -- monotonicity of rounding on the nonneg variance sum).
+    (hvar_nn : 0 ≤ (var.toVal : ℝ))
+    -- Normalize step (per-index divide)
+    (h_stddev_m_ne : stddev.m ≠ 0)
+    (h_stddev_pos : 0 < (stddev.toVal : ℝ))
+    (h_result : ∀ j, fpDivFinite (shifted j) stddev = Fp.finite (result j))
+    (h_quot_ne_n : ((shifted i).toVal : ℝ) / stddev.toVal ≠ 0)
+    (h_quot_normal_n :
+      (2 : ℝ) ^ FloatFormat.min_exp ≤
+        |((shifted i).toVal : ℝ) / stddev.toVal|) :
+    -- Concrete δ's built from the two NaiveSum adapters.
+    letI μSum := FpSumBound.ofNaive (R := ℝ) xs tμ hnr_μ
+    letI σSum := FpSumBound.ofNaive (R := ℝ) sqDiffs tσ hnr_σ
+    letI δ_shift :=
+      (η : ℝ) * |((xs i).toVal : ℝ) - meanFp.toVal| +
+        ((η : ℝ) * |(sumMeanResult.toVal : ℝ) / nFp.toVal| +
+          μSum.relErr * (∑ j, |((xs j).toVal : ℝ)|) / (n : ℝ))
+    letI δ_var :=
+      ((η : ℝ) * |(sumVarResult.toVal : ℝ) / nFp.toVal| +
+        σSum.relErr * (∑ j, |((sqDiffs j).toVal : ℝ)|) / (n : ℝ)) +
+        δ_sqDiffs_approx
+    letI δ_final :=
+      (η : ℝ) * |((shifted i).toVal : ℝ) / stddev.toVal|
+    |((result i).toVal : ℝ) -
+        layerNorm (fun j => ((xs j).toVal : ℝ)) eps_fp.toVal i| ≤
+      δ_final + δ_shift / stddev.toVal +
+        |((xs i).toVal : ℝ) -
+            LayerNorm.mean (fun j => ((xs j).toVal : ℝ))| *
+        ((η : ℝ) * Real.sqrt ((varPlusEps.toVal : ℝ)) +
+          ((η : ℝ) * |((var.toVal : ℝ)) + eps_fp.toVal| + δ_var) /
+            (2 * Real.sqrt ((2 : ℝ) ^ FloatFormat.min_exp))) /
+          ((stddev.toVal : ℝ) *
+            Real.sqrt (variance (fun j => ((xs j).toVal : ℝ)) +
+                       eps_fp.toVal)) := by
+  -- Build the two FpSumBound adapters from the NaiveSum traces.
+  set μSum := FpSumBound.ofNaive (R := ℝ) xs tμ hnr_μ with hμSum_def
+  set σSum := FpSumBound.ofNaive (R := ℝ) sqDiffs tσ hnr_σ with hσSum_def
+  -- μSum.result = sumMeanResult and σSum.result = sumVarResult (by defn).
+  have hμSum_result : μSum.result = sumMeanResult := rfl
+  have hσSum_result : σSum.result = sumVarResult := rfl
+  -- Mean error bound (from the mean NaiveSum adapter).
+  have h_mean_err :
+      |(meanFp.toVal : ℝ) - (∑ j, ((xs j).toVal : ℝ)) / (n : ℝ)| ≤
+        (η : ℝ) * |(μSum.result.toVal : ℝ) / nFp.toVal| +
+        μSum.relErr * (∑ j, |((xs j).toVal : ℝ)|) / (n : ℝ) := by
+    have := fpMean_error_bound hn_pos μSum hNFp_toVal hNFp_m_ne
+      (mean := meanFp)
+    rw [hμSum_result] at this
+    exact this h_mean h_quot_ne_μ h_quot_normal_μ
+  -- Shift error bound (composes the shift step with the mean error).
+  have h_shift :
+      |((shifted i).toVal : ℝ) -
+          (((xs i).toVal : ℝ) -
+            LayerNorm.mean (fun j => ((xs j).toVal : ℝ)))| ≤
+        (η : ℝ) * |((xs i).toVal : ℝ) - meanFp.toVal| +
+          ((η : ℝ) * |(sumMeanResult.toVal : ℝ) / nFp.toVal| +
+            μSum.relErr * (∑ j, |((xs j).toVal : ℝ)|) / (n : ℝ)) := by
+    have h_step :=
+      fpShift_error_bound (xs := xs) (mean := meanFp) shifted
+        h_shifted i h_shift_normal
+    -- mean (toVal ∘ xs) = (∑ xs.toVal)/n by definition; unfold to match.
+    have h_mean_unfold :
+        LayerNorm.mean (fun j => ((xs j).toVal : ℝ)) =
+          (∑ j, ((xs j).toVal : ℝ)) / (n : ℝ) := rfl
+    rw [h_mean_unfold]
+    rw [hμSum_result] at h_mean_err
+    linarith
+  -- Variance-sum divide error (from the variance NaiveSum adapter).
+  have h_var_sum_err :
+      |(var.toVal : ℝ) - (∑ j, ((sqDiffs j).toVal : ℝ)) / (n : ℝ)| ≤
+        (η : ℝ) * |(σSum.result.toVal : ℝ) / nFp.toVal| +
+        σSum.relErr * (∑ j, |((sqDiffs j).toVal : ℝ)|) / (n : ℝ) := by
+    have := fpVar_step_error_bound hn_pos σSum hNFp_toVal hNFp_m_ne
+      (var := var)
+    rw [hσSum_result] at this
+    exact this h_var h_quot_ne_σ h_quot_normal_σ
+  -- Variance error (composes the divide error with the approximation hypothesis).
+  have h_var_err :
+      |(var.toVal : ℝ) -
+          variance (fun j => ((xs j).toVal : ℝ))| ≤
+        ((η : ℝ) * |(sumVarResult.toVal : ℝ) / nFp.toVal| +
+          σSum.relErr * (∑ j, |((sqDiffs j).toVal : ℝ)|) / (n : ℝ)) +
+          δ_sqDiffs_approx := by
+    have htri :
+        |(var.toVal : ℝ) -
+            variance (fun j => ((xs j).toVal : ℝ))| ≤
+          |(var.toVal : ℝ) -
+              (∑ j, ((sqDiffs j).toVal : ℝ)) / (n : ℝ)| +
+            |(∑ j, ((sqDiffs j).toVal : ℝ)) / (n : ℝ) -
+              variance (fun j => ((xs j).toVal : ℝ))| :=
+      abs_sub_le _ _ _
+    rw [hσSum_result] at h_var_sum_err
+    linarith
+  -- Normalize-step error (final divide at index i).
+  have h_final :
+      |((result i).toVal : ℝ) -
+          (shifted i).toVal / stddev.toVal| ≤
+        (η : ℝ) * |((shifted i).toVal : ℝ) / stddev.toVal| :=
+    fpNormalize_step_error_bound h_stddev_m_ne h_result i
+      h_quot_ne_n h_quot_normal_n
+  -- Plumbing: apply the fully-tagged end-to-end theorem.
+  have hn_pos_r : 0 < (n : ℝ) := by exact_mod_cast hn_pos
+  exact fpLayerNorm_fully_tagged_end_to_end_bound (xs := xs)
+    (var := var) (varPlusEps := varPlusEps) (stddev := stddev)
+    (eps_fp := eps_fp) (shifted := shifted) (result := result)
+    i heps hvpe hme hn_pos_r h_stddev_pos hvar_nn h_var_err h_shift
+    h_final h_varPlusEps h_ve_s h_ve_m_ne h_stddev_witness
+
+end Demo
 
 end Flean.Tags

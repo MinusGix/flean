@@ -1,9 +1,9 @@
 # Tag Framework — Phase 2 Design
 
-**Status**: Stages 1–6 LANDED (2026-04-20), plus a follow-up
-tag-tightening push the same day that delivers the cascaded +
-fully-tagged end-to-end bounds.  Stage 7 (concrete
-`FpSum.FpSumBound.ofNaive` demo) remains; see §7.
+**Status**: ALL STAGES LANDED (2026-04-20).  Stages 1–6, follow-up
+tag-tightening push (cascaded + fully-tagged end-to-end bounds), and
+Stage 7 (concrete `FpSum.FpSumBound.ofNaive` demo with both sums)
+all green.  Full Flean build: 2809 jobs, sorry-free.
 
 **Chosen target**: Candidate B — LayerNorm as a new tagged ML primitive.
 
@@ -303,13 +303,21 @@ requiring:
   `4·n·2^min_exp ≤ exp(I.lo − I.hi)`, tailored to LayerNorm's
   quotient regime.
 
-### What's missing (Stage 7 todos)
+### Stage 7 landed
 
-- **Concrete demo**: a small test theorem instantiating
-  `fpLayerNorm_tagged_bound` with `FpSum.FpSumBound.ofNaive` for both
-  summations.  Scaffolding for this is all in place — just didn't
-  land this session due to heartbeat-budget concerns on struct
-  elaboration.  Can be added in a brief follow-up commit.
+- **Concrete demo**: `fpLayerNorm_naiveSum_demo` in
+  `Flean/Tags/LayerNorm.lean` (§Demo section).  Threads two
+  `FpSum.NaiveSum` traces (mean sum and variance sum) through the
+  `FpSumBound.ofNaive` adapter, materialises concrete `δ_shift` and
+  `δ_var` from the resulting `relErr` values, and closes via
+  `fpLayerNorm_fully_tagged_end_to_end_bound`.  ~120 lines.
+- **Demo scope caveat**: the variance-side approximation
+  `|Σ sqDiffs_j/n − variance(xs.toVal)| ≤ δ_sqDiffs_approx` is taken
+  as a user hypothesis, not derived from the squaring witnesses.
+  Deriving it is a straightforward but bulky `|a² − b²| = |a − b|·|a + b|`
+  composition across `n` indices; left to callers and documented in
+  the theorem docstring.  The `_h_sqDiffs` witnesses are kept in the
+  signature as documentation but consumed with a leading underscore.
 
 ### Signal about framework durability
 
@@ -465,7 +473,7 @@ Honest about the limits:
 - `Flean/Tags/FpInterval.lean` / `Flean/Tags/BoundedRangePropagate.lean`:
   small additions (neg + fpSub propagation).
 - Full Flean build: 2809 jobs green, sorry-free.
-- Commit chain (7 Phase 2 commits):
+- Commit chain (8 Phase 2 commits):
   `9f6b384` Stage 1 — pure-math + scope plan
   `512f0c8` Stage 2 — mean + shift error bounds
   `e2cb5ee` Stages 3–5 — per-step bounds + end-to-end
@@ -473,3 +481,4 @@ Honest about the limits:
   `ab91218` tag tightening — eps-add + sqrt preconditions
   `5caae4f` cascaded tag-tightening — composed stddev bound
   `4eac832` fully-tagged end-to-end bound
+  Stage 7 — concrete `FpSumBound.ofNaive` demo (both sums)
