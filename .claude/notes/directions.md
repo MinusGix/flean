@@ -51,23 +51,36 @@ Tracked iteratively. Priorities ordered top-to-bottom within each tier.
   - `LogComputable.lean`: final assembly + `OpRefExecSound logTarget` instance
 - [x] **Fuel**: `600 * ab^4 * 2^ab` (exponential, not polynomial like exp). See docstring in LogComputableDefs.lean for paths to polynomial fuel via Padé for log(1+z).
 
-## LogApprox / fpLogFinite — TODO (big session, capstone)
-- [ ] **`LogApprox` typeclass + `fpLogFinite` + soundness** — the missing
-  parallel to `ExpApprox`/`fpExpFinite` in `Flean/Operations/Exp.lean`. Would:
-  1. Unblock the abstract `h_log_close` in `fpLogSumExp_end_to_end_error_bound`
-     (LogSumExp.lean) — a thin wrapper around `fpLogFinite_correct` would
-     supply the witness mechanically, making LSE concrete.
-  2. Enable verified `log`-based algorithms (negative-log-likelihood, log-softmax,
-     etc.) without per-use abstract hypotheses.
-  3. Mirror exp structure: `LogApproxData` (exact/sticky variants),
-     `LogApprox.approx`, `LogApproxSound`, `fpLogFinite`, `fpLog`, unified
-     error bound `|fpLog(a) - log(a.toVal)| ≤ η·|log a.toVal| + subnormalConst`.
-  - Building blocks exist: `logComputableRun` (arbitrary-precision) in
-    LogComputable.lean, sticky infrastructure in StickyExtract/StickyTermination.
-  - Estimated size: ~500-800 lines per the LSE session plan.
-  - Session-ready but substantial — mostly template work, few new ideas,
-    but careful with the additive `logSubConst` tail (log's subnormal
-    behavior differs from exp's).
+## LogApprox / fpLogFinite — DONE (2026-04-22)
+- [x] **`LogApprox` typeclass + `fpLogFinite` + soundness** — 3 files, ~830
+  lines total, sorry-free.  Parallel to `ExpApprox`/`fpExpFinite` in `Exp.lean`:
+  - `Flean/Operations/Log.lean` (~498 lines): `LogApproxData` inductive
+    (`exact sign mag e_base` / `sticky sign q e_base` — sign bit tracks
+    log's negativity for `0 < x < 1`), `LogApprox` / `LogApproxSound`
+    typeclasses (preconditions `0 < a.toVal ∧ a.toVal ≠ 1`), `fpLogFinite`
+    (top-level branches: `x ≤ 0` → NaN, `x = 1` → `+0`, else dispatch),
+    `fpLog : Fp → Fp` (IEEE semantics: `log(-∞) = NaN`, `log(+∞) = +∞`),
+    `fpLogFinite_correct` (under `0 < a.toVal`), noncomputable concrete
+    instance `logApproxConcrete` (priority 100).
+  - `Flean/Operations/LogAdapter.lean` (~188 lines): adapter from
+    `OpRefExec logTarget` / `OpRefExecSound logTarget` (provided by
+    `LogComputable.lean`) → `LogApprox` / `LogApproxSound` at priority
+    1000 (shadows the noncomputable concrete when `LogComputable` is
+    imported).  Sign decided by `a.toVal (R := ℚ) < 1`.
+  - `Flean/Operations/LogClose.lean` (~146 lines): bridge lemma
+    `fpLogFinite_close` (positive input + finite witness → LSE-shaped
+    `|logResult - log x| ≤ η·|log x| + Softmax.subnormalConst` bound,
+    sign-symmetric via `RModeConj ℝ`) + `fpLogSumExp_concrete_error_bound`
+    demo eliminating the last abstract hypothesis in the LSE pipeline
+    (`η_log = η`, `logSubConst = Softmax.subnormalConst`).
+  - Key structural differences from exp: sign handling (log can be
+    negative), domain partial (NaN for `x ≤ 0`), `log(1) = 0` exact case.
+  - Five `LogApproxSound` fields: `exact_mag_ne_zero`, `exact_value`
+    (sign-folded `intSigVal` identity), `sticky_q_lower`, `sticky_interval`
+    (brackets `|log x|`), `sticky_sign` (sign flips `|log|` back to `log`).
+  - A concrete `fpLogSumExp_concrete_error_bound` demo is shipped but a
+    `fpCrossEntropy_concrete_error_bound` analog is not yet (low-effort
+    follow-up).
 
 ## Shared Infrastructure (exp + log)
 - `StickyTermination.lean`: `stickyExtractLoop_sound`, `stickyExtractLoop_pos_of_success`, `uniform_gap_from_pointwise`
