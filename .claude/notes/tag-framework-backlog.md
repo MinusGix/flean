@@ -197,7 +197,31 @@ partitioning.
 
 **Scope**: ~500 lines.  Phase 2 design doc §1 has the candidate write-up.
 
-### T-M4: Tag propagation through `FpSumBound` / `FpDotProductBound` [composition gap]
+### T-M4: Tag propagation through `FpSumBound` / `FpDotProductBound` [composition gap] — **SHIPPED 2026-04-22**
+
+`Flean/Tags/BundleAbsBound.lean` (~201 lines, sorry-free).  Extrinsic
+option (separate theorems per tag × bundle pair) per the plan.
+
+Six bridge theorems, three per bundle:
+
+* `FpSumBound.hasAbsBound_of_per_index` — per-index `HasAbsBound (c i)` → `(1 + relErr) · Σ c i`.
+* `FpSumBound.hasAbsBound_of_uniform` — uniform `c` → `(1 + relErr) · n · c`.
+* `FpSumBound.hasAbsBound_of_isBoundedRange` — `IsBoundedRange I xs` → `(1 + relErr) · n · I.maxMag`.
+* `FpDotProductBound.hasAbsBound_of_per_index` — per-index bounds on both vectors → `(1 + relErr) · Σ c_x·c_y`.
+* `FpDotProductBound.hasAbsBound_of_uniform` — uniform `c_x, c_y` → `(1 + relErr) · n · (c_x · c_y)`.
+* `FpDotProductBound.hasAbsBound_of_isBoundedRange` — `IsBoundedRange` on both → `(1 + relErr) · n · (Ix.maxMag · Iy.maxMag)`.
+
+The per-index theorem is primary; uniform and `IsBoundedRange`
+corollaries via `HasAbsBound.weaken` + `Finset.sum_const`.  Proofs
+share a triangle-inequality skeleton: `|result| ≤ |result - exact| +
+|exact|`, then bound each piece by the bundle's `relErr · Σ |xs|`
+and the per-index magnitude hypotheses.
+
+Unlocks tagged composition across the algorithm boundary without
+unbundling.  Option 2 (intrinsic tag fields on the bundles) not yet
+attempted; revisit if extrinsic friction appears.
+
+**Original description** (kept for context):
 
 Currently these bundles carry `relErr` but no tag info.  Adding tag
 propagation — e.g. `IsBoundedRange I xs → ∃ c, |FpSumBound.result| ≤ c`
@@ -310,21 +334,22 @@ would catch regressions when a propagation lemma's signature changes.
 
 ---
 
-## Ranking snapshot (2026-04-22, post-T-M1, post-T-M2-IsOneHot)
+## Ranking snapshot (2026-04-22, post-T-M1, post-T-M2, post-T-M4)
 
 Roughly in order of expected value:
 
 1. ~~**T-M1** (tag calculus elaboration)~~ — **DONE**.
 2. ~~**T-M2 `IsOneHot`**~~ — **DONE**.  Remaining T-M2 items (`IsProb`,
    `HasRangeBound`, `IsQuantized`) lower priority; pick on demand.
-3. **T-M4** (tag propagation through `FpSumBound` / `FpDotProductBound`) —
-   unlocks composition that currently requires unbundling.  Now the
-   highest-leverage structural move.
-4. **T-S1** (LSE/CE tail elimination) — direct win, low scope, but
-   covers less new ground than (3).
+3. ~~**T-M4** (tag propagation through bundles)~~ — **DONE** (extrinsic
+   option).  Revisit option 2 (intrinsic tag fields) only if friction.
+4. **T-S1** (LSE/CE tail elimination) — direct win, low scope.
 5. **T-M3** (partitioned softmax) — most framework-novel, large scope.
-6. **T-L1** (pattern guide) — pays off when a sixth tag arrives.  Now
-   two algebraic tags (T-M1) plus structural-isolation (T-M2) to draw
-   on.
+6. **T-L1** (pattern guide) — now a natural move; three major
+   structural pieces shipped to document.
+7. **T-D6** (integration test suite) — with five+ propagation-style
+   files, a smoke-test file would catch signature regressions.
+8. `IsProb` / `HasRangeBound` / `IsQuantized` — narrower ML-specific
+   tags; lowest priority unless a concrete workload asks.
 
 Items ≥ 5 are lower priority pending developer interest.
