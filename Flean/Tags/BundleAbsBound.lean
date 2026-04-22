@@ -112,6 +112,71 @@ theorem FpSumBound.hasAbsBound_of_isBoundedRange {n : ℕ} {xs : Fin n → Finit
     HasAbsBound (R := R) ((1 + b.relErr) * (n : R) * I.maxMag) b.result :=
   b.hasAbsBound_of_uniform I.maxMag (fun i => ⟨h.toVal_abs_le i⟩)
 
+/-! ## `FpSumBoundCompensated` → `HasAbsBound` on `sigma`
+
+Mirror of the `FpSumBound` suite.  Bound applies to the **compensated
+value** `sigma := sum.toVal + comp.toVal`, not to `sum.toVal` alone;
+`sigma` is the quantity that matches the true `Σ xs` closely.  For a
+magnitude bound on `sum.toVal` (instead of `sigma`), combine with
+`compErr` via the triangle inequality. -/
+
+/-- Core bridge for compensated sums: per-index magnitude bounds give a
+bound on `sigma = sum + comp`. -/
+theorem FpSumBoundCompensated.hasAbsBound_sigma_of_per_index {n : ℕ}
+    {xs : Fin n → FiniteFp} (cb : FpSumBoundCompensated xs R)
+    (c : Fin n → R) (h_bounds : ∀ i, HasAbsBound (R := R) (c i) (xs i)) :
+    |((cb.sum.toVal : R) + cb.comp.toVal)| ≤ (1 + cb.relErr) * ∑ i, c i := by
+  have h_tri : |((cb.sum.toVal : R) + cb.comp.toVal)| ≤
+      |((cb.sum.toVal : R) + cb.comp.toVal) - ∑ i, ((xs i).toVal : R)| +
+        |∑ i, ((xs i).toVal : R)| := by
+    have : |(((cb.sum.toVal : R) + cb.comp.toVal) -
+              ∑ i, ((xs i).toVal : R)) +
+             ∑ i, ((xs i).toVal : R)| ≤
+           |((cb.sum.toVal : R) + cb.comp.toVal) -
+              ∑ i, ((xs i).toVal : R)| +
+             |∑ i, ((xs i).toVal : R)| :=
+      abs_add_le _ _
+    simpa using this
+  have h_sum_abs : |∑ i, ((xs i).toVal : R)| ≤ ∑ i, |((xs i).toVal : R)| :=
+    Finset.abs_sum_le_sum_abs _ _
+  have h_sum_bound : ∑ i, |((xs i).toVal : R)| ≤ ∑ i, c i :=
+    Finset.sum_le_sum (fun i _ => (h_bounds i).toVal_abs_le)
+  have h_sum_abs_le : |∑ i, ((xs i).toVal : R)| ≤ ∑ i, c i :=
+    le_trans h_sum_abs h_sum_bound
+  have h_err := cb.h_bound
+  have h_relErr_nn := cb.h_relErr_nn
+  have h_err_bound :
+      |((cb.sum.toVal : R) + cb.comp.toVal) - ∑ i, ((xs i).toVal : R)| ≤
+        cb.relErr * ∑ i, c i := by
+    have := mul_le_mul_of_nonneg_left h_sum_bound h_relErr_nn
+    linarith
+  calc |((cb.sum.toVal : R) + cb.comp.toVal)|
+      ≤ |((cb.sum.toVal : R) + cb.comp.toVal) - ∑ i, ((xs i).toVal : R)| +
+          |∑ i, ((xs i).toVal : R)| := h_tri
+    _ ≤ cb.relErr * ∑ i, c i + ∑ i, c i := by linarith
+    _ = (1 + cb.relErr) * ∑ i, c i := by ring
+
+/-- Uniform variant. -/
+theorem FpSumBoundCompensated.hasAbsBound_sigma_of_uniform {n : ℕ}
+    {xs : Fin n → FiniteFp} (cb : FpSumBoundCompensated xs R)
+    (c : R) (h_bounds : ∀ i, HasAbsBound (R := R) c (xs i)) :
+    |((cb.sum.toVal : R) + cb.comp.toVal)| ≤ (1 + cb.relErr) * (n : R) * c := by
+  have h := cb.hasAbsBound_sigma_of_per_index (fun _ => c) h_bounds
+  have h_sum : (∑ _i : Fin n, c) = (n : R) * c := by
+    rw [Finset.sum_const]; simp [mul_comm]
+  rw [h_sum] at h
+  have : (1 + cb.relErr) * ((n : R) * c) = (1 + cb.relErr) * (n : R) * c := by
+    rw [mul_assoc]
+  linarith
+
+/-- `IsBoundedRange`-driven variant. -/
+theorem FpSumBoundCompensated.hasAbsBound_sigma_of_isBoundedRange {n : ℕ}
+    {xs : Fin n → FiniteFp} (cb : FpSumBoundCompensated xs R)
+    {I : FpInterval R} (h : IsBoundedRange (R := R) I xs) :
+    |((cb.sum.toVal : R) + cb.comp.toVal)| ≤
+      (1 + cb.relErr) * (n : R) * I.maxMag :=
+  cb.hasAbsBound_sigma_of_uniform I.maxMag (fun i => ⟨h.toVal_abs_le i⟩)
+
 end FpSum
 
 namespace FpDotProduct
