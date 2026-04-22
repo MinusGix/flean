@@ -2,6 +2,7 @@ import Flean.Tags.Simplex
 import Flean.Tags.Normal
 import Flean.Tags.Sterbenz
 import Flean.Tags.Nonneg
+import Flean.Tags.Attributes
 import Flean.Tags.AbsBound
 import Flean.Tags.AbsBoundPropagate
 import Flean.Tags.BundleAbsBound
@@ -13,3 +14,4 @@ import Flean.Tags.SoftmaxBounded
 import Flean.Tags.LayerNorm
 import Flean.Tags.SterbenzShift
 import Flean.Tags.OneHot
+import Flean.Tags.Generators
