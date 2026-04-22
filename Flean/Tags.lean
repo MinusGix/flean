@@ -9,6 +9,7 @@ import Flean.Tags.AbsBoundPropagate
 import Flean.Tags.BundleAbsBound
 import Flean.Tags.FpInterval
 import Flean.Tags.BoundedRange
+import Flean.Tags.BoundedRangeOn
 import Flean.Tags.BoundedRangePropagate
 import Flean.Tags.Bridges.ToIsNormalRange
 import Flean.Tags.SoftmaxBounded

@@ -25,9 +25,10 @@ what the tag **does for its consumer**.
 | Category | Defining property | Examples |
 |---|---|---|
 | **Algebraic** | Has a parameter that transforms algebraically through FP ops. Composition is mechanical. | `HasAbsBound c x`, `IsBoundedRange I xs`, `IsNonneg x` |
-| **Structural** | Describes input structure that collapses downstream bounds. Doesn't propagate through ops in the conventional sense. | `IsSimplex ws`, `IsOneHot j y` |
+| **Structural** | Describes input structure that collapses downstream bounds. Doesn't propagate through ops in the conventional sense. | `IsSimplex ws`, `IsOneHot j y`, `IsProb y` |
 | **Regime** | Narrows the FP regime so ops become exact or tight. Preserves only under specific conditions. | `IsNormal v`, `IsSterbenz a b` |
 | **Witness** | Bundles computational content needed to discharge downstream hypotheses. | `SterbenzShiftResult xs c` |
+| **Partitioned** (new 2026-04-22) | Tag holds on a `Finset`-designated subset; enables heterogeneous per-index tagging. | `IsBoundedRangeOn S I xs` |
 
 ### 1.2 Payoff axis (what the tag *does for the consumer*)
 

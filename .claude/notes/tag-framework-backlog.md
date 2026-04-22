@@ -205,15 +205,35 @@ Candidates with demonstrable downstream demand:
 
 Rank by demand: `IsOneHot` > `IsProb` > `HasRangeBound` > `IsQuantized`.
 
-### T-M3: Partitioned softmax (Candidate A from Phase 2 doc) [framework-novel]
+### T-M3: Partitioned softmax (Candidate A from Phase 2 doc) [framework-novel] — **SHIPPED 2026-04-22 (partial)**
 
-Subset `S ⊆ Fin n` designates "possibly subnormal" indices.  Tag holds
-on `i ∉ S`; per-index bound branches.  Framework novelty: tags
-composing with `Finset` subsetting over a vector with a shared global
-quantity (the denom).  Stress-tests the framework on per-index
-partitioning.
+`Flean/Tags/BoundedRangeOn.lean` (~286 lines, sorry-free).  Landed
+the core partitioned-tag pattern; the "full softmax re-proof with
+per-index case split" flagged in the Phase 2 doc is **not** attempted
+here (that would be closer to the 500-line estimate).  What shipped:
 
-**Scope**: ~500 lines.  Phase 2 design doc §1 has the candidate write-up.
+* `IsBoundedRangeOn S I xs` — partitioned-domain tag.  Holds when
+  the interval bound applies on `i ∈ S`, arbitrarily elsewhere.
+  Framework-novel: **first tag that composes with `Finset`
+  subsetting**, enabling heterogeneous per-index tagging.
+* Lattice pieces: `IsBoundedRange.toBoundedRangeOn` (any S),
+  `IsBoundedRangeOn.toBoundedRange_of_univ`,
+  `IsBoundedRangeOn.toHasAbsBound_of_mem` (generator),
+  `.subset`, `.union`, `.empty`.
+* `sum_abs_le_on`: `Σ i ∈ S, |xs_i| ≤ |S| · I.maxMag`.
+* `sum_abs_full_le`: full-domain sum with fallback `c` on complement.
+* `FpSumBound.hasAbsBound_of_boundedRangeOn` — bundle bridge
+  producing the sharpened `|S|·I.maxMag + |S^c|·c` output bound.
+* `hasAbsBound_of_boundedRangeOn_univ` corollary collapsing to the
+  standard full-domain bound when `S = univ`.
+
+Remaining (deferred):
+* A full `fpSoftmax_partitioned_error_bound` per-index case-split
+  theorem that re-proves softmax with `i ∈ S` vs `i ∉ S` paths
+  producing differently-tight coefficients.  Requires re-doing the
+  softmax end-to-end chain with a non-uniform bound structure;
+  ~200-300 additional lines.  Shelved unless a consumer workload
+  appears.
 
 ### T-M4: Tag propagation through `FpSumBound` / `FpDotProductBound` [composition gap] — **SHIPPED 2026-04-22**
 
