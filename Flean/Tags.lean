@@ -15,4 +15,5 @@ import Flean.Tags.SoftmaxBounded
 import Flean.Tags.LayerNorm
 import Flean.Tags.SterbenzShift
 import Flean.Tags.OneHot
+import Flean.Tags.Prob
 import Flean.Tags.Generators

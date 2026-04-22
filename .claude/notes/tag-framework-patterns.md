@@ -60,16 +60,13 @@ Strong tags imply weaker tags.  Captured by `@[tag_generator]`-marked
 `IsStrong.toWeak` lemmas.  Current lattice (2026-04-22):
 
 ```
-          IsSimplex
-           │
-           ▼
-        IsNonneg (per-index)
-
-          IsOneHot
-          │    │    │    │
-          ▼    ▼    ▼    ▼
-     IsNonneg HasAbsBound  IsProb    (future)
-     (ptwise) 1 (ptwise)
+       IsOneHot         IsSimplex
+          │                 │
+          └─────►IsProb◄────┘
+                   │    │
+                   ▼    ▼
+              IsNonneg  HasAbsBound 1
+              (ptwise)  (ptwise)
 
       IsBoundedRange
            │
@@ -85,12 +82,15 @@ Strong tags imply weaker tags.  Captured by `@[tag_generator]`-marked
 Newly shipped generators:
 - `IsOneHot.toIsNonneg` (E5)
 - `IsOneHot.toHasAbsBound_one` (E5)
+- `IsOneHot.toIsProb` (2026-04-22, T-M2)
+- `IsSimplex.toIsProb` (2026-04-22, T-M2)
+- `IsProb.toIsNonneg` (2026-04-22, T-M2)
+- `IsProb.toHasAbsBound_one` (2026-04-22, T-M2)
 - `IsBoundedRange.toHasAbsBound` (T-M1, retroactively marked E5)
 
 Queued for future tags (not yet implemented):
-- `IsSimplex.toIsNonneg`
+- `IsSimplex.toIsNonneg` (trivial; derives from `IsSimplex → IsProb → IsNonneg`)
 - `IsSterbenz.toHasAbsBound`
-- `IsProb` (future tag) ← `IsOneHot`, ← `IsSimplex`
 
 ---
 

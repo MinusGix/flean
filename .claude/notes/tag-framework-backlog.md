@@ -29,6 +29,7 @@ See also:
 | `Flean/Tags/Sterbenz.lean` | `IsSterbenz a b` + exact-sub | 145 |
 | `Flean/Tags/SterbenzShift.lean` | vector shift extraction + LSE/CE wrappers | 206 |
 | `Flean/Tags/OneHot.lean` | `IsOneHot j y` + CE specialization (T-M2) | 229 |
+| `Flean/Tags/Prob.lean` | `IsProb y` + CE specialization (T-M2 cont.) | 271 |
 | `Flean/Tags/SoftmaxBounded.lean` | softmax bridge | 114 |
 | `Flean/Tags/LayerNorm.lean` | LayerNorm fully-tagged bound | 679 |
 | `Flean/Tags/Bridges/ToIsNormalRange.lean` | bridges | 322 |
@@ -152,7 +153,20 @@ coercion would connect them.
 **Scope**: ~300–400 lines.  Mirrors `BoundedRangePropagate.lean` but
 one-dimensional.
 
-### T-M2: New fundamental tags [utility, pick carefully] — **IsOneHot SHIPPED 2026-04-22**
+### T-M2: New fundamental tags [utility, pick carefully] — **IsOneHot + IsProb SHIPPED 2026-04-22**
+
+- `Flean/Tags/OneHot.lean` (~229 lines) — `IsOneHot j y`.
+- `Flean/Tags/Prob.lean` (~271 lines) — `IsProb y` (sub-probability:
+  nonneg + Σ ≤ 1).  Fills the lattice gap between `IsOneHot`/`IsSimplex`
+  and `IsNonneg`.
+  - Ingress generators: `IsOneHot.toIsProb`, `IsSimplex.toIsProb`.
+  - Egress generators: `IsProb.toIsNonneg`, `IsProb.toHasAbsBound_one`.
+  - `abs_eq`, `sum_abs_le_one`, `toVal_le_one` derived facts.
+  - `fpCrossEntropy_isProb_error_bound` — CE bound in
+    "expectation under `ys`" form.  `|y_i|` drops to `y_i`,
+    weighted sums preserved.
+
+Remaining T-M2 items:
 
 `Flean/Tags/OneHot.lean` (~229 lines, sorry-free).
 
