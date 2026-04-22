@@ -9,6 +9,7 @@ See also:
 - `tag-framework-plan.md` — original vision.
 - `tag-framework-phase1-design.md` — Phase 1 record-of-decisions.
 - `tag-framework-phase2-design.md` — Phase 2 (LayerNorm) record-of-decisions.
+- `tag-framework-patterns.md` — pattern guide (E1 / T-L1 deliverable).
 
 ---
 
@@ -20,15 +21,18 @@ See also:
 | `Flean/Tags/BoundedRange.lean` | `IsBoundedRange I xs` | 59 |
 | `Flean/Tags/BoundedRangePropagate.lean` | 6 propagations through fp ops | 554 |
 | `Flean/Tags/AbsBound.lean` | `HasAbsBound c x` (scalar) | 133 |
+| `Flean/Tags/AbsBoundPropagate.lean` | 8 HasAbsBound propagations (T-M1) | 248 |
+| `Flean/Tags/BundleAbsBound.lean` | FpSum/FpDot bundle bridges (T-M4) | 201 |
 | `Flean/Tags/Nonneg.lean` | `IsNonneg x` + fpAdd/fpMul preservation | 134 |
 | `Flean/Tags/Normal.lean` | `IsNormal v` (real-valued) | 128 |
 | `Flean/Tags/Simplex.lean` | `IsSimplex ws` | 185 |
 | `Flean/Tags/Sterbenz.lean` | `IsSterbenz a b` + exact-sub | 145 |
 | `Flean/Tags/SterbenzShift.lean` | vector shift extraction + LSE/CE wrappers | 206 |
+| `Flean/Tags/OneHot.lean` | `IsOneHot j y` + CE specialization (T-M2) | 229 |
 | `Flean/Tags/SoftmaxBounded.lean` | softmax bridge | 114 |
 | `Flean/Tags/LayerNorm.lean` | LayerNorm fully-tagged bound | 679 |
 | `Flean/Tags/Bridges/ToIsNormalRange.lean` | bridges | 322 |
-| `Flean/Rounding/RoundPreserves.lean` | meta-lemma kernel | 273 |
+| `Flean/Rounding/RoundPreserves.lean` | meta-lemma kernel | 346 |
 
 Four specialization patterns validated:
 1. **Structural isolation** (`IsSimplex`)
@@ -353,3 +357,195 @@ Roughly in order of expected value:
    tags; lowest priority unless a concrete workload asks.
 
 Items ≥ 5 are lower priority pending developer interest.
+
+---
+
+## E-series: 2026-04-22 enhancements from post-T-M4 review
+
+Nine items surfaced while shipping T-M1/T-M2/T-M4 back-to-back and
+reflecting on what worked and what didn't.  Ranked in agreed priority
+order (user confirmation 2026-04-22).
+
+### E1: Pattern-guide doc [T-L1 realized] [priority 4]
+
+Write `.claude/notes/tag-framework-patterns.md`.  Two axes of taxonomy:
+
+* **Category axis** (what the tag *is*): algebraic / structural /
+  regime / witness.
+* **Payoff axis** (what the tag *does*): structural isolation /
+  additive-tail elimination / exactness / precondition discharge.
+
+Includes: when to use which pattern, retrofit playbook, tag-lattice
+diagram grounded on the generator lemmas from E5.
+
+Benefits from E5 landing first (lattice concrete) and E4 (`magBound`
+named) for cleaner examples.
+
+### E2: `HasAbsBound.c_nonneg` + `IsBoundedRange` dual [priority 1]
+
+Scope: ~50 lines.  Add:
+* `HasAbsBound.c_nonneg : HasAbsBound c x → 0 ≤ c`.
+* `IsBoundedRange.lo_le_hi : IsBoundedRange I xs → 0 < n → I.lo ≤ I.hi`
+  (only when `xs` is nonempty).
+
+Retrofit T-M4's `FpDotProduct.hasAbsBound_of_*` to derive `hc_x_nn`
+from the tag instead of taking it as a hypothesis.  Reduces friction
+across all downstream consumers.
+
+### E3: `letI` → `def` refactor [deferred, priority 10]
+
+Symptom: downstream wrappers over `letI`-heavy end-to-end theorems
+must `set`-rebind + `simp only [← hX_def]` to re-fold.  CE-one-hot
+hit this three times.
+
+Fix: promote `ε_sum`, `D_log`, `Δ_LSE`, etc. in LSE/CE end-to-end
+theorems to named `def`s.  Touches ~5 files.
+
+Deferred until a fifth wrapper hits the same pattern — 3 existing
+wrappers isn't enough to justify the refactor.
+
+### E4: Bundle `magBound` abbrev [priority 4]
+
+T-M4's bundle bridges all conclude `HasAbsBound ((1 + b.relErr) · n · c)
+b.result`.  That expression should have a name:
+
+```lean
+def FpSumBound.magBound (b : FpSumBound xs R) (c : R) : R :=
+  (1 + b.relErr) * (n : R) * c
+```
+
+Reshapes the six bridge theorems.  Matches the "algebraic tag" ethos
+from T-M1 (where `FpInterval.⊞` named the algebra).  ~100 lines.
+
+### E5: Tag generator lemmas [priority 2]
+
+Pattern: strong tags yield weaker ones via canonically-named `.toX`
+lemmas.
+
+First pass:
+* `IsOneHot.toIsNonneg : IsOneHot j y → ∀ i, IsNonneg (y i)`
+* `IsOneHot.toHasAbsBound_one : IsOneHot j y → ∀ i, HasAbsBound 1 (y i)`
+* `IsSimplex.toIsNonneg : IsSimplex ws → ∀ i, IsNonneg (ws i)`
+* `IsSterbenz.toHasAbsBound` (via magnitude ratio)
+
+Forward-compatible `@[tag_generator]` attribute (zero cost now, seeds
+the lattice registry for any future tag-inference work).
+
+Prerequisite for E1's lattice diagram.  ~150 lines.
+
+### E6: `IsBoundedRange` use-site audit [priority 5]
+
+Empirical question: what fraction of `IsBoundedRange` consumers use
+signed info (`lo`/`hi` separately) versus just magnitude (`maxMag`)?
+
+Produce a short report.  If majority is magnitude-only,
+`IsBoundedRange` is over-engineered for those sites — consider
+recommending `HasAbsBound` as the default when signed info isn't
+needed.  ~observational, no code.
+
+### E7: `FpSumBoundCompensated` bundle bridge [priority 3]
+
+Analog of T-M4 for the compensated bundle.  Three bridges
+(per-index, uniform, `IsBoundedRange`), output bound on
+`sigma := sum + comp` via triangle.
+
+~50 lines; closes the bundle-bridge suite.
+
+### E8: `HasAbsBoundVec` wrapper [priority 6]
+
+Convenience for passing vector magnitude bounds as one object:
+
+```lean
+def HasAbsBoundVec {n} (c : Fin n → R) (xs : Fin n → FiniteFp) : Prop :=
+  ∀ i, HasAbsBound (c i) (xs i)
+```
+
+Retrofit T-M4's per-index variants.  ~50 lines.  Symmetric with the
+other vector-level tags (`IsBoundedRange`, `IsSimplex`, `IsOneHot`).
+
+### E9: `[FPAxioms R]` typeclass bundle [priority 9]
+
+Every propagation theorem repeats `[RMode R] [RModeExec]
+[RoundIntSigMSound R] [RModeNearest R] [RModeConj R] [RModeZero R]`.
+Bundle them:
+
+```lean
+class FPAxioms (R : Type*) [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    [FloorRing R] extends RMode R, RModeExec, RoundIntSigMSound R,
+    RModeNearest R, RModeConj R, RModeZero R
+```
+
+Cross-cutting refactor; potentially 20+ files.  Low priority, high
+yield when touched.
+
+---
+
+## Design note: tag inference engine
+
+Flagged by the user on 2026-04-22.  A real long-term question.
+
+### What it would be
+
+A tactic `tag_infer` that, given tags on inputs and an FP expression,
+chains propagation/generator lemmas to produce tags on the result.
+Analogous to `linearize` or `bound_calc` but for tags.
+
+### Prerequisites (none exist yet)
+
+1. Tag lattice documented (E1 / T-L1).
+2. Canonical-name lemma registry (E5).
+3. Attribute system: `@[tag_propagate]`, `@[tag_generator]`,
+   `@[tag_bridge]`.
+4. Normalization strategy for when multiple paths give different
+   output tags.
+
+### Scale thresholds
+
+Currently: 7 tags, ~14 propagation theorems, ~6 bundle bridges, ~3
+bridges-to-hypotheses.  Manageable by name.
+
+Engine pays off around: 20+ tags OR users routinely chaining 4+ ops.
+We're below threshold.
+
+### Path forward
+
+* **Now** (zero cost, forward-compatible): add `@[tag_propagate]`
+  / `@[tag_generator]` / `@[tag_bridge]` attributes during E5.  When
+  the engine is built, these are already populated.
+* **Short-term**: keep building the lattice manually (E5 and friends).
+* **Long-term** (post-15th tag): build the engine as a `bound_calc`-
+  family tactic — attribute-driven dispatch, explicit in proofs,
+  bounded search depth.  Rough estimate: 800–1200 lines of
+  metaprogramming.
+
+### What NOT to do
+
+A typeclass-based inference engine (`TagInfer` class).  Rejected in
+Phase 1 design doc §1.1 for performance reasons; the rejection still
+applies.  Instance-synthesis over a growing tag lattice is a known
+Lean perf trap.
+
+### Trigger conditions to revisit
+
+- 15th fundamental tag lands (lattice complexity).
+- A real workload accumulates 5+ chained tag applications and the
+  manual compositions become a meaningful fraction of proof length.
+- User requests: "can the framework just figure this out?"
+
+---
+
+## E-series execution order (2026-04-22)
+
+Priority-ordered, batch small items:
+
+1. **E2** (`c_nonneg`) — small cleanup, done first.
+2. **E5** (tag generators + attributes) — sets up lattice.
+3. **E7** (compensated bundle) — closes bundle-bridge suite.
+4. **E4** (`magBound` abbrev) — medium, retrofits T-M4.
+5. **E8** (`HasAbsBoundVec`) — trivial convenience.
+6. **E1** (pattern guide) — draws on E5 lattice.
+7. **E6** (`IsBoundedRange` audit) — observational; informs future
+   refactor decisions.
+8. **E9** (`[FPAxioms R]` bundle) — cross-cutting, last to avoid
+   constant rebase.
+9. **E3** (`letI` → `def`) — deferred.
