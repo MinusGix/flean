@@ -64,3 +64,4 @@ import Flean.Operations.LogClose
 import Flean.Operations.CrossEntropy
 import Flean.Operations.LayerNorm
 import Flean.Operations.MLP
+import Flean.Operations.Lipschitz
