@@ -342,7 +342,56 @@ the consumer and for the future tag-inference engine.
 
 ---
 
-## 11. Further reading
+## 11. Framework cousins (non-tag abstractions)
+
+The tag framework has natural cousins — abstractions that aren't
+tags themselves but compose with them.  Document them here so users
+know where to look:
+
+### Lipschitz framework (`Flean/Operations/Lipschitz.lean`)
+
+`LipschitzMax K f` and `LipschitzScalar K f` are *named properties
+of functions*, not tags on values.  They state "this function is
+K-Lipschitz" with constant baked in.
+
+When to use:
+* Forward-error analyses on multi-layer compositions (the MLP
+  capstone).
+* Activation propagation (`LipschitzScalar` for ReLU, sigmoid, etc.).
+* Input-perturbation / robustness reasoning.
+
+Composition primitives mirror the tag framework: `.refl`, `.const`,
+`.weaken`, `.comp`, `.compScalar` on `LipschitzMax`; same on
+`LipschitzScalar`.  Plus `LipschitzMaxWithSlack K c f` for
+"almost-Lipschitz with bounded fudge" — the natural shape for FP
+operations whose rounding adds a slack term.
+
+Key relationship to tags: `BoundedParams` (tag) → Lipschitz
+constants (e.g., `Layer.forward_lipschitz` derives Lipschitz
+constant `n_in · wMax` from a `BoundedParams L wMax bMax` witness).
+
+Per-FP-op Lipschitz is intentionally **out of scope** — rounding is
+discontinuous (midpoint discontinuities), not Lipschitz in the usual
+sense.  FP error bounds stay with the `round_preserves_*` family.
+
+### Bundle bridges (`Flean/Tags/BundleAbsBound.lean`)
+
+`FpSumBound`, `FpDotProductBound`, `FpMatVecBound` are algorithm
+bundles wrapping FP ops with relative-error bounds.  The tag→bundle
+bridges (T-M4) connect input-side tags to output-side magnitude
+bounds.  Pattern documented in the bundle docstrings.
+
+### Backward error framework (`Flean/Operations/BackwardError.lean`)
+
+`MixedResult`, `BackwardResult`, `PerturbationGauge` etc. — a
+complementary framework for *backward* error analysis (perturb the
+input to make the FP result exactly correct).  Currently underused;
+no concrete `PerturbationLift` instances shipped (R5 in
+`strategic-directions.md`).
+
+---
+
+## 12. Further reading
 
 - `Flean/Tags/AbsBound.lean` — the simplest algebraic tag (reference).
 - `Flean/Tags/OneHot.lean` — the simplest structural tag (reference).
