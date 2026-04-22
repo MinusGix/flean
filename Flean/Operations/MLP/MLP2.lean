@@ -202,45 +202,24 @@ theorem MLP2FpResult.forward_error_bound {n_in n_hidden n_out : ℕ}
         M.forward (fun j => ((x j).toVal : R)) k| ≤
       res.errorBound w1Max xMax b1Max w2Max b2Max := by
   unfold MLP2.forward MLP2FpResult.errorBound
+  -- Layer 1 magnitude tag: feeds into layer 2's forward_error_bound.
   have h_layer1_bound : ∀ j, HasAbsBound (R := R)
       (res.layer1.outputBound w1Max xMax b1Max) (res.layer1.result j) := fun j =>
     ⟨res.layer1.toVal_abs_le hM.layer1_bounded hw1_nn hx hxMax_nn j⟩
   have h_hbound_nn : 0 ≤ res.layer1.outputBound w1Max xMax b1Max :=
     res.layer1.outputBound_nn hw1_nn hxMax_nn hb1_nn
-  have h_layer2_err := res.layer2.forward_error_bound hM.layer2_bounded hw2_nn
+  -- Layer 2's own error at the FP-intermediate input.
+  have h_outer := res.layer2.forward_error_bound hM.layer2_bounded hw2_nn
     h_layer1_bound h_hbound_nn k
-  have h_layer1_err : ∀ j,
+  -- Layer 1's per-index error.
+  have h_inner : ∀ j,
       |((res.layer1.result j).toVal : R) -
         M.layer1.forward (fun l => ((x l).toVal : R)) j| ≤
       res.layer1.errorBound w1Max xMax b1Max := fun j =>
     res.layer1.forward_error_bound hM.layer1_bounded hw1_nn hx hxMax_nn j
-  have h_ampl :=
-    (M.layer2.forward_lipschitz hM.layer2_bounded hw2_nn).bound
-      (fun j => ((res.layer1.result j).toVal : R))
-      (M.layer1.forward (fun l => ((x l).toVal : R)))
-      h_layer1_err k
-  have h_triangle :
-      |((res.layer2.result k).toVal : R) -
-        M.layer2.forward
-          (M.layer1.forward (fun l => ((x l).toVal : R))) k| ≤
-      |((res.layer2.result k).toVal : R) -
-        M.layer2.forward (fun j => ((res.layer1.result j).toVal : R)) k| +
-      |M.layer2.forward (fun j => ((res.layer1.result j).toVal : R)) k -
-        M.layer2.forward
-          (M.layer1.forward (fun l => ((x l).toVal : R))) k| := by
-    have h_split :
-        ((res.layer2.result k).toVal : R) -
-          M.layer2.forward
-            (M.layer1.forward (fun l => ((x l).toVal : R))) k =
-        (((res.layer2.result k).toVal : R) -
-          M.layer2.forward
-            (fun j => ((res.layer1.result j).toVal : R)) k) +
-        (M.layer2.forward
-            (fun j => ((res.layer1.result j).toVal : R)) k -
-         M.layer2.forward
-            (M.layer1.forward (fun l => ((x l).toVal : R))) k) := by ring
-    rw [h_split]; exact abs_add_le _ _
-  linarith
+  -- Compose via Lipschitz framework.
+  exact Flean.Lipschitz.LipschitzMax.errorAmplification
+    (M.layer2.forward_lipschitz hM.layer2_bounded hw2_nn) h_outer h_inner
 
 /-! ## MLP2 helpers -/
 

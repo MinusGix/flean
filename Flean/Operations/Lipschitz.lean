@@ -297,4 +297,45 @@ theorem LipschitzMaxWithSlack.comp {m k n : ℕ} {K_f c_f K_g c_g : R}
         ≤ K_g * (K_f * δ + c_f) + c_g := this
       _ = K_g * K_f * δ + (K_g * c_f + c_g) := by ring
 
+/-! ## Forward-error composition
+
+A pattern that recurs whenever we chain a Lipschitz function on top
+of a function with bounded error: the outer function amplifies the
+inner function's error by its Lipschitz constant, and the outer's own
+error contributes additively.
+
+This is the abstract shape of the per-layer composition step in
+multi-layer FP forward-error analyses.  Captures the "layer 2
+amplifies layer 1's error" pattern that appears in `MLP2.forward_error_bound`,
+softmax-then-CE composition, and any future deep-network analysis.
+-/
+
+/-- **Forward-error composition** through one Lipschitz layer.
+
+Inputs:
+* `lip_g`: outer function `g` is `K_g`-`LipschitzMax`.
+* `h_outer`: at the FP-derived point `z` (one specific input vector),
+  the outer FP-vs-real bound `|y - g z i| ≤ ε_g`.
+* `h_inner`: per-index, the inner FP-vs-real-input deviation
+  `|z j - w j| ≤ ε_f`.
+
+Output: `|y - g w i| ≤ ε_g + K_g · ε_f`.
+
+The outer's own error contributes additively; the inner's error gets
+amplified by `K_g` via Lipschitz.  This is the load-bearing
+composition step in any `forward_error_bound` chain. -/
+theorem LipschitzMax.errorAmplification {m n : ℕ} {K_g ε_g ε_f : R}
+    {g : (Fin m → R) → Fin n → R}
+    (lip_g : LipschitzMax (R := R) K_g g)
+    {y : R} {z w : Fin m → R} {i : Fin n}
+    (h_outer : |y - g z i| ≤ ε_g)
+    (h_inner : ∀ j, |z j - w j| ≤ ε_f) :
+    |y - g w i| ≤ ε_g + K_g * ε_f := by
+  have h_amp : |g z i - g w i| ≤ K_g * ε_f :=
+    lip_g.bound z w h_inner i
+  have h_tri : |y - g w i| ≤ |y - g z i| + |g z i - g w i| := by
+    have h_split : y - g w i = (y - g z i) + (g z i - g w i) := by ring
+    rw [h_split]; exact abs_add_le _ _
+  linarith
+
 end Flean.Lipschitz
