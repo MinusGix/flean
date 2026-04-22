@@ -461,4 +461,207 @@ theorem MLP2.realForward_abs_le {n_in n_hidden n_out : ℕ}
     linarith
   exact M.layer2.realForward_abs_le hM.layer2_bounded hw2_nn h_hidden h_hbd_nn i
 
+/-! ## 2-layer FP forward pass witness -/
+
+variable [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R]
+  [RModeConj R] [RModeZero R]
+
+/-- Witness structure for a 2-layer MLP FP forward pass.
+
+Bundles the two single-layer results with the constraint that
+layer 2's input is layer 1's output. -/
+structure MLP2FpResult {n_in n_hidden n_out : ℕ}
+    (M : MLP2 n_in n_hidden n_out) (x : Fin n_in → FiniteFp) (R : Type*)
+    [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] where
+  /-- Layer 1 FP forward pass. -/
+  layer1 : LayerFpResult M.layer1 x R
+  /-- Layer 2 FP forward pass, input = layer 1 output. -/
+  layer2 : LayerFpResult M.layer2 layer1.result R
+
+/-! ## 2-Layer FP output bound -/
+
+/-- Algebraic magnitude bound on the 2-layer MLP output.
+
+Layer 2 sees layer-1-output-magnitude as its `xMax`.  The bound is
+`(1+η)·((1+matvec2.relErr)·n_hidden·w2Max·h_bound + b2Max) + sc`,
+where `h_bound := layer1.outputBound w1Max xMax b1Max` is the
+layer-1 magnitude. -/
+noncomputable def MLP2FpResult.outputBound {n_in n_hidden n_out : ℕ}
+    {M : MLP2 n_in n_hidden n_out} {x : Fin n_in → FiniteFp}
+    (res : MLP2FpResult M x R)
+    (w1Max xMax b1Max w2Max b2Max : R) : R :=
+  res.layer2.outputBound w2Max
+    (res.layer1.outputBound w1Max xMax b1Max) b2Max
+
+/-- Layer-output magnitude bound is nonneg under the usual
+parameter-nonneg hypotheses.  Follows by unfolding the def. -/
+theorem LayerFpResult.outputBound_nn {n_in n_out : ℕ}
+    {L : Layer n_in n_out} {x : Fin n_in → FiniteFp}
+    (res : LayerFpResult L x R)
+    {wMax xMax bMax : R} (hwMax_nn : 0 ≤ wMax) (hxMax_nn : 0 ≤ xMax)
+    (hbMax_nn : 0 ≤ bMax) :
+    0 ≤ res.outputBound wMax xMax bMax := by
+  unfold LayerFpResult.outputBound
+  have h_relErr_nn := res.matvec.h_relErr_nn
+  have hη_nn : (0 : R) ≤ (η : R) := by positivity
+  have h_sc_nn := FpInterval.subnormalConst_nn (R := R)
+  have h1_plus_relErr : (0 : R) ≤ 1 + res.matvec.relErr := by linarith
+  have h_first : (0 : R) ≤
+      (1 + res.matvec.relErr) * (n_in : R) * wMax * xMax :=
+    mul_nonneg (mul_nonneg (mul_nonneg h1_plus_relErr (Nat.cast_nonneg _)) hwMax_nn) hxMax_nn
+  have h_inner : (0 : R) ≤
+      (1 + res.matvec.relErr) * (n_in : R) * wMax * xMax + bMax := by linarith
+  have h_scaled : (0 : R) ≤
+      (1 + (η : R)) *
+        ((1 + res.matvec.relErr) * (n_in : R) * wMax * xMax + bMax) :=
+    mul_nonneg (by linarith) h_inner
+  linarith
+
+/-- The FP 2-layer output is magnitude-bounded by the algebraic
+composition of the two layer bounds. -/
+theorem MLP2FpResult.toVal_abs_le {n_in n_hidden n_out : ℕ}
+    {M : MLP2 n_in n_hidden n_out} {x : Fin n_in → FiniteFp}
+    (res : MLP2FpResult M x R)
+    {w1Max b1Max w2Max b2Max : R}
+    (hM : MLP2Bounded (R := R) M w1Max b1Max w2Max b2Max)
+    (hw1_nn : 0 ≤ w1Max) (hb1_nn : 0 ≤ b1Max) (hw2_nn : 0 ≤ w2Max)
+    {xMax : R} (hx : ∀ j, HasAbsBound (R := R) xMax (x j))
+    (hxMax_nn : 0 ≤ xMax)
+    (k : Fin n_out) :
+    |((res.layer2.result k).toVal : R)| ≤
+      res.outputBound w1Max xMax b1Max w2Max b2Max := by
+  have h_layer1_bound : ∀ j, HasAbsBound (R := R)
+      (res.layer1.outputBound w1Max xMax b1Max) (res.layer1.result j) := fun j =>
+    ⟨res.layer1.toVal_abs_le hM.layer1_bounded hw1_nn hx hxMax_nn j⟩
+  have h_hbound_nn : 0 ≤ res.layer1.outputBound w1Max xMax b1Max :=
+    res.layer1.outputBound_nn hw1_nn hxMax_nn hb1_nn
+  exact res.layer2.toVal_abs_le hM.layer2_bounded hw2_nn h_layer1_bound h_hbound_nn k
+
+/-! ## 2-layer forward error bound
+
+Compositional: layer 2's own error + layer 2 amplifying layer 1's
+error.  Amplification is `n_hidden · w2Max` per output, from the
+linearity of layer 2 in its input.
+
+```
+|fp_k − real_k| ≤ layer2_error + n_hidden · w2Max · layer1_error
+```
+-/
+
+/-- Algebraic forward-error bound on the 2-layer MLP output. -/
+noncomputable def MLP2FpResult.errorBound {n_in n_hidden n_out : ℕ}
+    {M : MLP2 n_in n_hidden n_out} {x : Fin n_in → FiniteFp}
+    (res : MLP2FpResult M x R)
+    (w1Max xMax b1Max w2Max b2Max : R) : R :=
+  res.layer2.errorBound w2Max
+    (res.layer1.outputBound w1Max xMax b1Max) b2Max +
+  (n_hidden : R) * w2Max * res.layer1.errorBound w1Max xMax b1Max
+
+/-- Layer 2's forward pass is linear in its input: replacing the
+input by a perturbed version changes each output by at most
+`n_hidden · w2Max · (perturbation magnitude)`. -/
+private theorem Layer.realForward_perturbation {n_in n_out : ℕ}
+    (L : Layer n_in n_out)
+    {wMax bMax : R} (hL : LayerBounded (R := R) L wMax bMax)
+    (hwMax_nn : 0 ≤ wMax)
+    (x x' : Fin n_in → R) {δ : R}
+    (h_δ : ∀ j, |x j - x' j| ≤ δ)
+    (i : Fin n_out) :
+    |L.realForward x i - L.realForward x' i| ≤ (n_in : R) * wMax * δ := by
+  unfold Layer.realForward
+  have h_sub :
+      ((∑ j, ((L.W i j).toVal : R) * x j) + ((L.b i).toVal : R)) -
+      ((∑ j, ((L.W i j).toVal : R) * x' j) + ((L.b i).toVal : R)) =
+      ∑ j, ((L.W i j).toVal : R) * (x j - x' j) := by
+    have h_collapse :
+        ((∑ j, ((L.W i j).toVal : R) * x j) + ((L.b i).toVal : R)) -
+        ((∑ j, ((L.W i j).toVal : R) * x' j) + ((L.b i).toVal : R)) =
+        (∑ j, ((L.W i j).toVal : R) * x j) -
+        (∑ j, ((L.W i j).toVal : R) * x' j) := by ring
+    rw [h_collapse, ← Finset.sum_sub_distrib]
+    apply Finset.sum_congr rfl
+    intro j _; ring
+  rw [h_sub]
+  calc |∑ j, ((L.W i j).toVal : R) * (x j - x' j)|
+      ≤ ∑ j, |((L.W i j).toVal : R) * (x j - x' j)| :=
+        Finset.abs_sum_le_sum_abs _ _
+    _ ≤ ∑ _j : Fin n_in, wMax * δ := by
+        apply Finset.sum_le_sum
+        intro j _
+        rw [abs_mul]
+        exact mul_le_mul (hL.weight_bounded i j) (h_δ j) (abs_nonneg _) hwMax_nn
+    _ = (n_in : R) * (wMax * δ) := by
+        rw [Finset.sum_const]; simp [mul_comm]
+    _ = (n_in : R) * wMax * δ := by ring
+
+/-- **2-layer forward error bound**: the full capstone.
+
+Relates the FP-computed output to the real-valued ground truth over
+the R-lifted inputs.  Combines two rounding sources:
+
+1. Layer 1 → layer 2's rounding + matvec error (captured by
+   `res.layer2.forward_error_bound` using `h_bound` as layer-2 input
+   magnitude).
+2. Layer 2 amplifying layer 1's real-input-vs-FP-output deviation
+   (via `Layer.realForward_perturbation`, bounded by `n_hidden ·
+   w2Max · layer1.errorBound`).
+-/
+theorem MLP2FpResult.forward_error_bound {n_in n_hidden n_out : ℕ}
+    {M : MLP2 n_in n_hidden n_out} {x : Fin n_in → FiniteFp}
+    (res : MLP2FpResult M x R)
+    {w1Max b1Max w2Max b2Max : R}
+    (hM : MLP2Bounded (R := R) M w1Max b1Max w2Max b2Max)
+    (hw1_nn : 0 ≤ w1Max) (hb1_nn : 0 ≤ b1Max) (hw2_nn : 0 ≤ w2Max)
+    {xMax : R} (hx : ∀ j, HasAbsBound (R := R) xMax (x j))
+    (hxMax_nn : 0 ≤ xMax)
+    (k : Fin n_out) :
+    |((res.layer2.result k).toVal : R) -
+        M.realForward (fun j => ((x j).toVal : R)) k| ≤
+      res.errorBound w1Max xMax b1Max w2Max b2Max := by
+  unfold MLP2.realForward MLP2FpResult.errorBound
+  -- Layer 1 HasAbsBound output.
+  have h_layer1_bound : ∀ j, HasAbsBound (R := R)
+      (res.layer1.outputBound w1Max xMax b1Max) (res.layer1.result j) := fun j =>
+    ⟨res.layer1.toVal_abs_le hM.layer1_bounded hw1_nn hx hxMax_nn j⟩
+  have h_hbound_nn : 0 ≤ res.layer1.outputBound w1Max xMax b1Max :=
+    res.layer1.outputBound_nn hw1_nn hxMax_nn hb1_nn
+  -- Layer 2 forward-error bound with `h = layer1.result`.
+  have h_layer2_err := res.layer2.forward_error_bound hM.layer2_bounded hw2_nn
+    h_layer1_bound h_hbound_nn k
+  -- Layer 1 per-index error.
+  have h_layer1_err : ∀ j,
+      |((res.layer1.result j).toVal : R) -
+        M.layer1.realForward (fun l => ((x l).toVal : R)) j| ≤
+      res.layer1.errorBound w1Max xMax b1Max := fun j =>
+    res.layer1.forward_error_bound hM.layer1_bounded hw1_nn hx hxMax_nn j
+  -- Layer 2 amplification.
+  have h_ampl := M.layer2.realForward_perturbation hM.layer2_bounded hw2_nn
+    (fun j => ((res.layer1.result j).toVal : R))
+    (M.layer1.realForward (fun l => ((x l).toVal : R)))
+    h_layer1_err k
+  -- Triangle: |L2.fp - L2.real(L1.real)| ≤ |L2.fp - L2.real(L1.fp_lifted)|
+  --                                         + |L2.real(L1.fp_lifted) - L2.real(L1.real)|.
+  have h_triangle :
+      |((res.layer2.result k).toVal : R) -
+        M.layer2.realForward
+          (M.layer1.realForward (fun l => ((x l).toVal : R))) k| ≤
+      |((res.layer2.result k).toVal : R) -
+        M.layer2.realForward (fun j => ((res.layer1.result j).toVal : R)) k| +
+      |M.layer2.realForward (fun j => ((res.layer1.result j).toVal : R)) k -
+        M.layer2.realForward
+          (M.layer1.realForward (fun l => ((x l).toVal : R))) k| := by
+    have h_split :
+        ((res.layer2.result k).toVal : R) -
+          M.layer2.realForward
+            (M.layer1.realForward (fun l => ((x l).toVal : R))) k =
+        (((res.layer2.result k).toVal : R) -
+          M.layer2.realForward
+            (fun j => ((res.layer1.result j).toVal : R)) k) +
+        (M.layer2.realForward
+            (fun j => ((res.layer1.result j).toVal : R)) k -
+         M.layer2.realForward
+            (M.layer1.realForward (fun l => ((x l).toVal : R))) k) := by ring
+    rw [h_split]; exact abs_add_le _ _
+  linarith
+
 end MLP
