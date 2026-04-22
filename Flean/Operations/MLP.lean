@@ -72,7 +72,7 @@ structure Layer (n_in n_out : ℕ) where
   b : Fin n_out → FiniteFp
 
 /-- Real-valued forward pass of a single layer. -/
-noncomputable def Layer.realForward {n_in n_out : ℕ} (L : Layer n_in n_out)
+noncomputable def Layer.forward {n_in n_out : ℕ} (L : Layer n_in n_out)
     (x : Fin n_in → R) : Fin n_out → R :=
   fun i => (∑ j, ((L.W i j).toVal : R) * x j) + ((L.b i).toVal : R)
 
@@ -80,7 +80,7 @@ noncomputable def Layer.realForward {n_in n_out : ℕ} (L : Layer n_in n_out)
 
 /-- Parameter constraints for a single layer: weights in `[-wMax, wMax]`,
 biases in `[-bMax, bMax]`. -/
-structure LayerBounded {n_in n_out : ℕ} (L : Layer n_in n_out)
+structure BoundedParams {n_in n_out : ℕ} (L : Layer n_in n_out)
     (wMax bMax : R) : Prop where
   /-- Every weight entry is bounded. -/
   weight_bounded : ∀ i j, |((L.W i j).toVal : R)| ≤ wMax
@@ -91,21 +91,21 @@ structure LayerBounded {n_in n_out : ℕ} (L : Layer n_in n_out)
 forward pass when inputs are magnitude-bounded by `xMax`.
 
 `|W_i · x + b_i| ≤ n · wMax · xMax + bMax`. -/
-noncomputable def Layer.realOutputBound {n_in n_out : ℕ} (_L : Layer n_in n_out)
+noncomputable def Layer.outputBoundReal {n_in n_out : ℕ} (_L : Layer n_in n_out)
     (wMax xMax bMax : R) : R :=
   (n_in : R) * wMax * xMax + bMax
 
 /-- The real-valued forward pass lies within its algebraic magnitude bound.
 
-Requires `0 ≤ wMax` explicitly because `LayerBounded` alone doesn't
+Requires `0 ≤ wMax` explicitly because `BoundedParams` alone doesn't
 imply it (the constraint is vacuous for empty matrices). -/
-theorem Layer.realForward_abs_le {n_in n_out : ℕ} (L : Layer n_in n_out)
-    {wMax bMax : R} (hL : LayerBounded L wMax bMax)
+theorem Layer.forward_abs_le {n_in n_out : ℕ} (L : Layer n_in n_out)
+    {wMax bMax : R} (hL : BoundedParams L wMax bMax)
     (hwMax_nn : 0 ≤ wMax)
     {x : Fin n_in → R} {xMax : R} (hx : ∀ j, |x j| ≤ xMax) (hxMax_nn : 0 ≤ xMax)
     (i : Fin n_out) :
-    |L.realForward x i| ≤ L.realOutputBound wMax xMax bMax := by
-  unfold Layer.realForward Layer.realOutputBound
+    |L.forward x i| ≤ L.outputBoundReal wMax xMax bMax := by
+  unfold Layer.forward Layer.outputBoundReal
   have h_sum_bound :
       |∑ j, ((L.W i j).toVal : R) * x j| ≤
         (n_in : R) * wMax * xMax := by
@@ -169,7 +169,7 @@ bridge + `HasAbsBound.fpAdd_unified`. -/
 theorem LayerFpResult.toVal_abs_le {n_in n_out : ℕ}
     {L : Layer n_in n_out} {x : Fin n_in → FiniteFp}
     (res : LayerFpResult L x R)
-    {wMax bMax : R} (hL : LayerBounded (R := R) L wMax bMax)
+    {wMax bMax : R} (hL : BoundedParams (R := R) L wMax bMax)
     (hwMax_nn : 0 ≤ wMax)
     {xMax : R} (hx : ∀ j, HasAbsBound (R := R) xMax (x j))
     (hxMax_nn : 0 ≤ xMax)
@@ -234,7 +234,7 @@ theorem LayerFpResult.toVal_abs_le {n_in n_out : ℕ}
 /-! ## Single-layer forward error bound
 
 Relates `result_i.toVal` to the real-valued layer output
-`L.realForward x.toVal i = Σ W_ij · x_j.toVal + b_i.toVal`.  Two
+`L.forward x.toVal i = Σ W_ij · x_j.toVal + b_i.toVal`.  Two
 rounding sources compose additively: the matvec's relative error on
 the dot product, and the unified bias-add's `η·|·| + subnormalConst`
 slack. -/
@@ -257,15 +257,15 @@ up to `errorBound`. -/
 theorem LayerFpResult.forward_error_bound {n_in n_out : ℕ}
     {L : Layer n_in n_out} {x : Fin n_in → FiniteFp}
     (res : LayerFpResult L x R)
-    {wMax bMax : R} (hL : LayerBounded (R := R) L wMax bMax)
+    {wMax bMax : R} (hL : BoundedParams (R := R) L wMax bMax)
     (hwMax_nn : 0 ≤ wMax)
     {xMax : R} (hx : ∀ j, HasAbsBound (R := R) xMax (x j))
     (hxMax_nn : 0 ≤ xMax)
     (i : Fin n_out) :
     |((res.result i).toVal : R) -
-        L.realForward (fun j => ((x j).toVal : R)) i| ≤
+        L.forward (fun j => ((x j).toVal : R)) i| ≤
       res.errorBound wMax xMax bMax := by
-  unfold Layer.realForward LayerFpResult.errorBound
+  unfold Layer.forward LayerFpResult.errorBound
   -- Bias add's round witness.
   obtain ⟨g, hg_round, hg_eq⟩ :=
     fpAddFinite_round_witness (R := R) (res.matvec.result i) (L.b i) (res.h_add i)
@@ -404,11 +404,11 @@ structure MLP2 (n_in n_hidden n_out : ℕ) where
   layer2 : Layer n_hidden n_out
 
 /-- Real-valued forward pass.  No activation. -/
-noncomputable def MLP2.realForward {R : Type*}
+noncomputable def MLP2.forward {R : Type*}
     [Field R] [LinearOrder R] [IsStrictOrderedRing R]
     {n_in n_hidden n_out : ℕ} (M : MLP2 n_in n_hidden n_out)
     (x : Fin n_in → R) : Fin n_out → R :=
-  M.layer2.realForward (M.layer1.realForward x)
+  M.layer2.forward (M.layer1.forward x)
 
 /-! ## Bounded-parameter tag for the 2-layer network -/
 
@@ -417,10 +417,10 @@ variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRin
 /-- Parameter-bound tag for a 2-layer MLP.  Separate `wMax`/`bMax`
 pairs per layer so tight inner layers don't contaminate loose outer
 layers (or vice versa). -/
-structure MLP2Bounded {n_in n_hidden n_out : ℕ}
+structure MLP2BoundedParams {n_in n_hidden n_out : ℕ}
     (M : MLP2 n_in n_hidden n_out) (w1Max b1Max w2Max b2Max : R) : Prop where
-  layer1_bounded : LayerBounded (R := R) M.layer1 w1Max b1Max
-  layer2_bounded : LayerBounded (R := R) M.layer2 w2Max b2Max
+  layer1_bounded : BoundedParams (R := R) M.layer1 w1Max b1Max
+  layer2_bounded : BoundedParams (R := R) M.layer2 w2Max b2Max
 
 /-! ## Real-valued magnitude bound
 
@@ -440,26 +440,26 @@ noncomputable def MLP2.outputBound {n_in n_hidden n_out : ℕ}
 /-- The real-valued 2-layer forward pass lies within its algebraic
 output bound.  Takes `0 ≤ w1Max, 0 ≤ b1Max, 0 ≤ w2Max` as explicit
 hypotheses (vacuous at empty dimensions otherwise). -/
-theorem MLP2.realForward_abs_le {n_in n_hidden n_out : ℕ}
+theorem MLP2.forward_abs_le {n_in n_hidden n_out : ℕ}
     (M : MLP2 n_in n_hidden n_out)
     {w1Max b1Max w2Max b2Max : R}
-    (hM : MLP2Bounded (R := R) M w1Max b1Max w2Max b2Max)
+    (hM : MLP2BoundedParams (R := R) M w1Max b1Max w2Max b2Max)
     (hw1_nn : 0 ≤ w1Max) (hb1_nn : 0 ≤ b1Max) (hw2_nn : 0 ≤ w2Max)
     {x : Fin n_in → R} {xMax : R}
     (hx : ∀ j, |x j| ≤ xMax) (hxMax_nn : 0 ≤ xMax)
     (i : Fin n_out) :
-    |M.realForward x i| ≤ M.outputBound w1Max xMax b1Max w2Max b2Max := by
-  unfold MLP2.realForward MLP2.outputBound
-  have h_hidden : ∀ j, |M.layer1.realForward x j| ≤
+    |M.forward x i| ≤ M.outputBound w1Max xMax b1Max w2Max b2Max := by
+  unfold MLP2.forward MLP2.outputBound
+  have h_hidden : ∀ j, |M.layer1.forward x j| ≤
       M.hiddenBound w1Max xMax b1Max := by
     intro j
-    exact M.layer1.realForward_abs_le hM.layer1_bounded hw1_nn hx hxMax_nn j
+    exact M.layer1.forward_abs_le hM.layer1_bounded hw1_nn hx hxMax_nn j
   have h_hbd_nn : 0 ≤ M.hiddenBound w1Max xMax b1Max := by
     unfold MLP2.hiddenBound
     have : 0 ≤ (n_in : R) * w1Max * xMax :=
       mul_nonneg (mul_nonneg (Nat.cast_nonneg _) hw1_nn) hxMax_nn
     linarith
-  exact M.layer2.realForward_abs_le hM.layer2_bounded hw2_nn h_hidden h_hbd_nn i
+  exact M.layer2.forward_abs_le hM.layer2_bounded hw2_nn h_hidden h_hbd_nn i
 
 /-! ## 2-layer FP forward pass witness -/
 
@@ -523,7 +523,7 @@ theorem MLP2FpResult.toVal_abs_le {n_in n_hidden n_out : ℕ}
     {M : MLP2 n_in n_hidden n_out} {x : Fin n_in → FiniteFp}
     (res : MLP2FpResult M x R)
     {w1Max b1Max w2Max b2Max : R}
-    (hM : MLP2Bounded (R := R) M w1Max b1Max w2Max b2Max)
+    (hM : MLP2BoundedParams (R := R) M w1Max b1Max w2Max b2Max)
     (hw1_nn : 0 ≤ w1Max) (hb1_nn : 0 ≤ b1Max) (hw2_nn : 0 ≤ w2Max)
     {xMax : R} (hx : ∀ j, HasAbsBound (R := R) xMax (x j))
     (hxMax_nn : 0 ≤ xMax)
@@ -560,15 +560,15 @@ noncomputable def MLP2FpResult.errorBound {n_in n_hidden n_out : ℕ}
 /-- Layer 2's forward pass is linear in its input: replacing the
 input by a perturbed version changes each output by at most
 `n_hidden · w2Max · (perturbation magnitude)`. -/
-private theorem Layer.realForward_perturbation {n_in n_out : ℕ}
+private theorem Layer.forward_perturbation {n_in n_out : ℕ}
     (L : Layer n_in n_out)
-    {wMax bMax : R} (hL : LayerBounded (R := R) L wMax bMax)
+    {wMax bMax : R} (hL : BoundedParams (R := R) L wMax bMax)
     (hwMax_nn : 0 ≤ wMax)
     (x x' : Fin n_in → R) {δ : R}
     (h_δ : ∀ j, |x j - x' j| ≤ δ)
     (i : Fin n_out) :
-    |L.realForward x i - L.realForward x' i| ≤ (n_in : R) * wMax * δ := by
-  unfold Layer.realForward
+    |L.forward x i - L.forward x' i| ≤ (n_in : R) * wMax * δ := by
+  unfold Layer.forward
   have h_sub :
       ((∑ j, ((L.W i j).toVal : R) * x j) + ((L.b i).toVal : R)) -
       ((∑ j, ((L.W i j).toVal : R) * x' j) + ((L.b i).toVal : R)) =
@@ -603,22 +603,22 @@ the R-lifted inputs.  Combines two rounding sources:
    `res.layer2.forward_error_bound` using `h_bound` as layer-2 input
    magnitude).
 2. Layer 2 amplifying layer 1's real-input-vs-FP-output deviation
-   (via `Layer.realForward_perturbation`, bounded by `n_hidden ·
+   (via `Layer.forward_perturbation`, bounded by `n_hidden ·
    w2Max · layer1.errorBound`).
 -/
 theorem MLP2FpResult.forward_error_bound {n_in n_hidden n_out : ℕ}
     {M : MLP2 n_in n_hidden n_out} {x : Fin n_in → FiniteFp}
     (res : MLP2FpResult M x R)
     {w1Max b1Max w2Max b2Max : R}
-    (hM : MLP2Bounded (R := R) M w1Max b1Max w2Max b2Max)
+    (hM : MLP2BoundedParams (R := R) M w1Max b1Max w2Max b2Max)
     (hw1_nn : 0 ≤ w1Max) (hb1_nn : 0 ≤ b1Max) (hw2_nn : 0 ≤ w2Max)
     {xMax : R} (hx : ∀ j, HasAbsBound (R := R) xMax (x j))
     (hxMax_nn : 0 ≤ xMax)
     (k : Fin n_out) :
     |((res.layer2.result k).toVal : R) -
-        M.realForward (fun j => ((x j).toVal : R)) k| ≤
+        M.forward (fun j => ((x j).toVal : R)) k| ≤
       res.errorBound w1Max xMax b1Max w2Max b2Max := by
-  unfold MLP2.realForward MLP2FpResult.errorBound
+  unfold MLP2.forward MLP2FpResult.errorBound
   -- Layer 1 HasAbsBound output.
   have h_layer1_bound : ∀ j, HasAbsBound (R := R)
       (res.layer1.outputBound w1Max xMax b1Max) (res.layer1.result j) := fun j =>
@@ -631,37 +631,146 @@ theorem MLP2FpResult.forward_error_bound {n_in n_hidden n_out : ℕ}
   -- Layer 1 per-index error.
   have h_layer1_err : ∀ j,
       |((res.layer1.result j).toVal : R) -
-        M.layer1.realForward (fun l => ((x l).toVal : R)) j| ≤
+        M.layer1.forward (fun l => ((x l).toVal : R)) j| ≤
       res.layer1.errorBound w1Max xMax b1Max := fun j =>
     res.layer1.forward_error_bound hM.layer1_bounded hw1_nn hx hxMax_nn j
   -- Layer 2 amplification.
-  have h_ampl := M.layer2.realForward_perturbation hM.layer2_bounded hw2_nn
+  have h_ampl := M.layer2.forward_perturbation hM.layer2_bounded hw2_nn
     (fun j => ((res.layer1.result j).toVal : R))
-    (M.layer1.realForward (fun l => ((x l).toVal : R)))
+    (M.layer1.forward (fun l => ((x l).toVal : R)))
     h_layer1_err k
   -- Triangle: |L2.fp - L2.real(L1.real)| ≤ |L2.fp - L2.real(L1.fp_lifted)|
   --                                         + |L2.real(L1.fp_lifted) - L2.real(L1.real)|.
   have h_triangle :
       |((res.layer2.result k).toVal : R) -
-        M.layer2.realForward
-          (M.layer1.realForward (fun l => ((x l).toVal : R))) k| ≤
+        M.layer2.forward
+          (M.layer1.forward (fun l => ((x l).toVal : R))) k| ≤
       |((res.layer2.result k).toVal : R) -
-        M.layer2.realForward (fun j => ((res.layer1.result j).toVal : R)) k| +
-      |M.layer2.realForward (fun j => ((res.layer1.result j).toVal : R)) k -
-        M.layer2.realForward
-          (M.layer1.realForward (fun l => ((x l).toVal : R))) k| := by
+        M.layer2.forward (fun j => ((res.layer1.result j).toVal : R)) k| +
+      |M.layer2.forward (fun j => ((res.layer1.result j).toVal : R)) k -
+        M.layer2.forward
+          (M.layer1.forward (fun l => ((x l).toVal : R))) k| := by
     have h_split :
         ((res.layer2.result k).toVal : R) -
-          M.layer2.realForward
-            (M.layer1.realForward (fun l => ((x l).toVal : R))) k =
+          M.layer2.forward
+            (M.layer1.forward (fun l => ((x l).toVal : R))) k =
         (((res.layer2.result k).toVal : R) -
-          M.layer2.realForward
+          M.layer2.forward
             (fun j => ((res.layer1.result j).toVal : R)) k) +
-        (M.layer2.realForward
+        (M.layer2.forward
             (fun j => ((res.layer1.result j).toVal : R)) k -
-         M.layer2.realForward
-            (M.layer1.realForward (fun l => ((x l).toVal : R))) k) := by ring
+         M.layer2.forward
+            (M.layer1.forward (fun l => ((x l).toVal : R))) k) := by ring
     rw [h_split]; exact abs_add_le _ _
   linarith
+
+/-! ## Helpers and tag-framework bridges
+
+The MLP capstone defines `BoundedParams` as a self-contained struct,
+but the wider tag framework speaks `HasAbsBound`.  Bridges in both
+directions plus parameter-nonneg accessors make the capstone
+interoperate cleanly with downstream tag consumers and free callers
+from re-deriving obvious facts. -/
+
+/-- Derive `BoundedParams` from per-entry `HasAbsBound` tags. -/
+theorem BoundedParams.ofHasAbsBound {n_in n_out : ℕ}
+    {L : Layer n_in n_out} {wMax bMax : R}
+    (h_W : ∀ i j, HasAbsBound (R := R) wMax (L.W i j))
+    (h_b : ∀ i, HasAbsBound (R := R) bMax (L.b i)) :
+    BoundedParams (R := R) L wMax bMax where
+  weight_bounded := fun i j => (h_W i j).toVal_abs_le
+  bias_bounded := fun i => (h_b i).toVal_abs_le
+
+/-- Project a `BoundedParams` to per-entry `HasAbsBound` tags on the weights. -/
+theorem BoundedParams.toHasAbsBound_W {n_in n_out : ℕ}
+    {L : Layer n_in n_out} {wMax bMax : R}
+    (h : BoundedParams (R := R) L wMax bMax) (i : Fin n_out) (j : Fin n_in) :
+    HasAbsBound (R := R) wMax (L.W i j) :=
+  ⟨h.weight_bounded i j⟩
+
+/-- Project a `BoundedParams` to per-entry `HasAbsBound` tags on the biases. -/
+theorem BoundedParams.toHasAbsBound_b {n_in n_out : ℕ}
+    {L : Layer n_in n_out} {wMax bMax : R}
+    (h : BoundedParams (R := R) L wMax bMax) (i : Fin n_out) :
+    HasAbsBound (R := R) bMax (L.b i) :=
+  ⟨h.bias_bounded i⟩
+
+/-- **Parameter-nonneg accessor** for `wMax` (M5).  When the layer
+has at least one weight entry, `wMax` is non-negative — derivable
+from `0 ≤ |W_ij| ≤ wMax`. -/
+theorem BoundedParams.wMax_nn {n_in n_out : ℕ}
+    {L : Layer n_in n_out} {wMax bMax : R}
+    (h : BoundedParams (R := R) L wMax bMax)
+    (h_in : 0 < n_in) (h_out : 0 < n_out) :
+    (0 : R) ≤ wMax :=
+  le_trans (abs_nonneg _) (h.weight_bounded ⟨0, h_out⟩ ⟨0, h_in⟩)
+
+/-- **Parameter-nonneg accessor** for `bMax`.  When the layer has at
+least one output, `bMax` is non-negative. -/
+theorem BoundedParams.bMax_nn {n_in n_out : ℕ}
+    {L : Layer n_in n_out} {wMax bMax : R}
+    (h : BoundedParams (R := R) L wMax bMax)
+    (h_out : 0 < n_out) :
+    (0 : R) ≤ bMax :=
+  le_trans (abs_nonneg _) (h.bias_bounded ⟨0, h_out⟩)
+
+/-! ## MLP2 helpers -/
+
+/-- 2-layer accessors: weight nonneg accessors derived from the layer
+parameter-bounded sub-structures. -/
+theorem MLP2BoundedParams.w1_nn {n_in n_hidden n_out : ℕ}
+    {M : MLP2 n_in n_hidden n_out} {w1Max b1Max w2Max b2Max : R}
+    (hM : MLP2BoundedParams (R := R) M w1Max b1Max w2Max b2Max)
+    (h_in : 0 < n_in) (h_hidden : 0 < n_hidden) :
+    (0 : R) ≤ w1Max :=
+  hM.layer1_bounded.wMax_nn h_in h_hidden
+
+theorem MLP2BoundedParams.b1_nn {n_in n_hidden n_out : ℕ}
+    {M : MLP2 n_in n_hidden n_out} {w1Max b1Max w2Max b2Max : R}
+    (hM : MLP2BoundedParams (R := R) M w1Max b1Max w2Max b2Max)
+    (h_hidden : 0 < n_hidden) :
+    (0 : R) ≤ b1Max :=
+  hM.layer1_bounded.bMax_nn h_hidden
+
+theorem MLP2BoundedParams.w2_nn {n_in n_hidden n_out : ℕ}
+    {M : MLP2 n_in n_hidden n_out} {w1Max b1Max w2Max b2Max : R}
+    (hM : MLP2BoundedParams (R := R) M w1Max b1Max w2Max b2Max)
+    (h_hidden : 0 < n_hidden) (h_out : 0 < n_out) :
+    (0 : R) ≤ w2Max :=
+  hM.layer2_bounded.wMax_nn h_hidden h_out
+
+theorem MLP2BoundedParams.b2_nn {n_in n_hidden n_out : ℕ}
+    {M : MLP2 n_in n_hidden n_out} {w1Max b1Max w2Max b2Max : R}
+    (hM : MLP2BoundedParams (R := R) M w1Max b1Max w2Max b2Max)
+    (h_out : 0 < n_out) :
+    (0 : R) ≤ b2Max :=
+  hM.layer2_bounded.bMax_nn h_out
+
+/-! ## Concrete demo (M8)
+
+A runnable smoke test: the 2-layer error bound applies to a specific
+network shape, with parameter-nonneg derived automatically from the
+accessors above. -/
+
+/-- **Demo**: invoking the 2-layer error bound on a concrete network
+shape (4 → 3 → 2).  No specific weight values needed; the theorem
+is statement-level applicable.  The accessors discharge nonneg
+hypotheses automatically. -/
+theorem MLP2FpResult.forward_error_bound_demo
+    {M : MLP2 4 3 2} {x : Fin 4 → FiniteFp}
+    (res : MLP2FpResult M x R)
+    {w1Max b1Max w2Max b2Max : R}
+    (hM : MLP2BoundedParams (R := R) M w1Max b1Max w2Max b2Max)
+    {xMax : R} (hx : ∀ j, HasAbsBound (R := R) xMax (x j))
+    (hxMax_nn : 0 ≤ xMax)
+    (k : Fin 2) :
+    |((res.layer2.result k).toVal : R) -
+        M.forward (fun j => ((x j).toVal : R)) k| ≤
+      res.errorBound w1Max xMax b1Max w2Max b2Max := by
+  exact res.forward_error_bound hM
+    (hM.w1_nn (by decide) (by decide))
+    (hM.b1_nn (by decide))
+    (hM.w2_nn (by decide) (by decide))
+    hx hxMax_nn k
 
 end MLP
