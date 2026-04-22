@@ -87,7 +87,37 @@ attribute would enable queries like "which lemmas produce
 
 ## Medium-term (new patterns)
 
-### T-M1: Tag calculus elaboration [architectural, high elegance]
+### T-M1: Tag calculus elaboration [architectural, high elegance] — **SHIPPED 2026-04-22**
+
+`Flean/Tags/AbsBoundPropagate.lean` (~248 lines, sorry-free).  Builds
+the full propagation suite for `HasAbsBound`, parallel to
+`BoundedRangePropagate.lean` but one-dimensional (a single
+magnitude bound `c : R` instead of an interval).
+
+Meta-lemma kernel extended with two new theorems in
+`Flean/Rounding/RoundPreserves.lean`:
+- `round_preserves_abs_bound_signed_normal` (sign-agnostic + normal range)
+- `round_preserves_abs_bound_unified` (sign-agnostic + subnormal-tolerant)
+
+Eight propagation theorems — `fp{Add,Sub,Mul,FMA}_{normal,unified}` —
+plus bridges `IsBoundedRange.toHasAbsBound` (pointwise magnitude
+projection) and `HasAbsBound.toIsBoundedRange` (singleton symmetric
+interval).  Output constants computed algebraically:
+
+| Op    | Normal output bound            | Unified output bound                        |
+|-------|--------------------------------|---------------------------------------------|
+| Add   | `(1+η)·(c₁+c₂)`                | `(1+η)·(c₁+c₂) + subnormalConst`            |
+| Sub   | `(1+η)·(c₁+c₂)`                | `(1+η)·(c₁+c₂) + subnormalConst`            |
+| Mul   | `(1+η)·(c₁·c₂)`                | `(1+η)·(c₁·c₂) + subnormalConst`            |
+| FMA   | `(1+η)·(c₁·c₂+c₃)`             | `(1+η)·(c₁·c₂+c₃) + subnormalConst`         |
+
+This reifies `HasAbsBound` as the third algebraic tag (after
+`IsBoundedRange` and `IsNonneg`), establishing the one-dimensional
+"algebraic tag" pattern as a first-class framework notion.  Each
+propagation proof is 5–11 lines — meta-lemma kernel performance
+validated.
+
+**Original description** (kept for context):
 
 Only `IsBoundedRange` currently has an algebraic propagation story
 (`FpInterval` with `⊞`/`⊠`/`⊟`).  Other tags threaded through ops don't
@@ -260,20 +290,21 @@ would catch regressions when a propagation lemma's signature changes.
 
 ---
 
-## Ranking snapshot (2026-04-22)
+## Ranking snapshot (2026-04-22, post-T-M1)
 
 Roughly in order of expected value:
 
-1. **T-M1** (tag calculus elaboration, `HasAbsBound` full propagation) — high
-   elegance, moderate scope, sets up the "algebraic tag" pattern as a
-   first-class thing.
+1. ~~**T-M1** (tag calculus elaboration)~~ — **DONE**.
 2. **T-M2** with `IsOneHot` first — concrete ML utility, demonstrably
    tightens CE bounds.
 3. **T-M4** (tag propagation through `FpSumBound` / `FpDotProductBound`) —
-   unlocks composition that currently requires unbundling.
+   unlocks composition that currently requires unbundling.  With
+   `HasAbsBound`'s propagation suite landed, the "one-tag bundle
+   decorator" pattern is easier to prototype.
 4. **T-S1** (LSE/CE tail elimination) — direct win, low scope, but
-   covers less new ground than (1)–(3).
+   covers less new ground than (2)–(3).
 5. **T-M3** (partitioned softmax) — most framework-novel, large scope.
-6. **T-L1** (pattern guide) — pays off when a sixth tag arrives.
+6. **T-L1** (pattern guide) — pays off when a sixth tag arrives.  The
+   algebraic-tag pattern (T-M1) gives it new material to draw on.
 
 Items ≥ 5 are lower priority pending developer interest.

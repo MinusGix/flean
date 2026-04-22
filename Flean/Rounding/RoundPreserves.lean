@@ -270,4 +270,77 @@ theorem round_preserves_abs_error_unified [FloorRing R]
     rw [habs_x]
     linarith
 
+/-! ## Sign-agnostic magnitude bounds
+
+Companions of `round_preserves_abs_bound_normal` (which requires
+`isNormalRange x`, i.e. `x > 0`).  Built on top of the sign-agnostic
+`round_preserves_abs_error_*` family.
+
+Used as the kernel for `HasAbsBound` propagation through FP ops in
+`Flean/Tags/AbsBoundPropagate.lean`. -/
+
+/-- Sign-agnostic magnitude bound in the normal range.
+
+Given `|x| ≤ c` and `2^min_exp ≤ |x|` (i.e. `x` is outside the
+subnormal zone), rounding `x` to a finite float `f` yields
+`|f.toVal| ≤ (1+η)·c`.
+
+Drops the `isNormalRange x` (positive) hypothesis of
+`round_preserves_abs_bound_normal` by using
+`round_preserves_abs_error_normal` + triangle inequality instead.
+Pays for this with the `RModeConj` typeclass. -/
+theorem round_preserves_abs_bound_signed_normal [FloorRing R]
+    [RMode R] [RModeNearest R] [RModeConj R]
+    {x c : R} (hxc : |x| ≤ c)
+    (hx_lb : (2 : R) ^ FloatFormat.min_exp ≤ |x|)
+    {f : FiniteFp}
+    (hf : (RMode.round x : Fp) = Fp.finite f) :
+    |(f.toVal : R)| ≤ (1 + η) * c := by
+  have h_err : |(f.toVal : R) - x| ≤ η * |x| :=
+    round_preserves_abs_error_normal hx_lb hf
+  have hη_nn : (0 : R) ≤ η := by positivity
+  have h1η_nn : (0 : R) ≤ 1 + η := by linarith
+  have h_tri : |(f.toVal : R)| ≤ |(f.toVal : R) - x| + |x| := by
+    have : |((f.toVal : R) - x) + x| ≤ |(f.toVal : R) - x| + |x| := abs_add_le _ _
+    convert this using 2; ring
+  calc |(f.toVal : R)|
+      ≤ |(f.toVal : R) - x| + |x| := h_tri
+    _ ≤ η * |x| + |x| := by linarith
+    _ = (1 + η) * |x| := by ring
+    _ ≤ (1 + η) * c := mul_le_mul_of_nonneg_left hxc h1η_nn
+
+/-- Sign-agnostic subnormal-tolerant magnitude bound.
+
+Given `|x| ≤ c`, rounding `x` to a finite float `f` yields
+`|f.toVal| ≤ (1+η)·c + subnormalConst`, where
+`subnormalConst = 2^(min_exp - prec)`.
+
+Drops both the `isNormalRange x` hypothesis AND the magnitude lower
+bound of `round_preserves_abs_bound_signed_normal`, in exchange for
+the subnormal tail.  Uses `round_preserves_abs_error_unified`. -/
+theorem round_preserves_abs_bound_unified [FloorRing R]
+    [RMode R] [RModeNearest R] [RModeConj R] [RModeZero R]
+    {x c : R} (hxc : |x| ≤ c) {f : FiniteFp}
+    (hf : (RMode.round x : Fp) = Fp.finite f) :
+    |(f.toVal : R)| ≤ (1 + η) * c +
+      (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) := by
+  have h_err := round_preserves_abs_error_unified (R := R) x hf
+  have hη_nn : (0 : R) ≤ η := by positivity
+  have h1η_nn : (0 : R) ≤ 1 + η := by linarith
+  have hsub_nn : (0 : R) ≤ (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) :=
+    by positivity
+  have h_tri : |(f.toVal : R)| ≤ |(f.toVal : R) - x| + |x| := by
+    have : |((f.toVal : R) - x) + x| ≤ |(f.toVal : R) - x| + |x| := abs_add_le _ _
+    convert this using 2; ring
+  calc |(f.toVal : R)|
+      ≤ |(f.toVal : R) - x| + |x| := h_tri
+    _ ≤ (η * |x| +
+          (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ)) + |x| := by linarith
+    _ = (1 + η) * |x| +
+          (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) := by ring
+    _ ≤ (1 + η) * c +
+          (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) := by
+          have := mul_le_mul_of_nonneg_left hxc h1η_nn
+          linarith
+
 end RoundPreserves
