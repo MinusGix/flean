@@ -430,15 +430,24 @@ Rounding/ files but narrow applicability.
       `ofDotProduct` needs `RModeIdem` for the zero-init exact-step trick;
       `ofDotProductFMA` doesn't.  Also already shipped:
       `FpDotProductBoundCompensated` + `.ofProducts` + `.compensateAndRound`.
-    - [ ] **Cross-entropy loss** — `CE(y, x) = -Σ y_i · (x_i - LSE(x))`. All
-      pieces exist: LSE (done), softmax (done), `FpDotProductBound` (done).
-      End-to-end verified ML loss function that demonstrates the
-      framework's compositionality.  Uses `FpDotProductBound` for the
-      `Σ y_i · r_i` step after shifting by LSE. ~300-500 lines. Would
-      surface rough edges where softmax/LSE/dot-product compose.  Natural
-      capstone for the ML-primitives arc (softmax + LSE + cross-entropy).
-      **Session-ready next pick.**  Session prompt:
-      `.claude/notes/cross-entropy-session-prompt.md`.
+    - [x] **Cross-entropy loss** — `CrossEntropy.lean` (~330 lines, sorry-free).
+      - Real-valued: `crossEntropy`, `crossEntropy_shift_eq`,
+        `crossEntropy_nonneg`.
+      - Main: `fpCrossEntropy_end_to_end_error_bound` — composes full LSE
+        pipeline + per-index shift-rounding witness
+        (`h_shift_close`, abstract like LSE's `h_log_close`) +
+        `FpDotProductBound ys r`.  Loss = `-dp.result`.  Bound shape:
+        `dp.relErr · Σ|y_i · r_i| + Σ|y_i| · (η·|x_i - lse| + subnormalConst + Δ_LSE)`
+        where `Δ_LSE` is the LSE end-to-end bound propagated uniformly
+        through the shift (since `r_exact_i - (x_i - lse) = lse - LSE`
+        is constant across `i`).
+      - Bundle: `FpCrossEntropyResult xs ys hn` with `.loss` and
+        `.error_bound`.
+      - Demo: `fpCrossEntropy_naiveSum_error_bound` — NaiveSum for the
+        LSE inner sum + `ofDotProductFMA` for the outer dot product
+        (FMA adapter avoids needing `RModeIdem ℝ`).
+      - Session prompt preserved at
+        `.claude/notes/cross-entropy-session-prompt.md` for reference.
     - [ ] **Temperature scaling** — `softmax(xs/T)`, convergence to argmax as T→0.
 
 ## Mid-Term — Mixed-Precision & ML

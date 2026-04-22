@@ -58,4 +58,5 @@ import Flean.Operations.FpDotProduct
 import Flean.Operations.FpMatVec
 import Flean.Operations.Softmax
 import Flean.Operations.LogSumExp
+import Flean.Operations.CrossEntropy
 import Flean.Operations.LayerNorm
