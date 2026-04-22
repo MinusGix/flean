@@ -86,11 +86,11 @@ Newly shipped generators:
 - `IsSimplex.toIsProb` (2026-04-22, T-M2)
 - `IsProb.toIsNonneg` (2026-04-22, T-M2)
 - `IsProb.toHasAbsBound_one` (2026-04-22, T-M2)
+- `IsSimplex.toIsNonneg` (2026-04-22, lattice cleanup)
+- `IsSterbenz.toHasAbsBound` (2026-04-22, lattice cleanup)
 - `IsBoundedRange.toHasAbsBound` (T-M1, retroactively marked E5)
 
-Queued for future tags (not yet implemented):
-- `IsSimplex.toIsNonneg` (trivial; derives from `IsSimplex → IsProb → IsNonneg`)
-- `IsSterbenz.toHasAbsBound`
+All canonical generator relations now populated.
 
 ---
 

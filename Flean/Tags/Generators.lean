@@ -76,6 +76,26 @@ theorem IsOneHot.toHasAbsBound_one {n : ℕ} {j : Fin n} {y : Fin n → FiniteFp
   · rw [hij, h.hot]; simp
   · rw [h.cold i hij]; simp
 
+/-- **Generator**: `IsSimplex ws` → each entry is non-negative.  Trivial
+wrap of the structure field; composes with `IsProb.toIsNonneg` via
+`IsSimplex → IsProb → IsNonneg`, but stating it directly gives a
+shorter proof term when only `IsNonneg` is needed. -/
+@[tag_generator]
+theorem IsSimplex.toIsNonneg {n : ℕ} {ws : Fin n → FiniteFp}
+    (h : IsSimplex (R := R) ws) (i : Fin n) :
+    IsNonneg (R := R) (ws i) :=
+  ⟨h.nonneg i⟩
+
+/-- **Generator**: `IsSterbenz a b` → magnitude of `a` is at most
+`2 · |b|`.  Packages the `ub` field as a `HasAbsBound`. -/
+@[tag_generator]
+theorem IsSterbenz.toHasAbsBound {a b : FiniteFp}
+    (h : IsSterbenz (R := R) a b) :
+    HasAbsBound (R := R) (2 * FiniteFp.toVal_mag (R := R) b) a := by
+  refine ⟨?_⟩
+  rw [← FiniteFp.toVal_mag_toVal_abs]
+  exact h.ub
+
 end Flean.Tags
 
 /-! ## Marking existing generators

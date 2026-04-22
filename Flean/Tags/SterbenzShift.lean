@@ -1,6 +1,7 @@
 import Flean.Tags.Sterbenz
 import Flean.Operations.LogSumExp
 import Flean.Operations.CrossEntropy
+import Flean.Operations.Softmax
 
 /-! # Vector-level Sterbenz shift tag
 
@@ -204,3 +205,55 @@ theorem fpCrossEntropy_sterbenzShift_error_bound
     r h_shift_close dp
 
 end CrossEntropy
+
+/-! ## Tag-specialized softmax wrapper -/
+
+namespace Softmax
+
+open Finset BigOperators Flean.Tags
+
+variable [FloatFormat] [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ]
+  [RModeSticky ℝ] [RModeNearest ℝ] [RModeConj ℝ] [RModeIdem ℝ]
+  [ExpApprox] [ExpApproxSound]
+
+variable {n : ℕ}
+
+/-- **Tag-specialized softmax end-to-end bound**.
+
+Parallel to `fpLogSumExp_sterbenzShift_error_bound` and
+`fpCrossEntropy_sterbenzShift_error_bound`.  When every input is in
+the Sterbenz regime w.r.t. `fpMax xs hn`, the exact-shift hypothesis
+is discharged automatically by the tag.  Bound shape unchanged from
+`fpSoftmax_end_to_end_error_bound`. -/
+theorem fpSoftmax_sterbenzShift_error_bound
+    (hn : 0 < n)
+    (xs : Fin n → FiniteFp)
+    (h_sterb : ∀ i, IsSterbenz (R := ℝ) (xs i) (fpMax xs hn))
+    (exps : Fin n → FiniteFp) (denom : FiniteFp)
+    (result : Fin n → FiniteFp) (εsum : ℝ)
+    (h_exp : ∀ i,
+      fpExpFinite ((sterbenzShift_of xs (fpMax xs hn) h_sterb).xs' i) =
+        Fp.finite (exps i))
+    (h_denom_close : |(denom.toVal : ℝ) - ∑ j, ((exps j).toVal : ℝ)| ≤
+                     εsum * ∑ j, |((exps j).toVal : ℝ)|)
+    (h_εsum_nn : 0 ≤ εsum)
+    (h_margin_ind : (1 + εsum) * (n : ℝ) * subnormalConst <
+                     1 - ((η : ℝ) + εsum * (1 + (η : ℝ))))
+    (hd_m : denom.m ≠ 0)
+    (h_result : ∀ i, fpDivFinite (exps i) denom = Fp.finite (result i))
+    (i : Fin n) :
+    |((result i).toVal : ℝ) - softmax (fun j => ((xs j).toVal : ℝ)) i| ≤
+      (((η : ℝ)^2 + 2 * (η : ℝ) + ((η : ℝ) + εsum * (1 + (η : ℝ))) +
+        (1 + εsum) * (n : ℝ) * subnormalConst) /
+       ((1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) -
+        (1 + εsum) * (n : ℝ) * subnormalConst)) *
+        softmax (fun j => ((xs j).toVal : ℝ)) i +
+      (1 + (1 + (η : ℝ)) /
+        ((1 - ((η : ℝ) + εsum * (1 + (η : ℝ)))) -
+         (1 + εsum) * (n : ℝ) * subnormalConst)) * subnormalConst := by
+  set shift := sterbenzShift_of xs (fpMax xs hn) h_sterb
+  exact fpSoftmax_end_to_end_error_bound hn xs shift.xs' shift.h_exact
+    exps denom result εsum h_exp h_denom_close h_εsum_nn
+    h_margin_ind hd_m h_result i
+
+end Softmax
