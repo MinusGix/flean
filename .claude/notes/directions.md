@@ -576,23 +576,31 @@ Rounding/ files but narrow applicability.
     - [x] **Promote `round_nonneg_of_nonneg` into `Rounding/`**. Done
       as `Flean/Rounding/RoundPreserves.lean::round_preserves_nonneg`.
       `Nonneg.lean` updated to import + use the kernel.
-  - [ ] **Phase 1 (framework)** — introduce `Preserves` typeclass +
-    composition + weakening. With five pilots in hand and the
-    boilerplate-lemma / finiteness-orthogonality / zero-case /
-    bridge-feasibility / quot-nr-manual findings above, the class
-    should be designed to:
-    1. Factor `round_preserves_nonneg`-style meta-lemmas so each
-       tag×op combination doesn't need a bespoke proof.
-    2. Keep finiteness a separate concern (not a tag field).
-    3. Provide a uniform zero-case handler for `fp*Finite` correctness
-       lemmas.
-    4. Support bridges from input tags to pre-existing hypotheses
-       (the `IsBoundedRange → isNormalRange(exp ·)` pattern).
-    5. Accept that some preconditions remain manual (e.g. computed-
-       quantity tags like `h_quot_nr`); don't force everything.
-  - [ ] **Phase 2 (specialized bounds)** — drop `subnormalConst` from
-    Softmax/LogSumExp under `IsNormal` on `exps`, drop `fpSubFinite`
-    rounding under `IsSterbenz`, etc. These are the load-bearing payoffs.
+  - [x] **Phase 1 (framework)** — SHIPPED (2026-04-20). Note: the original
+    plan of introducing a `Preserves` typeclass was **deliberately rejected**
+    in the Phase 1 design doc §1.1 (plain structures + meta-lemmas instead,
+    for typeclass-inference perf reasons flagged in the plan). What
+    actually landed: `round_preserves_nonneg` meta-lemma kernel,
+    unified `fp{Add,Mul,FMA}Finite_round_witness` helpers,
+    `Flean/Tags/Bridges/` structure, `exp_isNormalRange` +
+    `quot_isNormalRange` bridges, six `IsBoundedRange` propagation
+    theorems, `FpInterval` interval algebra.  See `.claude/notes/
+    tag-framework-phase1-design.md` for the record-of-decisions.
+  - [x] **Phase 2 (specialized bounds)** — PARTIAL.  The two named items:
+    - *Drop `subnormalConst` from Softmax under `IsNormal`-style spread*:
+      delivered via `fpSoftmax_bound_of_separated` (`Flean/Tags/
+      SoftmaxBounded.lean`).  The analogous LSE/CE wrappers that would
+      drop the tail under the same regime are not yet shipped.
+    - *Drop `fpSubFinite` rounding under `IsSterbenz`*: delivered as
+      the `fpSubFinite_exact_of_sterbenz` + `sterbenzShift_of`
+      extraction in `Flean/Tags/Sterbenz.lean` + `Flean/Tags/
+      SterbenzShift.lean`, plus `fpLogSumExp_sterbenzShift_error_bound` /
+      `fpCrossEntropy_sterbenzShift_error_bound` wrappers that
+      discharge `h_shift_exact` from the vector-level tag.  Softmax
+      analog queued.
+    - LayerNorm received full Phase 2 treatment (see Phase 2 design
+      doc).  Its cascaded + fully-tagged bounds serve as the template
+      for how far any given primitive can be pushed.
 - [ ] **Normalness certificate** — a predicate on `Fin n → FiniteFp` (and single
   `FiniteFp` values) asserting all values stay in a bounded-exponent range
   (no subnormals, no near-overflow), with propagation lemmas through the basic
