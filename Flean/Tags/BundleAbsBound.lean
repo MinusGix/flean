@@ -69,7 +69,10 @@ def FpSumBound.magBound {n : ℕ} {xs : Fin n → FiniteFp}
 
 /-- Core bridge: per-index `HasAbsBound (c i) (xs i)` witnesses give a
 magnitude bound on the FP sum result.  Combines the bundle's relative
-error bound with the triangle inequality on the per-index magnitudes. -/
+error bound with the triangle inequality on the per-index magnitudes.
+
+Also accessible in `HasAbsBoundVec`-packaged form via
+`FpSumBound.hasAbsBound_of_vec`. -/
 theorem FpSumBound.hasAbsBound_of_per_index {n : ℕ} {xs : Fin n → FiniteFp}
     (b : FpSumBound xs R) (c : Fin n → R)
     (h_bounds : ∀ i, HasAbsBound (R := R) (c i) (xs i)) :
@@ -126,6 +129,14 @@ theorem FpSumBound.hasAbsBound_of_isBoundedRange {n : ℕ} {xs : Fin n → Finit
     {I : FpInterval R} (h : IsBoundedRange (R := R) I xs) :
     HasAbsBound (R := R) (b.magBound I.maxMag) b.result :=
   b.hasAbsBound_of_uniform I.maxMag (fun i => ⟨h.toVal_abs_le i⟩)
+
+/-- `HasAbsBoundVec`-packaged variant of `hasAbsBound_of_per_index`.
+Same conclusion; hypotheses taken as a single bundled witness. -/
+theorem FpSumBound.hasAbsBound_of_vec {n : ℕ} {xs : Fin n → FiniteFp}
+    (b : FpSumBound xs R) {c : Fin n → R}
+    (h : HasAbsBoundVec (R := R) c xs) :
+    HasAbsBound (R := R) ((1 + b.relErr) * ∑ i, c i) b.result :=
+  b.hasAbsBound_of_per_index c h.pointwise
 
 /-! ## `FpSumBoundCompensated` → `HasAbsBound` on `sigma`
 
@@ -289,5 +300,14 @@ theorem FpDotProductBound.hasAbsBound_of_isBoundedRange
     HasAbsBound (R := R) (b.magBound Ix.maxMag Iy.maxMag) b.result :=
   b.hasAbsBound_of_uniform Ix.maxMag Iy.maxMag
     (fun i => ⟨hx.toVal_abs_le i⟩) (fun i => ⟨hy.toVal_abs_le i⟩)
+
+/-- `HasAbsBoundVec`-packaged variant for dot products. -/
+theorem FpDotProductBound.hasAbsBound_of_vec
+    {n : ℕ} {xs ys : Fin n → FiniteFp} (b : FpDotProductBound xs ys R)
+    {c_x c_y : Fin n → R}
+    (h_x : HasAbsBoundVec (R := R) c_x xs)
+    (h_y : HasAbsBoundVec (R := R) c_y ys) :
+    HasAbsBound (R := R) ((1 + b.relErr) * ∑ i, c_x i * c_y i) b.result :=
+  b.hasAbsBound_of_per_index c_x c_y h_x.pointwise h_y.pointwise
 
 end FpDotProduct

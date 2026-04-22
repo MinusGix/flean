@@ -61,6 +61,28 @@ structure HasAbsBound (c : R) (x : FiniteFp) : Prop where
   /-- `|x.toVal| ≤ c`. -/
   toVal_abs_le : |((x).toVal : R)| ≤ c
 
+/-- **Vector-level** `HasAbsBound`: per-index magnitude tags packaged as
+a single object.  Symmetric with the other vector-level tags
+(`IsBoundedRange`, `IsSimplex`, `IsOneHot`).  Lets call sites pass
+"per-index magnitude bounds" as one hypothesis rather than a `∀ i`. -/
+structure HasAbsBoundVec {n : ℕ} (c : Fin n → R) (xs : Fin n → FiniteFp) : Prop where
+  /-- Pointwise magnitude bound. -/
+  pointwise : ∀ i, HasAbsBound (R := R) (c i) (xs i)
+
+omit [IsStrictOrderedRing R] in
+/-- Convenience projection: extract the scalar tag at index `i`. -/
+theorem HasAbsBoundVec.at {n : ℕ} {c : Fin n → R} {xs : Fin n → FiniteFp}
+    (h : HasAbsBoundVec (R := R) c xs) (i : Fin n) :
+    HasAbsBound (R := R) (c i) (xs i) :=
+  h.pointwise i
+
+omit [IsStrictOrderedRing R] in
+/-- Convenience projection: the raw inequality at index `i`. -/
+theorem HasAbsBoundVec.toVal_abs_le {n : ℕ} {c : Fin n → R} {xs : Fin n → FiniteFp}
+    (h : HasAbsBoundVec (R := R) c xs) (i : Fin n) :
+    |((xs i).toVal : R)| ≤ c i :=
+  (h.pointwise i).toVal_abs_le
+
 /-! ## Basic properties -/
 
 omit [IsStrictOrderedRing R] [FloorRing R] in
