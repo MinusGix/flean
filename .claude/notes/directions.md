@@ -430,7 +430,7 @@ Rounding/ files but narrow applicability.
       `ofDotProduct` needs `RModeIdem` for the zero-init exact-step trick;
       `ofDotProductFMA` doesn't.  Also already shipped:
       `FpDotProductBoundCompensated` + `.ofProducts` + `.compensateAndRound`.
-    - [x] **Cross-entropy loss** — `CrossEntropy.lean` (~330 lines, sorry-free).
+    - [x] **Cross-entropy loss** — `CrossEntropy.lean` (~505 lines, sorry-free).
       - Real-valued: `crossEntropy`, `crossEntropy_shift_eq`,
         `crossEntropy_nonneg`.
       - Main: `fpCrossEntropy_end_to_end_error_bound` — composes full LSE
