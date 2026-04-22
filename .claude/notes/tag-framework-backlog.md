@@ -148,7 +148,27 @@ coercion would connect them.
 **Scope**: ~300–400 lines.  Mirrors `BoundedRangePropagate.lean` but
 one-dimensional.
 
-### T-M2: New fundamental tags [utility, pick carefully]
+### T-M2: New fundamental tags [utility, pick carefully] — **IsOneHot SHIPPED 2026-04-22**
+
+`Flean/Tags/OneHot.lean` (~229 lines, sorry-free).
+
+- `IsOneHot (R := R) j y` — R-parametric tag: `(y j).toVal = 1` and
+  `(y i).toVal = 0` for `i ≠ j`.  Hot index carried as explicit
+  parameter (mirrors `IsBoundedRange`'s interval parameter).
+- Sum-collapse suite: `sum_eq`, `sum_abs_eq`, `sum_abs_eq_one`,
+  `weighted_sum_eq` (the four fundamental algebraic facts) plus
+  `toVal_nonneg` and `toVal_le_one`.
+- `fpCrossEntropy_oneHot_error_bound` — CE's general bound
+  `dp.relErr · Σ|y·r| + Σ|y|·(...)` collapses to
+  `dp.relErr · |r_j| + (η·|x_j − lse| + subnormalConst + Δ_LSE)`.
+  Order-of-magnitude tighter for the standard ML classifier case.
+- Instantiates the **structural isolation** pattern (Phase 0 finding 1):
+  RHS sum shape changes, no magnitude tightening — but the collapse is
+  dramatic.
+
+**Remaining `IsProb`, `HasRangeBound`, `IsQuantized` not yet shipped.**
+
+**Original description** (kept for context):
 
 Candidates with demonstrable downstream demand:
 
@@ -290,21 +310,21 @@ would catch regressions when a propagation lemma's signature changes.
 
 ---
 
-## Ranking snapshot (2026-04-22, post-T-M1)
+## Ranking snapshot (2026-04-22, post-T-M1, post-T-M2-IsOneHot)
 
 Roughly in order of expected value:
 
 1. ~~**T-M1** (tag calculus elaboration)~~ — **DONE**.
-2. **T-M2** with `IsOneHot` first — concrete ML utility, demonstrably
-   tightens CE bounds.
+2. ~~**T-M2 `IsOneHot`**~~ — **DONE**.  Remaining T-M2 items (`IsProb`,
+   `HasRangeBound`, `IsQuantized`) lower priority; pick on demand.
 3. **T-M4** (tag propagation through `FpSumBound` / `FpDotProductBound`) —
-   unlocks composition that currently requires unbundling.  With
-   `HasAbsBound`'s propagation suite landed, the "one-tag bundle
-   decorator" pattern is easier to prototype.
+   unlocks composition that currently requires unbundling.  Now the
+   highest-leverage structural move.
 4. **T-S1** (LSE/CE tail elimination) — direct win, low scope, but
-   covers less new ground than (2)–(3).
+   covers less new ground than (3).
 5. **T-M3** (partitioned softmax) — most framework-novel, large scope.
-6. **T-L1** (pattern guide) — pays off when a sixth tag arrives.  The
-   algebraic-tag pattern (T-M1) gives it new material to draw on.
+6. **T-L1** (pattern guide) — pays off when a sixth tag arrives.  Now
+   two algebraic tags (T-M1) plus structural-isolation (T-M2) to draw
+   on.
 
 Items ≥ 5 are lower priority pending developer interest.
