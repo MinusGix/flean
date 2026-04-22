@@ -497,14 +497,17 @@ def HasAbsBoundVec {n} (c : Fin n → R) (xs : Fin n → FiniteFp) : Prop :=
 Retrofit T-M4's per-index variants.  ~50 lines.  Symmetric with the
 other vector-level tags (`IsBoundedRange`, `IsSimplex`, `IsOneHot`).
 
-### E9: `[FPAxioms R]` typeclass bundle [priority 9]
+### E9: `[RModeLaws R]` typeclass bundle [priority 9]
+
+(Originally drafted as `FPAxioms`; renamed on first use to avoid
+the "axiom" baggage and stay in the `RMode*` family.)
 
 Every propagation theorem repeats `[RMode R] [RModeExec]
 [RoundIntSigMSound R] [RModeNearest R] [RModeConj R] [RModeZero R]`.
 Bundle them:
 
 ```lean
-class FPAxioms (R : Type*) [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+class RModeLaws (R : Type*) [Field R] [LinearOrder R] [IsStrictOrderedRing R]
     [FloorRing R] extends RMode R, RModeExec, RoundIntSigMSound R,
     RModeNearest R, RModeConj R, RModeZero R
 ```
@@ -580,6 +583,6 @@ Priority-ordered, batch small items:
 6. **E1** (pattern guide) — draws on E5 lattice.
 7. **E6** (`IsBoundedRange` audit) — observational; informs future
    refactor decisions.
-8. **E9** (`[FPAxioms R]` bundle) — cross-cutting, last to avoid
+8. **E9** (`[RModeLaws R]` bundle) — cross-cutting, last to avoid
    constant rebase.
 9. **E3** (`letI` → `def`) — deferred.
