@@ -51,6 +51,20 @@ open Finset BigOperators Flean.Tags
 variable [FloatFormat]
 variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
 
+/-! ## Named output bound
+
+Give the recurring `(1 + relErr) · n · c` expression a name.  Matches
+the "algebraic tag" ethos from T-M1 where `FpInterval.⊞` named the
+interval algebra — here we name the bundle-level magnitude-propagation
+rule.  Downstream reasoning can compose against `magBound` rather than
+the inlined expression. -/
+
+/-- Named magnitude bound output for `FpSumBound`:
+`(1 + b.relErr) · n · c` when every input has magnitude ≤ `c`. -/
+def FpSumBound.magBound {n : ℕ} {xs : Fin n → FiniteFp}
+    (b : FpSumBound xs R) (c : R) : R :=
+  (1 + b.relErr) * (n : R) * c
+
 /-! ## `FpSumBound` → `HasAbsBound` -/
 
 /-- Core bridge: per-index `HasAbsBound (c i) (xs i)` witnesses give a
@@ -92,24 +106,25 @@ theorem FpSumBound.hasAbsBound_of_per_index {n : ℕ} {xs : Fin n → FiniteFp}
     _ ≤ b.relErr * ∑ i, c i + ∑ i, c i := by linarith
     _ = (1 + b.relErr) * ∑ i, c i := by ring
 
-/-- Uniform variant: a single per-index bound `c` yields
-`(1 + relErr) · n · c` on the result. -/
+/-- Uniform variant: a single per-index bound `c` yields `magBound c`
+on the result. -/
 theorem FpSumBound.hasAbsBound_of_uniform {n : ℕ} {xs : Fin n → FiniteFp}
     (b : FpSumBound xs R) (c : R)
     (h_bounds : ∀ i, HasAbsBound (R := R) c (xs i)) :
-    HasAbsBound (R := R) ((1 + b.relErr) * (n : R) * c) b.result := by
+    HasAbsBound (R := R) (b.magBound c) b.result := by
   have h := b.hasAbsBound_of_per_index (fun _ => c) h_bounds
   have h_sum : (∑ _i : Fin n, c) = (n : R) * c := by
     rw [Finset.sum_const]; simp [mul_comm]
   rw [h_sum] at h
   refine h.weaken ?_
+  unfold FpSumBound.magBound
   rw [mul_assoc]
 
-/-- `IsBoundedRange I xs` gives `(1 + relErr) · n · I.maxMag` on the result. -/
+/-- `IsBoundedRange I xs` gives `magBound I.maxMag` on the result. -/
 theorem FpSumBound.hasAbsBound_of_isBoundedRange {n : ℕ} {xs : Fin n → FiniteFp}
     (b : FpSumBound xs R)
     {I : FpInterval R} (h : IsBoundedRange (R := R) I xs) :
-    HasAbsBound (R := R) ((1 + b.relErr) * (n : R) * I.maxMag) b.result :=
+    HasAbsBound (R := R) (b.magBound I.maxMag) b.result :=
   b.hasAbsBound_of_uniform I.maxMag (fun i => ⟨h.toVal_abs_le i⟩)
 
 /-! ## `FpSumBoundCompensated` → `HasAbsBound` on `sigma`
@@ -186,6 +201,15 @@ open Finset BigOperators Flean.Tags
 variable [FloatFormat]
 variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
 
+/-! ## Named output bound -/
+
+/-- Named magnitude bound output for `FpDotProductBound`:
+`(1 + b.relErr) · n · (c_x · c_y)` when `xs` has per-entry magnitude
+≤ `c_x` and `ys` ≤ `c_y`. -/
+def FpDotProductBound.magBound {n : ℕ} {xs ys : Fin n → FiniteFp}
+    (b : FpDotProductBound xs ys R) (c_x c_y : R) : R :=
+  (1 + b.relErr) * (n : R) * (c_x * c_y)
+
 /-! ## `FpDotProductBound` → `HasAbsBound` -/
 
 /-- Core bridge for dot products: per-index magnitude bounds on both
@@ -241,21 +265,20 @@ theorem FpDotProductBound.hasAbsBound_of_per_index
 
 /-- Uniform variant: single per-index bounds `c_x, c_y` for both vectors.
 
-The nonempty hypothesis on `n` is needed only to derive
-`0 ≤ c_x` from the tag (via `c_nonneg`).  If `n = 0` the claim is
-vacuous (the sum is empty and the result is undefined — in practice
-the bundle wouldn't exist for `n = 0` either). -/
+`0 ≤ c_x` derived from `h_x` via `HasAbsBound.c_nonneg`.  Conclusion
+given in terms of `magBound`. -/
 theorem FpDotProductBound.hasAbsBound_of_uniform
     {n : ℕ} {xs ys : Fin n → FiniteFp} (b : FpDotProductBound xs ys R)
     (c_x c_y : R)
     (h_x : ∀ i, HasAbsBound (R := R) c_x (xs i))
     (h_y : ∀ i, HasAbsBound (R := R) c_y (ys i)) :
-    HasAbsBound (R := R) ((1 + b.relErr) * (n : R) * (c_x * c_y)) b.result := by
+    HasAbsBound (R := R) (b.magBound c_x c_y) b.result := by
   have h := b.hasAbsBound_of_per_index (fun _ => c_x) (fun _ => c_y) h_x h_y
   have h_sum : (∑ _i : Fin n, c_x * c_y) = (n : R) * (c_x * c_y) := by
     rw [Finset.sum_const]; simp [mul_comm]
   rw [h_sum] at h
   refine h.weaken ?_
+  unfold FpDotProductBound.magBound
   rw [mul_assoc]
 
 /-- From `IsBoundedRange` on both vectors, an `HasAbsBound` on the result. -/
@@ -263,8 +286,7 @@ theorem FpDotProductBound.hasAbsBound_of_isBoundedRange
     {n : ℕ} {xs ys : Fin n → FiniteFp} (b : FpDotProductBound xs ys R)
     {Ix Iy : FpInterval R}
     (hx : IsBoundedRange (R := R) Ix xs) (hy : IsBoundedRange (R := R) Iy ys) :
-    HasAbsBound (R := R)
-      ((1 + b.relErr) * (n : R) * (Ix.maxMag * Iy.maxMag)) b.result :=
+    HasAbsBound (R := R) (b.magBound Ix.maxMag Iy.maxMag) b.result :=
   b.hasAbsBound_of_uniform Ix.maxMag Iy.maxMag
     (fun i => ⟨hx.toVal_abs_le i⟩) (fun i => ⟨hy.toVal_abs_le i⟩)
 
