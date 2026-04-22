@@ -78,9 +78,10 @@ Tracked iteratively. Priorities ordered top-to-bottom within each tier.
   - Five `LogApproxSound` fields: `exact_mag_ne_zero`, `exact_value`
     (sign-folded `intSigVal` identity), `sticky_q_lower`, `sticky_interval`
     (brackets `|log x|`), `sticky_sign` (sign flips `|log|` back to `log`).
-  - A concrete `fpLogSumExp_concrete_error_bound` demo is shipped but a
-    `fpCrossEntropy_concrete_error_bound` analog is not yet (low-effort
-    follow-up).
+  - `fpLogSumExp_concrete_error_bound` and
+    `fpCrossEntropy_concrete_error_bound` demos both shipped
+    (LogClose.lean, ~230 lines total).  Abstract log hypothesis is gone
+    from both pipelines.
 
 ## Shared Infrastructure (exp + log)
 - `StickyTermination.lean`: `stickyExtractLoop_sound`, `stickyExtractLoop_pos_of_success`, `uniform_gap_from_pointwise`

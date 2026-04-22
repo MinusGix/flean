@@ -1,6 +1,7 @@
 import Flean.Operations.Log
 import Flean.Operations.Softmax
 import Flean.Operations.LogSumExp
+import Flean.Operations.CrossEntropy
 
 /-! # Bridge: `fpLogFinite` correctness → `h_log_close` shape
 
@@ -144,3 +145,83 @@ theorem fpLogSumExp_concrete_error_bound
     Softmax.subnormalConst_nn h_log_close result h_final_add h_final_ne
 
 end LogSumExp
+
+/-! ## Cross-entropy with concrete log witness
+
+Same idea as `fpLogSumExp_concrete_error_bound`: drop the abstract log
+hypothesis from `fpCrossEntropy_end_to_end_error_bound` by appealing
+to `fpLogFinite_close`. -/
+
+namespace CrossEntropy
+
+open Finset BigOperators LogSumExp Softmax
+
+variable [FloatFormat] [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ]
+  [RModeSticky ℝ] [RModeZero ℝ] [RModeNearest ℝ] [RModeConj ℝ]
+  [ExpApprox] [ExpApproxSound] [LogApprox] [LogApproxSound]
+
+variable {n : ℕ}
+
+/-- **End-to-end cross-entropy with concrete log**.
+
+Composes `fpCrossEntropy_end_to_end_error_bound` with `fpLogFinite_close`,
+specializing `η_log = η` and `logSubConst = Softmax.subnormalConst`.
+The caller supplies `0 < sum.result.toVal` and a finite-witness
+`fpLogFinite sum.result = Fp.finite lse`; the abstract log hypothesis
+vanishes. -/
+theorem fpCrossEntropy_concrete_error_bound
+    (hn : 0 < n)
+    (xs : Fin n → FiniteFp)
+    (ys : Fin n → FiniteFp)
+    (xs' : Fin n → FiniteFp)
+    (h_shift_exact : ∀ j,
+      ((xs' j).toVal : ℝ) = ((xs j).toVal : ℝ) - ((fpMax xs hn).toVal : ℝ))
+    (exps : Fin n → FiniteFp)
+    (h_exp : ∀ i, fpExpFinite (xs' i) = Fp.finite (exps i))
+    (sum : FpSum.FpSumBound exps ℝ)
+    (h_sum_pos : (0 : ℝ) < (sum.result.toVal : ℝ))
+    (h_margin :
+      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
+        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst < 1)
+    (logResult : FiniteFp)
+    (h_logFinite : fpLogFinite sum.result = Fp.finite logResult)
+    (lse : FiniteFp)
+    (h_final_add : fpAddFinite (fpMax xs hn) logResult = Fp.finite lse)
+    (h_final_ne : ((fpMax xs hn).toVal : ℝ) + logResult.toVal ≠ 0)
+    (r : Fin n → FiniteFp)
+    (h_shift_close : ∀ i,
+      |((r i).toVal : ℝ) - (((xs i).toVal : ℝ) - (lse.toVal : ℝ))| ≤
+        (η : ℝ) * |((xs i).toVal : ℝ) - (lse.toVal : ℝ)| +
+          Softmax.subnormalConst)
+    (dp : FpDotProduct.FpDotProductBound ys r ℝ) :
+    letI ε_sum : ℝ :=
+      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
+        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst
+    letI D_log : ℝ := ε_sum / (1 - ε_sum)
+    letI Δ_LSE : ℝ :=
+      (η : ℝ) * |logsumexp (fun j => ((xs j).toVal : ℝ))| +
+      (1 + (η : ℝ)) *
+        ((η : ℝ) *
+            (logsumexp (fun j => ((xs j).toVal : ℝ)) -
+              ((fpMax xs hn).toVal : ℝ)) +
+          (1 + (η : ℝ)) * D_log + Softmax.subnormalConst) +
+      Softmax.subnormalConst
+    |(((- dp.result).toVal : ℝ)) -
+        crossEntropy (fun i => ((ys i).toVal : ℝ))
+                     (fun i => ((xs i).toVal : ℝ))| ≤
+      dp.relErr * ∑ i, |((ys i).toVal : ℝ) * ((r i).toVal : ℝ)| +
+      ∑ i, |((ys i).toVal : ℝ)| *
+        ((η : ℝ) * |((xs i).toVal : ℝ) - (lse.toVal : ℝ)| +
+          Softmax.subnormalConst + Δ_LSE) := by
+  have h_log_close :
+      |(logResult.toVal : ℝ) - Real.log ((sum.result.toVal : ℝ))| ≤
+        (η : ℝ) * |Real.log ((sum.result.toVal : ℝ))| + Softmax.subnormalConst :=
+    Log.fpLogFinite_close sum.result h_sum_pos logResult h_logFinite
+  exact fpCrossEntropy_end_to_end_error_bound hn xs ys
+    xs' h_shift_exact exps h_exp sum h_margin
+    logResult (η : ℝ) (by positivity) Softmax.subnormalConst
+    Softmax.subnormalConst_nn h_log_close
+    lse h_final_add h_final_ne
+    r h_shift_close dp
+
+end CrossEntropy
