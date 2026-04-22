@@ -1,5 +1,6 @@
 import Flean.Operations.FpMatVec
 import Flean.Operations.Add
+import Flean.Operations.Lipschitz
 import Flean.Tags.AbsBoundPropagate
 import Flean.Tags.BundleAbsBound
 import Flean.Tags.BoundedRange
@@ -557,17 +558,16 @@ noncomputable def MLP2FpResult.errorBound {n_in n_hidden n_out : ℕ}
     (res.layer1.outputBound w1Max xMax b1Max) b2Max +
   (n_hidden : R) * w2Max * res.layer1.errorBound w1Max xMax b1Max
 
-/-- Layer 2's forward pass is linear in its input: replacing the
-input by a perturbed version changes each output by at most
-`n_hidden · w2Max · (perturbation magnitude)`. -/
-private theorem Layer.forward_perturbation {n_in n_out : ℕ}
-    (L : Layer n_in n_out)
+/-- **Layer is Lipschitz in its input**.
+
+Replaces the previous `Layer.forward_perturbation` private helper.
+Stated against `LipschitzMax` so it composes via the framework's
+`LipschitzMax.comp`.  The Lipschitz constant is `n_in · wMax`. -/
+theorem Layer.forward_lipschitz {n_in n_out : ℕ} (L : Layer n_in n_out)
     {wMax bMax : R} (hL : BoundedParams (R := R) L wMax bMax)
-    (hwMax_nn : 0 ≤ wMax)
-    (x x' : Fin n_in → R) {δ : R}
-    (h_δ : ∀ j, |x j - x' j| ≤ δ)
-    (i : Fin n_out) :
-    |L.forward x i - L.forward x' i| ≤ (n_in : R) * wMax * δ := by
+    (hwMax_nn : 0 ≤ wMax) :
+    Flean.Lipschitz.LipschitzMax (R := R) ((n_in : R) * wMax) L.forward := by
+  intro δ x x' h_dx i
   unfold Layer.forward
   have h_sub :
       ((∑ j, ((L.W i j).toVal : R) * x j) + ((L.b i).toVal : R)) -
@@ -589,10 +589,26 @@ private theorem Layer.forward_perturbation {n_in n_out : ℕ}
         apply Finset.sum_le_sum
         intro j _
         rw [abs_mul]
-        exact mul_le_mul (hL.weight_bounded i j) (h_δ j) (abs_nonneg _) hwMax_nn
+        exact mul_le_mul (hL.weight_bounded i j) (h_dx j) (abs_nonneg _) hwMax_nn
     _ = (n_in : R) * (wMax * δ) := by
         rw [Finset.sum_const]; simp [mul_comm]
     _ = (n_in : R) * wMax * δ := by ring
+
+/-- 2-layer MLP is Lipschitz in its input via `LipschitzMax.comp`.
+Lipschitz constant: `(n_hidden · w2Max) · (n_in · w1Max)`. -/
+theorem MLP2.forward_lipschitz {n_in n_hidden n_out : ℕ}
+    (M : MLP2 n_in n_hidden n_out)
+    {w1Max b1Max w2Max b2Max : R}
+    (hM : MLP2BoundedParams (R := R) M w1Max b1Max w2Max b2Max)
+    (hw1_nn : 0 ≤ w1Max) (hw2_nn : 0 ≤ w2Max) :
+    Flean.Lipschitz.LipschitzMax (R := R)
+      (((n_hidden : R) * w2Max) * ((n_in : R) * w1Max))
+      M.forward := by
+  unfold MLP2.forward
+  exact Flean.Lipschitz.LipschitzMax.comp
+    (M.layer2.forward_lipschitz hM.layer2_bounded hw2_nn)
+    (M.layer1.forward_lipschitz hM.layer1_bounded hw1_nn)
+    (mul_nonneg (Nat.cast_nonneg _) hw2_nn)
 
 /-- **2-layer forward error bound**: the full capstone.
 
@@ -603,8 +619,8 @@ the R-lifted inputs.  Combines two rounding sources:
    `res.layer2.forward_error_bound` using `h_bound` as layer-2 input
    magnitude).
 2. Layer 2 amplifying layer 1's real-input-vs-FP-output deviation
-   (via `Layer.forward_perturbation`, bounded by `n_hidden ·
-   w2Max · layer1.errorBound`).
+   via `Layer.forward_lipschitz` (Lipschitz constant `n_hidden ·
+   w2Max`, applied to layer 1's per-index error).
 -/
 theorem MLP2FpResult.forward_error_bound {n_in n_hidden n_out : ℕ}
     {M : MLP2 n_in n_hidden n_out} {x : Fin n_in → FiniteFp}
@@ -634,11 +650,12 @@ theorem MLP2FpResult.forward_error_bound {n_in n_hidden n_out : ℕ}
         M.layer1.forward (fun l => ((x l).toVal : R)) j| ≤
       res.layer1.errorBound w1Max xMax b1Max := fun j =>
     res.layer1.forward_error_bound hM.layer1_bounded hw1_nn hx hxMax_nn j
-  -- Layer 2 amplification.
-  have h_ampl := M.layer2.forward_perturbation hM.layer2_bounded hw2_nn
-    (fun j => ((res.layer1.result j).toVal : R))
-    (M.layer1.forward (fun l => ((x l).toVal : R)))
-    h_layer1_err k
+  -- Layer 2 amplification via the Lipschitz framework.
+  have h_ampl :=
+    (M.layer2.forward_lipschitz hM.layer2_bounded hw2_nn)
+      (fun j => ((res.layer1.result j).toVal : R))
+      (M.layer1.forward (fun l => ((x l).toVal : R)))
+      h_layer1_err k
   -- Triangle: |L2.fp - L2.real(L1.real)| ≤ |L2.fp - L2.real(L1.fp_lifted)|
   --                                         + |L2.real(L1.fp_lifted) - L2.real(L1.real)|.
   have h_triangle :

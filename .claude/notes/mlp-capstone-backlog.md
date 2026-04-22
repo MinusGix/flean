@@ -35,7 +35,37 @@ worst-case* magnitude analyses, `HasAbsBound` is the right default;
 `IsBoundedRange` is reserved for cases that exploit signs (softmax
 separation, normal-range bridges, future statistical analyses).
 
-### M2: Lipschitz as a framework notion 🟡
+### M2: Lipschitz as a framework notion ✅ **SHIPPED 2026-04-22**
+
+`Flean/Operations/Lipschitz.lean` (168 lines, foundational, no
+`FloatFormat`/rounding deps).
+
+* `LipschitzMax K f` — per-output Lipschitz on vector functions.
+* `LipschitzScalar K f` — scalar version (for activations / M10).
+* Composition primitives: `.id_id`, `.const`, `.weaken`, `.comp`,
+  `.compScalar` for cross-composition (scalar applied component-wise
+  to vector function).
+
+In `MLP.lean`:
+* `Layer.forward_lipschitz` — Lipschitz constant `n_in · wMax`.
+* `MLP2.forward_lipschitz` — composed via `LipschitzMax.comp`.
+
+Refactor: `MLP2FpResult.forward_error_bound` now uses
+`Layer.forward_lipschitz` instead of the (deleted) private
+`Layer.forward_perturbation` helper.  Composition via the framework
+rather than manual triangle.
+
+**Decision**: custom `LipschitzMax` chosen over Mathlib's
+`LipschitzWith`.  Rationale: Mathlib's version requires `PiLp ⊤`
+metric instances on `Fin n → R` and `ℝ≥0∞`-valued constants;
+heavy plumbing without payoff for our forward-error use case.
+A `LipschitzMax → LipschitzWith` bridge is feasible if a future
+consumer wants Mathlib API.
+
+**Scope clarification**: per-FP-op Lipschitz is **not** part of
+this framework — rounding is discontinuous and isn't Lipschitz in
+the usual sense.  FP error bounds stay with the
+`round_preserves_*` family.
 
 **Finding**: `Layer.realForward_perturbation` proved that layer 2
 amplifies an input δ by at most `n_in · wMax · δ` — i.e., layer 2 is
