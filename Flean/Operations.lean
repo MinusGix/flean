@@ -63,3 +63,4 @@ import Flean.Operations.LogSumExp
 import Flean.Operations.LogClose
 import Flean.Operations.CrossEntropy
 import Flean.Operations.LayerNorm
+import Flean.Operations.MLP
