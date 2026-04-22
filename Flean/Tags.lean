@@ -3,6 +3,7 @@ import Flean.Tags.Normal
 import Flean.Tags.Sterbenz
 import Flean.Tags.Nonneg
 import Flean.Tags.Attributes
+import Flean.Tags.FPAxioms
 import Flean.Tags.AbsBound
 import Flean.Tags.AbsBoundPropagate
 import Flean.Tags.BundleAbsBound
