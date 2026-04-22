@@ -40,6 +40,15 @@ structure IsBoundedRange {n : ℕ} (I : FpInterval R) (xs : Fin n → FiniteFp) 
 
 /-! ## Basic properties -/
 
+/-- When the vector is nonempty, the interval is nontrivial: `I.lo ≤ I.hi`.
+Derivable from any witness.  Useful for discharging `lo ≤ hi` side
+conditions that sometimes arise in interval-arithmetic reasoning. -/
+theorem IsBoundedRange.lo_le_hi {n : ℕ} (hn : 0 < n) {I : FpInterval R}
+    {xs : Fin n → FiniteFp} (h : IsBoundedRange (R := R) I xs) :
+    I.lo ≤ I.hi := by
+  have : NeZero n := ⟨Nat.pos_iff_ne_zero.mp hn⟩
+  exact le_trans (h.lower ⟨0, hn⟩) (h.upper ⟨0, hn⟩)
+
 /-- Every tagged entry's magnitude is bounded by `maxMag I`.  The
 single general magnitude corollary — per-op magnitude bounds fall out
 by instantiating this on the output interval of the propagation

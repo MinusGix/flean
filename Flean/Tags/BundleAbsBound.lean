@@ -124,14 +124,17 @@ variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRin
 /-! ## `FpDotProductBound` → `HasAbsBound` -/
 
 /-- Core bridge for dot products: per-index magnitude bounds on both
-vectors give a magnitude bound on the FP dot-product result. -/
+vectors give a magnitude bound on the FP dot-product result.
+
+`0 ≤ c_x i` is derived automatically from the tag hypotheses via
+`HasAbsBound.c_nonneg`, so the caller doesn't need to supply it. -/
 theorem FpDotProductBound.hasAbsBound_of_per_index
     {n : ℕ} {xs ys : Fin n → FiniteFp} (b : FpDotProductBound xs ys R)
     (c_x c_y : Fin n → R)
     (h_x : ∀ i, HasAbsBound (R := R) (c_x i) (xs i))
-    (h_y : ∀ i, HasAbsBound (R := R) (c_y i) (ys i))
-    (hc_x_nn : ∀ i, 0 ≤ c_x i) :
+    (h_y : ∀ i, HasAbsBound (R := R) (c_y i) (ys i)) :
     HasAbsBound (R := R) ((1 + b.relErr) * ∑ i, c_x i * c_y i) b.result := by
+  have hc_x_nn : ∀ i, 0 ≤ c_x i := fun i => (h_x i).c_nonneg
   refine ⟨?_⟩
   have h_tri : |(b.result.toVal : R)| ≤
       |(b.result.toVal : R) - ∑ i, ((xs i).toVal : R) * ((ys i).toVal : R)| +
@@ -171,16 +174,19 @@ theorem FpDotProductBound.hasAbsBound_of_per_index
     _ ≤ b.relErr * ∑ i, c_x i * c_y i + ∑ i, c_x i * c_y i := by linarith
     _ = (1 + b.relErr) * ∑ i, c_x i * c_y i := by ring
 
-/-- Uniform variant: single per-index bounds `c_x, c_y` for both vectors. -/
+/-- Uniform variant: single per-index bounds `c_x, c_y` for both vectors.
+
+The nonempty hypothesis on `n` is needed only to derive
+`0 ≤ c_x` from the tag (via `c_nonneg`).  If `n = 0` the claim is
+vacuous (the sum is empty and the result is undefined — in practice
+the bundle wouldn't exist for `n = 0` either). -/
 theorem FpDotProductBound.hasAbsBound_of_uniform
     {n : ℕ} {xs ys : Fin n → FiniteFp} (b : FpDotProductBound xs ys R)
     (c_x c_y : R)
     (h_x : ∀ i, HasAbsBound (R := R) c_x (xs i))
-    (h_y : ∀ i, HasAbsBound (R := R) c_y (ys i))
-    (hc_x_nn : 0 ≤ c_x) :
+    (h_y : ∀ i, HasAbsBound (R := R) c_y (ys i)) :
     HasAbsBound (R := R) ((1 + b.relErr) * (n : R) * (c_x * c_y)) b.result := by
-  have h := b.hasAbsBound_of_per_index (fun _ => c_x) (fun _ => c_y)
-    h_x h_y (fun _ => hc_x_nn)
+  have h := b.hasAbsBound_of_per_index (fun _ => c_x) (fun _ => c_y) h_x h_y
   have h_sum : (∑ _i : Fin n, c_x * c_y) = (n : R) * (c_x * c_y) := by
     rw [Finset.sum_const]; simp [mul_comm]
   rw [h_sum] at h
@@ -196,6 +202,5 @@ theorem FpDotProductBound.hasAbsBound_of_isBoundedRange
       ((1 + b.relErr) * (n : R) * (Ix.maxMag * Iy.maxMag)) b.result :=
   b.hasAbsBound_of_uniform Ix.maxMag Iy.maxMag
     (fun i => ⟨hx.toVal_abs_le i⟩) (fun i => ⟨hy.toVal_abs_le i⟩)
-    Ix.maxMag_nn
 
 end FpDotProduct

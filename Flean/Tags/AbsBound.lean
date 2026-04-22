@@ -70,6 +70,12 @@ theorem HasAbsBound.weaken {c c' : R} {x : FiniteFp}
     HasAbsBound (R := R) c' x :=
   ⟨le_trans hx.toVal_abs_le hcc⟩
 
+/-- The bound is automatically non-negative: `|x.toVal| ≤ c` implies `0 ≤ c`
+since `0 ≤ |x.toVal|`.  Derivable; named for convenient forward use. -/
+theorem HasAbsBound.c_nonneg {c : R} {x : FiniteFp}
+    (hx : HasAbsBound (R := R) c x) : (0 : R) ≤ c :=
+  le_trans (abs_nonneg _) hx.toVal_abs_le
+
 omit [IsStrictOrderedRing R] [FloorRing R] in
 /-- Negation preserves the tag — `toVal` flips sign but magnitude is
 invariant. No rounding, so no slack. -/
