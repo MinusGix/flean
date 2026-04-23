@@ -182,13 +182,40 @@ to `LayerActivated.lean` (needed so layer 2 can accept a magnitude
 tag on layer 1's activated output).  Error-bound proof body mirrors
 the linear `MLP2.forward_error_bound` modulo the amplification constant.
 
-### M11: CE loss layer integration 🟢
+### M11: CE loss layer integration ✅ (2026-04-23)
 
-**Finding**: end-to-end was planned but skipped.
+**Shipped**: `Flean/Operations/MLP/MLPCrossEntropy.lean` (~244 lines,
+sorry-free) + helper lemmas in `LogSumExp.lean` (~50 lines) and
+`CrossEntropy.lean` (~60 lines).
 
-**Action**: add a CE-on-top theorem composing the MLP forward bound
-with the existing `fpCrossEntropy_end_to_end_error_bound`.
-~200–300 lines.
+Helpers:
+* `LogSumExp.logsumexp_monotone` — coordinatewise monotonicity.
+* `LogSumExp.logsumexp_lipschitz` — 1-Lipschitz in L∞ (via
+  monotonicity + `logsumexp_shift_eq`).
+* `CrossEntropy.crossEntropy_lipschitz_logits` — CE is L∞-Lipschitz
+  in logits with constant `2 · Σ|y_i|`.  Proof decomposes
+  `CE(y, x) = -Σ y_i x_i + (Σ y_i) · LSE(x)` and bounds each piece.
+
+Composition:
+* `MLPCrossEntropy.compose_error_bound` — abstract (any forward-error
+  witness + any CE-vs-FP-logit bound).
+* `MLP2FpResult.crossEntropy_error_bound` — linear 2-layer
+  specialization.
+* `ActivatedMLP2FpResult.crossEntropy_error_bound` — activated
+  2-layer specialization.
+* `MLP2FpResult.crossEntropy_error_bound_of_res` — variant consuming
+  a `FpCrossEntropyResult` bundle.
+
+End-to-end bound shape:
+
+```
+|loss.toVal − CE(y, M.forward(x_real))|
+  ≤ ce_err + 2 · Σ|y_i| · mlp_err
+```
+
+where `ce_err` is the CE pipeline's bound (`FpCrossEntropyResult.error_bound`)
+and `mlp_err` is the MLP's per-index forward error
+(`MLP2FpResult.errorBound` or `ActivatedMLP2FpResult.errorBound`).
 
 ### M12: `realForward` naming 🔵
 

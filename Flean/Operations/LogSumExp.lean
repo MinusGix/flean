@@ -65,6 +65,54 @@ theorem logsumexp_ge (xs : Fin n → ℝ) (i : Fin n) : xs i ≤ logsumexp xs :=
     Real.log_le_log (Real.exp_pos _) h1
   rwa [Real.log_exp] at h2
 
+/-! ## Lipschitz / Monotonicity of `logsumexp`
+
+Standard facts used by the MLP-on-CE composition.  `logsumexp` is
+monotone in each input coordinate and 1-Lipschitz in the L∞ norm:
+perturbing every input by at most `δ` perturbs `logsumexp` by at most
+`δ`.  Proof: monotonicity + translation-equivariance (`logsumexp_shift_eq`). -/
+
+/-- `logsumexp` is monotone: if every `xs i ≤ ys i`, then
+`logsumexp xs ≤ logsumexp ys`. -/
+theorem logsumexp_monotone (hn : 0 < n) {xs ys : Fin n → ℝ}
+    (h : ∀ i, xs i ≤ ys i) :
+    logsumexp xs ≤ logsumexp ys := by
+  unfold logsumexp
+  apply Real.log_le_log (softmaxDenom_pos xs hn)
+  apply Finset.sum_le_sum
+  intro i _
+  exact Real.exp_le_exp.mpr (h i)
+
+/-- `logsumexp` is 1-Lipschitz in the L∞ norm: if every input
+differs by at most `δ`, the outputs differ by at most `δ`. -/
+theorem logsumexp_lipschitz (hn : 0 < n) (xs ys : Fin n → ℝ) {δ : ℝ}
+    (h_dx : ∀ j, |xs j - ys j| ≤ δ) :
+    |logsumexp xs - logsumexp ys| ≤ δ := by
+  have hδ_nn : 0 ≤ δ := le_trans (abs_nonneg _) (h_dx ⟨0, hn⟩)
+  -- Pointwise two-sided bounds: xs i ≤ ys i + δ and ys i ≤ xs i + δ.
+  have h_upper : ∀ i, xs i ≤ ys i + δ := fun i => by
+    have h := (abs_le.mp (h_dx i)).2
+    linarith
+  have h_lower : ∀ i, ys i ≤ xs i + δ := fun i => by
+    have h := (abs_le.mp (h_dx i)).1
+    linarith
+  -- Rewrite `fun i => ys i + δ` as `shift ys (-δ)` and use translation.
+  have h_plus_eq : (fun i => ys i + δ) = shift ys (-δ) := by
+    funext i; simp [shift]
+  have h_plus_eq' : (fun i => xs i + δ) = shift xs (-δ) := by
+    funext i; simp [shift]
+  have h_LSE_up : logsumexp xs ≤ logsumexp ys + δ := by
+    have h := logsumexp_monotone (ys := fun i => ys i + δ) hn h_upper
+    rw [h_plus_eq] at h
+    rw [logsumexp_shift_eq ys (-δ) hn] at h
+    linarith
+  have h_LSE_lo : logsumexp ys ≤ logsumexp xs + δ := by
+    have h := logsumexp_monotone (ys := fun i => xs i + δ) hn h_lower
+    rw [h_plus_eq'] at h
+    rw [logsumexp_shift_eq xs (-δ) hn] at h
+    linarith
+  exact abs_sub_le_iff.mpr ⟨by linarith, by linarith⟩
+
 /-! ## Log Relative-Error Bound
 
 Standalone helper used in the main error analysis: a relative perturbation of

@@ -89,6 +89,89 @@ theorem crossEntropy_nonneg (y x : Fin n → ℝ)
   have h_diff : x i - logsumexp x ≤ 0 := by linarith
   exact mul_nonpos_iff.mpr (Or.inl ⟨hy i, h_diff⟩)
 
+/-! ## Lipschitz of `crossEntropy` in logits
+
+`crossEntropy` is L∞-Lipschitz in its logit argument with constant
+`2 · Σ |y_i|`.  Derivation: `CE(y, x) = -Σ y_i · x_i + (Σ y_i) · LSE(x)`
+decomposes into a linear term (Lipschitz constant `Σ |y_i|` by
+triangle + |y_i| · δ) plus an `LSE` term that's 1-Lipschitz in L∞
+times `|Σ y_i| ≤ Σ |y_i|`.
+
+Used by the MLP-on-CE composition to amplify the forward error into
+a bound on the classification loss. -/
+
+/-- Cross-entropy is L∞-Lipschitz in logits with constant `2 · Σ |y_i|`. -/
+theorem crossEntropy_lipschitz_logits (hn : 0 < n) (y x x' : Fin n → ℝ)
+    {δ : ℝ} (h_dx : ∀ j, |x j - x' j| ≤ δ) :
+    |crossEntropy y x - crossEntropy y x'| ≤
+      2 * (∑ i, |y i|) * δ := by
+  have hδ_nn : 0 ≤ δ := le_trans (abs_nonneg _) (h_dx ⟨0, hn⟩)
+  -- Linear part: `Σ y_i · (x_i - x'_i)`.
+  have h_lin : |∑ i, y i * (x i - x' i)| ≤ (∑ i, |y i|) * δ := by
+    calc |∑ i, y i * (x i - x' i)|
+        ≤ ∑ i, |y i * (x i - x' i)| := Finset.abs_sum_le_sum_abs _ _
+      _ ≤ ∑ i, |y i| * δ := by
+          apply Finset.sum_le_sum
+          intro i _
+          rw [abs_mul]
+          exact mul_le_mul_of_nonneg_left (h_dx i) (abs_nonneg _)
+      _ = (∑ i, |y i|) * δ := by rw [← Finset.sum_mul]
+  -- LSE part: `(Σ y_i) · (LSE(x) - LSE(x'))`.
+  have h_lse_close : |LogSumExp.logsumexp x - LogSumExp.logsumexp x'| ≤ δ :=
+    LogSumExp.logsumexp_lipschitz hn x x' h_dx
+  have h_sumY_abs : |∑ i, y i| ≤ ∑ i, |y i| :=
+    Finset.abs_sum_le_sum_abs _ _
+  have h_sumY_nn : (0 : ℝ) ≤ ∑ i, |y i| :=
+    Finset.sum_nonneg (fun i _ => abs_nonneg _)
+  have h_lse : |(∑ i, y i) * (LogSumExp.logsumexp x -
+      LogSumExp.logsumexp x')| ≤ (∑ i, |y i|) * δ := by
+    rw [abs_mul]
+    calc |∑ i, y i| * |LogSumExp.logsumexp x - LogSumExp.logsumexp x'|
+        ≤ (∑ i, |y i|) *
+            |LogSumExp.logsumexp x - LogSumExp.logsumexp x'| :=
+          mul_le_mul_of_nonneg_right h_sumY_abs (abs_nonneg _)
+      _ ≤ (∑ i, |y i|) * δ :=
+          mul_le_mul_of_nonneg_left h_lse_close h_sumY_nn
+  -- Assemble via CE decomposition.
+  have h_decomp : crossEntropy y x - crossEntropy y x' =
+      -(∑ i, y i * (x i - x' i)) +
+      (∑ i, y i) * (LogSumExp.logsumexp x - LogSumExp.logsumexp x') := by
+    unfold crossEntropy
+    have h_expand : ∀ (z : Fin n → ℝ),
+        ∑ i, y i * (z i - LogSumExp.logsumexp z) =
+        (∑ i, y i * z i) -
+        (∑ i, y i) * LogSumExp.logsumexp z := by
+      intro z
+      have h_distrib : ∑ i, y i * (z i - LogSumExp.logsumexp z) =
+          (∑ i, y i * z i) -
+            ∑ i, y i * LogSumExp.logsumexp z := by
+        rw [← Finset.sum_sub_distrib]
+        apply Finset.sum_congr rfl
+        intro i _; ring
+      have h_factor : ∑ i, y i * LogSumExp.logsumexp z =
+          (∑ i, y i) * LogSumExp.logsumexp z := by
+        rw [← Finset.sum_mul]
+      rw [h_distrib, h_factor]
+    rw [h_expand x, h_expand x']
+    have h_lin_collapse :
+        (∑ i, y i * x i) - (∑ i, y i * x' i) =
+        ∑ i, y i * (x i - x' i) := by
+      rw [← Finset.sum_sub_distrib]
+      apply Finset.sum_congr rfl
+      intro i _; ring
+    linarith [h_lin_collapse]
+  rw [h_decomp]
+  calc |-(∑ i, y i * (x i - x' i)) +
+        (∑ i, y i) * (LogSumExp.logsumexp x - LogSumExp.logsumexp x')|
+      ≤ |-(∑ i, y i * (x i - x' i))| +
+        |(∑ i, y i) * (LogSumExp.logsumexp x - LogSumExp.logsumexp x')| :=
+        abs_add_le _ _
+    _ = |∑ i, y i * (x i - x' i)| +
+        |(∑ i, y i) * (LogSumExp.logsumexp x - LogSumExp.logsumexp x')| := by
+        rw [abs_neg]
+    _ ≤ (∑ i, |y i|) * δ + (∑ i, |y i|) * δ := by linarith
+    _ = 2 * (∑ i, |y i|) * δ := by ring
+
 /-! ## End-to-End FP Cross-Entropy Error Bound
 
 The pipeline is `xs → lse → r → s → loss`, composed from the LSE pipeline

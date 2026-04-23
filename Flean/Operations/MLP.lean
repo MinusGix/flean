@@ -2,6 +2,7 @@ import Flean.Operations.MLP.Layer
 import Flean.Operations.MLP.LayerActivated
 import Flean.Operations.MLP.MLP2
 import Flean.Operations.MLP.ActivatedMLP2
+import Flean.Operations.MLP.MLPCrossEntropy
 
 /-!
 # Verified Forward Pass of a 2-Layer Linear MLP
@@ -26,6 +27,9 @@ This file is an aggregator.  Content lives in:
 * `MLP/ActivatedMLP2.lean` — 2-layer activated composition (pair of
   `ActivatedLayer`s, real/FP forward, composed bounds, error via
   `LipschitzMax.errorAmplification`, ReLU demo).
+* `MLP/MLPCrossEntropy.lean` — composes the MLP forward bound with the
+  cross-entropy pipeline for an end-to-end classification-loss bound.
+  Ships abstract + MLP2 + ActivatedMLP2 specializations.
 
 ## Scope
 
@@ -58,4 +62,9 @@ This file is an aggregator.  Content lives in:
    FP error bound, composed via `LipschitzMax.errorAmplification` on
    the second activated layer's Lipschitz constant
    `σ₂.K · n_hidden · w2Max`.
+8. **`MLPCrossEntropy.compose_error_bound`** (+ `MLP2` and `ActivatedMLP2`
+   specializations) — end-to-end classification-loss bound composing
+   the MLP forward error with the CE pipeline via
+   `crossEntropy_lipschitz_logits` (L∞-Lipschitz with constant
+   `2 · Σ|y_i|`).
 -/
