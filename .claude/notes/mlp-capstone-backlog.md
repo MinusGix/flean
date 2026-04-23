@@ -86,16 +86,58 @@ abstraction.
 Renamed to `BoundedParams`.  `MLP2BoundedParams`,
 `ActivatedMLP2BoundedParams` follow the same convention.
 
-### M4: Composable hypothesis bundling 🟡
+### M4: Composable hypothesis bundling ✅ (2026-04-23)
 
-**Finding**: `MLP2FpResult.forward_error_bound` takes ~10 explicit
-arguments.  3-layer MLP would have ~15+.  A struct that bundles
-parameters + hypotheses + FP results would collapse call sites.
+**Shipped**: `Flean/Operations/MLP/LayerCert.lean` (~345 lines,
+sorry-free).  Landed Option C from the design discussion
+("bundle struct per layer, chain via `.extend`").
 
-**User direction**: ideally something more *naturally composable*
-than just a struct.
+`LayerResultCert L R` bundles:
+* FP input `xs`, input magnitude bound `xMax`, parameter magnitudes
+  `wMax`/`bMax`;
+* `input_bounded`, `xMax_nn`, `params_bounded`, `wMax_nn`, `bMax_nn`
+  hypothesis facts;
+* the FP witness `fp : LayerFpResult L xs R`.
 
-**Design discussion**: see §"Composability design notes" below.
+Methods:
+* `mk'` constructor from dim-positivity + pieces (auto-derives
+  parameter nonneg).
+* `output` / `outputBound` / `outputBound_nn` — the layer's FP output
+  and its magnitude bound.
+* `toVal_abs_le` / `forward_error_bound` — one-call magnitude / error
+  bounds through the cert.
+* `extend h_out' L' hM' hw'_nn fp'` — **chain** a new layer on top
+  of the cert, automatically using the previous layer's output bound
+  as the new layer's input bound.
+
+Parallel `ActivatedLayerResultCert` + same methods for activated
+layers.
+
+**N-layer demo**: `layerCert_chain3_forward_error_bound` composes
+three linear layers' errors via iterated
+`LipschitzMax.errorAmplification`:
+
+```
+ε_total = ε_L3 + K_L3·ε_L2 + K_L3·K_L2·ε_L1
+```
+
+where `K_Li = n_{i−1}·wMax_i`.  The cert chain makes the
+intermediate-input bounds automatic; the user supplies only link
+hypotheses `c2.xs = c1.output`, `c3.xs = c2.output` (`rfl` when
+`c2`/`c3` were built via `.extend`).
+
+**Design decisions**:
+* `extend` is `noncomputable` because `outputBound` (used as the
+  next layer's `xMax`) depends on `η : R` via `LayerFpResult.outputBound`.
+* Link hypotheses (`c2.xs = c1.output`) are stated via `xs` equality
+  rather than whole-struct equality — avoids dependent-type mismatches
+  from `extend`'s output-typed fields.
+
+**Scope note**: pre-built `MLP2FpCert` / `ActivatedMLP2FpCert`
+wrappers over the existing 2-layer structs are deferred.  The
+existing `MLP2FpResult.forward_error_bound` and its `_auto` variant
+already do the job for N=2; the cert primitive's main value is at
+N≥3.
 
 ### M5: Derive parameter nonneg accessors ✅ (done)
 

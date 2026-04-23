@@ -2,6 +2,7 @@ import Flean.Operations.MLP.Layer
 import Flean.Operations.MLP.LayerActivated
 import Flean.Operations.MLP.MLP2
 import Flean.Operations.MLP.ActivatedMLP2
+import Flean.Operations.MLP.LayerCert
 import Flean.Operations.MLP.MLPCrossEntropy
 
 /-!
@@ -27,6 +28,11 @@ This file is an aggregator.  Content lives in:
 * `MLP/ActivatedMLP2.lean` — 2-layer activated composition (pair of
   `ActivatedLayer`s, real/FP forward, composed bounds, error via
   `LipschitzMax.errorAmplification`, ReLU demo).
+* `MLP/LayerCert.lean` — per-layer certificate abstraction for
+  composable N-layer reasoning.  Bundles input/params/bounds/FP
+  witness into a single struct; `.extend` chains layers with
+  automatic magnitude propagation.  Enables N-layer error bounds
+  without pre-defining `MLPn` for each N.
 * `MLP/MLPCrossEntropy.lean` — composes the MLP forward bound with the
   cross-entropy pipeline for an end-to-end classification-loss bound.
   Ships abstract + MLP2 + ActivatedMLP2 specializations.
@@ -67,4 +73,9 @@ This file is an aggregator.  Content lives in:
    the MLP forward error with the CE pipeline via
    `crossEntropy_lipschitz_logits` (L∞-Lipschitz with constant
    `2 · Σ|y_i|`).
+9. **`LayerResultCert` / `ActivatedLayerResultCert`** — composable
+   per-layer certificates with `.extend` chain operation; enables
+   N-layer magnitude + error composition without predefined `MLPn`
+   structs.  `layerCert_chain3_forward_error_bound` demonstrates a
+   3-layer error bound via the cert chain.
 -/
