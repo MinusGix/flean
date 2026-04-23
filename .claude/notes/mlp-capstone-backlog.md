@@ -168,8 +168,19 @@ composes layer error with activation slack via the new
 `LipschitzScalar.errorAmplification` primitive — proof body 3 lines.
 
 **Deferred follow-ups**: concrete FP ReLU constructor (needs FiniteFp
-sign-comparison machinery), activated 2-layer MLP composition,
-M11 CE-on-top integration.  See [m10-activation-framework.md] memory.
+sign-comparison machinery), M11 CE-on-top integration.
+See [m10-activation-framework.md] memory.
+
+**Activated 2-layer MLP follow-up ✅ (2026-04-23)**:
+`Flean/Operations/MLP/ActivatedMLP2.lean` (~287 lines, sorry-free).
+Ships `ActivatedMLP2`, bounded-params tag, real/FP magnitude bounds,
+whole-model Lipschitz, FP error bound via `errorAmplification` on the
+second *activated* layer's Lipschitz constant `σ₂.K · n_hidden · w2Max`,
+and a ReLU-on-ReLU demo at shape (4 → 3 → 2).  Also added
+`ActivatedLayerFpResult.outputBound` + `toVal_abs_le` + `outputBound_nn`
+to `LayerActivated.lean` (needed so layer 2 can accept a magnitude
+tag on layer 1's activated output).  Error-bound proof body mirrors
+the linear `MLP2.forward_error_bound` modulo the amplification constant.
 
 ### M11: CE loss layer integration 🟢
 

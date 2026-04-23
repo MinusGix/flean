@@ -151,6 +151,88 @@ structure ActivatedLayerFpResult {n_in n_out : ℕ}
   /-- FP activation applied to the linear stage's output. -/
   activated : ActivationFpResult LA.activation linear.result
 
+/-! ## FP magnitude bound
+
+Mirrors `LayerFpResult.outputBound` / `toVal_abs_le`.  Compose linear
+magnitude with the activation's Lipschitz bound against `σ(0)`, plus
+the activation's own FP slack:
+
+```
+|result.toVal| ≤ σ.K · linear.outputBound + |σ(0)| + slack
+```
+-/
+
+/-- FP magnitude bound on an activated layer output. -/
+noncomputable def ActivatedLayerFpResult.outputBound {n_in n_out : ℕ}
+    {LA : ActivatedLayer R n_in n_out} {x : Fin n_in → FiniteFp}
+    (res : ActivatedLayerFpResult LA x) (wMax xMax bMax : R) : R :=
+  LA.activation.K * res.linear.outputBound wMax xMax bMax +
+    |LA.activation.apply 0| + res.activated.slack
+
+/-- FP activated-layer magnitude bound is nonneg under the usual
+parameter-nonneg hypotheses. -/
+theorem ActivatedLayerFpResult.outputBound_nn {n_in n_out : ℕ}
+    {LA : ActivatedLayer R n_in n_out} {x : Fin n_in → FiniteFp}
+    (res : ActivatedLayerFpResult LA x)
+    {wMax xMax bMax : R} (hwMax_nn : 0 ≤ wMax) (hxMax_nn : 0 ≤ xMax)
+    (hbMax_nn : 0 ≤ bMax) :
+    0 ≤ res.outputBound wMax xMax bMax := by
+  unfold ActivatedLayerFpResult.outputBound
+  have h_lin := res.linear.outputBound_nn hwMax_nn hxMax_nn hbMax_nn
+  have h_amp : 0 ≤ LA.activation.K * res.linear.outputBound wMax xMax bMax :=
+    mul_nonneg LA.activation.K_nn h_lin
+  have h_abs : 0 ≤ |LA.activation.apply 0| := abs_nonneg _
+  have h_slack : 0 ≤ res.activated.slack := res.activated.slack_nn
+  linarith
+
+/-- FP magnitude bound on the activated layer output: compose the
+linear-stage bound with the activation's Lipschitz bound against `σ(0)`
+and add the activation's slack. -/
+theorem ActivatedLayerFpResult.toVal_abs_le {n_in n_out : ℕ}
+    {LA : ActivatedLayer R n_in n_out} {x : Fin n_in → FiniteFp}
+    (res : ActivatedLayerFpResult LA x)
+    {wMax bMax : R} (hL : BoundedParams (R := R) LA.layer wMax bMax)
+    (hwMax_nn : 0 ≤ wMax)
+    {xMax : R} (hx : ∀ j, HasAbsBound (R := R) xMax (x j))
+    (hxMax_nn : 0 ≤ xMax)
+    (i : Fin n_out) :
+    |((res.activated.result i).toVal : R)| ≤
+      res.outputBound wMax xMax bMax := by
+  unfold ActivatedLayerFpResult.outputBound
+  have h_lin_mag :=
+    res.linear.toVal_abs_le hL hwMax_nn hx hxMax_nn i
+  have h_close := res.activated.h_close i
+  -- |σ(y) - σ(0)| ≤ σ.K · |y|.
+  have h_lip := LA.activation.lipschitz.bound
+    ((res.linear.result i).toVal : R) 0
+  rw [sub_zero] at h_lip
+  -- |σ(y)| ≤ σ.K · |y| + |σ(0)| via triangle.
+  have h_sigma_mag : |LA.activation.apply ((res.linear.result i).toVal : R)|
+      ≤ LA.activation.K * |((res.linear.result i).toVal : R)| +
+        |LA.activation.apply 0| := by
+    have h := abs_add_le
+      (LA.activation.apply ((res.linear.result i).toVal : R) -
+        LA.activation.apply 0)
+      (LA.activation.apply 0)
+    have h' : |LA.activation.apply ((res.linear.result i).toVal : R)|
+        ≤ |LA.activation.apply ((res.linear.result i).toVal : R) -
+            LA.activation.apply 0| + |LA.activation.apply 0| := by simpa using h
+    linarith
+  -- |result.toVal| ≤ slack + |σ(linear.toVal)|.
+  have h_tri : |((res.activated.result i).toVal : R)|
+      ≤ |((res.activated.result i).toVal : R) -
+          LA.activation.apply ((res.linear.result i).toVal : R)| +
+        |LA.activation.apply ((res.linear.result i).toVal : R)| := by
+    have h := abs_add_le
+      (((res.activated.result i).toVal : R) -
+        LA.activation.apply ((res.linear.result i).toVal : R))
+      (LA.activation.apply ((res.linear.result i).toVal : R))
+    simpa using h
+  have h_amp : LA.activation.K * |((res.linear.result i).toVal : R)|
+      ≤ LA.activation.K * res.linear.outputBound wMax xMax bMax :=
+    mul_le_mul_of_nonneg_left h_lin_mag LA.activation.K_nn
+  linarith
+
 /-- Named forward-error bound for the activated FP layer.
 
 `slack` is the activation's own FP-vs-math error; `σ.K · layer_error`

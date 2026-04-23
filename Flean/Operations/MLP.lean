@@ -1,6 +1,7 @@
 import Flean.Operations.MLP.Layer
 import Flean.Operations.MLP.LayerActivated
 import Flean.Operations.MLP.MLP2
+import Flean.Operations.MLP.ActivatedMLP2
 
 /-!
 # Verified Forward Pass of a 2-Layer Linear MLP
@@ -19,15 +20,18 @@ This file is an aggregator.  Content lives in:
 * `MLP/LayerActivated.lean` — single linear layer with a scalar
   activation applied componentwise (struct, real forward, Lipschitz
   via `compScalar`, FP integration via slack-based soundness).
-* `MLP/MLP2.lean` — 2-layer composition (struct, real-valued forward,
-  composed bounds, FP-level result, error composition via Lipschitz,
-  helpers, demo).
+* `MLP/MLP2.lean` — 2-layer linear composition (struct, real-valued
+  forward, composed bounds, FP-level result, error composition via
+  Lipschitz, helpers, demo).
+* `MLP/ActivatedMLP2.lean` — 2-layer activated composition (pair of
+  `ActivatedLayer`s, real/FP forward, composed bounds, error via
+  `LipschitzMax.errorAmplification`, ReLU demo).
 
 ## Scope
 
 - **Per-layer optional activation**: linear (`Layer`) and activated
-  (`ActivatedLayer`) flavors.  `MLP2` itself is linear-only;
-  `LayerActivated` provides the single-layer activated building block.
+  (`ActivatedLayer`) flavors.  Both have corresponding 2-layer
+  compositions (`MLP2`, `ActivatedMLP2`).
 - **Fixed precision** (same `FloatFormat` throughout — no
   mixed-precision yet).
 - **Constrained inputs**: typically `HasAbsBound xMax` (the
@@ -50,4 +54,8 @@ This file is an aggregator.  Content lives in:
 6. **`ActivatedLayerFpResult.forward_error_bound`** — activated
    single-layer FP error bound, composed via
    `LipschitzScalar.errorAmplification`.
+7. **`ActivatedMLP2FpResult.forward_error_bound`** — activated 2-layer
+   FP error bound, composed via `LipschitzMax.errorAmplification` on
+   the second activated layer's Lipschitz constant
+   `σ₂.K · n_hidden · w2Max`.
 -/
