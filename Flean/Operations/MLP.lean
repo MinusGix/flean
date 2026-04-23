@@ -3,6 +3,7 @@ import Flean.Operations.MLP.LayerActivated
 import Flean.Operations.MLP.MLP2
 import Flean.Operations.MLP.ActivatedMLP2
 import Flean.Operations.MLP.LayerCert
+import Flean.Operations.MLP.LayerChain
 import Flean.Operations.MLP.MLPCrossEntropy
 
 /-!
@@ -33,6 +34,11 @@ This file is an aggregator.  Content lives in:
   witness into a single struct; `.extend` chains layers with
   automatic magnitude propagation.  Enables N-layer error bounds
   without pre-defining `MLPn` for each N.
+* `MLP/LayerChain.lean` — genuine inductive N-layer MLP.
+  `LayerChain R n_in n_out` carries per-layer bounds inside each
+  `cons`; `FpTrace` is a parallel inductive FP witness; all
+  theorems (magnitude, Lipschitz, FP error) proved by induction on
+  the chain.
 * `MLP/MLPCrossEntropy.lean` — composes the MLP forward bound with the
   cross-entropy pipeline for an end-to-end classification-loss bound.
   Ships abstract + MLP2 + ActivatedMLP2 specializations.
@@ -78,4 +84,10 @@ This file is an aggregator.  Content lives in:
    N-layer magnitude + error composition without predefined `MLPn`
    structs.  `layerCert_chain3_forward_error_bound` demonstrates a
    3-layer error bound via the cert chain.
+10. **`LayerChain R n_in n_out`** — inductive N-layer MLP with
+    per-layer bounds.  `FpTrace` inductive FP witness.  Theorems:
+    `forward_abs_le` (real magnitude), `forward_lipschitz` (whole-
+    chain Lipschitz), `FpTrace.toVal_abs_le` (FP magnitude),
+    `FpTrace.forward_error_bound` (N-layer FP-vs-real error) — all
+    proved by induction on the chain.
 -/

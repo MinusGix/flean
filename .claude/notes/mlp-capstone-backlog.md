@@ -139,6 +139,31 @@ existing `MLP2FpResult.forward_error_bound` and its `_auto` variant
 already do the job for N=2; the cert primitive's main value is at
 N≥3.
 
+**N-layer follow-up ✅ (2026-04-23)**:
+`Flean/Operations/MLP/LayerChain.lean` (~345 lines, sorry-free) —
+genuine inductive N-layer MLP that subsumes the certificate chain
+with uniform induction proofs.
+
+* `LayerChain R n_in n_out` — `inductive` with per-layer bounds inside
+  each `cons` (universe `Type (u+1)` for `R : Type u`, needed to
+  embed `R`-valued weight bounds).
+* `LayerChain.forward` — recursive real-valued forward.
+* `LayerChain.outputBoundReal` — recursive real magnitude bound.
+* `LayerChain.lipschitzK` — whole-chain Lipschitz constant
+  (product of per-layer `n_{i−1}·wMax_i`).
+* `LayerChain.forward_lipschitz` — chain is `lipschitzK`-Lipschitz
+  (proof by induction using `LipschitzMax.comp`).
+* `FpTrace C xs ys` — inductive FP witness type with one constructor
+  per layer's `LayerFpResult`.
+* `FpTrace.outputBound` / `toVal_abs_le` — recursive FP magnitude.
+* `FpTrace.errorBound` / `forward_error_bound` — recursive
+  FP-vs-real error bound, proved by induction using
+  `LipschitzMax.errorAmplification` at each step.
+
+All N-layer theorems proved uniformly by induction on the chain —
+no per-N repetition.  Universe bumped to `Type (u+1)` to carry
+`R`-valued bound fields in the inductive constructors.
+
 ### M5: Derive parameter nonneg accessors ✅ (done)
 
 `BoundedParams.wMax_nn` / `bMax_nn` take `0 < n_in` / `0 < n_out`
