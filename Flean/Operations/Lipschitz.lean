@@ -28,13 +28,16 @@ forward-error analyses verbatim).
 `LipschitzScalar K f` for `f : R → R` is the per-element companion,
 intended for scalar activations.
 
-`LipschitzMaxWithSlack K c f` admits an additive slack `c` on the
-output bound — the natural shape for FP operations whose rounding
-introduces a bounded "fudge" beyond pure Lipschitz behavior:
+`LipschitzMaxOn M K f` is the **bounded-input** variant: the bound
+holds when every input has magnitude at most `M`.  Captures locally-
+Lipschitz functions (`x²`, `1/x`, polynomial activations) whose
+constant depends on the input range.
 
-```
-∀ δ x x', (∀ j, |x j − x' j| ≤ δ) → ∀ i, |f x i − f x' i| ≤ K · δ + c
-```
+`ApproximatesUniformly c f g` is a separate tag asserting `|f x i - g x i| ≤ c`
+pointwise.  Combined with `LipschitzMaxOn` via `approximatedBound`,
+it gives the "exact-Lipschitz function plus bounded approximation"
+shape — useful for Taylor truncations, polynomial activations, and
+similar approximated math models.
 
 ## Key design decisions
 
@@ -43,6 +46,11 @@ introduces a bounded "fudge" beyond pure Lipschitz behavior:
 * **Custom shape** chosen over Mathlib's `LipschitzWith`.  Mathlib
   needs `PiLp ⊤` instances and `ℝ≥0∞` constants; we want
   `R`-parametric simplicity.
+* **Slack is factored**, not bundled.  Rather than a primitive
+  `LipschitzMaxWithSlack` (which conflates two orthogonal concepts),
+  we expose `LipschitzMaxOn` (locally-Lipschitz math) and
+  `ApproximatesUniformly` (approximation), and combine them via
+  `approximatedBound`.
 
 ## Where Lipschitz fits, and where it doesn't
 
@@ -50,9 +58,10 @@ The framework is for **R-valued** functions (like `Layer.forward`).
 The composition propagates δ-perturbations through layers of math.
 
 Per-FP-op "Lipschitz" statements about rounding aren't directly
-expressible (rounding is discontinuous at midpoints), but
-`LipschitzMaxWithSlack` covers the practical case of "almost-
-Lipschitz with bounded slack."
+expressible (rounding is discontinuous at midpoints).  See
+`Flean/Operations/LipschitzFp.lean` for the FP-typed sibling
+`LipschitzMaxFpSlackOn` that captures "almost-Lipschitz with
+magnitude-dependent rounding slack" on `FiniteFp`-typed inputs.
 -/
 
 set_option autoImplicit false
@@ -173,129 +182,118 @@ theorem LipschitzMax.compScalar {m n : ℕ} {K_f K_σ : R}
       _ ≤ K_σ * (K_f * δ) := mul_le_mul_of_nonneg_left h_finner hσ.K_nn
       _ = K_σ * K_f * δ := by ring
 
-/-! ## `LipschitzMax` with additive slack
+/-! ## Bounded-input `LipschitzMaxOn`
 
-The slack version `LipschitzMaxWithSlack K c f` admits a bounded
-"fudge" `c` beyond the pure Lipschitz contribution.  This is the
-natural shape for floating-point operations: `round` is approximately
-1-Lipschitz with a half-ulp slack, and richer FP ops compose
-similarly.
+Many math functions are only locally Lipschitz: `x²` has constant
+`2M` on `|x| ≤ M`, `1/x` has constant `1/a²` on `[a, ∞)`, polynomial
+activations have constants depending on the input range.  `LipschitzMaxOn`
+captures this — the bound holds when every input is `M`-magnitude-bounded.
 
-Composition is more delicate than for pure `LipschitzMax`, but
-follows the same shape with slack accumulating linearly through the
-chain. -/
+Globally Lipschitz functions are `LipschitzMaxOn` for any `M` via
+`LipschitzMax.toOn`. -/
 
-/-- Lipschitz with additive slack: `|f x i - f x' i| ≤ K · δ + c`. -/
-structure LipschitzMaxWithSlack {m n : ℕ}
-    (K c : R) (f : (Fin m → R) → Fin n → R) : Prop where
+/-- Bounded-input variant of `LipschitzMax`: the Lipschitz bound holds
+on inputs whose per-component magnitude is at most `M`. -/
+structure LipschitzMaxOn {m n : ℕ} (M K : R)
+    (f : (Fin m → R) → Fin n → R) : Prop where
   /-- Lipschitz constant is non-negative. -/
   K_nn : 0 ≤ K
-  /-- Slack is non-negative. -/
-  c_nn : 0 ≤ c
-  /-- The slack-augmented Lipschitz bound. -/
-  bound : ∀ {δ : R} (x x' : Fin m → R), (∀ j, |x j - x' j| ≤ δ) →
-    ∀ i, |f x i - f x' i| ≤ K * δ + c
+  /-- The Lipschitz bound on M-bounded inputs. -/
+  bound : ∀ (x x' : Fin m → R),
+    (∀ j, |x j| ≤ M) → (∀ j, |x' j| ≤ M) →
+    ∀ {δ : R}, (∀ j, |x j - x' j| ≤ δ) →
+    ∀ i, |f x i - f x' i| ≤ K * δ
 
-/-- Pure `LipschitzMax K f` is `LipschitzMaxWithSlack K 0 f`.  The
-embedding direction. -/
-theorem LipschitzMax.toWithSlack {m n : ℕ} {K : R}
+omit [IsStrictOrderedRing R] in
+/-- Globally Lipschitz functions are `LipschitzMaxOn` for any bound. -/
+theorem LipschitzMax.toOn {m n : ℕ} {K M : R}
     {f : (Fin m → R) → Fin n → R} (hf : LipschitzMax (R := R) K f) :
-    LipschitzMaxWithSlack (R := R) K 0 f where
+    LipschitzMaxOn (R := R) M K f where
   K_nn := hf.K_nn
-  c_nn := le_refl 0
   bound := by
-    intro δ x x' h_dx i
-    have := hf.bound x x' h_dx i
-    linarith
+    intro x x' _ _ δ h_dx i
+    exact hf.bound x x' h_dx i
 
-/-- **Decomposition**: a `LipschitzMax K f'` plus a uniform bounded
-perturbation `|g x i - f' x i| ≤ c'` constructs `LipschitzMaxWithSlack
-K (2c') g`.  The factor of 2 comes from the triangle inequality on
-both endpoints. -/
-theorem LipschitzMaxWithSlack.ofLipschitzMaxAndPerturbation
-    {m n : ℕ} {K c' : R} {f' g : (Fin m → R) → Fin n → R}
-    (hf' : LipschitzMax (R := R) K f')
-    (hpert : ∀ x i, |g x i - f' x i| ≤ c')
-    (hc'_nn : 0 ≤ c') :
-    LipschitzMaxWithSlack (R := R) K (2 * c') g where
-  K_nn := hf'.K_nn
-  c_nn := by linarith
-  bound := by
-    intro δ x x' h_dx i
-    -- |g x i - g x' i| ≤ |g x i - f' x i| + |f' x i - f' x' i| + |f' x' i - g x' i|.
-    have h_pert_x := hpert x i
-    have h_pert_x' := hpert x' i
-    have h_f'_lip := hf'.bound x x' h_dx i
-    have h_pert_x'_sym : |f' x' i - g x' i| ≤ c' := by
-      rw [abs_sub_comm]; exact h_pert_x'
-    have h_tri :
-        |g x i - g x' i| ≤
-          |g x i - f' x i| + |f' x i - f' x' i| + |f' x' i - g x' i| := by
-      have h_sum :
-          (g x i - g x' i) =
-          (g x i - f' x i) + (f' x i - f' x' i) + (f' x' i - g x' i) := by ring
-      rw [h_sum]
-      calc |(g x i - f' x i) + (f' x i - f' x' i) + (f' x' i - g x' i)|
-          ≤ |(g x i - f' x i) + (f' x i - f' x' i)| + |f' x' i - g x' i| :=
-            abs_add_le _ _
-        _ ≤ |g x i - f' x i| + |f' x i - f' x' i| + |f' x' i - g x' i| := by
-            have := abs_add_le (g x i - f' x i) (f' x i - f' x' i)
-            linarith
-    linarith
-
-/-- Composition for the slack version: `g ∘ f` where `g` is pure
-Lipschitz and `f` has slack. -/
-theorem LipschitzMaxWithSlack.compPure {m k n : ℕ} {K_f c_f K_g : R}
+/-- Composition of bounded-input Lipschitz functions: requires the
+inner function's image to lie within the outer function's M-ball. -/
+theorem LipschitzMaxOn.comp {m k n : ℕ} {M_x M_int K_f K_g : R}
     {f : (Fin m → R) → Fin k → R} {g : (Fin k → R) → Fin n → R}
-    (hg : LipschitzMax (R := R) K_g g)
-    (hf : LipschitzMaxWithSlack (R := R) K_f c_f f) :
-    LipschitzMaxWithSlack (R := R) (K_g * K_f) (K_g * c_f) (fun x => g (f x)) where
+    (hg : LipschitzMaxOn (R := R) M_int K_g g)
+    (hf : LipschitzMaxOn (R := R) M_x K_f f)
+    (h_image : ∀ x : Fin m → R, (∀ j, |x j| ≤ M_x) → ∀ k, |f x k| ≤ M_int) :
+    LipschitzMaxOn (R := R) M_x (K_g * K_f) (fun x => g (f x)) where
   K_nn := mul_nonneg hg.K_nn hf.K_nn
-  c_nn := mul_nonneg hg.K_nn hf.c_nn
   bound := by
-    intro δ x x' h_dx i
-    have h_finner : ∀ j, |f x j - f x' j| ≤ K_f * δ + c_f := fun j =>
-      hf.bound x x' h_dx j
-    have := hg.bound (f x) (f x') h_finner i
+    intro x x' hx_M hx'_M δ h_dx i
+    have h_fx_M : ∀ k, |f x k| ≤ M_int := h_image x hx_M
+    have h_fx'_M : ∀ k, |f x' k| ≤ M_int := h_image x' hx'_M
+    have h_finner : ∀ j, |f x j - f x' j| ≤ K_f * δ :=
+      fun j => hf.bound x x' hx_M hx'_M h_dx j
+    have h_amp := hg.bound (f x) (f x') h_fx_M h_fx'_M h_finner i
     calc |g (f x) i - g (f x') i|
-        ≤ K_g * (K_f * δ + c_f) := this
-      _ = K_g * K_f * δ + K_g * c_f := by ring
+        ≤ K_g * (K_f * δ) := h_amp
+      _ = K_g * K_f * δ := by ring
 
-/-- Composition: pure `f`, slack `g`.  Slack carries through directly. -/
-theorem LipschitzMaxWithSlack.purePost {m k n : ℕ} {K_f K_g c_g : R}
-    {f : (Fin m → R) → Fin k → R} {g : (Fin k → R) → Fin n → R}
-    (hg : LipschitzMaxWithSlack (R := R) K_g c_g g)
-    (hf : LipschitzMax (R := R) K_f f) :
-    LipschitzMaxWithSlack (R := R) (K_g * K_f) c_g (fun x => g (f x)) where
-  K_nn := mul_nonneg hg.K_nn hf.K_nn
-  c_nn := hg.c_nn
-  bound := by
-    intro δ x x' h_dx i
-    have h_finner : ∀ j, |f x j - f x' j| ≤ K_f * δ := fun j =>
-      hf.bound x x' h_dx j
-    have := hg.bound (f x) (f x') h_finner i
-    calc |g (f x) i - g (f x') i|
-        ≤ K_g * (K_f * δ) + c_g := this
-      _ = K_g * K_f * δ + c_g := by ring
+/-! ## Uniform approximation tag
 
-/-- Composition: both pieces have slack.  Slack accumulates as
-`K_g · c_f + c_g`. -/
-theorem LipschitzMaxWithSlack.comp {m k n : ℕ} {K_f c_f K_g c_g : R}
-    {f : (Fin m → R) → Fin k → R} {g : (Fin k → R) → Fin n → R}
-    (hg : LipschitzMaxWithSlack (R := R) K_g c_g g)
-    (hf : LipschitzMaxWithSlack (R := R) K_f c_f f) :
-    LipschitzMaxWithSlack (R := R) (K_g * K_f) (K_g * c_f + c_g)
-      (fun x => g (f x)) where
-  K_nn := mul_nonneg hg.K_nn hf.K_nn
-  c_nn := add_nonneg (mul_nonneg hg.K_nn hf.c_nn) hg.c_nn
-  bound := by
-    intro δ x x' h_dx i
-    have h_finner : ∀ j, |f x j - f x' j| ≤ K_f * δ + c_f := fun j =>
-      hf.bound x x' h_dx j
-    have := hg.bound (f x) (f x') h_finner i
-    calc |g (f x) i - g (f x') i|
-        ≤ K_g * (K_f * δ + c_f) + c_g := this
-      _ = K_g * K_f * δ + (K_g * c_f + c_g) := by ring
+`ApproximatesUniformly c f g` says `f` and `g` agree up to a uniform
+pointwise error `c`.  Used to plug an approximation (e.g., a Taylor
+truncation, polynomial activation, lookup table) onto an exact-Lipschitz
+math function. -/
+
+/-- Pointwise uniform approximation: `|f x i - g x i| ≤ c` everywhere. -/
+structure ApproximatesUniformly {m n : ℕ} (c : R)
+    (f g : (Fin m → R) → Fin n → R) : Prop where
+  /-- Approximation slack is non-negative. -/
+  c_nn : 0 ≤ c
+  /-- Pointwise approximation bound. -/
+  bound : ∀ (x : Fin m → R) (i : Fin n), |f x i - g x i| ≤ c
+
+omit [IsStrictOrderedRing R] in
+/-- Symmetry: `f` approximates `g` iff `g` approximates `f`. -/
+theorem ApproximatesUniformly.symm {m n : ℕ} {c : R}
+    {f g : (Fin m → R) → Fin n → R}
+    (h : ApproximatesUniformly (R := R) c f g) :
+    ApproximatesUniformly (R := R) c g f where
+  c_nn := h.c_nn
+  bound := fun x i => by rw [abs_sub_comm]; exact h.bound x i
+
+/-! ## Approximated bound: combining `LipschitzMaxOn` + `ApproximatesUniformly`
+
+Given an exact-Lipschitz math function `g` and an approximation `f`
+within `c`, the perturbation bound for `f` is `K · δ + 2c` on the
+M-ball — factor of 2 from triangle on both endpoints. -/
+
+/-- **Approximation slack bound**: an approximation of an exact-
+Lipschitz function inherits the Lipschitz bound with `2c` slack. -/
+theorem LipschitzMaxOn.approximatedBound {m n : ℕ} {M K c : R}
+    {f g : (Fin m → R) → Fin n → R}
+    (hg : LipschitzMaxOn (R := R) M K g)
+    (happ : ApproximatesUniformly (R := R) c f g)
+    {x x' : Fin m → R}
+    (hx_M : ∀ j, |x j| ≤ M) (hx'_M : ∀ j, |x' j| ≤ M)
+    {δ : R} (h_dx : ∀ j, |x j - x' j| ≤ δ)
+    (i : Fin n) :
+    |f x i - f x' i| ≤ K * δ + 2 * c := by
+  have h_app_x := happ.bound x i
+  have h_app_x' := happ.bound x' i
+  have h_app_x'_sym : |g x' i - f x' i| ≤ c := by
+    rw [abs_sub_comm]; exact h_app_x'
+  have h_g_lip := hg.bound x x' hx_M hx'_M h_dx i
+  -- |f x i - f x' i| ≤ |f x i - g x i| + |g x i - g x' i| + |g x' i - f x' i|.
+  have h_split : f x i - f x' i =
+      (f x i - g x i) + (g x i - g x' i) + (g x' i - f x' i) := by ring
+  have h_tri : |f x i - f x' i|
+      ≤ |f x i - g x i| + |g x i - g x' i| + |g x' i - f x' i| := by
+    calc |f x i - f x' i|
+        = |(f x i - g x i) + (g x i - g x' i) + (g x' i - f x' i)| := by
+          rw [h_split]
+      _ ≤ |(f x i - g x i) + (g x i - g x' i)| + |g x' i - f x' i| :=
+        abs_add_le _ _
+      _ ≤ |f x i - g x i| + |g x i - g x' i| + |g x' i - f x' i| := by
+        have := abs_add_le (f x i - g x i) (g x i - g x' i)
+        linarith
+  linarith
 
 /-! ## Forward-error composition
 
@@ -335,6 +333,25 @@ theorem LipschitzMax.errorAmplification {m n : ℕ} {K_g ε_g ε_f : R}
     lip_g.bound z w h_inner i
   have h_tri : |y - g w i| ≤ |y - g z i| + |g z i - g w i| := by
     have h_split : y - g w i = (y - g z i) + (g z i - g w i) := by ring
+    rw [h_split]; exact abs_add_le _ _
+  linarith
+
+/-- **Forward-error composition** through one scalar Lipschitz function.
+
+Scalar analog of `LipschitzMax.errorAmplification`: outer error
+`|y - g z| ≤ ε_g` plus inner deviation `|z - w| ≤ ε_f` compose to
+`|y - g w| ≤ ε_g + K_g · ε_f`.  Used for activation-on-top-of-layer
+forward-error bounds. -/
+theorem LipschitzScalar.errorAmplification {K_g ε_g ε_f : R}
+    {g : R → R} (lip_g : LipschitzScalar (R := R) K_g g)
+    {y z w : R}
+    (h_outer : |y - g z| ≤ ε_g)
+    (h_inner : |z - w| ≤ ε_f) :
+    |y - g w| ≤ ε_g + K_g * ε_f := by
+  have h_amp : |g z - g w| ≤ K_g * ε_f :=
+    le_trans (lip_g.bound z w) (mul_le_mul_of_nonneg_left h_inner lip_g.K_nn)
+  have h_tri : |y - g w| ≤ |y - g z| + |g z - g w| := by
+    have h_split : y - g w = (y - g z) + (g z - g w) := by ring
     rw [h_split]; exact abs_add_le _ _
   linarith
 
