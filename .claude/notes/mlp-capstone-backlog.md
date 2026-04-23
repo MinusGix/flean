@@ -81,14 +81,10 @@ propagate through layer stacks.
 **Scope estimate**: ~200–400 lines depending on how rich the
 abstraction.
 
-### M3: `LayerBounded` naming ⚪
+### M3: `LayerBounded` naming ✅ (done — landed in MLP split commit)
 
-**Finding**: reads as "the layer is bounded" but means "the layer's
-parameters are bounded."
-
-**User direction**: rename to `BoundedParams` (or similar).
-
-**Action**: small rename; bundle with another commit.
+Renamed to `BoundedParams`.  `MLP2BoundedParams`,
+`ActivatedMLP2BoundedParams` follow the same convention.
 
 ### M4: Composable hypothesis bundling 🟡
 
@@ -101,15 +97,14 @@ than just a struct.
 
 **Design discussion**: see §"Composability design notes" below.
 
-### M5: Derive parameter nonneg accessors 🟢
+### M5: Derive parameter nonneg accessors ✅ (done)
 
-**Finding**: explicit `0 ≤ wMax`, `0 ≤ bMax` hypotheses accumulate.
-These follow from `LayerBounded` + nonempty witness.
-
-**User direction**: yeah.
-
-**Action**: add `BoundedParams.wMax_nn` / `bMax_nn` accessors.
-Possibly require `0 < n_out` (or similar) as a struct field.
+`BoundedParams.wMax_nn` / `bMax_nn` take `0 < n_in` / `0 < n_out`
+positivity witnesses and derive the nonneg facts.  Analogous
+`MLP2BoundedParams.{w1,b1,w2,b2}_nn` and
+`ActivatedMLP2BoundedParams.{w1,b1,w2,b2}_nn` accessors exist on
+the 2-layer structs.  Not baked into the struct itself — kept as
+derived theorems so the struct remains vacuous for empty dims.
 
 ### M6: Bundle bridges underused at multi-layer level ⚪
 
@@ -124,10 +119,7 @@ that iterate bundles, the bridge API is awkward.
 that takes per-entry tags on both matrix and vector.  Lower priority
 unless multi-layer code keeps unfolding manually.
 
-### M7: Rename `LayerBounded` → `BoundedParams` ⚪
-
-(See M3 — same item, just splitting "rename" from "naming
-discussion".)
+### M7: Rename `LayerBounded` → `BoundedParams` ✅ (done — see M3)
 
 ### M8: Concrete runnable demo + helper lemmas 🟢
 
@@ -217,15 +209,16 @@ where `ce_err` is the CE pipeline's bound (`FpCrossEntropyResult.error_bound`)
 and `mlp_err` is the MLP's per-index forward error
 (`MLP2FpResult.errorBound` or `ActivatedMLP2FpResult.errorBound`).
 
-### M12: `realForward` naming 🔵
+### M12: `realForward` naming ✅ (done — renamed to `forward`)
 
-**Finding**: the function is R-valued, not ℝ-valued — "real" is
-confusing.
+The math-level function is now `Layer.forward` / `MLP2.forward` /
+`ActivatedLayer.forward` / `ActivatedMLP2.forward`.  FP side uses
+`LayerFpResult.result` / `MLP2FpResult.layer2.result` / etc. —
+no collision, context disambiguates.
 
-**User direction**: rename to indicate the abstract field; "this
-is the underlying mathematical notion the FP mimics."
+**Discussion archive** (kept below for history).
 
-**Discussion**: candidates: `forward` (drop the prefix), `eval`,
+**Naming candidates**: `forward` (drop the prefix), `eval`,
 `exact`, `unrounded`, `groundTruth`, `mathForward`.  See
 §"Naming discussion" below.
 

@@ -253,12 +253,40 @@ theorem MLP2BoundedParams.b2_nn {n_in n_hidden n_out : ℕ}
     (0 : R) ≤ b2Max :=
   hM.layer2_bounded.bMax_nn h_out
 
+/-! ## Ergonomic variant: dim-positivity discharges nonneg hypotheses
+
+`_auto` variants take dim-positivity witnesses (`0 < n_in`, etc.)
+instead of parameter-nonneg hypotheses (`0 ≤ w1Max`, etc.).  The
+latter are derived via `MLP2BoundedParams.{w1,b1,w2,b2}_nn` accessors.
+For concrete shapes, the positivity witnesses discharge via
+`by decide`. -/
+
+/-- `_auto` variant of `forward_error_bound`: takes dim-positivity
+instead of parameter-nonneg.  Derives `0 ≤ w1Max` / `0 ≤ b1Max` /
+`0 ≤ w2Max` from `hM` via the nonneg accessors. -/
+theorem MLP2FpResult.forward_error_bound_auto {n_in n_hidden n_out : ℕ}
+    (h_in : 0 < n_in) (h_hidden : 0 < n_hidden) (h_out : 0 < n_out)
+    {M : MLP2 n_in n_hidden n_out} {x : Fin n_in → FiniteFp}
+    (res : MLP2FpResult M x R)
+    {w1Max b1Max w2Max b2Max : R}
+    (hM : MLP2BoundedParams (R := R) M w1Max b1Max w2Max b2Max)
+    {xMax : R} (hx : ∀ j, HasAbsBound (R := R) xMax (x j))
+    (hxMax_nn : 0 ≤ xMax)
+    (k : Fin n_out) :
+    |((res.layer2.result k).toVal : R) -
+        M.forward (fun j => ((x j).toVal : R)) k| ≤
+      res.errorBound w1Max xMax b1Max w2Max b2Max :=
+  res.forward_error_bound hM
+    (hM.w1_nn h_in h_hidden) (hM.b1_nn h_hidden) (hM.w2_nn h_hidden h_out)
+    hx hxMax_nn k
+
 /-! ## Concrete demo -/
 
 /-- **Demo**: invoking the 2-layer error bound on a concrete network
-shape (4 → 3 → 2).  No specific weight values needed; the theorem
-is statement-level applicable.  The accessors discharge nonneg
-hypotheses automatically. -/
+shape (4 → 3 → 2) via the `_auto` variant.  No specific weight values
+needed; the theorem is statement-level applicable.  The `_auto` form
+routes through the parameter-nonneg accessors, so only the `(by decide)`
+dim-positivity witnesses are visible at the call site. -/
 theorem MLP2FpResult.forward_error_bound_demo
     {M : MLP2 4 3 2} {x : Fin 4 → FiniteFp}
     (res : MLP2FpResult M x R)
@@ -269,11 +297,8 @@ theorem MLP2FpResult.forward_error_bound_demo
     (k : Fin 2) :
     |((res.layer2.result k).toVal : R) -
         M.forward (fun j => ((x j).toVal : R)) k| ≤
-      res.errorBound w1Max xMax b1Max w2Max b2Max := by
-  exact res.forward_error_bound hM
-    (hM.w1_nn (by decide) (by decide))
-    (hM.b1_nn (by decide))
-    (hM.w2_nn (by decide) (by decide))
-    hx hxMax_nn k
+      res.errorBound w1Max xMax b1Max w2Max b2Max :=
+  res.forward_error_bound_auto (by decide) (by decide) (by decide)
+    hM hx hxMax_nn k
 
 end MLP

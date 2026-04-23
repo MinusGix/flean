@@ -290,6 +290,27 @@ theorem fpCrossEntropy_oneHot_error_bound :
 | Consumer has rounding error `η · |x|` on an op that could be exact. | Multiplicative-tail elimination. | `IsSterbenz`, or an exact-op witness. |
 | Consumer has a structural hypothesis that's hard to supply directly. | Precondition discharge. | Witness tag or bridge lemma. |
 
+### 8.1 `HasAbsBound` vs `IsBoundedRange` as the input-side default (M1)
+
+For **deterministic worst-case magnitude analyses** (the common MLP /
+dot-product / matvec shape), default to `HasAbsBound xMax x`.  Reason:
+the sign information `IsBoundedRange (-xMax, xMax)` carries is thrown
+away anyway — the error bound `(1 + η)·n·xMax + …` doesn't see signs.
+`HasAbsBound` is simpler (scalar `c` vs. `FpInterval { lo, hi }`), has
+a richer propagation API (`fpAdd/Sub/Mul/FMA_normal/unified`), and
+composes to `(1 + η)·(c₁ ∘ c₂)` without the asymmetric-interval
+gymnastics.
+
+Reserve `IsBoundedRange` for cases that **exploit signs or asymmetric
+ranges**: softmax separation (lower bounds on the exponent gap),
+normal-range bridges (`IsBoundedRange.quot_isNormalRange`), shifted
+sub-ranges (shifted softmax), and future statistical analyses that
+want signed cancellation.
+
+The MLP capstone used `HasAbsBound 1` for the pixel-style input —
+correct choice: no sign info was exploited, and the magnitude bound
+on the input matched the magnitude bound the consumer needed.
+
 ---
 
 ## 9. Anti-patterns
@@ -407,3 +428,56 @@ no concrete `PerturbationLift` instances shipped (R5 in
 - `Flean/Tags/BundleAbsBound.lean` — tag-to-bundle bridges (T-M4).
 - `.claude/notes/tag-framework-backlog.md` — live iteration log + a
   design-note section on a future tag-inference engine.
+
+---
+
+## 13. Lean proof-ergonomics recipes
+
+Known sharp edges that recur across tag-framework code.  Not
+tag-specific, but worth recording once to avoid re-discovering them.
+
+### 13.1 `Finset.sum_sub_distrib` needs top-level subtraction (M9)
+
+The lemma `∑ i, (f i - g i) = (∑ i, f i) - (∑ i, g i)` rewrites a
+sum-of-differences into a difference-of-sums.  But a goal like
+`(∑ + b) - (∑' + b) = ∑ (f - g)` has the subtraction **nested** under
+the bias add — `rw [← Finset.sum_sub_distrib]` won't find the pattern.
+
+**Recipe**: do an intermediate `ring`-based collapse step first to
+cancel the bias, then apply `sum_sub_distrib`:
+
+```lean
+have h_collapse : (∑ i, a i + b) - (∑ i, a' i + b) =
+    (∑ i, a i) - (∑ i, a' i) := by ring
+rw [h_collapse, ← Finset.sum_sub_distrib]
+apply Finset.sum_congr rfl
+intro i _; ring
+```
+
+Used in `Layer.forward_lipschitz`, `MLP2.forward_error_bound`, and
+the `crossEntropy_lipschitz_logits` decomposition.
+
+### 13.2 `rw` after `set` re-folds via `← hX_def`
+
+When using `set X := big_expr with hX_def` to abbreviate in a goal,
+applying a general theorem (e.g., `h_general : ∀ y, …big_expr(y)…`)
+produces a statement still in terms of `big_expr`, not `X`.  Re-fold
+via `simp only [← hX_def]` before `rw`-ing with structural lemmas
+that need to match `X`.
+
+Used throughout the CE / softmax specializations (`IsOneHot`,
+`IsProb`).
+
+### 13.3 `funext i; simp [shift]` already closes — no trailing `ring`
+
+For `(fun i => xs i - c) = shift xs c`: `funext i` gives `xs i - c =
+shift xs c i`, which `simp [shift]` closes directly via the
+definitional unfold.  Don't append `ring` — the goal is already
+gone, and `ring` errors with "no goals".
+
+### 13.4 Typeclass-variable pruning via `omit`
+
+A theorem that doesn't need every typeclass in the file's `variable`
+block will produce a "section variable unused" lint warning.  Fix:
+`omit [TypeClass1] [TypeClass2] in theorem …`.  Must come **before**
+any docstring on the theorem (parser rejects `docstring; omit; …`).

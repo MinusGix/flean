@@ -372,4 +372,117 @@ theorem ActivatedMLP2FpResult.crossEntropy_error_bound_of_isProb
     (M_res.errorBound w1Max xMax b1Max w2Max b2Max)
     h_err_nn h_mlp loss ce_err h_ce
 
+/-! ## Ergonomic `_auto` variants: dim-positivity discharges nonneg
+
+Same recipe as `MLP2FpResult.forward_error_bound_auto`: take
+dim-positivity (`0 < n_in` / `0 < n_hidden` / `0 < n_out`) and derive
+parameter-nonneg hypotheses via the `MLP2BoundedParams` /
+`ActivatedMLP2BoundedParams` accessors.  For concrete network shapes,
+the positivity witnesses discharge via `by decide`. -/
+
+omit [RModeSticky ℝ] [ExpApprox] [ExpApproxSound] in
+/-- `_auto` variant of `MLP2FpResult.crossEntropy_error_bound`. -/
+theorem MLP2FpResult.crossEntropy_error_bound_auto
+    {n_in n_hidden n_out : ℕ}
+    (h_in : 0 < n_in) (h_hidden : 0 < n_hidden) (h_out : 0 < n_out)
+    {M : MLP2 n_in n_hidden n_out} {x : Fin n_in → FiniteFp}
+    (M_res : MLP2FpResult M x ℝ)
+    {w1Max b1Max w2Max b2Max : ℝ}
+    (hM : MLP2BoundedParams (R := ℝ) M w1Max b1Max w2Max b2Max)
+    {xMax : ℝ} (hx : ∀ j, HasAbsBound (R := ℝ) xMax (x j))
+    (hxMax_nn : 0 ≤ xMax)
+    (ys : Fin n_out → FiniteFp)
+    (loss : ℝ) (ce_err : ℝ)
+    (h_ce : |loss - CrossEntropy.crossEntropy
+        (fun i => ((ys i).toVal : ℝ))
+        (fun i => ((M_res.layer2.result i).toVal : ℝ))| ≤ ce_err) :
+    |loss - CrossEntropy.crossEntropy
+        (fun i => ((ys i).toVal : ℝ))
+        (M.forward (fun j => ((x j).toVal : ℝ)))| ≤
+      ce_err + 2 * (∑ i, |((ys i).toVal : ℝ)|) *
+        M_res.errorBound w1Max xMax b1Max w2Max b2Max :=
+  M_res.crossEntropy_error_bound h_out hM
+    (hM.w1_nn h_in h_hidden) (hM.b1_nn h_hidden) (hM.w2_nn h_hidden h_out)
+    hx hxMax_nn ys loss ce_err h_ce
+
+omit [RModeSticky ℝ] [ExpApprox] [ExpApproxSound] in
+/-- `_auto` variant of
+`ActivatedMLP2FpResult.crossEntropy_error_bound`. -/
+theorem ActivatedMLP2FpResult.crossEntropy_error_bound_auto
+    {n_in n_hidden n_out : ℕ}
+    (h_in : 0 < n_in) (h_hidden : 0 < n_hidden) (h_out : 0 < n_out)
+    {M : ActivatedMLP2 ℝ n_in n_hidden n_out} {x : Fin n_in → FiniteFp}
+    (M_res : ActivatedMLP2FpResult M x)
+    {w1Max b1Max w2Max b2Max : ℝ}
+    (hM : ActivatedMLP2BoundedParams (R := ℝ) M w1Max b1Max w2Max b2Max)
+    {xMax : ℝ} (hx : ∀ j, HasAbsBound (R := ℝ) xMax (x j))
+    (hxMax_nn : 0 ≤ xMax)
+    (ys : Fin n_out → FiniteFp)
+    (loss : ℝ) (ce_err : ℝ)
+    (h_ce : |loss - CrossEntropy.crossEntropy
+        (fun i => ((ys i).toVal : ℝ))
+        (fun i => ((M_res.layer2.activated.result i).toVal : ℝ))|
+          ≤ ce_err) :
+    |loss - CrossEntropy.crossEntropy
+        (fun i => ((ys i).toVal : ℝ))
+        (M.forward (fun j => ((x j).toVal : ℝ)))| ≤
+      ce_err + 2 * (∑ i, |((ys i).toVal : ℝ)|) *
+        M_res.errorBound w1Max xMax b1Max w2Max b2Max :=
+  M_res.crossEntropy_error_bound h_out hM
+    (hM.w1_nn h_in h_hidden) (hM.b1_nn h_hidden) (hM.w2_nn h_hidden h_out)
+    hx hxMax_nn ys loss ce_err h_ce
+
+omit [RModeSticky ℝ] [ExpApprox] [ExpApproxSound] in
+/-- `_auto` variant of
+`MLP2FpResult.crossEntropy_error_bound_of_isProb`. -/
+theorem MLP2FpResult.crossEntropy_error_bound_of_isProb_auto
+    {n_in n_hidden n_out : ℕ}
+    (h_in : 0 < n_in) (h_hidden : 0 < n_hidden) (h_out : 0 < n_out)
+    {M : MLP2 n_in n_hidden n_out} {x : Fin n_in → FiniteFp}
+    (M_res : MLP2FpResult M x ℝ)
+    {w1Max b1Max w2Max b2Max : ℝ}
+    (hM : MLP2BoundedParams (R := ℝ) M w1Max b1Max w2Max b2Max)
+    {xMax : ℝ} (hx : ∀ j, HasAbsBound (R := ℝ) xMax (x j))
+    (hxMax_nn : 0 ≤ xMax)
+    (ys : Fin n_out → FiniteFp)
+    (h_prob : Flean.Tags.IsProb (R := ℝ) ys)
+    (loss : ℝ) (ce_err : ℝ)
+    (h_ce : |loss - CrossEntropy.crossEntropy
+        (fun i => ((ys i).toVal : ℝ))
+        (fun i => ((M_res.layer2.result i).toVal : ℝ))| ≤ ce_err) :
+    |loss - CrossEntropy.crossEntropy
+        (fun i => ((ys i).toVal : ℝ))
+        (M.forward (fun j => ((x j).toVal : ℝ)))| ≤
+      ce_err + 2 * M_res.errorBound w1Max xMax b1Max w2Max b2Max :=
+  M_res.crossEntropy_error_bound_of_isProb h_out hM
+    (hM.w1_nn h_in h_hidden) (hM.b1_nn h_hidden) (hM.w2_nn h_hidden h_out)
+    hx hxMax_nn ys h_prob loss ce_err h_ce
+
+omit [RModeSticky ℝ] [ExpApprox] [ExpApproxSound] in
+/-- `_auto` variant of
+`ActivatedMLP2FpResult.crossEntropy_error_bound_of_isProb`. -/
+theorem ActivatedMLP2FpResult.crossEntropy_error_bound_of_isProb_auto
+    {n_in n_hidden n_out : ℕ}
+    (h_in : 0 < n_in) (h_hidden : 0 < n_hidden) (h_out : 0 < n_out)
+    {M : ActivatedMLP2 ℝ n_in n_hidden n_out} {x : Fin n_in → FiniteFp}
+    (M_res : ActivatedMLP2FpResult M x)
+    {w1Max b1Max w2Max b2Max : ℝ}
+    (hM : ActivatedMLP2BoundedParams (R := ℝ) M w1Max b1Max w2Max b2Max)
+    {xMax : ℝ} (hx : ∀ j, HasAbsBound (R := ℝ) xMax (x j))
+    (hxMax_nn : 0 ≤ xMax)
+    (ys : Fin n_out → FiniteFp)
+    (h_prob : Flean.Tags.IsProb (R := ℝ) ys)
+    (loss : ℝ) (ce_err : ℝ)
+    (h_ce : |loss - CrossEntropy.crossEntropy
+        (fun i => ((ys i).toVal : ℝ))
+        (fun i => ((M_res.layer2.activated.result i).toVal : ℝ))|
+          ≤ ce_err) :
+    |loss - CrossEntropy.crossEntropy
+        (fun i => ((ys i).toVal : ℝ))
+        (M.forward (fun j => ((x j).toVal : ℝ)))| ≤
+      ce_err + 2 * M_res.errorBound w1Max xMax b1Max w2Max b2Max :=
+  M_res.crossEntropy_error_bound_of_isProb h_out hM
+    (hM.w1_nn h_in h_hidden) (hM.b1_nn h_hidden) (hM.w2_nn h_hidden h_out)
+    hx hxMax_nn ys h_prob loss ce_err h_ce
+
 end MLP

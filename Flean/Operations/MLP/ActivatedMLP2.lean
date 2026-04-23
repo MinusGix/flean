@@ -292,11 +292,37 @@ theorem ActivatedMLP2BoundedParams.b2_nn {n_in n_hidden n_out : ℕ}
     (0 : R) ≤ b2Max :=
   hM.layer2_bounded.bMax_nn h_out
 
+/-! ## Ergonomic variant: dim-positivity discharges nonneg hypotheses
+
+`_auto` variant of `forward_error_bound` taking dim-positivity
+witnesses (`0 < n_in`, etc.) instead of parameter-nonneg hypotheses.
+Derives the latter via `ActivatedMLP2BoundedParams.{w1,b1,w2,b2}_nn`
+accessors. -/
+
+/-- `_auto` variant of the activated 2-layer forward error bound. -/
+theorem ActivatedMLP2FpResult.forward_error_bound_auto
+    {n_in n_hidden n_out : ℕ}
+    (h_in : 0 < n_in) (h_hidden : 0 < n_hidden) (h_out : 0 < n_out)
+    {M : ActivatedMLP2 R n_in n_hidden n_out} {x : Fin n_in → FiniteFp}
+    (res : ActivatedMLP2FpResult M x)
+    {w1Max b1Max w2Max b2Max : R}
+    (hM : ActivatedMLP2BoundedParams (R := R) M w1Max b1Max w2Max b2Max)
+    {xMax : R} (hx : ∀ j, HasAbsBound (R := R) xMax (x j))
+    (hxMax_nn : 0 ≤ xMax)
+    (k : Fin n_out) :
+    |((res.layer2.activated.result k).toVal : R) -
+        M.forward (fun j => ((x j).toVal : R)) k| ≤
+      res.errorBound w1Max xMax b1Max w2Max b2Max :=
+  res.forward_error_bound hM
+    (hM.w1_nn h_in h_hidden) (hM.b1_nn h_hidden) (hM.w2_nn h_hidden h_out)
+    hx hxMax_nn k
+
 /-! ## Concrete demo -/
 
 /-- **Demo**: activated 2-layer MLP with ReLU on both layers.
 Specializes the error bound to the (4 → 3 → 2) shape with both
-activations set to `Flean.Activation.relu`. -/
+activations set to `Flean.Activation.relu`, routing through the
+`_auto` variant so only dim-positivity witnesses are visible. -/
 theorem ActivatedMLP2FpResult.forward_error_bound_relu_demo
     {M : ActivatedMLP2 R 4 3 2} {x : Fin 4 → FiniteFp}
     (res : ActivatedMLP2FpResult M x)
@@ -307,11 +333,8 @@ theorem ActivatedMLP2FpResult.forward_error_bound_relu_demo
     (k : Fin 2) :
     |((res.layer2.activated.result k).toVal : R) -
         M.forward (fun j => ((x j).toVal : R)) k| ≤
-      res.errorBound w1Max xMax b1Max w2Max b2Max := by
-  exact res.forward_error_bound hM
-    (hM.w1_nn (by decide) (by decide))
-    (hM.b1_nn (by decide))
-    (hM.w2_nn (by decide) (by decide))
-    hx hxMax_nn k
+      res.errorBound w1Max xMax b1Max w2Max b2Max :=
+  res.forward_error_bound_auto (by decide) (by decide) (by decide)
+    hM hx hxMax_nn k
 
 end MLP
