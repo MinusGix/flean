@@ -362,17 +362,24 @@ When to use:
 
 Composition primitives mirror the tag framework: `.refl`, `.const`,
 `.weaken`, `.comp`, `.compScalar` on `LipschitzMax`; same on
-`LipschitzScalar`.  Plus `LipschitzMaxWithSlack K c f` for
-"almost-Lipschitz with bounded fudge" — the natural shape for FP
-operations whose rounding adds a slack term.
+`LipschitzScalar`.  Plus `LipschitzMaxOn M K f` for locally-Lipschitz
+math (constant depends on M-ball), and `ApproximatesUniformly c f g`
+as a separate approximation tag — combine via `approximatedBound`
+to recover the "almost-Lipschitz with bounded slack" shape.
+
+For FP operations specifically (where rounding-slack is intrinsic),
+see `LipschitzMaxFpSlackOn` in `Flean/Operations/LipschitzFp.lean`.
 
 Key relationship to tags: `BoundedParams` (tag) → Lipschitz
 constants (e.g., `Layer.forward_lipschitz` derives Lipschitz
 constant `n_in · wMax` from a `BoundedParams L wMax bMax` witness).
 
-Per-FP-op Lipschitz is intentionally **out of scope** — rounding is
-discontinuous (midpoint discontinuities), not Lipschitz in the usual
-sense.  FP error bounds stay with the `round_preserves_*` family.
+Per-FP-op Lipschitz exists separately as `LipschitzMaxFpSlackOn M K c f`
+in `LipschitzFp.lean` — captures FP ops as "Lipschitz-with-magnitude-
+dependent-slack" on `M`-bounded `FiniteFp` inputs.  Concrete instances
+ship for `fpAddFinite`, `fpSubFinite`, `fpMulFinite`.  Pure-math
+`round_preserves_*` family remains the per-instance error primitive
+that the slack instances are built from.
 
 ### Bundle bridges (`Flean/Tags/BundleAbsBound.lean`)
 

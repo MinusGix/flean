@@ -1,4 +1,5 @@
 import Flean.Operations.MLP.Layer
+import Flean.Operations.MLP.LayerActivated
 import Flean.Operations.MLP.MLP2
 
 /-!
@@ -15,15 +16,18 @@ This file is an aggregator.  Content lives in:
 * `MLP/Layer.lean` — single linear layer (struct, real-valued forward,
   parameter bounds, FP-level result, magnitude/error bounds, Lipschitz
   instance, tag bridges).
+* `MLP/LayerActivated.lean` — single linear layer with a scalar
+  activation applied componentwise (struct, real forward, Lipschitz
+  via `compScalar`, FP integration via slack-based soundness).
 * `MLP/MLP2.lean` — 2-layer composition (struct, real-valued forward,
   composed bounds, FP-level result, error composition via Lipschitz,
   helpers, demo).
 
 ## Scope
 
-- **Linear** (no activation): each layer is `x ↦ W · x + b`.  Adding
-  activations (ReLU/GeLU/tanh) is a follow-up that uses the
-  `Flean.Lipschitz.LipschitzScalar` infrastructure shipped alongside.
+- **Per-layer optional activation**: linear (`Layer`) and activated
+  (`ActivatedLayer`) flavors.  `MLP2` itself is linear-only;
+  `LayerActivated` provides the single-layer activated building block.
 - **Fixed precision** (same `FloatFormat` throughout — no
   mixed-precision yet).
 - **Constrained inputs**: typically `HasAbsBound xMax` (the
@@ -41,4 +45,9 @@ This file is an aggregator.  Content lives in:
    (input-perturbation analyses; distinct from forward error).
 4. **`MLP2FpResult.forward_error_bound_demo`** — runnable smoke test
    on shape (4 → 3 → 2).
+5. **`ActivatedLayer.forward_lipschitz`** — activation-on-top-of-layer
+   Lipschitz via `LipschitzMax.compScalar`.
+6. **`ActivatedLayerFpResult.forward_error_bound`** — activated
+   single-layer FP error bound, composed via
+   `LipschitzScalar.errorAmplification`.
 -/

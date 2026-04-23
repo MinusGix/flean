@@ -148,17 +148,28 @@ gotcha.
 
 **Action**: not a fix — note in patterns doc as a known recipe.
 
-### M10: ReLU + activation framework 🟡
+### M10: ReLU + activation framework ✅ (2026-04-22)
 
-**Finding**: linear MLPs aren't realistic.  ReLU (1-Lipschitz),
-sigmoid (1/4-Lipschitz), tanh (1-Lipschitz), GeLU (1.13-Lipschitz)
-are all Lipschitz; the error bound through them is amplified by
-their constant.
+**Shipped**: `Flean/Operations/Activation.lean` (117 lines) +
+`Flean/Operations/MLP/LayerActivated.lean` (213 lines) +
+`LipschitzScalar.errorAmplification` in `Lipschitz.lean` (19 lines).
 
-**User direction**: definitely target eventually.  Unsure if
-`Activation` should presume Lipschitz.
+`Activation R` struct presumes Lipschitz (matches recommendation in
+"Activation design notes" below).  `Activation.relu` ships as the
+canonical instance; `Activation.identity` as baseline.
+`ActivatedLayer R n_in n_out` bundles `Layer` + `Activation R`;
+`ActivatedLayer.forward_lipschitz` derives the composed Lipschitz
+constant via `LipschitzMax.compScalar`.
 
-**Design discussion**: see §"Activation design notes" below.
+FP integration via `ActivationFpResult σ xs` slack-soundness witness
+(per-index `|result_i.toVal - σ(xs_i.toVal)| ≤ slack`), parameterized
+over the FP implementation.  `ActivatedLayerFpResult.forward_error_bound`
+composes layer error with activation slack via the new
+`LipschitzScalar.errorAmplification` primitive — proof body 3 lines.
+
+**Deferred follow-ups**: concrete FP ReLU constructor (needs FiniteFp
+sign-comparison machinery), activated 2-layer MLP composition,
+M11 CE-on-top integration.  See [m10-activation-framework.md] memory.
 
 ### M11: CE loss layer integration 🟢
 

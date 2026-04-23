@@ -66,3 +66,4 @@ import Flean.Operations.LayerNorm
 import Flean.Operations.MLP
 import Flean.Operations.Lipschitz
 import Flean.Operations.LipschitzFp
+import Flean.Operations.Activation
