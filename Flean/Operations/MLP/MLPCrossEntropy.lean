@@ -1,6 +1,7 @@
 import Flean.Operations.MLP.MLP2
 import Flean.Operations.MLP.ActivatedMLP2
 import Flean.Operations.CrossEntropy
+import Flean.Tags.Prob
 
 /-!
 # MLP-on-Cross-Entropy: End-to-End Classification Loss Error Bound
@@ -255,5 +256,120 @@ theorem MLP2FpResult.crossEntropy_error_bound_of_res
     le_trans h_ce h_ce_sup
   exact M_res.crossEntropy_error_bound hn_out hM hw1_nn hb1_nn hw2_nn
     hx hxMax_nn ys (ce_res.loss.toVal : ℝ) ce_err_sup h_ce_sup'
+
+/-! ## `IsProb` tightenings
+
+When the target vector `ys` satisfies `IsProb` (non-negative, total
+mass at most 1), `Σ|y_i| = Σ y_i ≤ 1`, so the Lipschitz amplification
+factor `2 · Σ|y_i|` tightens to `2`:
+
+```
+|loss.toVal − CE(y, M.forward(x_real))| ≤ ce_err + 2 · mlp_err
+```
+
+This is the realistic shape for classification: `ys` is typically a
+one-hot or soft-label probability vector, so `IsProb` holds. -/
+
+omit [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
+  [RModeNearest ℝ] [RModeConj ℝ] [ExpApprox] [ExpApproxSound] in
+/-- **Abstract composition, tightened under `IsProb`.**
+
+Same shape as `MLPCrossEntropy.compose_error_bound` but uses
+`IsProb.sum_abs_le_one` to drop the `Σ|y_i|` coefficient to `1`. -/
+theorem MLPCrossEntropy.compose_error_bound_of_isProb {n : ℕ}
+    (hn : 0 < n) (ys : Fin n → FiniteFp)
+    (h_prob : Flean.Tags.IsProb (R := ℝ) ys)
+    (xs_math : Fin n → ℝ)
+    (xs_fp : Fin n → FiniteFp) (mlp_err : ℝ) (h_mlp_nn : 0 ≤ mlp_err)
+    (h_mlp : ∀ k, |((xs_fp k).toVal : ℝ) - xs_math k| ≤ mlp_err)
+    (loss : ℝ) (ce_err : ℝ)
+    (h_ce : |loss - CrossEntropy.crossEntropy
+        (fun i => ((ys i).toVal : ℝ))
+        (fun i => ((xs_fp i).toVal : ℝ))| ≤ ce_err) :
+    |loss - CrossEntropy.crossEntropy
+        (fun i => ((ys i).toVal : ℝ)) xs_math| ≤
+      ce_err + 2 * mlp_err := by
+  have h_base := MLPCrossEntropy.compose_error_bound hn ys xs_math
+    xs_fp mlp_err h_mlp loss ce_err h_ce
+  have h_sum_le := h_prob.sum_abs_le_one (R := ℝ)
+  have h_tighten :
+      2 * (∑ i, |((ys i).toVal : ℝ)|) * mlp_err ≤ 2 * mlp_err := by
+    have h : (∑ i, |((ys i).toVal : ℝ)|) * mlp_err ≤ 1 * mlp_err :=
+      mul_le_mul_of_nonneg_right h_sum_le h_mlp_nn
+    linarith
+  linarith
+
+omit [RModeSticky ℝ] [ExpApprox] [ExpApproxSound] in
+/-- **End-to-end classification-loss error bound, tightened (linear MLP2).**
+
+Under `IsProb ys`, the MLP-side contribution to the loss bound
+tightens to `2 · M_res.errorBound`. -/
+theorem MLP2FpResult.crossEntropy_error_bound_of_isProb
+    {n_in n_hidden n_out : ℕ} (hn_out : 0 < n_out)
+    {M : MLP2 n_in n_hidden n_out} {x : Fin n_in → FiniteFp}
+    (M_res : MLP2FpResult M x ℝ)
+    {w1Max b1Max w2Max b2Max : ℝ}
+    (hM : MLP2BoundedParams (R := ℝ) M w1Max b1Max w2Max b2Max)
+    (hw1_nn : 0 ≤ w1Max) (hb1_nn : 0 ≤ b1Max) (hw2_nn : 0 ≤ w2Max)
+    {xMax : ℝ} (hx : ∀ j, HasAbsBound (R := ℝ) xMax (x j))
+    (hxMax_nn : 0 ≤ xMax)
+    (ys : Fin n_out → FiniteFp)
+    (h_prob : Flean.Tags.IsProb (R := ℝ) ys)
+    (loss : ℝ) (ce_err : ℝ)
+    (h_ce : |loss - CrossEntropy.crossEntropy
+        (fun i => ((ys i).toVal : ℝ))
+        (fun i => ((M_res.layer2.result i).toVal : ℝ))| ≤ ce_err) :
+    |loss - CrossEntropy.crossEntropy
+        (fun i => ((ys i).toVal : ℝ))
+        (M.forward (fun j => ((x j).toVal : ℝ)))| ≤
+      ce_err + 2 * M_res.errorBound w1Max xMax b1Max w2Max b2Max := by
+  have h_mlp : ∀ k, |((M_res.layer2.result k).toVal : ℝ) -
+      M.forward (fun j => ((x j).toVal : ℝ)) k| ≤
+      M_res.errorBound w1Max xMax b1Max w2Max b2Max := fun k =>
+    M_res.forward_error_bound hM hw1_nn hb1_nn hw2_nn hx hxMax_nn k
+  have h_err_nn : 0 ≤ M_res.errorBound w1Max xMax b1Max w2Max b2Max :=
+    le_trans (abs_nonneg _) (h_mlp ⟨0, hn_out⟩)
+  exact MLPCrossEntropy.compose_error_bound_of_isProb hn_out ys h_prob
+    (M.forward (fun j => ((x j).toVal : ℝ)))
+    M_res.layer2.result (M_res.errorBound w1Max xMax b1Max w2Max b2Max)
+    h_err_nn h_mlp loss ce_err h_ce
+
+omit [RModeSticky ℝ] [ExpApprox] [ExpApproxSound] in
+/-- **End-to-end classification-loss error bound, tightened (activated MLP2).**
+
+Under `IsProb ys`, the MLP-side contribution tightens to
+`2 · M_res.errorBound` (the full activated-layer error including
+per-layer activation slack). -/
+theorem ActivatedMLP2FpResult.crossEntropy_error_bound_of_isProb
+    {n_in n_hidden n_out : ℕ} (hn_out : 0 < n_out)
+    {M : ActivatedMLP2 ℝ n_in n_hidden n_out} {x : Fin n_in → FiniteFp}
+    (M_res : ActivatedMLP2FpResult M x)
+    {w1Max b1Max w2Max b2Max : ℝ}
+    (hM : ActivatedMLP2BoundedParams (R := ℝ) M w1Max b1Max w2Max b2Max)
+    (hw1_nn : 0 ≤ w1Max) (hb1_nn : 0 ≤ b1Max) (hw2_nn : 0 ≤ w2Max)
+    {xMax : ℝ} (hx : ∀ j, HasAbsBound (R := ℝ) xMax (x j))
+    (hxMax_nn : 0 ≤ xMax)
+    (ys : Fin n_out → FiniteFp)
+    (h_prob : Flean.Tags.IsProb (R := ℝ) ys)
+    (loss : ℝ) (ce_err : ℝ)
+    (h_ce : |loss - CrossEntropy.crossEntropy
+        (fun i => ((ys i).toVal : ℝ))
+        (fun i => ((M_res.layer2.activated.result i).toVal : ℝ))|
+          ≤ ce_err) :
+    |loss - CrossEntropy.crossEntropy
+        (fun i => ((ys i).toVal : ℝ))
+        (M.forward (fun j => ((x j).toVal : ℝ)))| ≤
+      ce_err + 2 * M_res.errorBound w1Max xMax b1Max w2Max b2Max := by
+  have h_mlp : ∀ k, |((M_res.layer2.activated.result k).toVal : ℝ) -
+      M.forward (fun j => ((x j).toVal : ℝ)) k| ≤
+      M_res.errorBound w1Max xMax b1Max w2Max b2Max := fun k =>
+    M_res.forward_error_bound hM hw1_nn hb1_nn hw2_nn hx hxMax_nn k
+  have h_err_nn : 0 ≤ M_res.errorBound w1Max xMax b1Max w2Max b2Max :=
+    le_trans (abs_nonneg _) (h_mlp ⟨0, hn_out⟩)
+  exact MLPCrossEntropy.compose_error_bound_of_isProb hn_out ys h_prob
+    (M.forward (fun j => ((x j).toVal : ℝ)))
+    M_res.layer2.activated.result
+    (M_res.errorBound w1Max xMax b1Max w2Max b2Max)
+    h_err_nn h_mlp loss ce_err h_ce
 
 end MLP
