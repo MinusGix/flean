@@ -193,17 +193,28 @@ FP32, not FP16), but completes the format-pair lattice.
 
 **Scope**: ~100–150 lines.
 
-#### R6.5: Quantized linear layer (flagship demo)
+#### R6.5: Quantized linear layer (flagship demo) — **SHIPPED 2026-04-25**
 
-Compose R6.1 + R6.2 + R6.3 into an `ActivatedLayer`-style demo with
-FP8 storage and FP32 compute.  Analogous to `MLP/Layer.lean` but with
-mixed precision: weights stored as E4M3, activations stored as E4M3,
-matmul accumulated in Binary32, narrowed back to E4M3.
+`Flean/StorageFormats/MixedPrecisionLayer.lean` (~356 lines, sorry-free).
+Composes R6.1 + R6.2 + R6.3 with the existing `MLP.LayerFpResult`
+infrastructure: linear layer `y = Wx + b` with weights and biases
+stored in narrow `sf` (E4M3-ready), computation in a wider
+`[FloatFormat]`, narrowed back to `sf`.
 
-Closes the loop with the MLP work — the natural next "milestone"
-after R6.1/R6.2 land.
+Components:
+- `MixedPrecisionLayer sf n_in n_out` struct + real-valued `forward`.
+- `MixedPrecisionLayer.widen` reuses `MLP.Layer` at the wide format
+  (so the existing `MLP.LayerFpResult` machinery applies wholesale).
+- `MixedPrecisionLayerFpResult` bundle: wide `MLP.LayerFpResult` +
+  per-row narrow witnesses.
+- Per-row error bound `forward_error_bound` =
+  `η_sf · M + (1+η_sf) · wide.errorBound + tail_sf`.
+- Vector-form `toVal_abs_le` / `hasAbsBoundSVec` for downstream
+  tag-framework chaining.
 
-**Scope**: ~500+ lines; depends on R6.1, R6.2, R6.3.
+Final under-budget at ~356 lines (vs. ~500+ estimate) — credit to
+reusing `MLP.Layer` infrastructure rather than re-deriving the
+matvec + bias-add bound.
 
 #### R7: Newton-Horner concrete instantiation
 
@@ -292,16 +303,21 @@ the friction itself becomes the next deliverable
 ## Current pick (2026-04-25)
 
 R1 (MLP), R6 (mixed-precision), R6.1 (tag bridges), R6.2 (WideContext +
-mixed ops), R6.3 (E4M3 narrowing) all shipped.
+mixed ops), R6.3 (E4M3 narrowing), R6.5 (quantized linear layer) all
+shipped.  R6 series is essentially complete.
 
-Next-up candidates:
+Next-up candidates (not in R6 line):
 
-1. **R6.5 — quantized linear layer** (flagship demo composing R6.1 +
-   R6.2 + R6.3 + an MLP layer).  Closes the loop with the MLP work.
-2. **R7 — Newton-Horner concrete instantiation** (different arc, good
-   variety).
+1. **R7 — Newton-Horner concrete instantiation** (different arc, good
+   variety).  ~300 lines.
+2. **Multi-layer / activated mixed-precision MLP** (R6.5 capstone is
+   a single linear layer; an activated 2-layer or N-layer version
+   would mirror `MLP.MLP2`/`MLP.LayerChain` in mixed precision).
 3. **R6.4 — E5M2 → Binary16 subnormal-tolerant widening** (lower
    priority — E5M2 is normally accumulated in FP32).
+4. **Concrete numerical demo** of R6.5 (E4M3 ↔ Binary32, specific
+   shape e.g., n_in=4, n_out=2, evaluates the bound to a closed-form
+   rational).  Would ground the abstraction.
 
 The `NarrowingContext` + `WideContext` bundle pattern is now a
 **confirmed standard pattern** for Flean (two use sites: narrowing in
