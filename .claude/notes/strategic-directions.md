@@ -109,13 +109,108 @@ condition number) to unlock real usage.
 
 ### Tier 3: New primitives / capabilities
 
-#### R6: Mixed-precision bridge
+#### R6: Mixed-precision bridge — **SHIPPED 2026-04-23 + extended 2026-04-25**
 
 Formalize FP16/BF16 → FP32 accumulation errors.  Bridges
-StorageFormats ↔ Operations — currently disconnected pair of
-subsystems.  High ML relevance.
+StorageFormats ↔ Operations.  ~950 lines across six files, sorry-free.
 
-**Scope**: ~400 lines.
+Shipped pieces:
+- `ToFp.lean` — exact widening `StorageFp sf → FiniteFp ff_wide`
+  via `FitsInNormal`; 9 concrete instances.
+- `FromFpBound.lean` — generalized `fromFp_widen_val_eq_round` capstone
+  (handles the wider-than-`sf.toFloatFormat` case) + normal/unified
+  narrowing error bounds.
+- `MixedPrecision.lean` — triangle-inequality composition for
+  compute-in-wide / store-in-narrow.
+- `Quantization.lean` — concrete η_sf and subnormalConst_sf for
+  E4M3/E5M2/E3M2/E2M3/E2M1.
+- `NarrowingContext.lean` — bundle of typeclasses + format-validity
+  proofs; replaces ~7 `@`-form args per theorem with one struct.
+  `ofRNE` constructor synthesizes from `[UseRoundingPolicy RNE]`.
+- `MixedPrecisionDemo.lean` — concrete E3M2 demo evaluating the
+  bound to `(1/8)·|target| + (9/8)·ε_wide + 1/32`.
+
+Follow-ups carried over as separate items: see R6.1–R6.5 below.
+
+#### R6.1: Tag-framework bridge for StorageFormats — **next**
+
+Bridge `Flean/Tags/` propositions through the widen/narrow pipeline.
+Concretely:
+
+- `IsBoundedRange.toFiniteFpWiden`: widening preserves any interval
+  bound (trivial since widening is exact, but needs the tag-flavored
+  signature so consumers can chain).
+- `HasAbsBound.fromFp_narrow`: narrowing tightens to
+  `(1 + η_sf)·c + subnormalConst_sf`.  Mirrors the existing
+  `round_preserves_abs_bound_*` meta-lemmas.
+- `IsNonneg`/`IsZero`/etc. preservation through the pipeline (cheap;
+  same shape as `IsBoundedRange`).
+- A `BundleAbsBound`-style bridge: given an `FpSumBound`/`FpDotProductBound`
+  in `ff_wide` plus narrowing, derive a `HasAbsBound` on the narrowed
+  storage output.
+
+**Why it pays off**: any client already using the tag framework
+inherits quantization-aware bounds for free.  Best ROI of the R6
+follow-ups — small, additive, immediately useful.
+
+**Scope**: ~150 lines.
+
+#### R6.2: `WideContext` bundle + concrete `mixedFpMul`/`mixedFpAdd`
+
+Build:
+- `WideContext R ff_wide` parallel to `NarrowingContext`, bundling
+  the wide-format typeclasses (`RMode`/`RModeExec`/etc. for ff_wide).
+- `mixedFpMul (sf : StorageFormat) (ff_wide : FloatFormat) :
+  StorageFp sf → StorageFp sf → StorageFp sf` defined as
+  `narrow ∘ fpMul ∘ widen×widen`, with a packaged error bound.
+- Same for `mixedFpAdd`, possibly `mixedFpFMA`.
+
+Turns the abstract Phase 4 composition theorem into shipped concrete
+primitives.  Surfaces the dual-typeclass plumbing that motivates the
+`WideContext` bundle.
+
+**Scope**: ~200–300 lines.  Sequenced after R6.1 (so the wide+narrow
+ops can use tag-framework bounds directly).
+
+#### R6.3: E4M3 narrowing (NaN-reserve precondition)
+
+The current narrowing chain requires
+`sf.maxManFieldAtMaxExp ≥ 2^sf.manBits - 1`.  E4M3 reserves one
+mantissa pattern at maxExp for NaN, so it has 6 < 7 and fails this
+hypothesis.  E4M3 is the dominant FP8 format in production ML
+(Hopper/Blackwell, Meta training), so a parallel proof path that
+accounts for the reserved pattern is high-value.
+
+Open question: what does `fromFp` currently do when the rounded result
+lands on the NaN-reserved pattern?  Saturate?  Produce NaN?  This
+informs whether the fix is a precondition relaxation, a separate
+overflow case, or deeper.
+
+**Scope**: ~200–400 lines depending on the answer to the open question.
+
+#### R6.4: E5M2 → Binary16 subnormal-tolerant widening
+
+`FitsInNormal` requires `ff.min_exp ≤ 1 - bias_sf - manBits_sf`,
+which fails for `E5M2 → Binary16` (the only practical pair that
+doesn't fit).  Would need a `toFiniteFpWiden_subnormal` variant that
+allows the widened result to land in `ff_wide`'s subnormal range.
+
+Less practical than R6.3 (E5M2 gradients are normally accumulated in
+FP32, not FP16), but completes the format-pair lattice.
+
+**Scope**: ~100–150 lines.
+
+#### R6.5: Quantized linear layer (flagship demo)
+
+Compose R6.1 + R6.2 + R6.3 into an `ActivatedLayer`-style demo with
+FP8 storage and FP32 compute.  Analogous to `MLP/Layer.lean` but with
+mixed precision: weights stored as E4M3, activations stored as E4M3,
+matmul accumulated in Binary32, narrowed back to E4M3.
+
+Closes the loop with the MLP work — the natural next "milestone"
+after R6.1/R6.2 land.
+
+**Scope**: ~500+ lines; depends on R6.1, R6.2, R6.3.
 
 #### R7: Newton-Horner concrete instantiation
 
@@ -200,3 +295,20 @@ If R1 lands cleanly: do **R2 (test suite)** as the natural
 follow-up (test what we just stressed).  If R1 hits major friction:
 the friction itself becomes the next deliverable
 (`letI→def`, tighter signatures, new bundle wrappers, etc.).
+
+## Current pick (2026-04-25)
+
+R1 (MLP capstone) and R6 (mixed-precision bridge + NarrowingContext)
+both shipped.  Sequencing:
+
+1. **R6.1 — tag-framework bridge for StorageFormats** (current pick).
+   Smallest scope, biggest immediate utility, unlocks the
+   "quantization-as-typed-tag" framing.
+2. **R6.2 — `WideContext` + concrete `mixedFpMul`/`mixedFpAdd`** (next).
+   Turns the abstract composition into shipped primitives.
+
+The `NarrowingContext` pattern (one-context-per-FloatFormat-scope) is
+generalizable — any time a Flean theorem needs typeclass instances at
+a non-ambient `FloatFormat`, the same bundle pattern applies.  Worth
+keeping in mind as a "promote to standard pattern" candidate after a
+second use site (`WideContext` in R6.2 is the second use site).
