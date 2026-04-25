@@ -159,21 +159,27 @@ Bound shape:
 Deferred: `mixedFpFMA` (similar pattern, ~150 lines), concrete
 demo with Binary32 wide (numerical bounds).
 
-#### R6.3: E4M3 narrowing (NaN-reserve precondition)
+#### R6.3: E4M3 narrowing (NaN-reserve precondition) — **SHIPPED 2026-04-25**
 
-The current narrowing chain requires
-`sf.maxManFieldAtMaxExp ≥ 2^sf.manBits - 1`.  E4M3 reserves one
-mantissa pattern at maxExp for NaN, so it has 6 < 7 and fails this
-hypothesis.  E4M3 is the dominant FP8 format in production ML
-(Hopper/Blackwell, Meta training), so a parallel proof path that
-accounts for the reserved pattern is high-value.
+Replaced the format-wide `h_no_nan : sf.maxManFieldAtMaxExp ≥ 2^manBits - 1`
+precondition with `StorageFp.avoidsNanReservedEncoding sf m e_ulp`, a
+disjunction of (a) the format-wide condition (existing E5M2/E3M2/E2M3/E2M1
+callers, `Or.inl (by decide)`), OR (b) a per-result witness that the
+rounded `(m_final, e_ulp_final)` doesn't land on the NaN-reserved
+pattern (E4M3 callers, `Or.inr h_per_result`).
 
-Open question: what does `fromFp` currently do when the rounded result
-lands on the NaN-reserved pattern?  Saturate?  Produce NaN?  This
-informs whether the fix is a precondition relaxation, a separate
-overflow case, or deeper.
+Refactored across `FromFpCorrect.lean`, `FromFpBound.lean`,
+`MixedPrecision.lean`, `MixedPrecisionOps.lean`, `TagBridge.lean`.
+E4M3 demo: `mixed_precision_E4M3_error_bound` producing closed-form
+`(1/16)·|target| + (17/16)·ε_wide + 1/1024` (in `MixedPrecisionDemo.lean`).
 
-**Scope**: ~200–400 lines depending on the answer to the open question.
+Open-question answer: `encodeRounded` saturates to `signedMaxFinite`
+when the result would land on the NaN-reserved pattern (under
+`.saturate` policy) — graceful behavior, but violates the
+rounding-error bound for inputs near maxFinite.  Hence the per-result
+avoidance witness is needed (analogous to `h_no_ov`).
+
+Total ~250 lines refactor + demo.
 
 #### R6.4: E5M2 → Binary16 subnormal-tolerant widening
 
@@ -285,22 +291,25 @@ the friction itself becomes the next deliverable
 
 ## Current pick (2026-04-25)
 
-R1 (MLP capstone), R6 (mixed-precision bridge + NarrowingContext),
-R6.1 (tag bridges), R6.2 (WideContext + mixed FP ops) all shipped.
+R1 (MLP), R6 (mixed-precision), R6.1 (tag bridges), R6.2 (WideContext +
+mixed ops), R6.3 (E4M3 narrowing) all shipped.
 
 Next-up candidates:
 
-1. **R6.3 — E4M3 narrowing path** (NaN-reserve precondition).  High ML
-   relevance.  Open question: investigate what `fromFp` does when the
-   rounded result lands on the NaN-reserved mantissa pattern.
-2. **R6.5 — quantized linear layer** (flagship demo composing R6.1 +
-   R6.2 + an MLP layer).  Closes the loop with the MLP work.
-3. **R7 — Newton-Horner concrete instantiation** (different arc, good
+1. **R6.5 — quantized linear layer** (flagship demo composing R6.1 +
+   R6.2 + R6.3 + an MLP layer).  Closes the loop with the MLP work.
+2. **R7 — Newton-Horner concrete instantiation** (different arc, good
    variety).
-4. **R6.4 — E5M2 → Binary16 subnormal-tolerant widening** (lower
+3. **R6.4 — E5M2 → Binary16 subnormal-tolerant widening** (lower
    priority — E5M2 is normally accumulated in FP32).
 
 The `NarrowingContext` + `WideContext` bundle pattern is now a
 **confirmed standard pattern** for Flean (two use sites: narrowing in
 `FromFpBound`/`MixedPrecision`, wide-format ops in `MixedPrecisionOps`).
 Promote to a documented convention if a third site appears.
+
+The disjunctive-precondition pattern (`avoidsNanReservedEncoding` =
+format-wide-strong OR per-result-weak) is also worth noting as a way
+to keep theorem signatures unified across format families with
+different structural constraints.  May recur for similar
+"some-formats-do-X-others-don't" issues.
