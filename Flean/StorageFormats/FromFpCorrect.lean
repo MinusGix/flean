@@ -774,7 +774,7 @@ theorem rneRoundUp_eq_policyShouldRoundUp :
 
     Proof by unfolding `roundIntSigM`, rewriting `shouldRoundUp → rneRoundUp`,
     normalizing `↑prec.toNat → prec`, and matching branches to `roundSigCore`. -/
-private theorem roundIntSigM_finite_matches_roundSigCore
+theorem roundIntSigM_finite_matches_roundSigCore
     [exec : RModeExec]
     (sign : Bool) (mag : ℕ) (e_base : ℤ) (hmag : mag ≠ 0)
     (h_shouldRoundUp : ∀ s q r sh,
@@ -813,7 +813,7 @@ private theorem roundIntSigM_finite_matches_roundSigCore
 /-- Composing the structural match with `RoundIntSigMSound`: when `roundSigCore`
     doesn't overflow and `○(intSigVal ...)` is finite, the rounded output's value
     equals `intSigVal sign rc.1 rc.2.1`. -/
-private theorem roundIntSigM_val_eq_roundSigCore_val
+theorem roundIntSigM_val_eq_roundSigCore_val
     [exec : RModeExec] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
     [RMode R] [RoundIntSigMSound R]
     (sign : Bool) (mag : ℕ) (e_base : ℤ) (hmag : mag ≠ 0)
