@@ -12,4 +12,5 @@ import Flean.StorageFormats.MixedPrecision
 import Flean.StorageFormats.Quantization
 import Flean.StorageFormats.TagBridge
 import Flean.StorageFormats.MixedPrecisionOps
+import Flean.StorageFormats.MixedPrecisionLayer
 import Flean.StorageFormats.MixedPrecisionDemo
