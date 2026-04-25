@@ -73,10 +73,14 @@ theorem mixed_precision_narrowing_error_unified
     (sf : StorageFormat) (ctx : NarrowingContext R sf)
     (policy : StorageOverflowPolicy)
     (hsigned : sf.hasSigned = true)
-    (h_no_nan : sf.maxManFieldAtMaxExp ≥ 2 ^ sf.manBits - 1)
     (fp : @FiniteFp ff_wide) (hm : fp.m ≠ 0)
     (h_no_ov : (roundSigCore fp.s fp.m (fp.e - ff_wide.prec + 1) (sf.manBits + 1)
         (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ)) rneRoundUp).2.2 = false)
+    (h_no_nan : avoidsNanReservedEncoding sf
+        (roundSigCore fp.s fp.m (fp.e - ff_wide.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ)) rneRoundUp).1
+        (roundSigCore fp.s fp.m (fp.e - ff_wide.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ)) rneRoundUp).2.1)
     (fp_out : @FiniteFp ctx.floatFormat)
     (h_round_finite :
         @RMode.round R ctx.floatFormat ctx.instM
@@ -92,7 +96,7 @@ theorem mixed_precision_narrowing_error_unified
         + (2 : R) ^ (@FloatFormat.min_exp ctx.floatFormat
             - @FloatFormat.prec ctx.floatFormat) := by
   have h_narrow := fromFp_widen_abs_error_unified (R := R) ff_wide sf ctx
-    policy hsigned h_no_nan fp hm h_no_ov fp_out h_round_finite
+    policy hsigned fp hm h_no_ov h_no_nan fp_out h_round_finite
   have hEps_nn : (0 : R) ≤ @FloatFormat.hEps ctx.floatFormat R _ := by
     unfold FloatFormat.hEps
     positivity

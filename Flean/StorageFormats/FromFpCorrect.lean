@@ -22,6 +22,39 @@ by `RMode.round`) in the target format.
 namespace StorageFp
 
 /-!
+## NaN-reserved-pattern avoidance
+
+`encodeRounded` saturates (delegates to `applyOverflow`) when the rounded
+result would land on a mantissa pattern reserved for NaN at the maximum
+exponent — this happens for E4M3-style formats where `maxManFieldAtMaxExp <
+2^manBits - 1`.  The `fromFp = round` correctness theorem requires either:
+
+* the format-wide condition `maxManFieldAtMaxExp ≥ 2^manBits - 1` (no NaN
+  patterns reserved at maxExp — covers E5M2, E3M2, E2M3, E2M1), OR
+* a per-result witness that the specific rounded `(m, e_ulp)` doesn't land
+  on a reserved pattern (covers E4M3 inputs that don't saturate).
+
+`avoidsNanReservedEncoding` packages these as a disjunction so a single
+hypothesis covers both regimes. -/
+def avoidsNanReservedEncoding (f : StorageFormat) (m : ℕ) (e_ulp : ℤ) : Prop :=
+  f.maxManFieldAtMaxExp ≥ 2 ^ f.manBits - 1
+  ∨ ¬ ((e_ulp + (f.manBits : ℤ) + (f.bias : ℤ)).toNat = f.maxExpField
+        ∧ m - 2 ^ f.manBits > f.maxManFieldAtMaxExp)
+
+/-- The format-wide strong precondition implies `avoidsNanReservedEncoding`. -/
+theorem avoidsNanReservedEncoding_of_strong (f : StorageFormat) (m : ℕ) (e_ulp : ℤ)
+    (h : f.maxManFieldAtMaxExp ≥ 2 ^ f.manBits - 1) :
+    avoidsNanReservedEncoding f m e_ulp :=
+  Or.inl h
+
+/-- A per-result witness implies `avoidsNanReservedEncoding`. -/
+theorem avoidsNanReservedEncoding_of_pat (f : StorageFormat) (m : ℕ) (e_ulp : ℤ)
+    (h : ¬ ((e_ulp + (f.manBits : ℤ) + (f.bias : ℤ)).toNat = f.maxExpField
+              ∧ m - 2 ^ f.manBits > f.maxManFieldAtMaxExp)) :
+    avoidsNanReservedEncoding f m e_ulp :=
+  Or.inr h
+
+/-!
 ## Source value = intSigVal
 
 The real value represented by a `FiniteFp` is `sign' * m * 2^(e - prec + 1)`,
@@ -637,7 +670,7 @@ private theorem encodeRounded_toVal_normal
     (he_nonneg : 0 ≤ e_ulp + (f.manBits : ℤ) + (f.bias : ℤ))
     (he_pos : 0 < (e_ulp + (f.manBits : ℤ) + (f.bias : ℤ)).toNat)
     (he_lt : (e_ulp + (f.manBits : ℤ) + (f.bias : ℤ)).toNat < 2 ^ f.expBits)
-    (h_no_nan : f.maxManFieldAtMaxExp ≥ 2 ^ f.manBits - 1)
+    (h_no_nan : avoidsNanReservedEncoding f m e_ulp)
     (hsigned : f.hasSigned = true) :
     (encodeRounded f policy sign m e_ulp).toVal (R := R) =
     intSigVal (R := R) sign m e_ulp := by
@@ -645,11 +678,16 @@ private theorem encodeRounded_toVal_normal
   have hm_ne : m ≠ 0 := by omega
   have hm_not_sub : ¬(m < 2 ^ f.manBits) := by omega
   simp only [hm_ne, ↓reduceIte, hm_not_sub]
-  -- NaN exclusion doesn't fire: man_field ≤ maxManFieldAtMaxExp
-  have hman_field : ¬(m - 2 ^ f.manBits > f.maxManFieldAtMaxExp) := by omega
-  -- The && condition: even if exp matches, man doesn't exceed
+  -- NaN exclusion doesn't fire: handled either by the strong format-wide
+  -- precondition (man_field < 2^manBits ≤ maxManFieldAtMaxExp + 1) or by the
+  -- per-result avoidance witness.
   split_ifs with h_nan
-  · simp [Bool.and_eq_true, decide_eq_true_eq] at h_nan; omega
+  · simp [Bool.and_eq_true, decide_eq_true_eq] at h_nan
+    rcases h_no_nan with h_strong | h_pat
+    · -- Strong: man_field < 2^manBits ≤ maxManFieldAtMaxExp + 1, contradiction.
+      omega
+    · -- Per-result: directly contradicts h_nan.
+      exact absurd h_nan h_pat
   · exact ofFields_normal_intSigVal sign m e_ulp hm_lo hm_hi he_pos he_lt he_nonneg hsigned
 
 /-- When `fromFp` does not overflow, its output value equals `intSigVal sign m_final e_ulp_final`
@@ -663,7 +701,11 @@ theorem fromFp_val_eq_intSigVal
     (hm : fp.m ≠ 0)
     (h_no_ov : (roundSigCore fp.s fp.m (fp.e - inst.prec + 1) (f.manBits + 1)
         (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ)) rneRoundUp).2.2 = false)
-    (h_no_nan : f.maxManFieldAtMaxExp ≥ 2 ^ f.manBits - 1) :
+    (h_no_nan : avoidsNanReservedEncoding f
+        (roundSigCore fp.s fp.m (fp.e - inst.prec + 1) (f.manBits + 1)
+          (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ)) rneRoundUp).1
+        (roundSigCore fp.s fp.m (fp.e - inst.prec + 1) (f.manBits + 1)
+          (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ)) rneRoundUp).2.1) :
     let rc := roundSigCore fp.s fp.m (fp.e - inst.prec + 1) (f.manBits + 1)
         (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ)) rneRoundUp
     (fromFp f policy (Fp.finite fp)).toVal (R := R) =
@@ -869,7 +911,11 @@ theorem fromFp_correct
     (h_no_ov : (roundSigCore fp.s fp.m (fp.e - inst.prec + 1) (f.manBits + 1)
         (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ)) rneRoundUp).2.2 = false)
     -- No NaN exclusion issue
-    (h_no_nan : f.maxManFieldAtMaxExp ≥ 2 ^ f.manBits - 1)
+    (h_no_nan : avoidsNanReservedEncoding f
+        (roundSigCore fp.s fp.m (fp.e - inst.prec + 1) (f.manBits + 1)
+          (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ)) rneRoundUp).1
+        (roundSigCore fp.s fp.m (fp.e - inst.prec + 1) (f.manBits + 1)
+          (1 - (f.bias : ℤ)) ((f.maxExpField : ℤ) - (f.bias : ℤ)) rneRoundUp).2.1)
     -- Rounding produces a finite result
     (fp_out : FiniteFp)
     (h_round_finite : ○(fp.toVal (R := R)) = Fp.finite fp_out) :

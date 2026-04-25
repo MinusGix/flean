@@ -59,10 +59,14 @@ theorem fromFp_widen_val_eq_round
     (sf : StorageFormat) (ctx : NarrowingContext R sf)
     (policy : StorageOverflowPolicy)
     (hsigned : sf.hasSigned = true)
-    (h_no_nan : sf.maxManFieldAtMaxExp ≥ 2 ^ sf.manBits - 1)
     (fp : @FiniteFp ff_wide) (hm : fp.m ≠ 0)
     (h_no_ov : (roundSigCore fp.s fp.m (fp.e - ff_wide.prec + 1) (sf.manBits + 1)
         (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ)) rneRoundUp).2.2 = false)
+    (h_no_nan : avoidsNanReservedEncoding sf
+        (roundSigCore fp.s fp.m (fp.e - ff_wide.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ)) rneRoundUp).1
+        (roundSigCore fp.s fp.m (fp.e - ff_wide.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ)) rneRoundUp).2.1)
     (fp_out : @FiniteFp ctx.floatFormat)
     (h_round_finite :
         @RMode.round R ctx.floatFormat ctx.instM
@@ -129,10 +133,14 @@ theorem fromFp_widen_abs_error_normal
     (sf : StorageFormat) (ctx : NarrowingContext R sf)
     (policy : StorageOverflowPolicy)
     (hsigned : sf.hasSigned = true)
-    (h_no_nan : sf.maxManFieldAtMaxExp ≥ 2 ^ sf.manBits - 1)
     (fp : @FiniteFp ff_wide) (hm : fp.m ≠ 0)
     (h_no_ov : (roundSigCore fp.s fp.m (fp.e - ff_wide.prec + 1) (sf.manBits + 1)
         (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ)) rneRoundUp).2.2 = false)
+    (h_no_nan : avoidsNanReservedEncoding sf
+        (roundSigCore fp.s fp.m (fp.e - ff_wide.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ)) rneRoundUp).1
+        (roundSigCore fp.s fp.m (fp.e - ff_wide.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ)) rneRoundUp).2.1)
     (fp_out : @FiniteFp ctx.floatFormat)
     (h_round_finite :
         @RMode.round R ctx.floatFormat ctx.instM
@@ -145,7 +153,7 @@ theorem fromFp_widen_abs_error_normal
       ≤ @FloatFormat.hEps ctx.floatFormat R _
           * |@FiniteFp.toVal ff_wide R _ fp| := by
   have h_eq := fromFp_widen_val_eq_round (R := R) ff_wide sf ctx
-    policy hsigned h_no_nan fp hm h_no_ov fp_out h_round_finite
+    policy hsigned fp hm h_no_ov h_no_nan fp_out h_round_finite
   rw [h_eq]
   exact @round_preserves_abs_error_normal ctx.floatFormat
     R _ _ _ _ ctx.instM ctx.nearestNarrow ctx.conjNarrow
@@ -158,10 +166,14 @@ theorem fromFp_widen_abs_error_unified
     (sf : StorageFormat) (ctx : NarrowingContext R sf)
     (policy : StorageOverflowPolicy)
     (hsigned : sf.hasSigned = true)
-    (h_no_nan : sf.maxManFieldAtMaxExp ≥ 2 ^ sf.manBits - 1)
     (fp : @FiniteFp ff_wide) (hm : fp.m ≠ 0)
     (h_no_ov : (roundSigCore fp.s fp.m (fp.e - ff_wide.prec + 1) (sf.manBits + 1)
         (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ)) rneRoundUp).2.2 = false)
+    (h_no_nan : avoidsNanReservedEncoding sf
+        (roundSigCore fp.s fp.m (fp.e - ff_wide.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ)) rneRoundUp).1
+        (roundSigCore fp.s fp.m (fp.e - ff_wide.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ)) rneRoundUp).2.1)
     (fp_out : @FiniteFp ctx.floatFormat)
     (h_round_finite :
         @RMode.round R ctx.floatFormat ctx.instM
@@ -174,7 +186,7 @@ theorem fromFp_widen_abs_error_unified
         + (2 : R) ^ (@FloatFormat.min_exp ctx.floatFormat
             - @FloatFormat.prec ctx.floatFormat) := by
   have h_eq := fromFp_widen_val_eq_round (R := R) ff_wide sf ctx
-    policy hsigned h_no_nan fp hm h_no_ov fp_out h_round_finite
+    policy hsigned fp hm h_no_ov h_no_nan fp_out h_round_finite
   rw [h_eq]
   exact @round_preserves_abs_error_unified ctx.floatFormat
     R _ _ _ _ ctx.instM ctx.nearestNarrow ctx.conjNarrow ctx.zeroNarrow

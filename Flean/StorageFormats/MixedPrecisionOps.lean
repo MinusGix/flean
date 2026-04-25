@@ -88,7 +88,6 @@ theorem mixedFpMul_error_bound
     (nctx : NarrowingContext R sf)
     (policy : StorageOverflowPolicy)
     (hsigned : sf.hasSigned = true)
-    (h_no_nan : sf.maxManFieldAtMaxExp ≥ 2 ^ sf.manBits - 1)
     (a b : StorageFp sf) (ha : a.isFinite) (hb : b.isFinite)
     (prod_wide : @FiniteFp ff_wide)
     (h_prod_finite : @fpMulFinite ff_wide wctx.execWide
@@ -99,6 +98,15 @@ theorem mixedFpMul_error_bound
         (prod_wide.e - ff_wide.prec + 1) (sf.manBits + 1)
         (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
         StorageFp.rneRoundUp).2.2 = false)
+    (h_no_nan : avoidsNanReservedEncoding sf
+        (StorageFp.roundSigCore prod_wide.s prod_wide.m
+          (prod_wide.e - ff_wide.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
+          StorageFp.rneRoundUp).1
+        (StorageFp.roundSigCore prod_wide.s prod_wide.m
+          (prod_wide.e - ff_wide.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
+          StorageFp.rneRoundUp).2.1)
     (fp_out : @FiniteFp nctx.floatFormat)
     (h_round_finite :
         @RMode.round R nctx.floatFormat nctx.instM
@@ -142,7 +150,7 @@ theorem mixedFpMul_error_bound
   rw [StorageFp.toFiniteFpWiden_toVal, StorageFp.toFiniteFpWiden_toVal] at h_wide_err
   -- Step 2: invoke the triangle composition with target = a.toVal * b.toVal.
   have h_mixed := mixed_precision_narrowing_error_unified (R := R) ff_wide sf nctx
-    policy hsigned h_no_nan prod_wide hm h_no_ov fp_out h_round_finite
+    policy hsigned prod_wide hm h_no_ov h_no_nan fp_out h_round_finite
     ((a.toVal : R) * b.toVal) _ h_wide_err
   -- mixedFpMul reduces by definition to fromFp ∘ fpMulFinite ∘ widen×widen.
   -- Use h_prod_finite to rewrite the argument.
@@ -178,7 +186,6 @@ theorem mixedFpAdd_error_bound
     (nctx : NarrowingContext R sf)
     (policy : StorageOverflowPolicy)
     (hsigned : sf.hasSigned = true)
-    (h_no_nan : sf.maxManFieldAtMaxExp ≥ 2 ^ sf.manBits - 1)
     (a b : StorageFp sf) (ha : a.isFinite) (hb : b.isFinite)
     (sum_wide : @FiniteFp ff_wide)
     (h_sum_finite : @fpAddFinite ff_wide wctx.execWide
@@ -189,6 +196,15 @@ theorem mixedFpAdd_error_bound
         (sum_wide.e - ff_wide.prec + 1) (sf.manBits + 1)
         (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
         StorageFp.rneRoundUp).2.2 = false)
+    (h_no_nan : avoidsNanReservedEncoding sf
+        (StorageFp.roundSigCore sum_wide.s sum_wide.m
+          (sum_wide.e - ff_wide.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
+          StorageFp.rneRoundUp).1
+        (StorageFp.roundSigCore sum_wide.s sum_wide.m
+          (sum_wide.e - ff_wide.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
+          StorageFp.rneRoundUp).2.1)
     (fp_out : @FiniteFp nctx.floatFormat)
     (h_round_finite :
         @RMode.round R nctx.floatFormat nctx.instM
@@ -226,7 +242,7 @@ theorem mixedFpAdd_error_bound
   rw [hg_eq] at h_wide_err
   rw [StorageFp.toFiniteFpWiden_toVal, StorageFp.toFiniteFpWiden_toVal] at h_wide_err
   have h_mixed := mixed_precision_narrowing_error_unified (R := R) ff_wide sf nctx
-    policy hsigned h_no_nan sum_wide hm h_no_ov fp_out h_round_finite
+    policy hsigned sum_wide hm h_no_ov h_no_nan fp_out h_round_finite
     ((a.toVal : R) + b.toVal) _ h_wide_err
   have h_unfold : (mixedFpAdd ff_wide wctx.execWide h_FIN policy a b ha hb).toVal (R := R)
       = (@StorageFp.fromFp ff_wide sf policy (@Fp.finite ff_wide sum_wide)).toVal := by

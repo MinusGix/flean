@@ -161,11 +161,17 @@ theorem HasAbsBound.fromFp_narrow_unified
     (sf : StorageFormat) (ctx : StorageFp.NarrowingContext R sf)
     (policy : StorageOverflowPolicy)
     (hsigned : sf.hasSigned = true)
-    (h_no_nan : sf.maxManFieldAtMaxExp ≥ 2 ^ sf.manBits - 1)
     (fp : FiniteFp) (hm : fp.m ≠ 0)
     (h_no_ov : (StorageFp.roundSigCore fp.s fp.m (fp.e - FloatFormat.prec + 1) (sf.manBits + 1)
         (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
         StorageFp.rneRoundUp).2.2 = false)
+    (h_no_nan : StorageFp.avoidsNanReservedEncoding sf
+        (StorageFp.roundSigCore fp.s fp.m (fp.e - FloatFormat.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
+          StorageFp.rneRoundUp).1
+        (StorageFp.roundSigCore fp.s fp.m (fp.e - FloatFormat.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
+          StorageFp.rneRoundUp).2.1)
     (fp_out : @FiniteFp ctx.floatFormat)
     (h_round_finite :
         @RMode.round R ctx.floatFormat ctx.instM (fp.toVal : R)
@@ -178,7 +184,7 @@ theorem HasAbsBound.fromFp_narrow_unified
       (StorageFp.fromFp sf policy (Fp.finite fp)) := by
   refine ⟨?_⟩
   have h_err := StorageFp.fromFp_widen_abs_error_unified (R := R) ff_wide sf ctx
-    policy hsigned h_no_nan fp hm h_no_ov fp_out h_round_finite
+    policy hsigned fp hm h_no_ov h_no_nan fp_out h_round_finite
   have h_fp_le : |(fp.toVal : R)| ≤ c := h.toVal_abs_le
   have hEps_nn : (0 : R) ≤ @FloatFormat.hEps ctx.floatFormat R _ := by
     unfold FloatFormat.hEps; positivity
@@ -206,11 +212,17 @@ theorem HasAbsBound.fromFp_narrow_normal
     (sf : StorageFormat) (ctx : StorageFp.NarrowingContext R sf)
     (policy : StorageOverflowPolicy)
     (hsigned : sf.hasSigned = true)
-    (h_no_nan : sf.maxManFieldAtMaxExp ≥ 2 ^ sf.manBits - 1)
     (fp : FiniteFp) (hm : fp.m ≠ 0)
     (h_no_ov : (StorageFp.roundSigCore fp.s fp.m (fp.e - FloatFormat.prec + 1) (sf.manBits + 1)
         (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
         StorageFp.rneRoundUp).2.2 = false)
+    (h_no_nan : StorageFp.avoidsNanReservedEncoding sf
+        (StorageFp.roundSigCore fp.s fp.m (fp.e - FloatFormat.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
+          StorageFp.rneRoundUp).1
+        (StorageFp.roundSigCore fp.s fp.m (fp.e - FloatFormat.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
+          StorageFp.rneRoundUp).2.1)
     (fp_out : @FiniteFp ctx.floatFormat)
     (h_round_finite :
         @RMode.round R ctx.floatFormat ctx.instM (fp.toVal : R)
@@ -222,7 +234,7 @@ theorem HasAbsBound.fromFp_narrow_normal
       (StorageFp.fromFp sf policy (Fp.finite fp)) := by
   refine ⟨?_⟩
   have h_err := StorageFp.fromFp_widen_abs_error_normal (R := R) ff_wide sf ctx
-    policy hsigned h_no_nan fp hm h_no_ov fp_out h_round_finite h_x_normal
+    policy hsigned fp hm h_no_ov h_no_nan fp_out h_round_finite h_x_normal
   have h_fp_le : |(fp.toVal : R)| ≤ c := h.toVal_abs_le
   have hEps_nn : (0 : R) ≤ @FloatFormat.hEps ctx.floatFormat R _ := by
     unfold FloatFormat.hEps; positivity
@@ -265,12 +277,20 @@ theorem FpSum.FpSumBound.hasAbsBoundS_uniform_via_narrow
     (sf : StorageFormat) (ctx : StorageFp.NarrowingContext R sf)
     (policy : StorageOverflowPolicy)
     (hsigned : sf.hasSigned = true)
-    (h_no_nan : sf.maxManFieldAtMaxExp ≥ 2 ^ sf.manBits - 1)
     (hm : b.result.m ≠ 0)
     (h_no_ov : (StorageFp.roundSigCore b.result.s b.result.m
         (b.result.e - FloatFormat.prec + 1) (sf.manBits + 1)
         (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
         StorageFp.rneRoundUp).2.2 = false)
+    (h_no_nan : StorageFp.avoidsNanReservedEncoding sf
+        (StorageFp.roundSigCore b.result.s b.result.m
+          (b.result.e - FloatFormat.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
+          StorageFp.rneRoundUp).1
+        (StorageFp.roundSigCore b.result.s b.result.m
+          (b.result.e - FloatFormat.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
+          StorageFp.rneRoundUp).2.1)
     (fp_out : @FiniteFp ctx.floatFormat)
     (h_round_finite :
         @RMode.round R ctx.floatFormat ctx.instM (b.result.toVal : R)
@@ -281,8 +301,8 @@ theorem FpSum.FpSumBound.hasAbsBoundS_uniform_via_narrow
         + (2 : R) ^ (@FloatFormat.min_exp ctx.floatFormat
               - @FloatFormat.prec ctx.floatFormat))
       (StorageFp.fromFp sf policy (Fp.finite b.result)) :=
-  HasAbsBound.fromFp_narrow_unified sf ctx policy hsigned h_no_nan
-    b.result hm h_no_ov fp_out h_round_finite (b.hasAbsBound_of_uniform c h_bounds)
+  HasAbsBound.fromFp_narrow_unified sf ctx policy hsigned
+    b.result hm h_no_ov h_no_nan fp_out h_round_finite (b.hasAbsBound_of_uniform c h_bounds)
 
 /-- `FpDotProductBound` composed with narrowing: from uniform per-index
 bounds on both wide-format input vectors, derive a `HasAbsBoundS` on the
@@ -292,12 +312,20 @@ theorem FpDotProduct.FpDotProductBound.hasAbsBoundS_uniform_via_narrow
     (sf : StorageFormat) (ctx : StorageFp.NarrowingContext R sf)
     (policy : StorageOverflowPolicy)
     (hsigned : sf.hasSigned = true)
-    (h_no_nan : sf.maxManFieldAtMaxExp ≥ 2 ^ sf.manBits - 1)
     (hm : b.result.m ≠ 0)
     (h_no_ov : (StorageFp.roundSigCore b.result.s b.result.m
         (b.result.e - FloatFormat.prec + 1) (sf.manBits + 1)
         (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
         StorageFp.rneRoundUp).2.2 = false)
+    (h_no_nan : StorageFp.avoidsNanReservedEncoding sf
+        (StorageFp.roundSigCore b.result.s b.result.m
+          (b.result.e - FloatFormat.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
+          StorageFp.rneRoundUp).1
+        (StorageFp.roundSigCore b.result.s b.result.m
+          (b.result.e - FloatFormat.prec + 1) (sf.manBits + 1)
+          (1 - (sf.bias : ℤ)) ((sf.maxExpField : ℤ) - (sf.bias : ℤ))
+          StorageFp.rneRoundUp).2.1)
     (fp_out : @FiniteFp ctx.floatFormat)
     (h_round_finite :
         @RMode.round R ctx.floatFormat ctx.instM (b.result.toVal : R)
@@ -310,8 +338,8 @@ theorem FpDotProduct.FpDotProductBound.hasAbsBoundS_uniform_via_narrow
         + (2 : R) ^ (@FloatFormat.min_exp ctx.floatFormat
               - @FloatFormat.prec ctx.floatFormat))
       (StorageFp.fromFp sf policy (Fp.finite b.result)) :=
-  HasAbsBound.fromFp_narrow_unified sf ctx policy hsigned h_no_nan
-    b.result hm h_no_ov fp_out h_round_finite (b.hasAbsBound_of_uniform c_x c_y h_x h_y)
+  HasAbsBound.fromFp_narrow_unified sf ctx policy hsigned
+    b.result hm h_no_ov h_no_nan fp_out h_round_finite (b.hasAbsBound_of_uniform c_x c_y h_x h_y)
 
 end ChainBridges
 
