@@ -154,6 +154,179 @@ def FpDotProductBound.ofDotProductFMA {n : ℕ} (xs ys : Fin n → FiniteFp)
 
 end OfDotProductFMA
 
+/-! ## Adapter: products-then-sum → `FpDotProductBound`
+
+Generic helper: take rounded per-pair products `ps i = fl(xs i · ys i)` plus
+an `FpSumBound` on `ps`, and compose the per-product mul error (η each) with
+the sum bound to get an `FpDotProductBound xs ys R` against the *true* real
+dot product `Σ xs_i · ys_i`.
+
+Composed coefficient: `relErr = sb.relErr · (1 + η) + η`.
+
+Mirrors the compensated-case `FpDotProductBoundCompensated.ofProducts`.
+Used below by `ofKahan` and `ofPairwiseSum` to wrap tighter sum primitives
+into the dot-product abstraction.
+-/
+
+section OfProductsBound
+
+variable [RMode R] [RModeExec] [RModeNearest R] [RoundIntSigMSound R]
+
+/-- **Constructor**: given rounded per-pair products `ps i = fl(xs i · ys i)`
+with rounding witnesses, and an `FpSumBound` over `ps`, package the
+composition as an `FpDotProductBound xs ys R`.
+
+Composed coefficient: `relErr = sb.relErr · (1 + η) + η`. -/
+def FpDotProductBound.ofProductsBound {n : ℕ} (xs ys : Fin n → FiniteFp)
+    {ps : Fin n → FiniteFp}
+    (hprod : ∀ i, xs i * ys i = Fp.finite (ps i))
+    (hnr_mul : ∀ i, isNormalRange ((xs i).toVal * (ys i).toVal : R) ∨
+                     ((xs i).toVal : R) * (ys i).toVal = 0)
+    (sb : FpSum.FpSumBound ps R) :
+    FpDotProductBound xs ys R :=
+  have hη : (0 : R) ≤ η := by positivity
+  have h1η_nn : (0 : R) ≤ 1 + η := by linarith
+  { result := sb.result
+    relErr := sb.relErr * (1 + η) + η
+    h_relErr_nn := by
+      have h1 : 0 ≤ sb.relErr * (1 + η) := mul_nonneg sb.h_relErr_nn h1η_nn
+      linarith
+    h_bound := by
+      set T : R := ∑ i, |((xs i).toVal : R) * ((ys i).toVal : R)| with hT_def
+      set T' : R := ∑ i, |((ps i).toVal : R)| with hT'_def
+      set S : R := ∑ i, ((xs i).toVal : R) * ((ys i).toVal : R) with hS_def
+      set S' : R := ∑ i, ((ps i).toVal : R) with hS'_def
+      have hT_nn : 0 ≤ T := Finset.sum_nonneg (fun _ _ => abs_nonneg _)
+      have hmul_err : ∀ i, |((ps i).toVal : R) -
+                             (xs i).toVal * (ys i).toVal| ≤
+                           η * |((xs i).toVal : R) * (ys i).toVal| := fun i =>
+        KahanSum.fpMul_error_or_zero (R := R) (xs i) (ys i) (ps i)
+          (hprod i) (hnr_mul i)
+      have hT'_le : T' ≤ (1 + η) * T := by
+        have hbd : ∀ i ∈ Finset.univ,
+            |((ps i).toVal : R)| ≤
+            (1 + η) * |((xs i).toVal : R) * ((ys i).toVal : R)| := by
+          intro i _
+          have h1 := abs_sub_abs_le_abs_sub ((ps i).toVal : R)
+            ((xs i).toVal * (ys i).toVal)
+          have h2 := hmul_err i
+          linarith
+        calc T' = ∑ i, |((ps i).toVal : R)| := rfl
+          _ ≤ ∑ i, (1 + η) * |((xs i).toVal : R) * ((ys i).toVal : R)| :=
+              Finset.sum_le_sum hbd
+          _ = (1 + η) * T := by rw [← Finset.mul_sum]
+      have hS_sub : |S' - S| ≤ η * T := by
+        have hsum_sub : S' - S =
+            ∑ i, (((ps i).toVal : R) - ((xs i).toVal : R) * ((ys i).toVal : R)) := by
+          rw [Finset.sum_sub_distrib]
+        calc |S' - S| = |∑ i,
+                (((ps i).toVal : R) - ((xs i).toVal : R) * ((ys i).toVal : R))| := by
+              rw [hsum_sub]
+          _ ≤ ∑ i, |((ps i).toVal : R) - ((xs i).toVal : R) * ((ys i).toVal : R)| :=
+              Finset.abs_sum_le_sum_abs _ _
+          _ ≤ ∑ i, η * |((xs i).toVal : R) * ((ys i).toVal : R)| :=
+              Finset.sum_le_sum (fun i _ => hmul_err i)
+          _ = η * T := by rw [← Finset.mul_sum]
+      have hsb : |(sb.result.toVal : R) - S'| ≤ sb.relErr * T' := sb.h_bound
+      calc |(sb.result.toVal : R) - S|
+          = |((sb.result.toVal : R) - S') + (S' - S)| := by ring_nf
+        _ ≤ |(sb.result.toVal : R) - S'| + |S' - S| := abs_add_le _ _
+        _ ≤ sb.relErr * T' + η * T := by linarith [hsb, hS_sub]
+        _ ≤ sb.relErr * ((1 + η) * T) + η * T := by
+            have := mul_le_mul_of_nonneg_left hT'_le sb.h_relErr_nn
+            linarith
+        _ = (sb.relErr * (1 + η) + η) * T := by ring }
+
+end OfProductsBound
+
+/-! ## Adapter: Kahan-summed products → `FpDotProductBound`
+
+Per-pair multiply, then Kahan-accumulate.
+
+Composed bound: `relErr = (2η + n·η²)·(1 + η) + η ≈ 3η + (n+2)·η²`.
+
+For very small `n` this can exceed `ofDotProduct`'s `(1+η)^n - 1` bound:
+* **n=2**: ofDotProduct gives `2η + η²`; ofKahan gives `~3η + 4η² + 2η³`.
+  Caller should prefer `ofDotProduct`/`ofDotProductFMA` at n ≤ 2.
+* **n=3**: roughly equivalent (both leading-order `3η`).
+* **n ≥ 4**: ofKahan's `O(n·η²)` term beats `ofDotProduct`'s `O(n·(n−1)·η²)`.
+
+Pairwise (`ofPairwiseSum`, below) is asymptotically tighter than Kahan due
+to `log₂ n` depth versus Kahan's linear `n·η²` term, but Kahan is one-pass
+and uses the compensator state directly. -/
+
+section OfKahan
+
+variable [RMode R] [RModeExec] [RModeNearest R] [RoundIntSigMSound R]
+
+/-- **Constructor**: rounded per-pair products `ps` followed by a
+`KahanSum.Trace` on those products gives an `FpDotProductBound` with
+`relErr = (2η + n·η²)·(1 + η) + η`.
+
+Hypotheses:
+* `hprod` / `hnr_mul` — per-pair mul rounding witnesses (each contributing η).
+* `trace` — Kahan summation of `List.ofFn ps`.
+* `hinit_sum` / `hinit_comp` — zero-initialized Kahan state.
+* `hexact` / `hnr_kahan` / `hM` — mirrors `FpSumBound.ofKahanTrace`. -/
+def FpDotProductBound.ofKahan {n : ℕ} (xs ys : Fin n → FiniteFp)
+    {ps : Fin n → FiniteFp}
+    (hprod : ∀ i, xs i * ys i = Fp.finite (ps i))
+    (hnr_mul : ∀ i, isNormalRange ((xs i).toVal * (ys i).toVal : R) ∨
+                     ((xs i).toVal : R) * (ys i).toVal = 0)
+    {init final : KahanSum.State}
+    (trace : KahanSum.Trace (List.ofFn ps) init final)
+    (hinit_sum : init.sum.toVal (R := R) = 0)
+    (hinit_comp : init.comp.toVal (R := R) = 0)
+    (hexact : ∀ (st : KahanSum.State) (x : FiniteFp)
+                (step : KahanSum.StepWitness st x),
+      KahanSum.StepTwoSumExact (R := R) st x step)
+    (hnr_kahan : ∀ (st : KahanSum.State) (x : FiniteFp)
+                   (step : KahanSum.StepWitness st x),
+      KahanSum.StepNormalRange (R := R) st x step)
+    (hM : ∀ (st : KahanSum.State) (x : FiniteFp)
+            (step : KahanSum.StepWitness st x),
+      |(st.sum.toVal : R) + step.y.toVal| ≤
+        ((List.ofFn ps).map (fun x => |x.toVal (R := R)|)).sum) :
+    FpDotProductBound xs ys R :=
+  FpDotProductBound.ofProductsBound xs ys hprod hnr_mul
+    (FpSum.FpSumBound.ofKahanTrace ps trace
+      hinit_sum hinit_comp hexact hnr_kahan hM)
+
+end OfKahan
+
+/-! ## Adapter: pairwise-summed products → `FpDotProductBound`
+
+Per-pair multiply, then balanced/tree summation of the products.
+
+Composed bound: `relErr = ((1+η)^d - 1)·(1+η) + η` where `d = trace.depth`.
+For balanced trees with `n` leaves, `d = ⌈log₂ n⌉`, so the leading-order
+term is `O((⌈log₂ n⌉ + 1)·η)` — asymptotically tighter than both
+`ofDotProduct` (`O(n·η)`) and `ofKahan` (`O(η + n·η²)`).
+
+For depth-1 trees (n=2 leaves) this collapses to `2η + η²` — same as
+`ofDotProduct` at n=2, and tighter than `ofKahan` at n=2. -/
+
+section OfPairwiseSum
+
+variable [RMode R] [RModeExec] [RModeNearest R] [RoundIntSigMSound R]
+
+/-- **Constructor**: rounded per-pair products `ps` followed by a
+`PairwiseSum.Trace` over `List.ofFn ps` gives an `FpDotProductBound` with
+`relErr = ((1+η)^d - 1)·(1+η) + η`, where `d = trace.depth`. -/
+def FpDotProductBound.ofPairwiseSum {n : ℕ} (xs ys : Fin n → FiniteFp)
+    {ps : Fin n → FiniteFp}
+    (hprod : ∀ i, xs i * ys i = Fp.finite (ps i))
+    (hnr_mul : ∀ i, isNormalRange ((xs i).toVal * (ys i).toVal : R) ∨
+                     ((xs i).toVal : R) * (ys i).toVal = 0)
+    {sumResult : FiniteFp}
+    (trace : PairwiseSum.Trace (List.ofFn ps) sumResult)
+    (hnr_sum : trace.AllNormalRange (R := R)) :
+    FpDotProductBound xs ys R :=
+  FpDotProductBound.ofProductsBound xs ys hprod hnr_mul
+    (FpSum.FpSumBound.ofPairwise ps trace hnr_sum)
+
+end OfPairwiseSum
+
 /-! ## Structural adapters: `weaken`, `reindex`, `congr` -/
 
 section Adapters
