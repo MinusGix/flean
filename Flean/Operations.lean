@@ -69,3 +69,4 @@ import Flean.Operations.LipschitzFp
 import Flean.Operations.Activation
 import Flean.Operations.Activations.Sigmoid
 import Flean.Operations.Activations.SigmoidFp
+import Flean.Operations.Activations.SigmoidFpClose
