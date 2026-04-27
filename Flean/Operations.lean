@@ -77,4 +77,5 @@ import Flean.Operations.Activations.TanhFpClose
 import Flean.Operations.Activations.TanhDerivFp
 import Flean.Operations.Activations.Gelu
 import Flean.Operations.Activations.GeluFp
+import Flean.Operations.Activations.GeluFpClose
 import Flean.Operations.Activations.GeluDerivFp
