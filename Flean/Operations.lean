@@ -71,3 +71,7 @@ import Flean.Operations.Activations.Sigmoid
 import Flean.Operations.Activations.SigmoidFp
 import Flean.Operations.Activations.SigmoidFpClose
 import Flean.Operations.Activations.SigmoidDerivFp
+import Flean.Operations.Activations.Tanh
+import Flean.Operations.Activations.TanhFp
+import Flean.Operations.Activations.TanhFpClose
+import Flean.Operations.Activations.TanhDerivFp
