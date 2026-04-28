@@ -161,69 +161,32 @@ theorem LayerFpResult.outputBound_nn {n_in n_out : ℕ}
     mul_nonneg (by linarith) h_inner
   linarith
 
-/-- Single-layer FP magnitude bound via composition of the bundle
-bridge + `HasAbsBound.fpAdd_unified`. -/
+/-- Single-layer FP magnitude bound via composition of
+`FpMatVecBound.hasAbsBound_of_uniform` + `HasAbsBound.fpAdd_unified`. -/
 theorem LayerFpResult.toVal_abs_le {n_in n_out : ℕ}
     {L : Layer n_in n_out} {x : Fin n_in → FiniteFp}
     (res : LayerFpResult L x R)
     {wMax bMax : R} (hL : BoundedParams (R := R) L wMax bMax)
-    (hwMax_nn : 0 ≤ wMax)
+    (_hwMax_nn : 0 ≤ wMax)
     {xMax : R} (hx : ∀ j, HasAbsBound (R := R) xMax (x j))
-    (hxMax_nn : 0 ≤ xMax)
+    (_hxMax_nn : 0 ≤ xMax)
     (i : Fin n_out) :
     |((res.result i).toVal : R)| ≤ res.outputBound wMax xMax bMax := by
-  have h_matvec_bound : |((res.matvec.result i).toVal : R)| ≤
-      (1 + res.matvec.relErr) * (n_in : R) * wMax * xMax := by
-    have h_err := res.matvec.h_bound i
-    have h_sum_prod_bound :
-        ∑ j, |((L.W i j).toVal : R) * ((x j).toVal : R)| ≤
-          (n_in : R) * (wMax * xMax) := by
-      calc ∑ j, |((L.W i j).toVal : R) * ((x j).toVal : R)|
-          ≤ ∑ _j : Fin n_in, wMax * xMax := by
-            apply Finset.sum_le_sum
-            intro j _
-            rw [abs_mul]
-            exact mul_le_mul (hL.weight_bounded i j) (hx j).toVal_abs_le
-              (abs_nonneg _) hwMax_nn
-        _ = (n_in : R) * (wMax * xMax) := by
-            rw [Finset.sum_const]; simp [mul_comm]
-    have h_sum_abs_bound :
-        |∑ j, ((L.W i j).toVal : R) * ((x j).toVal : R)| ≤
-          (n_in : R) * (wMax * xMax) :=
-      le_trans (Finset.abs_sum_le_sum_abs _ _) h_sum_prod_bound
-    have h_tri :
-        |((res.matvec.result i).toVal : R)| ≤
-          |((res.matvec.result i).toVal : R) -
-            ∑ j, ((L.W i j).toVal : R) * ((x j).toVal : R)| +
-          |∑ j, ((L.W i j).toVal : R) * ((x j).toVal : R)| := by
-      have : |(((res.matvec.result i).toVal : R) -
-               ∑ j, ((L.W i j).toVal : R) * ((x j).toVal : R)) +
-              ∑ j, ((L.W i j).toVal : R) * ((x j).toVal : R)| ≤
-             |((res.matvec.result i).toVal : R) -
-               ∑ j, ((L.W i j).toVal : R) * ((x j).toVal : R)| +
-             |∑ j, ((L.W i j).toVal : R) * ((x j).toVal : R)| := abs_add_le _ _
-      simpa using this
-    have h_relErr_nn := res.matvec.h_relErr_nn
-    have h_err_scaled : res.matvec.relErr *
-        ∑ j, |((L.W i j).toVal : R) * ((x j).toVal : R)| ≤
-        res.matvec.relErr * ((n_in : R) * (wMax * xMax)) :=
-      mul_le_mul_of_nonneg_left h_sum_prod_bound h_relErr_nn
-    calc |((res.matvec.result i).toVal : R)|
-        ≤ _ := h_tri
-      _ ≤ res.matvec.relErr *
-            ∑ j, |((L.W i j).toVal : R) * ((x j).toVal : R)| +
-          (n_in : R) * (wMax * xMax) := by linarith
-      _ ≤ res.matvec.relErr * ((n_in : R) * (wMax * xMax)) +
-          (n_in : R) * (wMax * xMax) := by linarith
-      _ = (1 + res.matvec.relErr) * (n_in : R) * wMax * xMax := by ring
-  have h_matvec_absbound :
-      HasAbsBound (R := R)
-        ((1 + res.matvec.relErr) * (n_in : R) * wMax * xMax)
-        (res.matvec.result i) := ⟨h_matvec_bound⟩
+  have h_W : ∀ i' j, HasAbsBound (R := R) wMax (L.W i' j) :=
+    fun i' j => ⟨hL.weight_bounded i' j⟩
+  have h_matvec_absbound :=
+    res.matvec.hasAbsBound_of_uniform wMax xMax h_W hx i
   have h_bias_absbound : HasAbsBound (R := R) bMax (L.b i) :=
     ⟨hL.bias_bounded i⟩
   have h_add := HasAbsBound.fpAdd_unified h_matvec_absbound h_bias_absbound
     (res.h_add i)
+  have h_eq : res.outputBound wMax xMax bMax =
+      (1 + (η : R)) *
+        (res.matvec.magBound (R := R) wMax xMax + bMax) +
+        FpInterval.subnormalConst := by
+    unfold LayerFpResult.outputBound FpMatVec.FpMatVecBound.magBound
+    ring
+  rw [h_eq]
   exact h_add.toVal_abs_le
 
 /-- Named forward-error bound for a single FP layer.
@@ -240,19 +203,25 @@ noncomputable def LayerFpResult.errorBound {n_in n_out : ℕ}
       FpInterval.subnormalConst)
 
 /-- The FP layer output is close to the real-valued layer output,
-up to `errorBound`. -/
+up to `errorBound`.
+
+Composes `FpMatVecBound.hasAbsBound_of_uniform` (matvec magnitude),
+`FpMatVecBound.errorBound_of_uniform` (matvec FP-vs-exact error), and
+`round_preserves_abs_error_unified` on the bias add. -/
 theorem LayerFpResult.forward_error_bound {n_in n_out : ℕ}
     {L : Layer n_in n_out} {x : Fin n_in → FiniteFp}
     (res : LayerFpResult L x R)
     {wMax bMax : R} (hL : BoundedParams (R := R) L wMax bMax)
-    (hwMax_nn : 0 ≤ wMax)
+    (_hwMax_nn : 0 ≤ wMax)
     {xMax : R} (hx : ∀ j, HasAbsBound (R := R) xMax (x j))
-    (hxMax_nn : 0 ≤ xMax)
+    (_hxMax_nn : 0 ≤ xMax)
     (i : Fin n_out) :
     |((res.result i).toVal : R) -
         L.forward (fun j => ((x j).toVal : R)) i| ≤
       res.errorBound wMax xMax bMax := by
   unfold Layer.forward LayerFpResult.errorBound
+  have h_W : ∀ i' j, HasAbsBound (R := R) wMax (L.W i' j) :=
+    fun i' j => ⟨hL.weight_bounded i' j⟩
   obtain ⟨g, hg_round, hg_eq⟩ :=
     fpAddFinite_round_witness (R := R) (res.matvec.result i) (L.b i) (res.h_add i)
   have h_addErr := round_preserves_abs_error_unified (R := R)
@@ -265,78 +234,26 @@ theorem LayerFpResult.forward_error_bound {n_in n_out : ℕ}
     have := h_addErr
     rw [hg_eq] at this
     exact this
+  -- Matvec magnitude via the bundle bridge.
+  have h_matvec_absbound :=
+    res.matvec.hasAbsBound_of_uniform wMax xMax h_W hx i
   have h_matvec_bound : |((res.matvec.result i).toVal : R)| ≤
       (1 + res.matvec.relErr) * (n_in : R) * wMax * xMax := by
-    have h_sum_prod_bound :
-        ∑ j, |((L.W i j).toVal : R) * ((x j).toVal : R)| ≤
-          (n_in : R) * (wMax * xMax) := by
-      calc ∑ j, |((L.W i j).toVal : R) * ((x j).toVal : R)|
-          ≤ ∑ _j : Fin n_in, wMax * xMax := by
-            apply Finset.sum_le_sum
-            intro j _
-            rw [abs_mul]
-            exact mul_le_mul (hL.weight_bounded i j) (hx j).toVal_abs_le
-              (abs_nonneg _) hwMax_nn
-        _ = (n_in : R) * (wMax * xMax) := by
-            rw [Finset.sum_const]; simp [mul_comm]
-    have h_sum_abs_bound :
-        |∑ j, ((L.W i j).toVal : R) * ((x j).toVal : R)| ≤
-          (n_in : R) * (wMax * xMax) :=
-      le_trans (Finset.abs_sum_le_sum_abs _ _) h_sum_prod_bound
-    have h_err := res.matvec.h_bound i
-    have h_tri :
-        |((res.matvec.result i).toVal : R)| ≤
-          |((res.matvec.result i).toVal : R) -
-            ∑ j, ((L.W i j).toVal : R) * ((x j).toVal : R)| +
-          |∑ j, ((L.W i j).toVal : R) * ((x j).toVal : R)| := by
-      have : |(((res.matvec.result i).toVal : R) -
-               ∑ j, ((L.W i j).toVal : R) * ((x j).toVal : R)) +
-              ∑ j, ((L.W i j).toVal : R) * ((x j).toVal : R)| ≤
-             |((res.matvec.result i).toVal : R) -
-               ∑ j, ((L.W i j).toVal : R) * ((x j).toVal : R)| +
-             |∑ j, ((L.W i j).toVal : R) * ((x j).toVal : R)| := abs_add_le _ _
-      simpa using this
-    have h_relErr_nn := res.matvec.h_relErr_nn
-    have h_err_scaled : res.matvec.relErr *
-        ∑ j, |((L.W i j).toVal : R) * ((x j).toVal : R)| ≤
-        res.matvec.relErr * ((n_in : R) * (wMax * xMax)) :=
-      mul_le_mul_of_nonneg_left h_sum_prod_bound h_relErr_nn
-    calc |((res.matvec.result i).toVal : R)|
-        ≤ _ := h_tri
-      _ ≤ res.matvec.relErr *
-            ∑ j, |((L.W i j).toVal : R) * ((x j).toVal : R)| +
-          (n_in : R) * (wMax * xMax) := by linarith
-      _ ≤ res.matvec.relErr * ((n_in : R) * (wMax * xMax)) +
-          (n_in : R) * (wMax * xMax) := by linarith
-      _ = (1 + res.matvec.relErr) * (n_in : R) * wMax * xMax := by ring
+    have := h_matvec_absbound.toVal_abs_le
+    unfold FpMatVec.FpMatVecBound.magBound at this
+    nlinarith [this]
   have h_mpb :
       |((res.matvec.result i).toVal : R) + ((L.b i).toVal : R)| ≤
       (1 + res.matvec.relErr) * (n_in : R) * wMax * xMax + bMax :=
     le_trans (abs_add_le _ _) (by linarith [hL.bias_bounded i])
+  -- Matvec FP-vs-exact error via the bundle bridge.
+  have h_matvec_err_raw :=
+    res.matvec.errorBound_of_uniform wMax xMax h_W hx i
   have h_matvec_err :
       |((res.matvec.result i).toVal : R) -
          ∑ j, ((L.W i j).toVal : R) * ((x j).toVal : R)| ≤
       res.matvec.relErr * ((n_in : R) * wMax * xMax) := by
-    have h_err := res.matvec.h_bound i
-    have h_sum_prod_bound :
-        ∑ j, |((L.W i j).toVal : R) * ((x j).toVal : R)| ≤
-          (n_in : R) * (wMax * xMax) := by
-      calc ∑ j, |((L.W i j).toVal : R) * ((x j).toVal : R)|
-          ≤ ∑ _j : Fin n_in, wMax * xMax := by
-            apply Finset.sum_le_sum
-            intro j _
-            rw [abs_mul]
-            exact mul_le_mul (hL.weight_bounded i j) (hx j).toVal_abs_le
-              (abs_nonneg _) hwMax_nn
-        _ = (n_in : R) * (wMax * xMax) := by
-            rw [Finset.sum_const]; simp [mul_comm]
-    have := mul_le_mul_of_nonneg_left h_sum_prod_bound res.matvec.h_relErr_nn
-    calc |((res.matvec.result i).toVal : R) -
-            ∑ j, ((L.W i j).toVal : R) * ((x j).toVal : R)|
-        ≤ res.matvec.relErr *
-            ∑ j, |((L.W i j).toVal : R) * ((x j).toVal : R)| := h_err
-      _ ≤ res.matvec.relErr * ((n_in : R) * (wMax * xMax)) := this
-      _ = res.matvec.relErr * ((n_in : R) * wMax * xMax) := by ring
+    nlinarith [h_matvec_err_raw]
   have h_triangle :
       |((res.result i).toVal : R) -
          ((∑ j, ((L.W i j).toVal : R) * ((x j).toVal : R)) + ((L.b i).toVal : R))| ≤

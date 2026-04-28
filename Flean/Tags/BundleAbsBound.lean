@@ -1,6 +1,7 @@
 import Flean.Tags.AbsBoundPropagate
 import Flean.Operations.FpSum
 import Flean.Operations.FpDotProduct
+import Flean.Operations.FpMatVec
 
 /-!
 # Tag propagation through `FpSumBound` / `FpDotProductBound`
@@ -311,3 +312,154 @@ theorem FpDotProductBound.hasAbsBound_of_vec
   b.hasAbsBound_of_per_index c_x c_y h_x.pointwise h_y.pointwise
 
 end FpDotProduct
+
+namespace FpMatVec
+
+open Finset BigOperators Flean.Tags
+
+variable [FloatFormat]
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+
+/-! ## Named output bound
+
+Named per-row magnitude bound for `FpMatVecBound`:
+`(1 + b.relErr) · n · (c_A · c_x)` when every weight `A_ij` has magnitude
+`≤ c_A` and every input `x_j` has magnitude `≤ c_x`.  Matches the
+`FpSumBound`/`FpDotProductBound` `magBound` ethos. -/
+
+/-- Named per-row magnitude bound output for `FpMatVecBound`. -/
+def FpMatVecBound.magBound {m n : ℕ}
+    {A : Fin m → Fin n → FiniteFp} {x : Fin n → FiniteFp}
+    (b : FpMatVecBound A x R) (c_A c_x : R) : R :=
+  (1 + b.relErr) * (n : R) * (c_A * c_x)
+
+/-! ## `FpMatVecBound` → per-row `HasAbsBound` -/
+
+/-- Core bridge: per-(i,j) magnitude bounds on `A` and per-j on `x`
+yield a per-row magnitude bound on `b.result i`.  Combines the bundle's
+relative error bound with the triangle inequality on the per-element
+products. -/
+theorem FpMatVecBound.hasAbsBound_of_per_index {m n : ℕ}
+    {A : Fin m → Fin n → FiniteFp} {x : Fin n → FiniteFp}
+    (b : FpMatVecBound A x R) (c_A : Fin m → Fin n → R) (c_x : Fin n → R)
+    (h_A : ∀ i j, HasAbsBound (R := R) (c_A i j) (A i j))
+    (h_x : ∀ j, HasAbsBound (R := R) (c_x j) (x j))
+    (i : Fin m) :
+    HasAbsBound (R := R) ((1 + b.relErr) * ∑ j, c_A i j * c_x j) (b.result i) := by
+  refine ⟨?_⟩
+  have h_tri : |((b.result i).toVal : R)| ≤
+      |((b.result i).toVal : R) -
+        ∑ j, ((A i j).toVal : R) * ((x j).toVal : R)| +
+        |∑ j, ((A i j).toVal : R) * ((x j).toVal : R)| := by
+    have := abs_add_le
+      (((b.result i).toVal : R) -
+        ∑ j, ((A i j).toVal : R) * ((x j).toVal : R))
+      (∑ j, ((A i j).toVal : R) * ((x j).toVal : R))
+    simpa using this
+  have h_prod_bound : ∀ j,
+      |((A i j).toVal : R) * ((x j).toVal : R)| ≤ c_A i j * c_x j := by
+    intro j
+    rw [abs_mul]
+    exact mul_le_mul (h_A i j).toVal_abs_le (h_x j).toVal_abs_le
+      (abs_nonneg _) (h_A i j).c_nonneg
+  have h_sum_abs :
+      |∑ j, ((A i j).toVal : R) * ((x j).toVal : R)| ≤
+        ∑ j, |((A i j).toVal : R) * ((x j).toVal : R)| :=
+    Finset.abs_sum_le_sum_abs _ _
+  have h_sum_bound :
+      ∑ j, |((A i j).toVal : R) * ((x j).toVal : R)| ≤
+        ∑ j, c_A i j * c_x j :=
+    Finset.sum_le_sum (fun j _ => h_prod_bound j)
+  have h_sum_abs_le :
+      |∑ j, ((A i j).toVal : R) * ((x j).toVal : R)| ≤
+        ∑ j, c_A i j * c_x j :=
+    le_trans h_sum_abs h_sum_bound
+  have h_err := b.h_bound i
+  have h_relErr_nn := b.h_relErr_nn
+  have h_err_bound :
+      |((b.result i).toVal : R) -
+          ∑ j, ((A i j).toVal : R) * ((x j).toVal : R)| ≤
+        b.relErr * ∑ j, c_A i j * c_x j := by
+    have := mul_le_mul_of_nonneg_left h_sum_bound h_relErr_nn
+    linarith
+  calc |((b.result i).toVal : R)|
+      ≤ |((b.result i).toVal : R) -
+            ∑ j, ((A i j).toVal : R) * ((x j).toVal : R)| +
+          |∑ j, ((A i j).toVal : R) * ((x j).toVal : R)| := h_tri
+    _ ≤ b.relErr * ∑ j, c_A i j * c_x j + ∑ j, c_A i j * c_x j := by linarith
+    _ = (1 + b.relErr) * ∑ j, c_A i j * c_x j := by ring
+
+/-- Uniform variant: a single weight bound `c_A` and input bound `c_x`
+yield `magBound c_A c_x` per row.  Natural shape for `BoundedParams`-style
+hypotheses. -/
+theorem FpMatVecBound.hasAbsBound_of_uniform {m n : ℕ}
+    {A : Fin m → Fin n → FiniteFp} {x : Fin n → FiniteFp}
+    (b : FpMatVecBound A x R) (c_A c_x : R)
+    (h_A : ∀ i j, HasAbsBound (R := R) c_A (A i j))
+    (h_x : ∀ j, HasAbsBound (R := R) c_x (x j))
+    (i : Fin m) :
+    HasAbsBound (R := R) (b.magBound c_A c_x) (b.result i) := by
+  have h := b.hasAbsBound_of_per_index (fun _ _ => c_A) (fun _ => c_x) h_A h_x i
+  have h_sum : (∑ _j : Fin n, c_A * c_x) = (n : R) * (c_A * c_x) := by
+    rw [Finset.sum_const]; simp [mul_comm]
+  rw [h_sum] at h
+  refine h.weaken ?_
+  unfold FpMatVecBound.magBound
+  rw [mul_assoc]
+
+/-- `IsBoundedRange`-driven uniform variant: an interval bound on the
+input vector gives a per-row magnitude bound parameterised by
+`I.maxMag`.  Per-element weight bounds on `A` are still required. -/
+theorem FpMatVecBound.hasAbsBound_of_isBoundedRange {m n : ℕ}
+    {A : Fin m → Fin n → FiniteFp} {x : Fin n → FiniteFp}
+    (b : FpMatVecBound A x R) (c_A : R)
+    (h_A : ∀ i j, HasAbsBound (R := R) c_A (A i j))
+    {I : FpInterval R} (hx : IsBoundedRange (R := R) I x)
+    (i : Fin m) :
+    HasAbsBound (R := R) (b.magBound c_A I.maxMag) (b.result i) :=
+  b.hasAbsBound_of_uniform c_A I.maxMag h_A
+    (fun j => ⟨hx.toVal_abs_le j⟩) i
+
+/-! ## Per-row error vs true matvec
+
+Companion to the magnitude bridge: bounds the per-row deviation
+`|b.result i - Σⱼ A_ij·x_j|` directly under uniform input bounds.
+Useful when downstream code wants the **error** half of the bundle
+abstraction without re-deriving the `Σ |A_ij·x_j| ≤ n · c_A · c_x`
+step. -/
+
+/-- Per-row "FP result vs exact dot product" error bound under uniform
+input magnitude hypotheses.  Equivalent to applying `b.h_bound i` plus
+the uniform sum bound on `Σ |A_ij · x_j|`. -/
+theorem FpMatVecBound.errorBound_of_uniform {m n : ℕ}
+    {A : Fin m → Fin n → FiniteFp} {x : Fin n → FiniteFp}
+    (b : FpMatVecBound A x R) (c_A c_x : R)
+    (h_A : ∀ i j, HasAbsBound (R := R) c_A (A i j))
+    (h_x : ∀ j, HasAbsBound (R := R) c_x (x j))
+    (i : Fin m) :
+    |((b.result i).toVal : R) -
+        ∑ j, ((A i j).toVal : R) * ((x j).toVal : R)| ≤
+      b.relErr * ((n : R) * (c_A * c_x)) := by
+  have h_prod_bound : ∀ j,
+      |((A i j).toVal : R) * ((x j).toVal : R)| ≤ c_A * c_x := by
+    intro j
+    rw [abs_mul]
+    exact mul_le_mul (h_A i j).toVal_abs_le (h_x j).toVal_abs_le
+      (abs_nonneg _) (h_A i j).c_nonneg
+  have h_sum_bound :
+      ∑ j, |((A i j).toVal : R) * ((x j).toVal : R)| ≤
+        ∑ _j : Fin n, c_A * c_x :=
+    Finset.sum_le_sum (fun j _ => h_prod_bound j)
+  have h_sum_const : (∑ _j : Fin n, c_A * c_x) = (n : R) * (c_A * c_x) := by
+    rw [Finset.sum_const]; simp [mul_comm]
+  rw [h_sum_const] at h_sum_bound
+  have h_err := b.h_bound i
+  have h_relErr_nn := b.h_relErr_nn
+  calc |((b.result i).toVal : R) -
+          ∑ j, ((A i j).toVal : R) * ((x j).toVal : R)|
+      ≤ b.relErr *
+          ∑ j, |((A i j).toVal : R) * ((x j).toVal : R)| := h_err
+    _ ≤ b.relErr * ((n : R) * (c_A * c_x)) :=
+        mul_le_mul_of_nonneg_left h_sum_bound h_relErr_nn
+
+end FpMatVec
