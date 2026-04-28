@@ -244,20 +244,102 @@ theorem fpGeluFinite_slack_at_nn
   unfold fpGeluFinite_slack_at
   positivity
 
-/-- **Tight closeness lemma for the FP gelu kernel.**
+/-! ## Intermediate-bounds bundle
 
-Derives `(ε_hx, ε_opt, M_hx, M_opt)` from `(B, Bh, Bα, Bc)` plus per-step
-normal-range hypotheses, then composes
-`fpGeluFinite_with_close_modular` with the polynomial-chain derivations.
+`GeluFpIntermediates` packages all the per-step closeness and magnitude
+bounds derived in the body of `fpGeluFinite_close`'s proof.  Exposing
+these as a struct lets downstream consumers (e.g. the derivative
+closeness lemma) reuse them without re-running the chain.
 
-Hypothesis bundle is split into:
-* Input magnitude bounds: `|x.toVal| ≤ B`, `|half.toVal| ≤ Bh`, etc.
-* 7 polynomial-chain normal-range-or-zero hypotheses (one per FP op
-  before tanh + the final-mul, the inner-add, and the half·x mul).
-* The standard 6 normal-range hypotheses for the inner tanh
-  (`fpTanhFinite_close`'s preconditions).
--/
-theorem fpGeluFinite_close
+Fields are named `hε_*` for closeness (FP vs math) and `hM_*` for
+magnitude bounds. -/
+
+/-- The math value `c · (x + α · x³)` that the inner tanh is applied
+to. Named for use in the intermediate-bounds struct. -/
+private noncomputable def geluPolyArg
+    (αr cr xr : ℝ) : ℝ := cr * (xr + αr * (xr * xr * xr))
+
+/-- All intermediate closeness/magnitude bounds produced by running the
+forward gelu pipeline through step 8 (everything before the final
+`r = hx · opt` mul).  Constructed by `fpGeluFinite_close_intermediates`.
+
+Fields document the bounds against the math reference and against the
+private chain helpers (`M_x_cu`, `ε_x_cu`, `M_ax_cu`, …). -/
+structure GeluFpIntermediates [FloatFormat]
+    [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ]
+    [RModeNearest ℝ] [RModeSticky ℝ] [ExpApprox] [ExpApproxSound]
+    (half α c x : FiniteFp) (B Bh Bα Bc : ℝ)
+    (w : GeluFpWitness half α c x) where
+  /-- Step 1 closeness: `|x_sq_fp − x²| ≤ η · B²`. -/
+  hε_x_sq : |((w.x_sq.toVal : ℝ)) - (x.toVal : ℝ) * (x.toVal : ℝ)| ≤
+    (η : ℝ) * (B * B)
+  /-- Step 1 magnitude: `|x_sq_fp| ≤ (1+η)·B²`. -/
+  hM_x_sq : |((w.x_sq.toVal : ℝ))| ≤ (1 + (η : ℝ)) * (B * B)
+  /-- Step 2 closeness: `|x_cu_fp − x³| ≤ ε_x_cu B`. -/
+  hε_x_cu : |((w.x_cu.toVal : ℝ)) -
+      ((x.toVal : ℝ) * (x.toVal : ℝ) * (x.toVal : ℝ))| ≤ ε_x_cu B
+  /-- Step 2 magnitude: `|x_cu_fp| ≤ M_x_cu B`. -/
+  hM_x_cu : |((w.x_cu.toVal : ℝ))| ≤ M_x_cu B
+  /-- Step 3 closeness: `|ax_cu_fp − α·x³| ≤ ε_ax_cu B Bα`. -/
+  hε_ax_cu : |((w.ax_cu.toVal : ℝ)) -
+      (α.toVal : ℝ) * ((x.toVal : ℝ) * (x.toVal : ℝ) * (x.toVal : ℝ))| ≤
+      ε_ax_cu B Bα
+  /-- Step 3 magnitude: `|ax_cu_fp| ≤ M_ax_cu B Bα`. -/
+  hM_ax_cu : |((w.ax_cu.toVal : ℝ))| ≤ M_ax_cu B Bα
+  /-- Step 4 closeness: `|inner_fp − (x + α·x³)| ≤ ε_inner B Bα`. -/
+  hε_inner : |((w.inner.toVal : ℝ)) -
+      ((x.toVal : ℝ) +
+        (α.toVal : ℝ) *
+          ((x.toVal : ℝ) * (x.toVal : ℝ) * (x.toVal : ℝ)))| ≤
+      ε_inner B Bα
+  /-- Step 4 magnitude: `|inner_fp| ≤ M_inner B Bα`. -/
+  hM_inner : |((w.inner.toVal : ℝ))| ≤ M_inner B Bα
+  /-- Step 5 closeness: `|u_fp − c·(x+α·x³)| ≤ ε_u B Bα Bc`. -/
+  hε_u : |((w.u.toVal : ℝ)) -
+      geluPolyArg (α.toVal : ℝ) (c.toVal : ℝ) (x.toVal : ℝ)| ≤
+      ε_u B Bα Bc
+  /-- Step 6 closeness: `|t_fp − tanh(c·(x+α·x³))| ≤
+      tanh_slack(u_fp, tx_fp) + ε_u B Bα Bc`. -/
+  hε_t : |((w.tanh_w.r.toVal : ℝ)) -
+      Real.tanh (geluPolyArg (α.toVal : ℝ) (c.toVal : ℝ) (x.toVal : ℝ))| ≤
+      fpTanhFinite_slack_at (w.u.toVal : ℝ) (w.tanh_w.tx.toVal : ℝ) +
+        ε_u B Bα Bc
+  /-- Step 6 magnitude: `|t_fp| ≤ 1 + tanh_slack`. -/
+  hM_t : |((w.tanh_w.r.toVal : ℝ))| ≤
+    1 + fpTanhFinite_slack_at (w.u.toVal : ℝ) (w.tanh_w.tx.toVal : ℝ)
+  /-- Step 7 closeness against math: `|opt_fp − (1 + tanh(c·(x+α·x³)))| ≤
+      η · (1 + (1 + tanh_slack)) + (tanh_slack + ε_u B Bα Bc)`. -/
+  hε_opt : |((w.opt.toVal : ℝ)) -
+      (1 + Real.tanh
+        (geluPolyArg (α.toVal : ℝ) (c.toVal : ℝ) (x.toVal : ℝ)))| ≤
+      (η : ℝ) *
+        (1 + (1 + fpTanhFinite_slack_at (w.u.toVal : ℝ)
+          (w.tanh_w.tx.toVal : ℝ))) +
+      (fpTanhFinite_slack_at (w.u.toVal : ℝ) (w.tanh_w.tx.toVal : ℝ) +
+        ε_u B Bα Bc)
+  /-- Step 7 magnitude: `|opt_fp| ≤ (1+η) · (1 + (1 + tanh_slack))`. -/
+  hM_opt : |((w.opt.toVal : ℝ))| ≤
+    (1 + (η : ℝ)) *
+      (1 + (1 + fpTanhFinite_slack_at (w.u.toVal : ℝ)
+        (w.tanh_w.tx.toVal : ℝ)))
+  /-- Step 8 closeness: `|hx_fp − half·x| ≤ η · Bh · B`. -/
+  hε_hx : |((w.hx.toVal : ℝ)) - (half.toVal : ℝ) * (x.toVal : ℝ)| ≤
+    (η : ℝ) * (Bh * B)
+  /-- Step 8 magnitude: `|hx_fp| ≤ (1+η) · Bh · B`. -/
+  hM_hx : |((w.hx.toVal : ℝ))| ≤ (1 + (η : ℝ)) * Bh * B
+
+/-- **Intermediate-bounds constructor for the FP gelu kernel.**
+
+Runs the polynomial chain + tanh + post-tanh derivations and packages
+all the per-step closeness/magnitude bounds into a `GeluFpIntermediates`
+struct.  Identical hypothesis bundle to `fpGeluFinite_close` minus the
+final `h_r_nr` (the `r = hx · opt` step is the modular-theorem caller's
+responsibility).
+
+Downstream consumers — `fpGeluFinite_close` itself and the gelu
+derivative closeness — all instantiate this and read the field they
+need. -/
+theorem fpGeluFinite_close_intermediates
     (half α c x : FiniteFp) (w : GeluFpWitness half α c x)
     -- Magnitude bounds on inputs
     {B Bh Bα Bc : ℝ}
@@ -265,7 +347,8 @@ theorem fpGeluFinite_close
     (hBh : |((half.toVal : ℝ))| ≤ Bh) (hBh_nn : 0 ≤ Bh)
     (hBα : |((α.toVal : ℝ))| ≤ Bα) (hBα_nn : 0 ≤ Bα)
     (hBc : |((c.toVal : ℝ))| ≤ Bc) (hBc_nn : 0 ≤ Bc)
-    -- Polynomial-chain normal-range-or-zero hypotheses
+    -- Polynomial-chain normal-range-or-zero hypotheses (steps 1–8;
+    -- step 9 is `r = hx · opt`, handled by `fpGeluFinite_close`)
     (h_sq_nr : isNormalRange ((x.toVal : ℝ) * (x.toVal : ℝ)) ∨
                (x.toVal : ℝ) * (x.toVal : ℝ) = 0)
     (h_cu_nr : isNormalRange ((w.x_sq.toVal : ℝ) * (x.toVal : ℝ)) ∨
@@ -280,8 +363,6 @@ theorem fpGeluFinite_close
                 (1 : ℝ) + (w.tanh_w.r.toVal : ℝ) = 0)
     (h_hx_nr : isNormalRange ((half.toVal : ℝ) * (x.toVal : ℝ)) ∨
                (half.toVal : ℝ) * (x.toVal : ℝ) = 0)
-    (h_r_nr : isNormalRange ((w.hx.toVal : ℝ) * (w.opt.toVal : ℝ)) ∨
-              (w.hx.toVal : ℝ) * (w.opt.toVal : ℝ) = 0)
     -- Tanh's normal-range hypotheses (preconditions of fpTanhFinite_close)
     (h_dbl1_nr : isNormalRange ((w.u.toVal : ℝ) + (w.u.toVal : ℝ)) ∨
                  (w.u.toVal : ℝ) + (w.u.toVal : ℝ) = 0)
@@ -295,10 +376,7 @@ theorem fpGeluFinite_close
                  ((w.tanh_w.sig.r.toVal : ℝ) + (w.tanh_w.sig.r.toVal : ℝ) = 0))
     (h_sub_nr : isNormalRange ((w.tanh_w.tsx.toVal : ℝ) - (1 : ℝ)) ∨
                 ((w.tanh_w.tsx.toVal : ℝ) - (1 : ℝ) = 0)) :
-    |((w.r.toVal : ℝ)) - Real.geluTanhApprox (half.toVal : ℝ) (c.toVal : ℝ)
-        (α.toVal : ℝ) (x.toVal : ℝ)| ≤
-      fpGeluFinite_slack_at B Bh Bα Bc
-        (w.tanh_w.tx.toVal : ℝ) (w.u.toVal : ℝ) := by
+    GeluFpIntermediates half α c x B Bh Bα Bc w := by
   -- Setup abbreviations
   set xr : ℝ := (x.toVal : ℝ) with hxr_def
   set hr : ℝ := (half.toVal : ℝ) with hhr_def
@@ -625,24 +703,114 @@ theorem fpGeluFinite_close
         ≤ |(w.hx.toVal : ℝ) - hr * xr| + |hr * xr| := h_sum
       _ ≤ η * (Bh * B) + Bh * B := by linarith
       _ = (1 + η) * Bh * B := by ring
-  -- Step 9: r = hx · opt — final step rounding error.
+  -- Pack all per-step intermediate bounds into the struct.
+  exact
+    { hε_x_sq := h_x_sq_close
+      hM_x_sq := h_x_sq_mag
+      hε_x_cu := h_x_cu_close'
+      hM_x_cu := h_x_cu_mag
+      hε_ax_cu := h_ax_cu_close'
+      hM_ax_cu := h_ax_cu_mag
+      hε_inner := h_inner_close'
+      hM_inner := h_inner_mag
+      hε_u := h_u_close'
+      hε_t := h_t_close
+      hM_t := h_t_mag
+      hε_opt := h_opt_close_final
+      hM_opt := h_opt_mag
+      hε_hx := h_hx_step
+      hM_hx := h_hx_mag }
+
+/-- **Tight closeness lemma for the FP gelu kernel.**
+
+Constructs the intermediate bounds via `fpGeluFinite_close_intermediates`
+then applies `fpGeluFinite_with_close_modular` to bound the final
+`r = hx · opt` step.
+
+Hypothesis bundle is split into:
+* Input magnitude bounds: `|x.toVal| ≤ B`, `|half.toVal| ≤ Bh`, etc.
+* 8 polynomial-chain normal-range-or-zero hypotheses (one per FP op).
+* The standard 6 normal-range hypotheses for the inner tanh
+  (`fpTanhFinite_close`'s preconditions).
+-/
+theorem fpGeluFinite_close
+    (half α c x : FiniteFp) (w : GeluFpWitness half α c x)
+    -- Magnitude bounds on inputs
+    {B Bh Bα Bc : ℝ}
+    (hB : |((x.toVal : ℝ))| ≤ B) (hB_nn : 0 ≤ B)
+    (hBh : |((half.toVal : ℝ))| ≤ Bh) (hBh_nn : 0 ≤ Bh)
+    (hBα : |((α.toVal : ℝ))| ≤ Bα) (hBα_nn : 0 ≤ Bα)
+    (hBc : |((c.toVal : ℝ))| ≤ Bc) (hBc_nn : 0 ≤ Bc)
+    -- Polynomial-chain normal-range-or-zero hypotheses
+    (h_sq_nr : isNormalRange ((x.toVal : ℝ) * (x.toVal : ℝ)) ∨
+               (x.toVal : ℝ) * (x.toVal : ℝ) = 0)
+    (h_cu_nr : isNormalRange ((w.x_sq.toVal : ℝ) * (x.toVal : ℝ)) ∨
+               (w.x_sq.toVal : ℝ) * (x.toVal : ℝ) = 0)
+    (h_ax_cu_nr : isNormalRange ((α.toVal : ℝ) * (w.x_cu.toVal : ℝ)) ∨
+                  (α.toVal : ℝ) * (w.x_cu.toVal : ℝ) = 0)
+    (h_inner_nr : isNormalRange ((x.toVal : ℝ) + (w.ax_cu.toVal : ℝ)) ∨
+                  (x.toVal : ℝ) + (w.ax_cu.toVal : ℝ) = 0)
+    (h_u_nr : isNormalRange ((c.toVal : ℝ) * (w.inner.toVal : ℝ)) ∨
+              (c.toVal : ℝ) * (w.inner.toVal : ℝ) = 0)
+    (h_opt_nr : isNormalRange ((1 : ℝ) + (w.tanh_w.r.toVal : ℝ)) ∨
+                (1 : ℝ) + (w.tanh_w.r.toVal : ℝ) = 0)
+    (h_hx_nr : isNormalRange ((half.toVal : ℝ) * (x.toVal : ℝ)) ∨
+               (half.toVal : ℝ) * (x.toVal : ℝ) = 0)
+    (h_r_nr : isNormalRange ((w.hx.toVal : ℝ) * (w.opt.toVal : ℝ)) ∨
+              (w.hx.toVal : ℝ) * (w.opt.toVal : ℝ) = 0)
+    -- Tanh's normal-range hypotheses (preconditions of fpTanhFinite_close)
+    (h_dbl1_nr : isNormalRange ((w.u.toVal : ℝ) + (w.u.toVal : ℝ)) ∨
+                 (w.u.toVal : ℝ) + (w.u.toVal : ℝ) = 0)
+    (her_normal : isNormalRange (Real.exp (-((w.tanh_w.tx.toVal : ℝ)))))
+    (h_d_normal : isNormalRange ((1 : ℝ) + (w.tanh_w.sig.e.toVal : ℝ)) ∨
+                  ((1 : ℝ) + (w.tanh_w.sig.e.toVal : ℝ) = 0))
+    (h_sig_r_normal : isNormalRange ((1 : ℝ) / (w.tanh_w.sig.d.toVal : ℝ)) ∨
+                      ((1 : ℝ) / (w.tanh_w.sig.d.toVal : ℝ) = 0))
+    (hd_m_ne : w.tanh_w.sig.d.m ≠ 0)
+    (h_dbl2_nr : isNormalRange ((w.tanh_w.sig.r.toVal : ℝ) + (w.tanh_w.sig.r.toVal : ℝ)) ∨
+                 ((w.tanh_w.sig.r.toVal : ℝ) + (w.tanh_w.sig.r.toVal : ℝ) = 0))
+    (h_sub_nr : isNormalRange ((w.tanh_w.tsx.toVal : ℝ) - (1 : ℝ)) ∨
+                ((w.tanh_w.tsx.toVal : ℝ) - (1 : ℝ) = 0)) :
+    |((w.r.toVal : ℝ)) - Real.geluTanhApprox (half.toVal : ℝ) (c.toVal : ℝ)
+        (α.toVal : ℝ) (x.toVal : ℝ)| ≤
+      fpGeluFinite_slack_at B Bh Bα Bc
+        (w.tanh_w.tx.toVal : ℝ) (w.u.toVal : ℝ) := by
+  -- Get all intermediate bounds.
+  let inter := fpGeluFinite_close_intermediates half α c x w hB hB_nn hBh hBh_nn
+    hBα hBα_nn hBc hBc_nn h_sq_nr h_cu_nr h_ax_cu_nr h_inner_nr h_u_nr h_opt_nr
+    h_hx_nr h_dbl1_nr her_normal h_d_normal h_sig_r_normal hd_m_ne h_dbl2_nr
+    h_sub_nr
+  -- Setup short names.
+  have hη_nn : (0 : ℝ) ≤ η := by positivity
+  set tanh_slack : ℝ :=
+    fpTanhFinite_slack_at (w.u.toVal : ℝ) (w.tanh_w.tx.toVal : ℝ)
+  have h_tanh_slack_nn : 0 ≤ tanh_slack :=
+    fpTanhFinite_slack_at_nn (w.u.toVal : ℝ) (w.tanh_w.tx.toVal : ℝ)
+  -- Step 9 rounding: |r_fp − hx · opt| ≤ η · |hx · opt|.
   have h_r_close_step_eq := KahanSum.fpMul_error_or_zero (R := ℝ) w.hx w.opt w.r
     w.h_r h_r_nr
-  -- Apply the modular theorem
+  -- Loosened bound on `|half·x|` from input bounds (used to swap into the
+  -- modular result's `|hr · xr|` cross term).
+  have h_hr_xr_mag : |((half.toVal : ℝ)) * (x.toVal : ℝ)| ≤ Bh * B := by
+    rw [abs_mul]; exact mul_le_mul hBh hB (abs_nonneg _) hBh_nn
+  -- Apply the modular theorem with the struct-derived ε's and M's.
   have h_modular := fpGeluFinite_with_close_modular half α c x w
-    ((η : ℝ) * (Bh * B)) h_hx_step
+    ((η : ℝ) * (Bh * B)) (by
+      -- Want: |hx_fp − half·x| ≤ η·(Bh·B). We have the struct's
+      -- |hx_fp − half·x| ≤ η·(Bh·B) directly.
+      exact inter.hε_hx)
     ((η : ℝ) * (1 + (1 + tanh_slack)) + (tanh_slack + ε_u B Bα Bc))
-      h_opt_close_final
+    (by
+      -- Translate the struct's `hε_opt` (uses `geluPolyArg`) to the form
+      -- expected by the modular theorem (uses inline `cr * (xr + αr · x³)`).
+      have h := inter.hε_opt
+      -- The two forms are defeq.
+      exact h)
     h_r_close_step_eq
-    ((1 + η) * Bh * B) h_hx_mag (by positivity)
+    ((1 + η) * Bh * B) inter.hM_hx (by positivity)
     ((1 + η) * (1 + (1 + tanh_slack)))
-    h_opt_mag (by
-      have := h_tanh_slack_nn
-      positivity)
-  -- The modular theorem produces:
-  --   η · ((1+η)·Bh·B · (1+η)·(1+(1+tanh_slack))) + ...
-  --     + |hr · xr| · ε_opt + (η·Bh·B) · ε_opt
-  -- Loosen `|hr · xr|` to `Bh · B`.
+    inter.hM_opt (by positivity)
+  -- Bound the modular result by the slack-at form (loosen |hr·xr| ≤ Bh·B).
   have hMxc_nn : 0 ≤ M_x_cu B := by show 0 ≤ (1 + (η : ℝ))^2 * B^3; positivity
   have hεxc_nn : 0 ≤ ε_x_cu B := by show 0 ≤ (η : ℝ) * (2 + η) * B^3; positivity
   have hMaxc_nn : 0 ≤ M_ax_cu B Bα := by
@@ -657,20 +825,16 @@ theorem fpGeluFinite_close
     show 0 ≤ (η : ℝ) * Bc * M_inner B Bα + Bc * ε_inner B Bα; positivity
   have h_ε_opt_v_nn :
       0 ≤ (η : ℝ) * (1 + (1 + tanh_slack)) + (tanh_slack + ε_u B Bα Bc) := by
-    have h_ts := h_tanh_slack_nn
     have h1 : 0 ≤ 1 + (1 + tanh_slack) := by linarith
     have hη_step : 0 ≤ (η : ℝ) * (1 + (1 + tanh_slack)) := mul_nonneg hη_nn h1
     linarith
-  have h_swap : |hr * xr| *
+  have h_swap : |((half.toVal : ℝ)) * (x.toVal : ℝ)| *
       ((η : ℝ) * (1 + (1 + tanh_slack)) + (tanh_slack + ε_u B Bα Bc)) ≤
       Bh * B *
       ((η : ℝ) * (1 + (1 + tanh_slack)) + (tanh_slack + ε_u B Bα Bc)) :=
     mul_le_mul_of_nonneg_right h_hr_xr_mag h_ε_opt_v_nn
-  -- Now bound the modular result using the loose `Bh · B`, then identify with
-  -- `fpGeluFinite_slack_at` (the `let`-let bindings unfold definitionally).
-  show |((w.r.toVal : ℝ)) - Real.geluTanhApprox hr cr αr xr| ≤
-      fpGeluFinite_slack_at B Bh Bα Bc (w.tanh_w.tx.toVal : ℝ) (w.u.toVal : ℝ)
-  show |((w.r.toVal : ℝ)) - Real.geluTanhApprox hr cr αr xr| ≤
+  show |((w.r.toVal : ℝ)) - Real.geluTanhApprox (half.toVal : ℝ) (c.toVal : ℝ)
+      (α.toVal : ℝ) (x.toVal : ℝ)| ≤
       (η : ℝ) * ((1 + η) * Bh * B * ((1 + η) * (1 + (1 + tanh_slack)))) +
         (η : ℝ) * (Bh * B) * ((1 + η) * (1 + (1 + tanh_slack))) +
         Bh * B *
