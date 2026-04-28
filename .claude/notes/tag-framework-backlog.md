@@ -53,34 +53,50 @@ analogous LSE and CE wrappers don't exist yet.
 
 **Scope**: ~300 lines across LSE + CE.  Mostly mechanical.
 
-### T-S2: Softmax SterbenzShift wrapper [trivial]
+### T-S2: Softmax SterbenzShift wrapper — **SHIPPED 2026-04-22**
 
-Parallel to `fpLogSumExp_sterbenzShift_error_bound` /
-`fpCrossEntropy_sterbenzShift_error_bound`.  Softmax's end-to-end
-theorem (`fpSoftmax_end_to_end_error_bound`) takes the same
-`h_shift_exact` hypothesis and would accept the same wrapper shape.
+`fpSoftmax_sterbenzShift_error_bound` in `Flean/Tags/SterbenzShift.lean`
+(commit 756c0b6, "Tags: lattice cleanup — IsSimplex/IsSterbenz
+generators + Softmax SterbenzShift wrapper").  Thin wrapper around
+`fpSoftmax_end_to_end_error_bound`: the vector-Sterbenz tag discharges
+`h_shift_exact` via `sterbenzShift_of`, the bound is unchanged.
+Parallel to the LSE / CE wrappers in the same file.
 
-**Scope**: ~50 lines.  Copy-paste of the LSE wrapper.
-
-### T-S3: Promote more meta-lemmas into `RoundPreserves.lean` [cleanup]
+### T-S3: Promote more meta-lemmas into `RoundPreserves.lean` — **PARTIAL (2026-04-27)**
 
 Candidates seen across pilots:
-- `round_preserves_le_abs_bound_subnormal` — unified (subnormal-tolerant) variant
-  of `round_preserves_abs_bound_normal`.
-- Tag-independent finiteness-propagation helper (currently duplicated in
-  `Nonneg.lean` + elsewhere).
-- `round_preserves_sign` — if `x`'s sign is determined, `round x`'s sign is too.
+- ~~`round_preserves_le_abs_bound_subnormal` — unified (subnormal-tolerant) variant
+  of `round_preserves_abs_bound_normal`.~~ **DONE** as
+  `round_preserves_abs_bound_unified` (sign-agnostic + subnormal-tolerant)
+  during T-M1.
+- ~~Tag-independent finiteness-propagation helper (currently duplicated in
+  `Nonneg.lean` + elsewhere).~~ **DONE** via the
+  `fpAddFinite_round_witness` / `fpMulFinite_round_witness` /
+  `fpFMAFinite_round_witness` helpers in
+  `Flean/Operations/FpFiniteRound.lean`.  Every tag preservation now
+  uses these uniformly.
+- ~~`round_preserves_sign` — if `x`'s sign is determined, `round x`'s
+  sign is too.~~ **DONE** as `round_preserves_nonpos` (mirror of
+  `round_preserves_nonneg`, via `RModeMono` + `RModeZero`).  No current
+  consumer; framework-completeness pair to support a future `IsNonpos`
+  tag (or any negative-sign-discharge proof).
 
-Each would shave duplicate code from 2–3 files.
+### T-S4: `HasAbsBound` fpAdd / fpMul sign-agnostic variants — **SUBSUMED BY T-M1 (2026-04-27)**
 
-### T-S4: `HasAbsBound` fpAdd / fpMul sign-agnostic variants [API completeness]
+The Phase 1 pilots `fpAdd_nonneg_normal` / `fpMul_nonneg_normal` were
+superseded by T-M1's full sign-agnostic propagation suite in
+`Flean/Tags/AbsBoundPropagate.lean`: `fpAdd_normal`, `fpSub_normal`,
+`fpMul_normal`, `fpFMA_normal` (normal-range, no sign requirement) plus
+their `_unified` (subnormal-tolerant) counterparts.  The new variants
+take a magnitude lower bound `2^min_exp ≤ |exact|` instead of
+`isNormalRange`, which is strictly weaker (drops the upper bound that's
+already implied by finiteness via `RModeNearest.overflow_pos_inf`).
 
-Current propagations (`fpAdd_nonneg_normal`, `fpMul_nonneg_normal`) require
-nonneg inputs.  A general magnitude-based version requires only
-`isNormalRange` on the exact result.  The `|x+y| ≤ |x|+|y|` triangle plus
-rounding slack covers the additive case; multiplication is `|x·y| = |x|·|y|`.
-
-**Scope**: ~100 lines.  Sister theorems to the existing two.
+Cleanup (2026-04-27): the dead pilot theorems were removed from
+`Flean/Tags/AbsBound.lean` and the file's role narrowed to "tag
+definition + basic structural lemmas (`weaken`, `c_nonneg`, `neg`)".
+Phase 1 design doc §3.2 reference updated to point at the propagation
+suite.
 
 ### T-S5: `@[bridge_to]` attribute for discoverability [infra, defer unless demand]
 
@@ -235,12 +251,12 @@ Remaining (deferred):
   ~200-300 additional lines.  Shelved unless a consumer workload
   appears.
 
-### T-M4: Tag propagation through `FpSumBound` / `FpDotProductBound` [composition gap] — **SHIPPED 2026-04-22**
+### T-M4: Tag propagation through `FpSumBound` / `FpDotProductBound` / `FpMatVecBound` [composition gap] — **SHIPPED 2026-04-22; FpMatVec extension 2026-04-25**
 
-`Flean/Tags/BundleAbsBound.lean` (~201 lines, sorry-free).  Extrinsic
+`Flean/Tags/BundleAbsBound.lean` (~465 lines, sorry-free).  Extrinsic
 option (separate theorems per tag × bundle pair) per the plan.
 
-Six bridge theorems, three per bundle:
+Bridge theorems:
 
 * `FpSumBound.hasAbsBound_of_per_index` — per-index `HasAbsBound (c i)` → `(1 + relErr) · Σ c i`.
 * `FpSumBound.hasAbsBound_of_uniform` — uniform `c` → `(1 + relErr) · n · c`.
@@ -248,6 +264,18 @@ Six bridge theorems, three per bundle:
 * `FpDotProductBound.hasAbsBound_of_per_index` — per-index bounds on both vectors → `(1 + relErr) · Σ c_x·c_y`.
 * `FpDotProductBound.hasAbsBound_of_uniform` — uniform `c_x, c_y` → `(1 + relErr) · n · (c_x · c_y)`.
 * `FpDotProductBound.hasAbsBound_of_isBoundedRange` — `IsBoundedRange` on both → `(1 + relErr) · n · (Ix.maxMag · Iy.maxMag)`.
+* `FpMatVecBound.hasAbsBound_of_per_index` — per-(i,j) on `A` and per-j on `x` → per-row `(1 + relErr) · Σⱼ c_A_ij · c_x_j`.
+* `FpMatVecBound.hasAbsBound_of_uniform` — uniform `c_A, c_x` → per-row `magBound c_A c_x`.
+* `FpMatVecBound.hasAbsBound_of_isBoundedRange` — `IsBoundedRange` on `x` (with uniform `A` weight bound) → per-row `magBound c_A I.maxMag`.
+* `FpMatVecBound.errorBound_of_uniform` — per-row FP-vs-exact deviation under uniform input tags: `|result_i - Σⱼ A_ij·x_j| ≤ relErr · (n · (c_A · c_x))`.
+
+Adoption: retrofitted `MLP.LayerFpResult.toVal_abs_le` (~50 → ~17
+lines) and `LayerFpResult.forward_error_bound` (~120 → ~80 lines)
+to compose `FpMatVecBound.hasAbsBound_of_uniform` +
+`HasAbsBound.fpAdd_unified` instead of inlining the per-row
+`Σ |A_ij·x_j| ≤ n·c_A·c_x` triangle reasoning.  The flagship MLP
+capstone now actually uses the bundle-bridge layer, validating the
+abstraction.
 
 The per-index theorem is primary; uniform and `IsBoundedRange`
 corollaries via `HasAbsBound.weaken` + `Finset.sum_const`.  Proofs
@@ -334,12 +362,18 @@ can be arbitrarily small).  For other workloads, a weakened
 `IsNormalOrSubnormal` (or `IsFinite`, but the latter is already
 trivially true) could bridge the gap.  Low priority.
 
-### T-D3: Bridges are unidirectional
+### T-D3: Bridges are unidirectional — **CLOSED 2026-04-25**
 
-`IsBoundedRange → isNormalRange(exp ·)` exists.  The reverse packaging
-(`isNormalRange v → HasAbsBound _ v`) doesn't, and would let callers
-with an `isNormalRange` witness recover a `HasAbsBound` without
-re-deriving the magnitude.  Not critical, limits composability.
+Reverse-direction bridges shipped in `Flean/Tags/AbsBoundPropagate.lean`:
+
+* `HasAbsBound.ofIsNormalRange_abs` — `isNormalRange (|f.toVal|) →
+  HasAbsBound (2^(max_exp+1)) f`.
+* `HasAbsBound.ofIsNormalRange` — `isNormalRange (f.toVal) →
+  HasAbsBound (2^(max_exp+1)) f` (positive-value case; absolute value
+  redundant since `isNormalRange` already forces `0 < v`).
+
+Both `@[tag_bridge]`-marked.  Callers with an `isNormalRange` witness
+recover a magnitude tag without re-deriving `|x.toVal| ≤ 2^(max_exp+1)`.
 
 ### T-D4: Five LayerNorm preconditions can't dematerialize structurally
 
@@ -426,17 +460,38 @@ Retrofit T-M4's `FpDotProduct.hasAbsBound_of_*` to derive `hc_x_nn`
 from the tag instead of taking it as a hypothesis.  Reduces friction
 across all downstream consumers.
 
-### E3: `letI` → `def` refactor [deferred, priority 10]
+### E3: `letI` → `def` refactor — **SHIPPED 2026-04-25**
 
-Symptom: downstream wrappers over `letI`-heavy end-to-end theorems
-must `set`-rebind + `simp only [← hX_def]` to re-fold.  CE-one-hot
-hit this three times.
+Promoted `ε_sum`, `D_log`, `Δ_LSE` to named `def`s:
+* `LogSumExp.epsilonSum sum` — combines per-step `fpExp` rounding with
+  `sum.relErr` and `n · subnormalConst`.
+* `LogSumExp.dLog sum` — induced `log`-step rel-error.
+* `CrossEntropy.deltaLSE xs hn sum η_log logSubConst` — propagated
+  LSE end-to-end bound, shared across the CE outer sum.
 
-Fix: promote `ε_sum`, `D_log`, `Δ_LSE`, etc. in LSE/CE end-to-end
-theorems to named `def`s.  Touches ~5 files.
+Refactored:
+* `fpLogSumExp_end_to_end_error_bound` — `letI ε_sum`/`D_log` →
+  `epsilonSum sum`/`dLog sum` in statement.
+* `FpLogSumExpResult.error_bound` — same.
+* `fpLogSumExp_{naiveSum,kahanSum,neumaierSum,neumaierCompensated}_error_bound`
+  — same plus `h_margin` simplified.
+* `fpCrossEntropy_end_to_end_error_bound` — adds `deltaLSE`.
+* `FpCrossEntropyResult.error_bound`, `fpCrossEntropy_naiveSum_error_bound`
+  — same.
+* Wrappers: `fpLogSumExp_sterbenzShift_error_bound`,
+  `fpCrossEntropy_sterbenzShift_error_bound`,
+  `fpCrossEntropy_oneHot_error_bound`,
+  `fpCrossEntropy_isProb_error_bound` — all dropped their
+  `set`/`simp only [← hX_def]` re-fold dance.
 
-Deferred until a fifth wrapper hits the same pattern — 3 existing
-wrappers isn't enough to justify the refactor.
+Per-wrapper savings: ~15-30 lines each (statement letIs + body sets).
+Tag wrappers especially clean: OneHot/Prob lost ~30 lines each.
+
+Softmax wrappers (`fpSoftmax_sterbenzShift_error_bound`,
+`fpSoftmax_bound_of_separated`) untouched — softmax has its own
+distinct `letI` shape (`subnormalSoftmaxAbs`/`subnormalSoftmaxDenomMargin`)
+not yet promoted.  Deferred to a follow-up if those wrappers grow
+consumers.
 
 ### E4: Bundle `magBound` abbrev [priority 4]
 
