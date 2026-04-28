@@ -18,6 +18,10 @@ meta-lemma here.
 
 Currently populated:
 - `round_preserves_nonneg` — via `RModeMono` + `RModeZero`.
+- `round_preserves_nonpos` — mirror of `round_preserves_nonneg`, via
+  `RModeMono` + `RModeZero`.  Framework-completeness pair (no current
+  consumer; supports a future `IsNonpos` tag or any negative-sign
+  preservation argument).
 - `round_preserves_abs_bound_normal` — via `RModeNearest` +
   `standard_error_additive`. For parametric `HasAbsBound c` tags in
   the normal-range regime (non-negative inputs only).
@@ -60,6 +64,22 @@ theorem round_preserves_nonneg [RMode R] [RModeMono R] [RModeZero R]
   have h_mono := RModeMono.round_mono (R := R) hx
   rw [RModeZero.round_zero (R := R), hf] at h_mono
   have hle : (0 : FiniteFp) ≤ f := (Fp.finite_le_finite_iff 0 f).mp h_mono
+  have := FiniteFp.le_toVal_le R hle
+  rwa [FiniteFp.toVal_zero] at this
+
+/-- If `x ≤ 0` and rounding `x` yields a finite float `f`, then
+`f.toVal ≤ 0`.  The mirror of `round_preserves_nonneg`, derived
+identically from `RModeMono` (order-preservation) and `RModeZero` (zero
+is round-stable).  Useful framework-completeness pair: any future
+`IsNonpos` tag or negative-sign-preservation argument can dispatch
+through here. -/
+theorem round_preserves_nonpos [RMode R] [RModeMono R] [RModeZero R]
+    {x : R} (hx : x ≤ 0) {f : FiniteFp}
+    (hf : (RMode.round x : Fp) = Fp.finite f) :
+    (f.toVal : R) ≤ 0 := by
+  have h_mono := RModeMono.round_mono (R := R) hx
+  rw [RModeZero.round_zero (R := R), hf] at h_mono
+  have hle : f ≤ (0 : FiniteFp) := (Fp.finite_le_finite_iff f 0).mp h_mono
   have := FiniteFp.le_toVal_le R hle
   rwa [FiniteFp.toVal_zero] at this
 

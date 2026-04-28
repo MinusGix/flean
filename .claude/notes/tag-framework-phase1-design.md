@@ -433,9 +433,12 @@ case-split / round-witness / meta-lemma plumbing is ~0 lines per
 preservation, confirming the design claim.
 
 Meta-lemma addition (`round_preserves_abs_bound_normal`): ~20 lines
-of kernel, reused by both `HasAbsBound.fpAdd_nonneg_normal` and
-`HasAbsBound.fpMul_nonneg_normal`. Pattern validated: one meta-lemma
-per tag, N=2 ops supported from it.
+of kernel, reused by the original Phase 1 pilots
+`HasAbsBound.fpAdd_nonneg_normal` / `HasAbsBound.fpMul_nonneg_normal`
+(removed during T-S4 cleanup, 2026-04-27, after T-M1 shipped the
+sign-agnostic propagation suite in
+`Flean/Tags/AbsBoundPropagate.lean`).  Pattern validated: one
+meta-lemma per tag, N=2 ops supported from it.
 
 ### 3.3 `Flean/Tags/Bridges/` directory — DONE
 
