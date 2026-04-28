@@ -1,3 +1,4 @@
+import Flean.Tags.Attributes
 import Flean.Tags.BoundedRange
 import Flean.Util
 import Flean.Rounding.Rounding
@@ -37,6 +38,7 @@ variable [FloatFormat]
 
 Discharges the `h_exp_nr` precondition of `fpSoftmaxOf_error_bound`
 from an input `IsBoundedRange` tag automatically. -/
+@[tag_bridge]
 theorem IsBoundedRange.exp_isNormalRange
     {n : ℕ} {I : FpInterval ℝ} {xs : Fin n → FiniteFp}
     (h : IsBoundedRange (R := ℝ) I xs)
@@ -123,6 +125,7 @@ denom error bound (single fp-add gives `εsum = η`; Kahan gives
 `fpSoftmaxOf_error_bound` from inputs that already carry an
 `IsBoundedRange` tag, a separation witness, and the usual
 denominator-closeness hypothesis. -/
+@[tag_bridge]
 theorem IsBoundedRange.quot_isNormalRange
     [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
     [RModeNearest ℝ] [ExpApprox] [ExpApproxSound]

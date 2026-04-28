@@ -4,6 +4,7 @@ import Flean.Operations.FMA
 import Flean.Operations.FpFiniteRound
 import Flean.Rounding.ModeClass
 import Flean.Rounding.RoundPreserves
+import Flean.Tags.Attributes
 import Flean.Tags.BoundedRange
 import Flean.Tags.FpInterval
 
@@ -168,6 +169,7 @@ theorem FpInterval.fpAdd_hi_ge (A B : FpInterval R) :
 
 /-- `IsBoundedRange` propagates through `fpAddFinite` in the normal-range
 regime.  Output interval: `A.fpAddN B`. -/
+@[tag_propagate]
 theorem IsBoundedRange.fpAdd
     [RMode R] [RModeExec] [RoundIntSigMSound R]
     [RModeNearest R] [RModeConj R] [RModeZero R]
@@ -210,6 +212,7 @@ theorem IsBoundedRange.fpAdd
 /-- `IsBoundedRange` propagates through `fpAddFinite`, subnormal-tolerant.
 Output interval: `A ⊞ B`.  Drops the normal-range precondition in
 exchange for the `+ sc` slack. -/
+@[tag_propagate]
 theorem IsBoundedRange.fpAdd_unified
     [RMode R] [RModeExec] [RoundIntSigMSound R]
     [RModeNearest R] [RModeConj R] [RModeZero R]
@@ -260,6 +263,7 @@ normal-range and a subnormal-tolerant variant. -/
 omit [FloorRing R] in
 /-- Negation preserves `IsBoundedRange`: the interval endpoints swap
 sign (lo ↔ -hi, hi ↔ -lo). -/
+@[tag_propagate]
 theorem IsBoundedRange.neg {A : FpInterval R} {m : ℕ}
     {xs : Fin m → FiniteFp} (h : IsBoundedRange (R := R) A xs) :
     IsBoundedRange (R := R) A.neg (fun i => -(xs i)) := by
@@ -275,6 +279,7 @@ theorem IsBoundedRange.neg {A : FpInterval R} {m : ℕ}
 
 /-- `IsBoundedRange` propagates through `fpSubFinite` in the normal-range
 regime.  Output interval: `A.fpSubN B = A.fpAddN B.neg`. -/
+@[tag_propagate]
 theorem IsBoundedRange.fpSub
     [RMode R] [RModeExec] [RoundIntSigMSound R]
     [RModeNearest R] [RModeConj R] [RModeZero R]
@@ -293,6 +298,7 @@ theorem IsBoundedRange.fpSub
 
 /-- `IsBoundedRange` propagates through `fpSubFinite`, subnormal-tolerant.
 Output: `A ⊟ B`. -/
+@[tag_propagate]
 theorem IsBoundedRange.fpSub_unified
     [RMode R] [RModeExec] [RoundIntSigMSound R]
     [RModeNearest R] [RModeConj R] [RModeZero R]
@@ -309,6 +315,7 @@ theorem IsBoundedRange.fpSub_unified
 
 /-- `IsBoundedRange` propagates through `fpMulFinite` in the normal-range
 regime.  Output interval: `A.fpMulN B`. -/
+@[tag_propagate]
 theorem IsBoundedRange.fpMul
     [RMode R] [RModeExec] [RoundIntSigMSound R]
     [RModeNearest R] [RModeConj R] [RModeZero R]
@@ -345,6 +352,7 @@ theorem IsBoundedRange.fpMul
 
 /-- `IsBoundedRange` propagates through `fpMulFinite`, subnormal-tolerant.
 Output: `A ⊠ B`. -/
+@[tag_propagate]
 theorem IsBoundedRange.fpMul_unified
     [RMode R] [RModeExec] [RoundIntSigMSound R]
     [RModeNearest R] [RModeConj R] [RModeZero R]
@@ -385,6 +393,7 @@ theorem IsBoundedRange.fpMul_unified
 
 /-- `IsBoundedRange` propagates through `fpFMAFinite` in the normal-range
 regime.  Output: `A.fpFMAN B C`. -/
+@[tag_propagate]
 theorem IsBoundedRange.fpFMA
     [RMode R] [RModeExec] [RoundIntSigMSound R]
     [RModeNearest R] [RModeConj R] [RModeZero R]
@@ -432,6 +441,7 @@ theorem IsBoundedRange.fpFMA
 
 /-- `IsBoundedRange` propagates through `fpFMAFinite`, subnormal-tolerant.
 Output: `FpInterval.fpFMA A B C`. -/
+@[tag_propagate]
 theorem IsBoundedRange.fpFMA_unified
     [RMode R] [RModeExec] [RoundIntSigMSound R]
     [RModeNearest R] [RModeConj R] [RModeZero R]

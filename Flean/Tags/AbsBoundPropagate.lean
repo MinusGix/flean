@@ -1,3 +1,4 @@
+import Flean.Tags.Attributes
 import Flean.Tags.AbsBound
 import Flean.Tags.BoundedRange
 import Flean.Operations.Sub
@@ -72,6 +73,7 @@ with no additive tail.  Uses `round_preserves_abs_bound_signed_normal`. -/
 /-- `HasAbsBound` propagates through `fpAddFinite` in the normal-range
 regime: `HasAbsBound c₁ x` + `HasAbsBound c₂ y` + `|x+y|` normal-range
 + `fpAddFinite x y = Fp.finite f` ⟹ `HasAbsBound ((1+η)·(c₁ + c₂)) f`. -/
+@[tag_propagate]
 theorem HasAbsBound.fpAdd_normal
     {c₁ c₂ : R} {x y f : FiniteFp}
     (hx : HasAbsBound (R := R) c₁ x) (hy : HasAbsBound (R := R) c₂ y)
@@ -86,6 +88,7 @@ theorem HasAbsBound.fpAdd_normal
   exact round_preserves_abs_bound_signed_normal hsum_bound h_normal hg_round
 
 /-- `HasAbsBound` propagates through `fpSubFinite` in the normal-range regime. -/
+@[tag_propagate]
 theorem HasAbsBound.fpSub_normal
     {c₁ c₂ : R} {x y f : FiniteFp}
     (hx : HasAbsBound (R := R) c₁ x) (hy : HasAbsBound (R := R) c₂ y)
@@ -104,6 +107,7 @@ regime: `HasAbsBound c₁ x` + `HasAbsBound c₂ y` + `|x·y|` normal-range
 
 The nonnegativity of `c₁` needed for `mul_le_mul` is derived from the
 tag via `HasAbsBound.c_nonneg`. -/
+@[tag_propagate]
 theorem HasAbsBound.fpMul_normal
     {c₁ c₂ : R} {x y f : FiniteFp}
     (hx : HasAbsBound (R := R) c₁ x) (hy : HasAbsBound (R := R) c₂ y)
@@ -121,6 +125,7 @@ theorem HasAbsBound.fpMul_normal
 /-- `HasAbsBound` propagates through `fpFMAFinite` in the normal-range regime.
 Exact computation is `a·b + c`; bound is `(1+η)·(c_a·c_b + c_c)`.
 `0 ≤ c_a` derived from `ha.c_nonneg`. -/
+@[tag_propagate]
 theorem HasAbsBound.fpFMA_normal
     {c_a c_b c_c : R} {a b c f : FiniteFp}
     (ha : HasAbsBound (R := R) c_a a) (hb : HasAbsBound (R := R) c_b b)
@@ -147,6 +152,7 @@ Each lemma drops the magnitude lower bound in exchange for a
 
 /-- Unified `fpAddFinite` propagation: no magnitude hypothesis on the
 exact sum; bound gets a `subnormalConst` additive tail. -/
+@[tag_propagate]
 theorem HasAbsBound.fpAdd_unified
     {c₁ c₂ : R} {x y f : FiniteFp}
     (hx : HasAbsBound (R := R) c₁ x) (hy : HasAbsBound (R := R) c₂ y)
@@ -160,6 +166,7 @@ theorem HasAbsBound.fpAdd_unified
   exact round_preserves_abs_bound_unified hsum_bound hg_round
 
 /-- Unified `fpSubFinite` propagation. -/
+@[tag_propagate]
 theorem HasAbsBound.fpSub_unified
     {c₁ c₂ : R} {x y f : FiniteFp}
     (hx : HasAbsBound (R := R) c₁ x) (hy : HasAbsBound (R := R) c₂ y)
@@ -169,6 +176,7 @@ theorem HasAbsBound.fpSub_unified
   exact hx.fpAdd_unified hy.neg hf
 
 /-- Unified `fpMulFinite` propagation.  `0 ≤ c₁` derived from `hx.c_nonneg`. -/
+@[tag_propagate]
 theorem HasAbsBound.fpMul_unified
     {c₁ c₂ : R} {x y f : FiniteFp}
     (hx : HasAbsBound (R := R) c₁ x) (hy : HasAbsBound (R := R) c₂ y)
@@ -183,6 +191,7 @@ theorem HasAbsBound.fpMul_unified
   exact round_preserves_abs_bound_unified hprod_bound hg_round
 
 /-- Unified `fpFMAFinite` propagation.  `0 ≤ c_a` derived from `ha.c_nonneg`. -/
+@[tag_propagate]
 theorem HasAbsBound.fpFMA_unified
     {c_a c_b c_c : R} {a b c f : FiniteFp}
     (ha : HasAbsBound (R := R) c_a a) (hb : HasAbsBound (R := R) c_b b)
@@ -226,6 +235,39 @@ theorem HasAbsBound.toIsBoundedRange {c : R} {x : FiniteFp}
   · intro _
     have := h.toVal_abs_le
     exact (abs_le.mp this).2
+
+/-! ## Bridges from `isNormalRange`
+
+The reverse direction of `Flean/Tags/Bridges/ToIsNormalRange.lean`:
+given an `isNormalRange` witness on a `FiniteFp`'s `.toVal`, recover a
+`HasAbsBound` tag at the format's overflow boundary
+`2^(max_exp + 1)`.
+
+Closes the unidirectional gap flagged in the framework eval — callers
+holding an `isNormalRange` hypothesis no longer need to re-derive
+`|x.toVal| ≤ 2^(max_exp+1)` by hand. -/
+
+omit [IsStrictOrderedRing R] [FloorRing R] [RMode R] [RModeExec]
+  [RoundIntSigMSound R] [RModeNearest R] [RModeConj R] [RModeZero R] in
+/-- **Bridge**: from a magnitude-form normal-range witness, recover a
+magnitude tag at the overflow boundary.  Works for arbitrarily-signed
+`f.toVal`. -/
+@[tag_bridge]
+theorem HasAbsBound.ofIsNormalRange_abs {f : FiniteFp}
+    (h : isNormalRange (|((f.toVal : R))|)) :
+    HasAbsBound (R := R) ((2 : R) ^ ((FloatFormat.max_exp : ℤ) + 1)) f :=
+  ⟨le_of_lt h.right⟩
+
+/-- **Bridge**: from a positive-value normal-range witness, recover a
+magnitude tag at the overflow boundary.  `isNormalRange v` already
+implies `0 < v`, so the absolute value is redundant. -/
+@[tag_bridge]
+theorem HasAbsBound.ofIsNormalRange {f : FiniteFp}
+    (h : isNormalRange ((f.toVal : R))) :
+    HasAbsBound (R := R) ((2 : R) ^ ((FloatFormat.max_exp : ℤ) + 1)) f := by
+  refine ⟨?_⟩
+  rw [abs_of_pos (isNormalRange_pos _ h)]
+  exact le_of_lt h.right
 
 /-! ## Demo: a chained bound via HasAbsBound algebra
 

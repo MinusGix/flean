@@ -3,6 +3,7 @@ import Flean.Operations.Mul
 import Flean.Operations.FpFiniteRound
 import Flean.Rounding.ModeClass
 import Flean.Rounding.RoundPreserves
+import Flean.Tags.Attributes
 
 /-!
 # Phase 0 Pilot: Constraint-Tagged Values — IsNonneg (Composition)
@@ -92,6 +93,7 @@ measurement: ~15 line proof bodies drop to ~5 lines each. -/
 
 /-- Adding two non-negative floats yields a non-negative result,
 conditional on finiteness. -/
+@[tag_propagate]
 theorem IsNonneg.fpAdd [RMode R] [RModeExec] [RoundIntSigMSound R]
     [RModeMono R] [RModeZero R]
     {x y f : FiniteFp} (hx : IsNonneg (R := R) x) (hy : IsNonneg (R := R) y)
@@ -106,6 +108,7 @@ theorem IsNonneg.fpAdd [RMode R] [RModeExec] [RoundIntSigMSound R]
 
 /-- Multiplying two non-negative floats yields a non-negative result,
 conditional on finiteness. -/
+@[tag_propagate]
 theorem IsNonneg.fpMul [RMode R] [RModeExec] [RoundIntSigMSound R]
     [RModeMono R] [RModeZero R]
     {x y f : FiniteFp} (hx : IsNonneg (R := R) x) (hy : IsNonneg (R := R) y)
@@ -121,6 +124,7 @@ theorem IsNonneg.fpMul [RMode R] [RModeExec] [RoundIntSigMSound R]
 /-- **Composition**: `(x · y) + bias` is non-negative when all three
 inputs are non-negative. The tag threads through `fpMulFinite` then
 `fpAddFinite`, requiring two separate preservation applications. -/
+@[tag_propagate]
 theorem fpMulAdd_isNonneg [RMode R] [RModeExec] [RoundIntSigMSound R]
     [RModeMono R] [RModeZero R]
     {x y bias prod result : FiniteFp}

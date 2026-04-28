@@ -1,4 +1,5 @@
 import Flean.Operations.Sterbenz
+import Flean.Tags.Attributes
 
 /-!
 # Phase 0 Pilot: Constraint-Tagged Values — Sterbenz
@@ -119,6 +120,7 @@ rounding of the difference).
 
 Thin wrapper around `sterbenz_same_sign`, exposing the result in a form
 that speaks tag vocabulary. -/
+@[tag_bridge]
 theorem fpSubFinite_exact_of_sterbenz
     [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeIdem R]
     {a b : FiniteFp} (h : IsSterbenz (R := R) a b) :
