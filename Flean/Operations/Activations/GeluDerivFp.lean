@@ -1,6 +1,8 @@
 import Flean.Operations.Activations.Gelu
 import Flean.Operations.Activations.GeluFp
+import Flean.Operations.Activations.GeluFpClose
 import Flean.Operations.Activations.TanhDerivFp
+import Flean.Operations.KahanSum
 
 /-!
 # Floating-Point GeLU Derivative (tanh approximation)
@@ -46,12 +48,16 @@ user supplies a FiniteFp ≈ 3·α with their preferred rounding.
 
 ## Status
 
-This file ships the FP function and witness type. The closeness lemma
-against `geluTanhApprox_deriv` requires a substantial composition proof
-(this pipeline plus the underlying gelu forward closeness plus the
-tanh-deriv closeness for the reused `1 − tanh²` factor). Deferred to
-a follow-up; the runnable FP function is sufficient for Wisp's
-per-element backward bridge prototype.
+* FP kernel + IEEE wrapper + simp lemmas.
+* `GeluDerivFpWitness` per-input bundle wrapping the forward
+  `GeluFpWitness` plus 9 new step witnesses (10–18).
+* `fpGeluDerivFinite_with_eq_of_witness` — finite-path reduction.
+* Closeness lemma against `geluTanhApprox_deriv` is the natural
+  follow-up; deferred pending a refactor of `fpGeluFinite_close`'s
+  intermediate-bound proof state into reusable lemmas (current state:
+  intermediates `ε_t`, `ε_opt`, `ε_hx`, `M_*` are local to the proof).
+  The runnable FP function + witness machinery is sufficient for
+  Wisp's per-element backward bridge prototype to consume the kernel.
 -/
 
 set_option autoImplicit false
@@ -148,5 +154,75 @@ noncomputable def fpGeluDeriv_with
 
 @[simp] theorem fpGeluDeriv_with_neg_inf (half α three_α c : FiniteFp) :
     fpGeluDeriv_with half α three_α c (Fp.infinite true) = Fp.finite 0 := rfl
+
+/-! ## Per-input witness bundle -/
+
+/-- Per-input finite-path witness for the FP gelu derivative pipeline.
+Bundles the underlying forward `GeluFpWitness` (steps 1–9) with the 9
+new step witnesses (10–18). -/
+structure GeluDerivFpWitness (half α three_α c : FiniteFp) (x : FiniteFp) where
+  /-- Forward gelu witness: provides `x_sq, x_cu, ax_cu, inner, u, tanh_w, opt, hx`. -/
+  fwd : GeluFpWitness half α c x
+  /-- Step 10: `sq = t · t`. -/
+  sq : FiniteFp
+  /-- Step 11: `sech_sq = 1 − sq`. -/
+  sech_sq : FiniteFp
+  /-- Step 12: `half_opt = half · opt`. -/
+  half_opt : FiniteFp
+  /-- Step 13: `three_a_xsq = three_α · x²`. -/
+  three_a_xsq : FiniteFp
+  /-- Step 14: `one_plus_3axsq = 1 + three_a_xsq`. -/
+  one_plus_3axsq : FiniteFp
+  /-- Step 15: `up = c · one_plus_3axsq`. -/
+  up : FiniteFp
+  /-- Step 16: `hxd = hx · sech_sq`. -/
+  hxd : FiniteFp
+  /-- Step 17: `hxdu = hxd · up`. -/
+  hxdu : FiniteFp
+  /-- Step 18: `r = half_opt + hxdu`. -/
+  r : FiniteFp
+  /-- Step witnesses. -/
+  hsq : fpMulFinite fwd.tanh_w.r fwd.tanh_w.r = Fp.finite sq
+  hsech_sq : fpSubFinite (1 : FiniteFp) sq = Fp.finite sech_sq
+  hhalf_opt : fpMulFinite half fwd.opt = Fp.finite half_opt
+  hthree_a_xsq : fpMulFinite three_α fwd.x_sq = Fp.finite three_a_xsq
+  hone_plus : fpAddFinite (1 : FiniteFp) three_a_xsq = Fp.finite one_plus_3axsq
+  hup : fpMulFinite c one_plus_3axsq = Fp.finite up
+  hhxd : fpMulFinite fwd.hx sech_sq = Fp.finite hxd
+  hhxdu : fpMulFinite hxd up = Fp.finite hxdu
+  hr : fpAddFinite half_opt hxdu = Fp.finite r
+
+/-- Finite-path reduction: when all 18 steps land in finite range, the
+result is `r` (the final FP add). -/
+theorem fpGeluDerivFinite_with_eq_of_witness
+    (half α three_α c : FiniteFp) (x : FiniteFp)
+    (w : GeluDerivFpWitness half α three_α c x) :
+    fpGeluDerivFinite_with half α three_α c x = Fp.finite w.r := by
+  -- Derive the tanh result equality from the inner sigmoid witnesses.
+  have h_sig_eq :
+      fpSigmoidFinite w.fwd.tanh_w.tx = Fp.finite w.fwd.tanh_w.sig.r :=
+    (fpSigmoidFinite_eq_div_of_finite w.fwd.tanh_w.tx w.fwd.tanh_w.sig.he
+      w.fwd.tanh_w.sig.hd).trans w.fwd.tanh_w.sig.hr
+  have h_tanh_eq : fpTanhFinite w.fwd.u = Fp.finite w.fwd.tanh_w.r :=
+    (fpTanhFinite_eq_sub_of_finite w.fwd.u w.fwd.tanh_w.hdbl1 h_sig_eq
+      w.fwd.tanh_w.hdbl2).trans w.fwd.tanh_w.hsub
+  unfold fpGeluDerivFinite_with
+  rw [w.fwd.h_sq]; simp only
+  rw [w.fwd.h_cu]; simp only
+  rw [w.fwd.h_ax_cu]; simp only
+  rw [w.fwd.h_inner]; simp only
+  rw [w.fwd.h_u]; simp only
+  rw [h_tanh_eq]; simp only
+  rw [w.fwd.h_opt]; simp only
+  rw [w.fwd.h_hx]; simp only
+  rw [w.hsq]; simp only
+  rw [w.hsech_sq]; simp only
+  rw [w.hhalf_opt]; simp only
+  rw [w.hthree_a_xsq]; simp only
+  rw [w.hone_plus]; simp only
+  rw [w.hup]; simp only
+  rw [w.hhxd]; simp only
+  rw [w.hhxdu]; simp only
+  exact w.hr
 
 end Flean

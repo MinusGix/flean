@@ -160,31 +160,31 @@ property of `Real.tanh` to bound
 -/
 
 /-- Polynomial-chain magnitude: bound on `|x³_fp|` given `|x| ≤ B`. -/
-private noncomputable def M_x_cu (B : ℝ) : ℝ := (1 + η) ^ 2 * B ^ 3
+noncomputable def M_x_cu (B : ℝ) : ℝ := (1 + η) ^ 2 * B ^ 3
 
 /-- Polynomial-chain error: bound on `|x³_fp - x³|` given `|x| ≤ B`. -/
-private noncomputable def ε_x_cu (B : ℝ) : ℝ := η * (2 + η) * B ^ 3
+noncomputable def ε_x_cu (B : ℝ) : ℝ := η * (2 + η) * B ^ 3
 
 /-- Polynomial-chain magnitude: bound on `|αx³_fp|`. -/
-private noncomputable def M_ax_cu (B Bα : ℝ) : ℝ := (1 + η) ^ 3 * Bα * B ^ 3
+noncomputable def M_ax_cu (B Bα : ℝ) : ℝ := (1 + η) ^ 3 * Bα * B ^ 3
 
 /-- Polynomial-chain error: bound on `|αx³_fp - α·x³|`. -/
-private noncomputable def ε_ax_cu (B Bα : ℝ) : ℝ :=
+noncomputable def ε_ax_cu (B Bα : ℝ) : ℝ :=
   η * (1 + η) ^ 2 * Bα * B ^ 3 + Bα * ε_x_cu B
 
 /-- Polynomial-chain magnitude: bound on `|inner_fp|` where
 `inner_fp = round(x + αx³_fp)`. -/
-private noncomputable def M_inner (B Bα : ℝ) : ℝ := (1 + η) * (B + M_ax_cu B Bα)
+noncomputable def M_inner (B Bα : ℝ) : ℝ := (1 + η) * (B + M_ax_cu B Bα)
 
 /-- Polynomial-chain error: bound on `|inner_fp - (x + α·x³)|`. -/
-private noncomputable def ε_inner (B Bα : ℝ) : ℝ :=
+noncomputable def ε_inner (B Bα : ℝ) : ℝ :=
   η * (B + M_ax_cu B Bα) + ε_ax_cu B Bα
 
 /-- Polynomial-chain magnitude: bound on `|u_fp|` where `u_fp = round(c·inner_fp)`. -/
-private noncomputable def M_u (B Bα Bc : ℝ) : ℝ := (1 + η) * Bc * M_inner B Bα
+noncomputable def M_u (B Bα Bc : ℝ) : ℝ := (1 + η) * Bc * M_inner B Bα
 
 /-- Polynomial-chain error: bound on `|u_fp - c·(x+α·x³)|`. -/
-private noncomputable def ε_u (B Bα Bc : ℝ) : ℝ :=
+noncomputable def ε_u (B Bα Bc : ℝ) : ℝ :=
   η * Bc * M_inner B Bα + Bc * ε_inner B Bα
 
 /-- Tight closed-form slack expression for `fpGeluFinite_with`.
