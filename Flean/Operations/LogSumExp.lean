@@ -177,6 +177,35 @@ section EndToEnd
 variable [FloatFormat] [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
   [RModeNearest ℝ] [RModeConj ℝ] [ExpApprox] [ExpApproxSound]
 
+/-! ## Named pipeline coefficients
+
+Two coefficients recur throughout the LSE / CE / softmax wrappers:
+
+* `epsilonSum sum` — the effective relative error on the FP sum vs the
+  exact `Σ exp((xs' _).toVal)`, combining the per-step `fpExp` rounding
+  (`η`), the user-supplied `sum.relErr`, and the `n · subnormalConst`
+  tail.  Same shape across LSE, CE, and softmax.
+* `dLog sum` — the induced rel-error of `Real.log` on the FP sum,
+  derived from `epsilonSum` via `log_rel_error_bound`.
+
+These are extracted as named `def`s so downstream wrappers don't need
+the `letI` / `set` / `simp only [← hX_def]` dance to refer to them by
+name — they appear directly in theorem statements. -/
+
+/-- Effective relative-error coefficient for the LSE/CE/softmax FP sum:
+combines the per-step `fpExp` rounding (`η`) with the user-supplied
+`sum.relErr` and the `n · subnormalConst` tail. -/
+noncomputable def epsilonSum {n : ℕ} {exps : Fin n → FiniteFp}
+    (sum : FpSum.FpSumBound exps ℝ) : ℝ :=
+  ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
+    (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst
+
+/-- Induced `log`-step rel-error from the sum's effective `epsilonSum`,
+via `log_rel_error_bound`. -/
+noncomputable def dLog {n : ℕ} {exps : Fin n → FiniteFp}
+    (sum : FpSum.FpSumBound exps ℝ) : ℝ :=
+  epsilonSum sum / (1 - epsilonSum sum)
+
 /-- **End-to-end log-sum-exp error bound**.
 
 Given raw inputs `xs`, an exact-shift witness `xs'`, FP exp/sum results, an
@@ -214,9 +243,7 @@ theorem fpLogSumExp_end_to_end_error_bound
     (exps : Fin n → FiniteFp)
     (h_exp : ∀ i, fpExpFinite (xs' i) = Fp.finite (exps i))
     (sum : FpSum.FpSumBound exps ℝ)
-    (h_margin :
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst < 1)
+    (h_margin : epsilonSum sum < 1)
     (logResult : FiniteFp) (η_log : ℝ) (h_η_log_nn : 0 ≤ η_log)
     (logSubConst : ℝ) (_h_logSub_nn : 0 ≤ logSubConst)
     (h_log_close :
@@ -225,34 +252,28 @@ theorem fpLogSumExp_end_to_end_error_bound
     (result : FiniteFp)
     (h_final_add : fpAddFinite (fpMax xs hn) logResult = Fp.finite result)
     (h_final_ne : ((fpMax xs hn).toVal : ℝ) + logResult.toVal ≠ 0) :
-    letI ε_sum : ℝ :=
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst
-    letI D_log : ℝ := ε_sum / (1 - ε_sum)
     |((result.toVal : ℝ)) - logsumexp (fun j => ((xs j).toVal : ℝ))| ≤
       (η : ℝ) * |logsumexp (fun j => ((xs j).toVal : ℝ))| +
       (1 + (η : ℝ)) *
         (η_log *
             (logsumexp (fun j => ((xs j).toVal : ℝ)) - ((fpMax xs hn).toVal : ℝ)) +
-          (1 + η_log) * D_log + logSubConst) +
+          (1 + η_log) * dLog sum + logSubConst) +
       Softmax.subnormalConst := by
-  -- Setup abbreviations. `ε_sum` and `D_log` exactly match the statement's letI shape.
+  -- Setup abbreviations matching the named defs.
   set c : ℝ := ((fpMax xs hn).toVal : ℝ) with hc_def
   set L : ℝ := (logResult.toVal : ℝ) with hL_def
   set D : ℝ := ((sum.result.toVal : ℝ)) with hD_def
   set S : ℝ := ∑ j, Real.exp ((xs j).toVal : ℝ) with hS_def
   set S' : ℝ := ∑ j, Real.exp ((xs' j).toVal : ℝ) with hS'_def
   set LSE : ℝ := logsumexp (fun j => ((xs j).toVal : ℝ)) with hLSE_def
-  set ε_sum : ℝ :=
-    ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-      (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst with hε_def
-  set D_log : ℝ := ε_sum / (1 - ε_sum) with hDlog_def
+  set ε_sum : ℝ := epsilonSum sum with hε_def
+  set D_log : ℝ := dLog sum with hDlog_def
   -- Basic sign/pos facts.
   have hη_nn : (0 : ℝ) ≤ (η : ℝ) := by positivity
   have hrel_nn : (0 : ℝ) ≤ sum.relErr := sum.h_relErr_nn
   have hsc_nn : 0 ≤ Softmax.subnormalConst := Softmax.subnormalConst_nn
   have hε_nn : 0 ≤ ε_sum := by
-    simp only [hε_def]
+    simp only [hε_def, epsilonSum]
     have h1 : 0 ≤ (η : ℝ) + sum.relErr * (1 + (η : ℝ)) := by positivity
     have h2 : 0 ≤ (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst :=
       mul_nonneg (mul_nonneg (by linarith) (Nat.cast_nonneg _)) hsc_nn
@@ -323,7 +344,7 @@ theorem fpLogSumExp_end_to_end_error_bound
             (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst * S' := by
           have := mul_le_mul_of_nonneg_left h_S'_ge_one hB_nn
           linarith
-      _ = ε_sum * S' := by simp only [hε_def]; ring
+      _ = ε_sum * S' := by simp only [hε_def, epsilonSum]; ring
   -- D > 0 via S' - ε·S' bound.
   have h_D_pos : 0 < D := by
     have := abs_le.mp h_D_close
@@ -332,7 +353,7 @@ theorem fpLogSumExp_end_to_end_error_bound
   -- |log D - log S'| ≤ D_log.
   have h_log_close_D :
       |Real.log D - Real.log S'| ≤ D_log := by
-    simp only [hDlog_def]
+    simp only [hDlog_def, dLog, ← hε_def]
     exact log_rel_error_bound S' D ε_sum h_S'_pos hε_nn hε_lt h_D_close
   -- |log D| ≤ log S' + D_log (since log S' ≥ 0).
   have h_abs_logD_le : |Real.log D| ≤ Real.log S' + D_log := by
@@ -499,16 +520,12 @@ structure FpLogSumExpResult (xs : Fin n → FiniteFp) (hn : 0 < n) where
 /-- The main error bound, stated as a bundle method. -/
 theorem FpLogSumExpResult.error_bound
     {xs : Fin n → FiniteFp} {hn : 0 < n} (r : FpLogSumExpResult xs hn) :
-    letI ε_sum : ℝ :=
-      ((η : ℝ) + r.sum.relErr * (1 + (η : ℝ))) +
-        (1 + r.sum.relErr) * (n : ℝ) * Softmax.subnormalConst
-    letI D_log : ℝ := ε_sum / (1 - ε_sum)
     |((r.result.toVal : ℝ)) - logsumexp (fun j => ((xs j).toVal : ℝ))| ≤
       (η : ℝ) * |logsumexp (fun j => ((xs j).toVal : ℝ))| +
       (1 + (η : ℝ)) *
         (r.η_log *
             (logsumexp (fun j => ((xs j).toVal : ℝ)) - ((fpMax xs hn).toVal : ℝ)) +
-          (1 + r.η_log) * D_log + r.logSubConst) +
+          (1 + r.η_log) * dLog r.sum + r.logSubConst) +
       Softmax.subnormalConst :=
   fpLogSumExp_end_to_end_error_bound hn xs r.xs' r.h_shift_exact
     r.exps r.h_exp r.sum r.h_margin r.logResult r.η_log r.η_log_nn
@@ -543,8 +560,7 @@ theorem fpLogSumExp_naiveSum_error_bound
     (hnr : trace.AllNormalRange (R := ℝ))
     (h_margin :
       letI sum := FpSum.FpSumBound.ofNaive exps trace hnr
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst < 1)
+      epsilonSum sum < 1)
     (logResult : FiniteFp) (η_log : ℝ) (h_η_log_nn : 0 ≤ η_log)
     (logSubConst : ℝ) (h_logSub_nn : 0 ≤ logSubConst)
     (h_log_close :
@@ -554,16 +570,12 @@ theorem fpLogSumExp_naiveSum_error_bound
     (h_final_add : fpAddFinite (fpMax xs hn) logResult = Fp.finite result)
     (h_final_ne : ((fpMax xs hn).toVal : ℝ) + logResult.toVal ≠ 0) :
     letI sum := FpSum.FpSumBound.ofNaive exps trace hnr
-    letI ε_sum : ℝ :=
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst
-    letI D_log : ℝ := ε_sum / (1 - ε_sum)
     |((result.toVal : ℝ)) - logsumexp (fun j => ((xs j).toVal : ℝ))| ≤
       (η : ℝ) * |logsumexp (fun j => ((xs j).toVal : ℝ))| +
       (1 + (η : ℝ)) *
         (η_log *
             (logsumexp (fun j => ((xs j).toVal : ℝ)) - ((fpMax xs hn).toVal : ℝ)) +
-          (1 + η_log) * D_log + logSubConst) +
+          (1 + η_log) * dLog sum + logSubConst) +
       Softmax.subnormalConst := by
   set sum := FpSum.FpSumBound.ofNaive exps trace hnr with hsum_def
   have h_log_close' :
@@ -602,8 +614,7 @@ theorem fpLogSumExp_kahanSum_error_bound
     (h_margin :
       letI sum := FpSum.FpSumBound.ofKahanTrace exps trace
         hinit_sum hinit_comp hexact hnr hM
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst < 1)
+      epsilonSum sum < 1)
     (logResult : FiniteFp) (η_log : ℝ) (h_η_log_nn : 0 ≤ η_log)
     (logSubConst : ℝ) (h_logSub_nn : 0 ≤ logSubConst)
     (h_log_close :
@@ -614,16 +625,12 @@ theorem fpLogSumExp_kahanSum_error_bound
     (h_final_ne : ((fpMax xs hn).toVal : ℝ) + logResult.toVal ≠ 0) :
     letI sum := FpSum.FpSumBound.ofKahanTrace exps trace
       hinit_sum hinit_comp hexact hnr hM
-    letI ε_sum : ℝ :=
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst
-    letI D_log : ℝ := ε_sum / (1 - ε_sum)
     |((result.toVal : ℝ)) - logsumexp (fun j => ((xs j).toVal : ℝ))| ≤
       (η : ℝ) * |logsumexp (fun j => ((xs j).toVal : ℝ))| +
       (1 + (η : ℝ)) *
         (η_log *
             (logsumexp (fun j => ((xs j).toVal : ℝ)) - ((fpMax xs hn).toVal : ℝ)) +
-          (1 + η_log) * D_log + logSubConst) +
+          (1 + η_log) * dLog sum + logSubConst) +
       Softmax.subnormalConst := by
   set sum := FpSum.FpSumBound.ofKahanTrace exps trace
     hinit_sum hinit_comp hexact hnr hM with hsum_def
@@ -661,8 +668,7 @@ theorem fpLogSumExp_neumaierSum_error_bound
     (h_margin :
       letI sum := FpSum.FpSumBound.ofNeumaierTrace exps trace
         hinit_sum hinit_comp hnr hM
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst < 1)
+      epsilonSum sum < 1)
     (logResult : FiniteFp) (η_log : ℝ) (h_η_log_nn : 0 ≤ η_log)
     (logSubConst : ℝ) (h_logSub_nn : 0 ≤ logSubConst)
     (h_log_close :
@@ -673,16 +679,12 @@ theorem fpLogSumExp_neumaierSum_error_bound
     (h_final_ne : ((fpMax xs hn).toVal : ℝ) + logResult.toVal ≠ 0) :
     letI sum := FpSum.FpSumBound.ofNeumaierTrace exps trace
       hinit_sum hinit_comp hnr hM
-    letI ε_sum : ℝ :=
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst
-    letI D_log : ℝ := ε_sum / (1 - ε_sum)
     |((result.toVal : ℝ)) - logsumexp (fun j => ((xs j).toVal : ℝ))| ≤
       (η : ℝ) * |logsumexp (fun j => ((xs j).toVal : ℝ))| +
       (1 + (η : ℝ)) *
         (η_log *
             (logsumexp (fun j => ((xs j).toVal : ℝ)) - ((fpMax xs hn).toVal : ℝ)) +
-          (1 + η_log) * D_log + logSubConst) +
+          (1 + η_log) * dLog sum + logSubConst) +
       Softmax.subnormalConst := by
   set sum := FpSum.FpSumBound.ofNeumaierTrace exps trace
     hinit_sum hinit_comp hnr hM with hsum_def
@@ -723,8 +725,7 @@ theorem fpLogSumExp_neumaierCompensated_error_bound
     (h_margin :
       letI sum := (FpSum.FpSumBoundCompensated.ofNeumaierTrace exps trace
         hinit_sum hinit_comp hnr hM).compensateAndRound hadd hnr_add
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst < 1)
+      epsilonSum sum < 1)
     (logResult : FiniteFp) (η_log : ℝ) (h_η_log_nn : 0 ≤ η_log)
     (logSubConst : ℝ) (h_logSub_nn : 0 ≤ logSubConst)
     (h_log_close :
@@ -735,16 +736,12 @@ theorem fpLogSumExp_neumaierCompensated_error_bound
     (h_final_ne : ((fpMax xs hn).toVal : ℝ) + logResult.toVal ≠ 0) :
     letI sum := (FpSum.FpSumBoundCompensated.ofNeumaierTrace exps trace
       hinit_sum hinit_comp hnr hM).compensateAndRound hadd hnr_add
-    letI ε_sum : ℝ :=
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst
-    letI D_log : ℝ := ε_sum / (1 - ε_sum)
     |((result.toVal : ℝ)) - logsumexp (fun j => ((xs j).toVal : ℝ))| ≤
       (η : ℝ) * |logsumexp (fun j => ((xs j).toVal : ℝ))| +
       (1 + (η : ℝ)) *
         (η_log *
             (logsumexp (fun j => ((xs j).toVal : ℝ)) - ((fpMax xs hn).toVal : ℝ)) +
-          (1 + η_log) * D_log + logSubConst) +
+          (1 + η_log) * dLog sum + logSubConst) +
       Softmax.subnormalConst := by
   set sum := (FpSum.FpSumBoundCompensated.ofNeumaierTrace exps trace
     hinit_sum hinit_comp hnr hM).compensateAndRound hadd hnr_add with hsum_def

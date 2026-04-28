@@ -165,9 +165,7 @@ theorem fpCrossEntropy_oneHot_error_bound
     (exps : Fin n → FiniteFp)
     (h_exp : ∀ i, fpExpFinite (xs' i) = Fp.finite (exps i))
     (sum : FpSum.FpSumBound exps ℝ)
-    (h_margin :
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst < 1)
+    (h_margin : LogSumExp.epsilonSum sum < 1)
     (logResult : FiniteFp) (η_log : ℝ) (h_η_log_nn : 0 ≤ η_log)
     (logSubConst : ℝ) (h_logSub_nn : 0 ≤ logSubConst)
     (h_log_close :
@@ -182,48 +180,21 @@ theorem fpCrossEntropy_oneHot_error_bound
         (η : ℝ) * |((xs i).toVal : ℝ) - (lse.toVal : ℝ)| +
           Softmax.subnormalConst)
     (dp : FpDotProduct.FpDotProductBound ys r ℝ) :
-    letI ε_sum : ℝ :=
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst
-    letI D_log : ℝ := ε_sum / (1 - ε_sum)
-    letI Δ_LSE : ℝ :=
-      (η : ℝ) * |logsumexp (fun k => ((xs k).toVal : ℝ))| +
-      (1 + (η : ℝ)) *
-        (η_log *
-            (logsumexp (fun k => ((xs k).toVal : ℝ)) -
-              ((fpMax xs hn).toVal : ℝ)) +
-          (1 + η_log) * D_log + logSubConst) +
-      Softmax.subnormalConst
     |(((- dp.result).toVal : ℝ)) -
         crossEntropy (fun i => ((ys i).toVal : ℝ))
                      (fun i => ((xs i).toVal : ℝ))| ≤
       dp.relErr * |((r j).toVal : ℝ)| +
       ((η : ℝ) * |((xs j).toVal : ℝ) - (lse.toVal : ℝ)| +
-        Softmax.subnormalConst + Δ_LSE) := by
-  -- Freeze the iterated `letI` bindings so the collapse lemmas have
-  -- concrete terms to rewrite.
-  set ε_sum : ℝ :=
-    ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-      (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst with hε_def
-  set D_log : ℝ := ε_sum / (1 - ε_sum) with hDlog_def
-  set Δ_LSE : ℝ :=
-    (η : ℝ) * |logsumexp (fun k => ((xs k).toVal : ℝ))| +
-    (1 + (η : ℝ)) *
-      (η_log *
-          (logsumexp (fun k => ((xs k).toVal : ℝ)) -
-            ((fpMax xs hn).toVal : ℝ)) +
-        (1 + η_log) * D_log + logSubConst) +
-    Softmax.subnormalConst with hΔ_def
+        Softmax.subnormalConst + deltaLSE xs hn sum η_log logSubConst) := by
   have h_gen := fpCrossEntropy_end_to_end_error_bound hn xs ys
     xs' h_shift_exact exps h_exp sum h_margin
     logResult η_log h_η_log_nn logSubConst h_logSub_nn h_log_close
     lse h_final_add h_final_ne
     r h_shift_close dp
-  simp only [← hε_def, ← hDlog_def, ← hΔ_def] at h_gen
   rw [h_onehot.sum_abs_eq (fun i => ((r i).toVal : ℝ))] at h_gen
   rw [h_onehot.weighted_sum_eq
       (fun i => (η : ℝ) * |((xs i).toVal : ℝ) - (lse.toVal : ℝ)| +
-        Softmax.subnormalConst + Δ_LSE)] at h_gen
+        Softmax.subnormalConst + deltaLSE xs hn sum η_log logSubConst)] at h_gen
   exact h_gen
 
 end CrossEntropy

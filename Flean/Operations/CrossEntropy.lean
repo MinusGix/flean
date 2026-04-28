@@ -199,6 +199,22 @@ section EndToEnd
 variable [FloatFormat] [RMode ℝ] [RModeExec] [RoundIntSigMSound ℝ] [RModeSticky ℝ]
   [RModeNearest ℝ] [RModeConj ℝ] [ExpApprox] [ExpApproxSound]
 
+/-- The propagated LSE end-to-end bound, shared as an additive tail
+across every `i` in the cross-entropy outer sum.  Combines the
+multiplicative `η·|LSE|` term with the log/sum-error chain
+`(1+η)·(η_log·(LSE-c) + (1+η_log)·dLog sum + logSubConst)` and the
+final-add subnormal tail. -/
+noncomputable def deltaLSE {n : ℕ} (xs : Fin n → FiniteFp) (hn : 0 < n)
+    {exps : Fin n → FiniteFp} (sum : FpSum.FpSumBound exps ℝ)
+    (η_log logSubConst : ℝ) : ℝ :=
+  (η : ℝ) * |logsumexp (fun j => ((xs j).toVal : ℝ))| +
+  (1 + (η : ℝ)) *
+    (η_log *
+        (logsumexp (fun j => ((xs j).toVal : ℝ)) -
+          ((fpMax xs hn).toVal : ℝ)) +
+      (1 + η_log) * LogSumExp.dLog sum + logSubConst) +
+  Softmax.subnormalConst
+
 /-- **End-to-end cross-entropy error bound**.
 
 Given the full LSE pipeline (producing `lse : FiniteFp`), an abstract
@@ -222,9 +238,7 @@ theorem fpCrossEntropy_end_to_end_error_bound
     (exps : Fin n → FiniteFp)
     (h_exp : ∀ i, fpExpFinite (xs' i) = Fp.finite (exps i))
     (sum : FpSum.FpSumBound exps ℝ)
-    (h_margin :
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst < 1)
+    (h_margin : LogSumExp.epsilonSum sum < 1)
     (logResult : FiniteFp) (η_log : ℝ) (h_η_log_nn : 0 ≤ η_log)
     (logSubConst : ℝ) (h_logSub_nn : 0 ≤ logSubConst)
     (h_log_close :
@@ -241,41 +255,23 @@ theorem fpCrossEntropy_end_to_end_error_bound
           Softmax.subnormalConst)
     -- Dot product -----------------------------------------------------
     (dp : FpDotProduct.FpDotProductBound ys r ℝ) :
-    letI ε_sum : ℝ :=
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst
-    letI D_log : ℝ := ε_sum / (1 - ε_sum)
-    letI Δ_LSE : ℝ :=
-      (η : ℝ) * |logsumexp (fun j => ((xs j).toVal : ℝ))| +
-      (1 + (η : ℝ)) *
-        (η_log *
-            (logsumexp (fun j => ((xs j).toVal : ℝ)) -
-              ((fpMax xs hn).toVal : ℝ)) +
-          (1 + η_log) * D_log + logSubConst) +
-      Softmax.subnormalConst
     |(((- dp.result).toVal : ℝ)) -
         crossEntropy (fun i => ((ys i).toVal : ℝ))
                      (fun i => ((xs i).toVal : ℝ))| ≤
       dp.relErr * ∑ i, |((ys i).toVal : ℝ) * ((r i).toVal : ℝ)| +
       ∑ i, |((ys i).toVal : ℝ)| *
         ((η : ℝ) * |((xs i).toVal : ℝ) - (lse.toVal : ℝ)| +
-          Softmax.subnormalConst + Δ_LSE) := by
+          Softmax.subnormalConst + deltaLSE xs hn sum η_log logSubConst) := by
   -- Abbreviations.
   set c : ℝ := ((fpMax xs hn).toVal : ℝ)
   set L : ℝ := (lse.toVal : ℝ) with hL_def
   set LSE : ℝ := logsumexp (fun j => ((xs j).toVal : ℝ)) with hLSE_def
-  set ε_sum : ℝ :=
-    ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-      (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst with hε_def
-  set D_log : ℝ := ε_sum / (1 - ε_sum) with hDlog_def
-  set Δ_LSE : ℝ :=
-    (η : ℝ) * |LSE| +
-    (1 + (η : ℝ)) *
-      (η_log * (LSE - c) + (1 + η_log) * D_log + logSubConst) +
-    Softmax.subnormalConst with hΔ_def
+  set ε_sum : ℝ := LogSumExp.epsilonSum sum with hε_def
+  set D_log : ℝ := LogSumExp.dLog sum with hDlog_def
+  set Δ_LSE : ℝ := deltaLSE xs hn sum η_log logSubConst with hΔ_def
   -- Step 1: the LSE end-to-end error bound.
   have h_lse_close : |L - LSE| ≤ Δ_LSE := by
-    simpa [hL_def, hLSE_def, hΔ_def, hε_def, hDlog_def] using
+    simpa [hL_def, hLSE_def, hΔ_def, deltaLSE, hDlog_def] using
       fpLogSumExp_end_to_end_error_bound hn xs xs' h_shift_exact exps h_exp
         sum h_margin logResult η_log h_η_log_nn logSubConst h_logSub_nn
         h_log_close lse h_final_add h_final_ne
@@ -460,25 +456,14 @@ def loss {xs : Fin n → FiniteFp} {ys : Fin n → FiniteFp} {hn : 0 < n}
 theorem error_bound
     {xs : Fin n → FiniteFp} {ys : Fin n → FiniteFp} {hn : 0 < n}
     (ρ : FpCrossEntropyResult xs ys hn) :
-    letI ε_sum : ℝ :=
-      ((η : ℝ) + ρ.sum.relErr * (1 + (η : ℝ))) +
-        (1 + ρ.sum.relErr) * (n : ℝ) * Softmax.subnormalConst
-    letI D_log : ℝ := ε_sum / (1 - ε_sum)
-    letI Δ_LSE : ℝ :=
-      (η : ℝ) * |logsumexp (fun j => ((xs j).toVal : ℝ))| +
-      (1 + (η : ℝ)) *
-        (ρ.η_log *
-            (logsumexp (fun j => ((xs j).toVal : ℝ)) -
-              ((fpMax xs hn).toVal : ℝ)) +
-          (1 + ρ.η_log) * D_log + ρ.logSubConst) +
-      Softmax.subnormalConst
     |((ρ.loss.toVal : ℝ)) -
         crossEntropy (fun i => ((ys i).toVal : ℝ))
                      (fun i => ((xs i).toVal : ℝ))| ≤
       ρ.dp.relErr * ∑ i, |((ys i).toVal : ℝ) * ((ρ.r i).toVal : ℝ)| +
       ∑ i, |((ys i).toVal : ℝ)| *
         ((η : ℝ) * |((xs i).toVal : ℝ) - (ρ.lse.toVal : ℝ)| +
-          Softmax.subnormalConst + Δ_LSE) := by
+          Softmax.subnormalConst +
+          deltaLSE xs hn ρ.sum ρ.η_log ρ.logSubConst) := by
   simpa [FpCrossEntropyResult.loss] using
     fpCrossEntropy_end_to_end_error_bound hn xs ys
       ρ.xs' ρ.h_shift_exact ρ.exps ρ.h_exp ρ.sum ρ.h_margin
@@ -525,8 +510,7 @@ theorem fpCrossEntropy_naiveSum_error_bound
     (hnr : trace.AllNormalRange (R := ℝ))
     (h_margin :
       letI sum := FpSum.FpSumBound.ofNaive exps trace hnr
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst < 1)
+      LogSumExp.epsilonSum sum < 1)
     (logResult : FiniteFp) (η_log : ℝ) (h_η_log_nn : 0 ≤ η_log)
     (logSubConst : ℝ) (h_logSub_nn : 0 ≤ logSubConst)
     (h_log_close :
@@ -550,25 +534,14 @@ theorem fpCrossEntropy_naiveSum_error_bound
     letI sum := FpSum.FpSumBound.ofNaive exps trace hnr
     letI dp := FpDotProduct.FpDotProductBound.ofDotProductFMA
         (R := ℝ) ys r dpTrace hdp_init hdp_nr
-    letI ε_sum : ℝ :=
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst
-    letI D_log : ℝ := ε_sum / (1 - ε_sum)
-    letI Δ_LSE : ℝ :=
-      (η : ℝ) * |logsumexp (fun j => ((xs j).toVal : ℝ))| +
-      (1 + (η : ℝ)) *
-        (η_log *
-            (logsumexp (fun j => ((xs j).toVal : ℝ)) -
-              ((fpMax xs hn).toVal : ℝ)) +
-          (1 + η_log) * D_log + logSubConst) +
-      Softmax.subnormalConst
     |(((- dp.result).toVal : ℝ)) -
         crossEntropy (fun i => ((ys i).toVal : ℝ))
                      (fun i => ((xs i).toVal : ℝ))| ≤
       dp.relErr * ∑ i, |((ys i).toVal : ℝ) * ((r i).toVal : ℝ)| +
       ∑ i, |((ys i).toVal : ℝ)| *
         ((η : ℝ) * |((xs i).toVal : ℝ) - (lse.toVal : ℝ)| +
-          Softmax.subnormalConst + Δ_LSE) := by
+          Softmax.subnormalConst +
+          deltaLSE xs hn sum η_log logSubConst) := by
   set sum := FpSum.FpSumBound.ofNaive exps trace hnr with hsum_def
   set dp := FpDotProduct.FpDotProductBound.ofDotProductFMA
       (R := ℝ) ys r dpTrace hdp_init hdp_nr with hdp_def

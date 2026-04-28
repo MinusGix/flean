@@ -102,9 +102,7 @@ theorem fpLogSumExp_sterbenzShift_error_bound
       fpExpFinite ((sterbenzShift_of xs (fpMax xs hn) h_sterb).xs' i) =
         Fp.finite (exps i))
     (sum : FpSum.FpSumBound exps ℝ)
-    (h_margin :
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst < 1)
+    (h_margin : LogSumExp.epsilonSum sum < 1)
     (logResult : FiniteFp) (η_log : ℝ) (h_η_log_nn : 0 ≤ η_log)
     (logSubConst : ℝ) (h_logSub_nn : 0 ≤ logSubConst)
     (h_log_close :
@@ -113,17 +111,13 @@ theorem fpLogSumExp_sterbenzShift_error_bound
     (result : FiniteFp)
     (h_final_add : fpAddFinite (fpMax xs hn) logResult = Fp.finite result)
     (h_final_ne : ((fpMax xs hn).toVal : ℝ) + logResult.toVal ≠ 0) :
-    letI ε_sum : ℝ :=
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst
-    letI D_log : ℝ := ε_sum / (1 - ε_sum)
     |((result.toVal : ℝ)) - logsumexp (fun j => ((xs j).toVal : ℝ))| ≤
       (η : ℝ) * |logsumexp (fun j => ((xs j).toVal : ℝ))| +
       (1 + (η : ℝ)) *
         (η_log *
             (logsumexp (fun j => ((xs j).toVal : ℝ)) -
               ((fpMax xs hn).toVal : ℝ)) +
-          (1 + η_log) * D_log + logSubConst) +
+          (1 + η_log) * LogSumExp.dLog sum + logSubConst) +
       Softmax.subnormalConst := by
   set shift := sterbenzShift_of xs (fpMax xs hn) h_sterb
   exact fpLogSumExp_end_to_end_error_bound hn xs shift.xs' shift.h_exact
@@ -161,9 +155,7 @@ theorem fpCrossEntropy_sterbenzShift_error_bound
       fpExpFinite ((sterbenzShift_of xs (fpMax xs hn) h_sterb).xs' i) =
         Fp.finite (exps i))
     (sum : FpSum.FpSumBound exps ℝ)
-    (h_margin :
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst < 1)
+    (h_margin : LogSumExp.epsilonSum sum < 1)
     (logResult : FiniteFp) (η_log : ℝ) (h_η_log_nn : 0 ≤ η_log)
     (logSubConst : ℝ) (h_logSub_nn : 0 ≤ logSubConst)
     (h_log_close :
@@ -178,25 +170,14 @@ theorem fpCrossEntropy_sterbenzShift_error_bound
         (η : ℝ) * |((xs i).toVal : ℝ) - (lse.toVal : ℝ)| +
           Softmax.subnormalConst)
     (dp : FpDotProduct.FpDotProductBound ys r ℝ) :
-    letI ε_sum : ℝ :=
-      ((η : ℝ) + sum.relErr * (1 + (η : ℝ))) +
-        (1 + sum.relErr) * (n : ℝ) * Softmax.subnormalConst
-    letI D_log : ℝ := ε_sum / (1 - ε_sum)
-    letI Δ_LSE : ℝ :=
-      (η : ℝ) * |logsumexp (fun j => ((xs j).toVal : ℝ))| +
-      (1 + (η : ℝ)) *
-        (η_log *
-            (logsumexp (fun j => ((xs j).toVal : ℝ)) -
-              ((fpMax xs hn).toVal : ℝ)) +
-          (1 + η_log) * D_log + logSubConst) +
-      Softmax.subnormalConst
     |(((- dp.result).toVal : ℝ)) -
         crossEntropy (fun i => ((ys i).toVal : ℝ))
                      (fun i => ((xs i).toVal : ℝ))| ≤
       dp.relErr * ∑ i, |((ys i).toVal : ℝ) * ((r i).toVal : ℝ)| +
       ∑ i, |((ys i).toVal : ℝ)| *
         ((η : ℝ) * |((xs i).toVal : ℝ) - (lse.toVal : ℝ)| +
-          Softmax.subnormalConst + Δ_LSE) := by
+          Softmax.subnormalConst +
+          deltaLSE xs hn sum η_log logSubConst) := by
   set shift := sterbenzShift_of xs (fpMax xs hn) h_sterb
   exact fpCrossEntropy_end_to_end_error_bound hn xs ys
     shift.xs' shift.h_exact exps h_exp sum h_margin
