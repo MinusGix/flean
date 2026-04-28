@@ -256,7 +256,7 @@ magnitude bounds. -/
 
 /-- The math value `c · (x + α · x³)` that the inner tanh is applied
 to. Named for use in the intermediate-bounds struct. -/
-private noncomputable def geluPolyArg
+noncomputable def geluPolyArg
     (αr cr xr : ℝ) : ℝ := cr * (xr + αr * (xr * xr * xr))
 
 /-- All intermediate closeness/magnitude bounds produced by running the
