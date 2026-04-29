@@ -298,4 +298,109 @@ noncomputable def MLP.ActivationFpResult.ofTanhWitnesses {n : ℕ}
     rw [Flean.Activation.tanh_apply]
     linarith
 
+/-! ## ActivatedLayer integration
+
+Plumbs `ofTanhWitnesses` into `MLP.ActivatedLayerFpResult` so the tanh
+kernel is consumable by the activated-layer error-bound stack. -/
+
+section LayerIntegration
+
+variable [RModeConj ℝ] [RModeZero ℝ]
+
+/-- Bundle constructor: lift a linear `LayerFpResult` plus per-i tanh
+witnesses on its outputs to an `ActivatedLayerFpResult` for the
+tanh-activated layer `⟨L, Flean.Activation.tanh⟩`. -/
+noncomputable def MLP.ActivatedLayerFpResult.ofTanhLinear {n_in n_out : ℕ}
+    {L : MLP.Layer n_in n_out} {x : Fin n_in → FiniteFp}
+    (linear : MLP.LayerFpResult L x ℝ)
+    (w : ∀ i, TanhFpWitness (linear.result i))
+    (slack : ℝ) (slack_nn : 0 ≤ slack)
+    (h_dbl1_nr : ∀ i,
+      isNormalRange (((linear.result i).toVal : ℝ) +
+        ((linear.result i).toVal : ℝ)) ∨
+      (((linear.result i).toVal : ℝ) +
+        ((linear.result i).toVal : ℝ) = 0))
+    (her_nr : ∀ i, isNormalRange (Real.exp (-(((w i).tx).toVal : ℝ))))
+    (h_d_nr : ∀ i, isNormalRange ((1 : ℝ) + ((w i).sig.e.toVal : ℝ)) ∨
+                   ((1 : ℝ) + ((w i).sig.e.toVal : ℝ) = 0))
+    (h_r_nr : ∀ i, isNormalRange ((1 : ℝ) / ((w i).sig.d.toVal : ℝ)) ∨
+                   ((1 : ℝ) / ((w i).sig.d.toVal : ℝ) = 0))
+    (h_d_m_ne : ∀ i, (w i).sig.d.m ≠ 0)
+    (h_dbl2_nr : ∀ i,
+      isNormalRange (((w i).sig.r.toVal : ℝ) + ((w i).sig.r.toVal : ℝ)) ∨
+      (((w i).sig.r.toVal : ℝ) + ((w i).sig.r.toVal : ℝ) = 0))
+    (h_sub_nr : ∀ i, isNormalRange (((w i).tsx.toVal : ℝ) - (1 : ℝ)) ∨
+                     (((w i).tsx.toVal : ℝ) - (1 : ℝ) = 0))
+    (h_slack : ∀ i,
+      fpTanhFinite_slack_at ((linear.result i).toVal : ℝ)
+        (((w i).tx).toVal : ℝ) ≤ slack) :
+    MLP.ActivatedLayerFpResult
+      ({ layer := L, activation := Flean.Activation.tanh } :
+        MLP.ActivatedLayer ℝ n_in n_out) x where
+  linear := linear
+  activated := MLP.ActivationFpResult.ofTanhWitnesses
+    linear.result w slack slack_nn h_dbl1_nr her_nr h_d_nr h_r_nr h_d_m_ne
+    h_dbl2_nr h_sub_nr h_slack
+
+/-- **Demo**: forward error bound for an activated layer using tanh as
+the activation, constructed via `ActivatedLayerFpResult.ofTanhLinear`.
+Specializes the general activated bound at `K = 1`:
+
+```
+|fp_result_i − tanh(W·x + b)_i| ≤ slack + 1 · linear.errorBound
+```
+
+The layer-stage error passes through unamplified (matches the ReLU
+shape since both `relu.K = 1` and `tanh.K = 1`). -/
+theorem MLP.ActivatedLayerFpResult.forward_error_bound_tanh_demo
+    {n_in n_out : ℕ}
+    {L : MLP.Layer n_in n_out} {x : Fin n_in → FiniteFp}
+    (linear : MLP.LayerFpResult L x ℝ)
+    (w : ∀ i, TanhFpWitness (linear.result i))
+    (slack : ℝ) (slack_nn : 0 ≤ slack)
+    (h_dbl1_nr : ∀ i,
+      isNormalRange (((linear.result i).toVal : ℝ) +
+        ((linear.result i).toVal : ℝ)) ∨
+      (((linear.result i).toVal : ℝ) +
+        ((linear.result i).toVal : ℝ) = 0))
+    (her_nr : ∀ i, isNormalRange (Real.exp (-(((w i).tx).toVal : ℝ))))
+    (h_d_nr : ∀ i, isNormalRange ((1 : ℝ) + ((w i).sig.e.toVal : ℝ)) ∨
+                   ((1 : ℝ) + ((w i).sig.e.toVal : ℝ) = 0))
+    (h_r_nr : ∀ i, isNormalRange ((1 : ℝ) / ((w i).sig.d.toVal : ℝ)) ∨
+                   ((1 : ℝ) / ((w i).sig.d.toVal : ℝ) = 0))
+    (h_d_m_ne : ∀ i, (w i).sig.d.m ≠ 0)
+    (h_dbl2_nr : ∀ i,
+      isNormalRange (((w i).sig.r.toVal : ℝ) + ((w i).sig.r.toVal : ℝ)) ∨
+      (((w i).sig.r.toVal : ℝ) + ((w i).sig.r.toVal : ℝ) = 0))
+    (h_sub_nr : ∀ i, isNormalRange (((w i).tsx.toVal : ℝ) - (1 : ℝ)) ∨
+                     (((w i).tsx.toVal : ℝ) - (1 : ℝ) = 0))
+    (h_slack : ∀ i,
+      fpTanhFinite_slack_at ((linear.result i).toVal : ℝ)
+        (((w i).tx).toVal : ℝ) ≤ slack)
+    {wMax bMax : ℝ} (hL : MLP.BoundedParams (R := ℝ) L wMax bMax)
+    (hwMax_nn : 0 ≤ wMax)
+    {xMax : ℝ} (hx : ∀ j, Flean.Tags.HasAbsBound (R := ℝ) xMax (x j))
+    (hxMax_nn : 0 ≤ xMax)
+    (i : Fin n_out) :
+    let LA : MLP.ActivatedLayer ℝ n_in n_out :=
+      { layer := L, activation := Flean.Activation.tanh }
+    let res : MLP.ActivatedLayerFpResult LA x :=
+      MLP.ActivatedLayerFpResult.ofTanhLinear linear w slack slack_nn
+        h_dbl1_nr her_nr h_d_nr h_r_nr h_d_m_ne h_dbl2_nr h_sub_nr h_slack
+    |((res.activated.result i).toVal : ℝ) -
+        LA.forward (fun j => ((x j).toVal : ℝ)) i| ≤
+      slack + linear.errorBound wMax xMax bMax := by
+  intro LA res
+  have h := res.forward_error_bound hL hwMax_nn hx hxMax_nn i
+  -- `res.errorBound` unfolds to
+  -- `res.activated.slack + LA.activation.K * res.linear.errorBound`,
+  -- and `Activation.tanh.K = 1` collapses the multiplication.
+  have h_K : LA.activation.K = (1 : ℝ) := rfl
+  show _ ≤ slack + linear.errorBound wMax xMax bMax
+  unfold MLP.ActivatedLayerFpResult.errorBound at h
+  rw [h_K, one_mul] at h
+  exact h
+
+end LayerIntegration
+
 end Flean

@@ -80,3 +80,4 @@ import Flean.Operations.Activations.GeluFp
 import Flean.Operations.Activations.GeluFpClose
 import Flean.Operations.Activations.GeluDerivFp
 import Flean.Operations.Activations.GeluDerivFpClose
+import Flean.Operations.Activations.ActivatedMLP2Demos

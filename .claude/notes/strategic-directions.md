@@ -306,6 +306,29 @@ R1 (MLP), R6 (mixed-precision), R6.1 (tag bridges), R6.2 (WideContext +
 mixed ops), R6.3 (E4M3 narrowing), R6.5 (quantized linear layer) all
 shipped.  R6 series is essentially complete.
 
+## Update (2026-04-28)
+
+Sigmoid + Tanh wired into `ActivatedLayer` / `ActivatedMLP2` forward-error
+stack:
+
+* `MLP.ActivatedLayerFpResult.ofSigmoidLinear` /
+  `.ofTanhLinear` — bundle constructors composing a linear
+  `LayerFpResult` with per-i `SigmoidFpWitness` / `TanhFpWitness` vectors
+  (in `SigmoidFpClose.lean` / `TanhFpClose.lean`).
+* `forward_error_bound_{sigmoid,tanh}_demo` — per-layer demos at K=1/4
+  (sigmoid) and K=1 (tanh).
+* Three 2-layer demos in `Activations/ActivatedMLP2Demos.lean` (new
+  ~150-line file): sig+sig, tanh+tanh, sig→tanh — all unfold the
+  activation-error decomposition with K specialised, exposing each
+  layer's `slack` and `linear.errorBound`.
+
+Gelu still NOT wired: `Real.geluTanhApprox` is intentionally not
+packaged as `Activation ℝ` (Lipschitz constant ≈1.13, rigorous proof
+requires `gelu''` bounds + monotone decay — out of scope until a
+consumer asks).  Path forward: prove a loose `LipschitzScalar K
+Real.geluTanhApprox` (e.g. K=2 from algebraic bounds) and ship
+`ofGeluLinear`.
+
 Next-up candidates (not in R6 line):
 
 1. **R7 — Newton-Horner concrete instantiation** (different arc, good

@@ -303,4 +303,81 @@ noncomputable def MLP.ActivationFpResult.ofSigmoidWitnesses {n : ℕ}
     rw [Flean.Activation.sigmoid_apply]
     linarith
 
+/-! ## ActivatedLayer integration
+
+Plumbs `ofSigmoidWitnesses` into `MLP.ActivatedLayerFpResult` so the
+sigmoid kernel is consumable by the activated-layer error-bound stack. -/
+
+section LayerIntegration
+
+variable [RModeConj ℝ] [RModeZero ℝ]
+
+/-- Bundle constructor: lift a linear `LayerFpResult` plus per-i sigmoid
+witnesses on its outputs to an `ActivatedLayerFpResult` for the
+sigmoid-activated layer `⟨L, Flean.Activation.sigmoid⟩`. -/
+noncomputable def MLP.ActivatedLayerFpResult.ofSigmoidLinear {n_in n_out : ℕ}
+    {L : MLP.Layer n_in n_out} {x : Fin n_in → FiniteFp}
+    (linear : MLP.LayerFpResult L x ℝ)
+    (w : ∀ i, SigmoidFpWitness (linear.result i))
+    (slack : ℝ) (slack_nn : 0 ≤ slack)
+    (her_nr : ∀ i, isNormalRange (Real.exp (-((linear.result i).toVal : ℝ))))
+    (h_d_nr : ∀ i, isNormalRange ((1 : ℝ) + ((w i).e.toVal : ℝ)) ∨
+                   ((1 : ℝ) + ((w i).e.toVal : ℝ) = 0))
+    (h_r_nr : ∀ i, isNormalRange ((1 : ℝ) / ((w i).d.toVal : ℝ)) ∨
+                   ((1 : ℝ) / ((w i).d.toVal : ℝ) = 0))
+    (h_d_m_ne : ∀ i, (w i).d.m ≠ 0)
+    (h_slack : ∀ i, fpSigmoidFinite_slack ((linear.result i).toVal : ℝ) ≤ slack) :
+    MLP.ActivatedLayerFpResult
+      ({ layer := L, activation := Flean.Activation.sigmoid } :
+        MLP.ActivatedLayer ℝ n_in n_out) x where
+  linear := linear
+  activated := MLP.ActivationFpResult.ofSigmoidWitnesses
+    linear.result w slack slack_nn her_nr h_d_nr h_r_nr h_d_m_ne h_slack
+
+/-- **Demo**: forward error bound for an activated layer using sigmoid as
+the activation, constructed via `ActivatedLayerFpResult.ofSigmoidLinear`.
+Specializes the general activated bound at `K = 1/4`:
+
+```
+|fp_result_i − σ(W·x + b)_i| ≤ slack + (1/4) · linear.errorBound
+```
+
+Threads the linear-stage error and the per-input sigmoid kernel slack
+through `LipschitzScalar.errorAmplification`. -/
+theorem MLP.ActivatedLayerFpResult.forward_error_bound_sigmoid_demo
+    {n_in n_out : ℕ}
+    {L : MLP.Layer n_in n_out} {x : Fin n_in → FiniteFp}
+    (linear : MLP.LayerFpResult L x ℝ)
+    (w : ∀ i, SigmoidFpWitness (linear.result i))
+    (slack : ℝ) (slack_nn : 0 ≤ slack)
+    (her_nr : ∀ i, isNormalRange (Real.exp (-((linear.result i).toVal : ℝ))))
+    (h_d_nr : ∀ i, isNormalRange ((1 : ℝ) + ((w i).e.toVal : ℝ)) ∨
+                   ((1 : ℝ) + ((w i).e.toVal : ℝ) = 0))
+    (h_r_nr : ∀ i, isNormalRange ((1 : ℝ) / ((w i).d.toVal : ℝ)) ∨
+                   ((1 : ℝ) / ((w i).d.toVal : ℝ) = 0))
+    (h_d_m_ne : ∀ i, (w i).d.m ≠ 0)
+    (h_slack : ∀ i, fpSigmoidFinite_slack ((linear.result i).toVal : ℝ) ≤ slack)
+    {wMax bMax : ℝ} (hL : MLP.BoundedParams (R := ℝ) L wMax bMax)
+    (hwMax_nn : 0 ≤ wMax)
+    {xMax : ℝ} (hx : ∀ j, Flean.Tags.HasAbsBound (R := ℝ) xMax (x j))
+    (hxMax_nn : 0 ≤ xMax)
+    (i : Fin n_out) :
+    let LA : MLP.ActivatedLayer ℝ n_in n_out :=
+      { layer := L, activation := Flean.Activation.sigmoid }
+    let res : MLP.ActivatedLayerFpResult LA x :=
+      MLP.ActivatedLayerFpResult.ofSigmoidLinear linear w slack
+        slack_nn her_nr h_d_nr h_r_nr h_d_m_ne h_slack
+    |((res.activated.result i).toVal : ℝ) -
+        LA.forward (fun j => ((x j).toVal : ℝ)) i| ≤
+      slack + (1 / 4 : ℝ) * linear.errorBound wMax xMax bMax := by
+  intro LA res
+  have h := res.forward_error_bound hL hwMax_nn hx hxMax_nn i
+  -- `res.errorBound` unfolds to
+  -- `res.activated.slack + LA.activation.K * res.linear.errorBound`,
+  -- and structure projections + `Activation.sigmoid.K = 1/4` make this
+  -- defeq to the demo bound.
+  exact h
+
+end LayerIntegration
+
 end Flean
