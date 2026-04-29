@@ -17,12 +17,12 @@ FiniteFp, so the user supplies a rounding witness.
 
 ## Design notes
 
-We do *not* package `Real.geluTanhApprox` as a `Flean.Activation ℝ`.
-The Lipschitz constant of gelu in this form is ~1.13 (max of `|gelu'|`
-attained near `x ≈ 0.97`); proving this rigorously requires bounding
-`gelu''` on a compact interval plus monotone-decay outside, and isn't
-strictly needed for Wisp's per-element backward bridge. Downstream
-consumers who need the `Activation ℝ` lift can construct it separately.
+The bundled `Flean.Activation ℝ` lift lives in `GeluLipschitz.lean`
+as `Flean.Activation.geluTanhWith half c α h_α_nn` with Lipschitz
+constant `K = 5·|half|` (loose: for standard `half = 1/2`, `K = 5/2`
+versus the tight value ≈ 1.131).  The looseness comes from a clean
+proof routing through one saturation inequality `|y·(1−tanh²y)| ≤ 1`
+and one algebraic ratio bound `(1+3α·x²)/(1+α·x²) ≤ 3` (for `α ≥ 0`).
 
 ## Main definitions
 

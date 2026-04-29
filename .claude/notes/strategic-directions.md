@@ -329,6 +329,23 @@ consumer asks).  Path forward: prove a loose `LipschitzScalar K
 Real.geluTanhApprox` (e.g. K=2 from algebraic bounds) and ship
 `ofGeluLinear`.
 
+## Update (2026-04-28, gelu wired)
+
+`Flean.Activation.geluTanhWith half c α h_α_nn : Activation ℝ` shipped
+in `Activations/GeluLipschitz.lean` (~340 lines).  K = 5·|half|;
+proof via saturation inequality `|y·(1−tanh²y)| ≤ 1` (algebraic, uses
+`Real.quadratic_le_exp_of_nonneg`) plus a multiplication-only
+algebraic ratio bound `(1+3α·x²)/(1+α·x²) ≤ 3` (for `α ≥ 0`).  The
+`Real.hasDerivAt_tanh` lemma lands as a side product (mathlib
+doesn't ship it).
+
+K-specialization demos in `ActivatedMLP2Demos.lean`:
+`forward_error_bound_geluTanhWith_demo` per-layer + 2-layer.
+
+`ofGeluWitnesses` bundle constructor not shipped (gelu's per-input
+hypothesis list is ~22 items — unwieldy without a consumer driving
+the API design).
+
 Next-up candidates (not in R6 line):
 
 1. **R7 — Newton-Horner concrete instantiation** (different arc, good
