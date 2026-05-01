@@ -4,6 +4,7 @@ import Flean.Operations.KahanSum
 import Flean.Operations.TwoProduct
 import Flean.Operations.HornerFMA
 import Flean.Operations.Div
+import Flean.Operations.Sqrt
 
 /-! # Double-Double Arithmetic — Foundations
 
@@ -1097,3 +1098,6 @@ theorem error_bound (step : DDDivStep (R := R) a b)
 end DDDivStep
 
 end DDDiv
+
+-- `dd_sqrt` lives in `Flean/Operations/DoubleDoubleSqrt.lean` (separate file
+-- to keep DoubleDouble.lean's elaboration tractable).
