@@ -167,6 +167,79 @@ theorem isNormalized_ofFiniteFp (f : FiniteFp) :
 
 end DoubleDouble
 
+/-! ### Magnitude consequences of `IsNormalized`
+
+The operational form of `IsNormalized` (rounding `hi + lo` reproduces `hi`'s
+value) implies the classical *magnitude* form: the lo part is at most a
+machine-epsilon multiple of the sum.
+
+This is the workhorse corollary that bridges from the operational predicate
+into quantitative bounds — used in `dd_sqrt`'s and `dd_div`'s
+auto-quantitative bound theorems to bound `|residual.lo|` without further
+hypotheses on residual's structure. -/
+
+omit [RModeIdem R] in
+/-- **Magnitude bound on `dd.lo` from `IsNormalized`.**
+
+If `dd` is normalized and rounding `dd.hi + dd.lo` produces a finite float,
+then `|dd.lo.toVal| ≤ η · |dd.hi + dd.lo|`. This is `fpAdd_error_or_zero`
+combined with the fact that the rounded sum equals `dd.hi.toVal` (operational
+IsNormalized).
+
+For the cancellation case (`dd.hi + dd.lo = 0`), `dd.hi.toVal = 0` so
+`dd.lo.toVal = 0` and the bound is `0 ≤ 0`. -/
+theorem DoubleDouble.IsNormalized.lo_le_eta_sum
+    [RModeNearest R]
+    (dd : DoubleDouble) (hnorm : dd.IsNormalized (R := R))
+    (f : FiniteFp) (hf : dd.hi + dd.lo = (f : Fp))
+    (hsum_normal : isNormalRange ((dd.hi.toVal : R) + dd.lo.toVal) ∨
+                   (dd.hi.toVal : R) + dd.lo.toVal = 0) :
+    |dd.lo.toVal (R := R)| ≤ η * |(dd.hi.toVal : R) + dd.lo.toVal| := by
+  -- From IsNormalized: f.toVal = dd.hi.toVal
+  have h_f_val : (f.toVal : R) = dd.hi.toVal := hnorm hf
+  -- From fpAdd_error_or_zero: |f.toVal - (hi + lo)| ≤ η · |hi + lo|
+  have h_round := KahanSum.fpAdd_error_or_zero (R := R) dd.hi dd.lo f hf hsum_normal
+  -- Substitute f.toVal = dd.hi.toVal
+  rw [h_f_val] at h_round
+  -- Now h_round : |dd.hi.toVal - (dd.hi.toVal + dd.lo.toVal)| ≤ η · |...|
+  -- Simplify LHS: dd.hi - (dd.hi + dd.lo) = -dd.lo
+  have h_eq : (dd.hi.toVal : R) - (dd.hi.toVal + dd.lo.toVal) = -dd.lo.toVal := by ring
+  rw [h_eq, abs_neg] at h_round
+  exact h_round
+
+omit [RModeIdem R] in
+/-- **Solved-form magnitude bound: `|lo| ≤ (η/(1−η))·|hi|`.**
+
+When `η < 1` (always true for sane formats), the recursive bound
+`|lo| ≤ η·|hi+lo|` solves to a multiple of `|hi|` alone. This is the more
+familiar form found in textbooks. -/
+theorem DoubleDouble.IsNormalized.lo_le_eta_hi_div
+    [RModeNearest R]
+    (dd : DoubleDouble) (hnorm : dd.IsNormalized (R := R))
+    (f : FiniteFp) (hf : dd.hi + dd.lo = (f : Fp))
+    (hsum_normal : isNormalRange ((dd.hi.toVal : R) + dd.lo.toVal) ∨
+                   (dd.hi.toVal : R) + dd.lo.toVal = 0)
+    (h_eta_lt_one : (η : R) < 1) :
+    |dd.lo.toVal (R := R)| ≤ (η / (1 - η)) * |(dd.hi.toVal : R)| := by
+  have h_loose := hnorm.lo_le_eta_sum (R := R) dd f hf hsum_normal
+  -- η · |hi + lo| ≤ η · (|hi| + |lo|) by triangle
+  have h_tri : |(dd.hi.toVal : R) + dd.lo.toVal| ≤ |dd.hi.toVal| + |dd.lo.toVal| :=
+    abs_add_le _ _
+  have h_eta_nn : 0 ≤ (η : R) := by
+    show 0 ≤ (FloatFormat.hEps R : R); rw [FloatFormat.hEps_def]; positivity
+  have h1 : |dd.lo.toVal (R := R)| ≤ η * (|dd.hi.toVal| + |dd.lo.toVal|) :=
+    h_loose.trans (by gcongr)
+  -- Solve: |lo| ≤ η·|hi| + η·|lo| ⟹ |lo|·(1-η) ≤ η·|hi|
+  have h2 : |dd.lo.toVal (R := R)| * (1 - η) ≤ η * |dd.hi.toVal| := by
+    nlinarith [h1, abs_nonneg (dd.hi.toVal : R), abs_nonneg (dd.lo.toVal : R)]
+  have h_one_sub_eta_pos : 0 < (1 - η : R) := by linarith
+  -- Divide both sides by (1 - η) and simplify
+  have h3 : |dd.lo.toVal (R := R)| ≤ η * |dd.hi.toVal| / (1 - η) :=
+    (le_div_iff₀ h_one_sub_eta_pos).mpr h2
+  calc |dd.lo.toVal (R := R)|
+      ≤ η * |dd.hi.toVal| / (1 - η) := h3
+    _ = η / (1 - η) * |dd.hi.toVal| := by ring
+
 end IsNormalized
 
 /-! ## TwoSum lifts to a normalized DoubleDouble

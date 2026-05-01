@@ -231,6 +231,24 @@ theorem result_squared_residual_bound
   have hne4 : |(-e4 : R)| = |e4| := abs_neg _
   linarith [hMul, hSub, abs_nonneg e2, abs_nonneg e3, abs_nonneg e4, abs_nonneg e5]
 
+omit [FloorRing R] [RMode R] [RoundIntSigMSound R]
+    [RModeNearest R] [RModeConj R] [RModeIdem R] in
+/-- **Result is positive** when the correction doesn't overshoot the
+starting estimate.
+
+The hypothesis `|correction| < x1` *implies* `0 < x1` (since `|·| ≥ 0`),
+so positivity of `x1` doesn't need to be stated separately. For typical
+FP-sqrt use (`x1 ≈ √a`, `a > 0`), the correction is small (`≈ η·x1`) so
+`|correction| < x1` is easily satisfied. This makes `result > 0` and lets
+`DDSqrtNewtonStep` results chain (e.g., `dd_sqrt(dd_sqrt(a))`). -/
+theorem result_pos
+    (hcorr_mag : |step.correction.toVal (R := R)| < step.x1.toVal) :
+    0 < step.result.toVal (R := R) := by
+  rw [step.result_value]
+  have h_lower : -step.x1.toVal < step.correction.toVal (R := R) :=
+    neg_lt_of_abs_lt hcorr_mag
+  linarith
+
 end DDSqrtNewtonStep
 
 /-! ### Constructors -/
