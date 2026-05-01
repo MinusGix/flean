@@ -1,19 +1,12 @@
 import Flean.Operations.DoubleDouble
 
-/-! # Double-Double Square Root
+/-! # Double-Double Square Root — Newton Iteration
 
-One-iteration Newton refinement for square root at DD precision. Lives in a
-separate file from the rest of `DoubleDouble.lean` because the structure
-declaration involves nested `DDMulStep` / `DDSubStep` fields with deep
-typeclass cascades that would otherwise time out the elaborator at the file's
-accumulated context size.
-
-The starting estimate `x1` is provided by the caller (typically computed via
-`fpSqrtFinite a.hi` from `Flean.Operations.Sqrt`); we don't include the
-relation `fpSqrtFinite a.hi = (x1 : Fp)` as a structure field because Lean's
-elaborator unfolds `fpSqrtFinite`'s `let`-laden body during structure
-elaboration, blowing the heartbeat budget. The Newton iteration's
-correctness depends on `x1² ≈ a.hi`, supplied as an error-bound hypothesis.
+One Newton iteration for square root at DD precision. The structure
+`DDSqrtNewtonStep` represents *one step* of Newton's method specialized to
+`f(x) = x² − a`: given any starting estimate `x1`, compute the corresponding
+correction and refined estimate. Convergence to `√a` is a separate fact —
+provable when `x1² ≈ a.hi` (Stage 2, future).
 
 ```
 x1               := round(sqrt(a.hi))                 -- initial estimate (single FP)
@@ -24,16 +17,42 @@ correction       := round(residual.hi / (2 · x1))      -- Newton correction
 return ⟨hi_out, lo_out⟩
 ```
 
-Mathematical correctness: Newton's iteration `x_{k+1} = (x_k + a/x_k)/2`
-rewrites to `x_{k+1} = x_k + (a − x_k²)/(2·x_k)`. With one iteration the
-relative error is squared: starting from `≈η` accuracy of the initial
-single-FP `sqrt`, one DD iteration gives `≈η²` accuracy.
+Mathematical basis: Newton's iteration `x_{k+1} = (x_k + a/x_k)/2` rewrites to
+`x_{k+1} = x_k + (a − x_k²)/(2·x_k)`. With one iteration the relative error
+is squared: starting from `≈η` accuracy of the initial single-FP `sqrt`, one
+DD iteration gives `≈η²` accuracy.
 
-Stage 1 (this file): structure, value identity (`result.toVal = x1 + correction`
-exact), normalization, constructors. Connection to `√a` is deferred — the
-generic-`R` form would use the squared identity `|result² − a| ≤ ε`; the
-ℝ-specialized form gives `|result − √a| ≤ ε` directly. Both are future
-work. -/
+## Relation to `NewtonStep` in `Flean/Operations/NewtonHorner.lean`
+
+That `NewtonStep` handles general polynomial root-finding: it evaluates a
+polynomial and its derivative via JetHorner, then applies the Newton
+correction. It operates at single-FP precision throughout.
+
+`DDSqrtNewtonStep` is a sibling specialization: hard-coded for `f(x) = x² − a`
+(no JetHorner — directly compute `x²` and `a − x²`), but uses *DD arithmetic*
+for the precision-critical `(a − x²)` step. The single-FP division
+`(a − x²)/(2x)` is sufficient for the quotient because the residual itself is
+already small (`≈η²·a`).
+
+The two are not subsumable in either direction: a degree-2 polynomial Newton
+through JetHorner would lose DD precision; conversely DDSqrtNewtonStep can't
+handle arbitrary polynomials.
+
+## Why the structure lives in its own file
+
+The structure declaration involves nested `DDMulStep` / `DDSubStep` fields
+with deep typeclass cascades; at the accumulated elaboration context of
+`DoubleDouble.lean` it times out the elaborator. A fresh file's smaller
+context handles it cleanly.
+
+## Why `x1` is unconstrained
+
+A field of the form `hx1 : fpSqrtFinite a.hi = (x1 : Fp)` would force Lean
+to unfold `fpSqrtFinite`'s `let`-laden body during structure elaboration —
+even at 1.6M `maxHeartbeats` it doesn't terminate. The structure therefore
+takes `x1` as a free runtime parameter; convergence to `√a` from the
+specific `fpSqrtFinite a.hi` start is a separate fact, established by
+hypothesis `x1² ≈ a.hi` in the (future) error-bound theorem. -/
 
 variable [FloatFormat]
 
@@ -53,7 +72,7 @@ hypotheses.
 Genuinely *dependent* like `DDDivStep`: `prod` references `x1`, `residual`
 references `prod.result`. The `two_x1` field is provided as an external
 runtime witness with its exact value `2·x1.toVal`. -/
-structure DDSqrtStep (a : DoubleDouble) where
+structure DDSqrtNewtonStep (a : DoubleDouble) where
   /-- Initial sqrt estimate (caller-supplied; typically `round(sqrt(a.hi))`). -/
   x1 : FiniteFp
   /-- DD square: `x1²` as a normalized double-double. -/
@@ -73,9 +92,9 @@ structure DDSqrtStep (a : DoubleDouble) where
   lo_out : FiniteFp
   hlo_out_exact : (hi_out.toVal : R) + lo_out.toVal = x1.toVal + correction.toVal
 
-namespace DDSqrtStep
+namespace DDSqrtNewtonStep
 
-variable {a : DoubleDouble} (step : DDSqrtStep (R := R) a)
+variable {a : DoubleDouble} (step : DDSqrtNewtonStep (R := R) a)
 
 /-- The `DoubleDouble` produced by the sqrt step. -/
 def result : DoubleDouble := ⟨step.hi_out, step.lo_out⟩
@@ -111,15 +130,15 @@ theorem result_isNormalized :
     step.x1 step.correction step.hi_out step.lo_out
     step.hhi_out step.hlo_out_exact
 
-end DDSqrtStep
+end DDSqrtNewtonStep
 
 /-! ### Constructors -/
 
-namespace DDSqrtStep
+namespace DDSqrtNewtonStep
 
 variable {a : DoubleDouble}
 
-/-- Structural constructor for `DDSqrtStep`. The dependent fields make
+/-- Structural constructor for `DDSqrtNewtonStep`. The dependent fields make
     constructor calls naturally pipelined. -/
 @[inline]
 def ofWitnesses
@@ -136,7 +155,7 @@ def ofWitnesses
     (lo_out : FiniteFp)
     (hlo_out_exact : (hi_out.toVal : R) + lo_out.toVal =
         x1.toVal + correction.toVal) :
-    DDSqrtStep (R := R) a :=
+    DDSqrtNewtonStep (R := R) a :=
   { x1, prod, residual, two_x1, htwo_x1_val,
     correction, hcorrection, hi_out, hhi_out, lo_out, hlo_out_exact }
 
@@ -154,7 +173,7 @@ theorem exists_via_finalTwoSum
     (hcorrection : residual.result.hi / two_x1 = (correction : Fp))
     (hi_out : FiniteFp) (hhi_out : x1 + correction = (hi_out : Fp))
     (hx1_nz : 0 < x1.m) (hcorrection_nz : 0 < correction.m) :
-    ∃ step : DDSqrtStep (R := R) a,
+    ∃ step : DDSqrtNewtonStep (R := R) a,
       step.x1 = x1 ∧ step.correction = correction ∧ step.hi_out = hi_out := by
   obtain ⟨lo_out, hlo_out_exact⟩ :=
     twoSum_exact (R := R) x1 correction hx1_nz hcorrection_nz hi_out hhi_out
@@ -162,6 +181,6 @@ theorem exists_via_finalTwoSum
             correction hcorrection hi_out hhi_out lo_out hlo_out_exact,
           ?_, ?_, ?_⟩ <;> rfl
 
-end DDSqrtStep
+end DDSqrtNewtonStep
 
 end DDSqrt
