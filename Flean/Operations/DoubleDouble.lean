@@ -1167,6 +1167,125 @@ theorem error_bound (step : DDDivStep (R := R) a b)
   -- Compose via result_residual_bound
   exact step.result_residual_bound (R := R) _ _ h_mul h_sub
 
+/-! ### Stage D2c: full auto-quantitative bound
+
+Extends Stage D2b by also discharging the three remaining magnitude terms:
+- `|residual.result.lo|` via `IsNormalized.lo_le_eta_sum`.
+- `|q2·b.hi − residual.hi|` via `fpDiv_error_or_zero` scaled by `b.hi`.
+- `|q2·b.lo|` via `abs_mul` (just split into `|q2| · |b.lo|`).
+
+Caller supplies four normal-range/exact-zero hypotheses (as in D2b) plus a
+finite-output witness + normal-range for residual normalization, plus a
+normal-range hypothesis for the FP division. Output: closed-form bound on
+`|result · b − a|`. -/
+
+omit [RModeConj R] [RModeIdem R] in
+/-- **Full auto-quantitative `dd_div` bound.**
+
+Five-term decomposition `result · b − a = −δ_mul + δ_sub − Rl + (q2·b.hi − Rh) + q2·b.lo`
+with all four error pieces *automatically* bounded. -/
+theorem error_bound_auto
+    [RModeSticky R]
+    (step : DDDivStep (R := R) a b)
+    -- DDMul on (⟨q1, 0⟩, b): cross terms simplified
+    (h_mul_1 : isNormalRange ((step.q1.toVal : R) * b.lo.toVal +
+                              step.prod.p_lo.toVal) ∨
+               (step.q1.toVal : R) * b.lo.toVal + step.prod.p_lo.toVal = 0)
+    (h_mul_2 : isNormalRange ((step.prod.t1.toVal : R)) ∨
+               (step.prod.t1.toVal : R) = 0)
+    -- DDSub on (a, prod.result)
+    (h_sub_1 : isNormalRange ((step.residual.e_hi.toVal : R) + a.lo.toVal) ∨
+               (step.residual.e_hi.toVal : R) + a.lo.toVal = 0)
+    (h_sub_2 : isNormalRange ((step.residual.e_lo_partial.toVal : R) -
+                              step.prod.result.lo.toVal) ∨
+               (step.residual.e_lo_partial.toVal : R) -
+                  step.prod.result.lo.toVal = 0)
+    -- Residual normalization: finite-output + sum normal-range
+    (f_resid : FiniteFp)
+    (hf_resid : step.residual.result.hi + step.residual.result.lo = (f_resid : Fp))
+    (h_resid_sum : isNormalRange ((step.residual.result.hi.toVal : R) +
+                                   step.residual.result.lo.toVal) ∨
+                   (step.residual.result.hi.toVal : R) +
+                      step.residual.result.lo.toVal = 0)
+    -- Division: nonzero divisor + normal range (b.hi.toVal ≠ 0 follows
+    -- from b.hi.m ≠ 0 since FiniteFp with significand 0 has toVal = 0)
+    (h_b_hi_nz : b.hi.m ≠ 0)
+    (h_div_normal : isNormalRange ((step.residual.result.hi.toVal : R) /
+                                    b.hi.toVal) ∨
+                    (step.residual.result.hi.toVal : R) / b.hi.toVal = 0) :
+    |step.result.toVal (R := R) * b.toVal - a.toVal| ≤
+        η * (|(step.q1.toVal : R) * b.lo.toVal + step.prod.p_lo.toVal| +
+             |(step.prod.t1.toVal : R)|)
+      + η * (|(step.residual.e_hi.toVal : R) + a.lo.toVal| +
+             |(step.residual.e_lo_partial.toVal : R) - step.prod.result.lo.toVal|)
+      + η * |(step.residual.result.hi.toVal : R) +
+              step.residual.result.lo.toVal|
+      + η * |(step.residual.result.hi.toVal : R)|
+      + |(step.q2.toVal : R)| * |b.lo.toVal (R := R)| := by
+  -- Start with D2b's auto-derivation of mulErr and subErr
+  have h_d2b := step.error_bound (R := R) h_mul_1 h_mul_2 h_sub_1 h_sub_2
+  -- Auto-derive |residual.lo| via IsNormalized
+  have h_resid_norm := step.residual.result_isNormalized (R := R)
+  have h_loBound : |step.residual.result.lo.toVal (R := R)| ≤
+      η * |(step.residual.result.hi.toVal : R) +
+             step.residual.result.lo.toVal| := by
+    have h := h_resid_norm.lo_le_eta_sum (R := R)
+              step.residual.result f_resid hf_resid h_resid_sum
+    simpa using h
+  -- Auto-derive |q2·b.hi - residual.hi| via fpDiv error bound scaled by |b.hi|
+  have h_div := KahanSum.fpDiv_error_or_zero (R := R)
+    step.residual.result.hi b.hi step.q2 h_b_hi_nz step.hq2 h_div_normal
+  have h_b_hi_ne : (b.hi.toVal : R) ≠ 0 :=
+    FiniteFp.toVal_ne_zero_of_m_pos b.hi (Nat.pos_of_ne_zero h_b_hi_nz)
+  have h_qbhi : |(step.q2.toVal : R) * b.hi.toVal -
+                  step.residual.result.hi.toVal| ≤
+                 η * |(step.residual.result.hi.toVal : R)| := by
+    have h_eq : (step.q2.toVal : R) * b.hi.toVal -
+                step.residual.result.hi.toVal =
+                b.hi.toVal *
+                  (step.q2.toVal -
+                    step.residual.result.hi.toVal / b.hi.toVal) := by
+      field_simp
+    rw [h_eq, abs_mul]
+    have h_div_abs : |(step.residual.result.hi.toVal : R) / b.hi.toVal| =
+                     |(step.residual.result.hi.toVal : R)| / |b.hi.toVal| := by
+      rw [abs_div]
+    have h_step : |b.hi.toVal (R := R)| *
+                  (η * |(step.residual.result.hi.toVal : R) / b.hi.toVal|) =
+                  η * |(step.residual.result.hi.toVal : R)| := by
+      rw [h_div_abs]; field_simp
+    calc |b.hi.toVal (R := R)| *
+            |step.q2.toVal - step.residual.result.hi.toVal / b.hi.toVal|
+        ≤ |b.hi.toVal| *
+            (η * |(step.residual.result.hi.toVal : R) / b.hi.toVal|) := by
+            apply mul_le_mul_of_nonneg_left h_div (abs_nonneg _)
+      _ = η * |(step.residual.result.hi.toVal : R)| := h_step
+  -- |q2·b.lo| splits via abs_mul
+  have h_qblo : |step.q2.toVal * b.lo.toVal (R := R)| =
+                |(step.q2.toVal : R)| * |b.lo.toVal| := abs_mul _ _
+  -- Compose: D2b gave a bound with the 3 caller-bounded magnitudes; substitute in
+  calc |step.result.toVal (R := R) * b.toVal - a.toVal|
+      ≤ η * (|(step.q1.toVal : R) * b.lo.toVal + step.prod.p_lo.toVal| +
+             |(step.prod.t1.toVal : R)|)
+        + η * (|(step.residual.e_hi.toVal : R) + a.lo.toVal| +
+               |(step.residual.e_lo_partial.toVal : R) -
+                  step.prod.result.lo.toVal|)
+        + |step.residual.result.lo.toVal (R := R)|
+        + |(step.q2.toVal : R) * b.hi.toVal -
+            step.residual.result.hi.toVal|
+        + |(step.q2.toVal : R) * b.lo.toVal| := h_d2b
+    _ ≤ η * (|(step.q1.toVal : R) * b.lo.toVal + step.prod.p_lo.toVal| +
+             |(step.prod.t1.toVal : R)|)
+        + η * (|(step.residual.e_hi.toVal : R) + a.lo.toVal| +
+               |(step.residual.e_lo_partial.toVal : R) -
+                  step.prod.result.lo.toVal|)
+        + η * |(step.residual.result.hi.toVal : R) +
+                step.residual.result.lo.toVal|
+        + η * |(step.residual.result.hi.toVal : R)|
+        + |(step.q2.toVal : R)| * |b.lo.toVal (R := R)| := by
+        rw [← h_qblo]
+        gcongr
+
 end DDDivStep
 
 end DDDiv
