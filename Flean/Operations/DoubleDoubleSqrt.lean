@@ -249,6 +249,137 @@ theorem result_pos
     neg_lt_of_abs_lt hcorr_mag
   linarith
 
+/-! ### Stage 2c: auto-quantitative bound
+
+Discharges all four error pieces from existing infrastructure:
+- `mulErr` from `DDMulStep.error_bound` (specialized to `(ofFiniteFp x1)`'s
+  `lo = 0`, collapsing the cross-term pieces).
+- `subErr` from `DDSubStep.error_bound`.
+- `|residual.lo|` from `IsNormalized.lo_le_eta_sum` (the operational
+  normalization predicate yields `|lo| ≤ η · |hi+lo|`).
+- `|T·C − Rh|` from `KahanSum.fpDiv_error_or_zero` (scaled by `two_x1`).
+
+Caller supplies seven preconditions (5 normal-range/exact-zero hypotheses
+for the rounded operations, a finite-output witness for residual's
+`hi+lo`, and a nonzero-divisor + positivity hypothesis for `two_x1`). -/
+
+omit [RModeConj R] [RModeIdem R] in
+/-- **Auto-quantitative `dd_sqrt` bound.**
+
+Five-term decomposition `result² − a = correction² + δ_sub − δ_mul − Rl + (T·C − Rh)`
+with all four rounding pieces *automatically* bounded. The `correction²`
+term is Newton's quadratic-convergence contribution and remains as the
+explicit value (it shrinks as `x1²` approaches `a`). -/
+theorem error_bound_auto
+    [RModeSticky R]
+    -- DDMul on (⟨x1, 0⟩, ⟨x1, 0⟩): cross terms drop because lo = 0
+    (h_mul_p_lo : isNormalRange ((step.prod.p_lo.toVal : R)) ∨
+                  (step.prod.p_lo.toVal : R) = 0)
+    (h_mul_t1 : isNormalRange ((step.prod.t1.toVal : R)) ∨
+                (step.prod.t1.toVal : R) = 0)
+    -- DDSub on (a, prod.result)
+    (h_sub_1 : isNormalRange ((step.residual.e_hi.toVal : R) + a.lo.toVal) ∨
+               (step.residual.e_hi.toVal : R) + a.lo.toVal = 0)
+    (h_sub_2 : isNormalRange ((step.residual.e_lo_partial.toVal : R) -
+                              step.prod.result.lo.toVal) ∨
+               (step.residual.e_lo_partial.toVal : R) -
+                  step.prod.result.lo.toVal = 0)
+    -- Residual normalization: finite-output + sum normal-range
+    (f_resid : FiniteFp)
+    (hf_resid : step.residual.result.hi + step.residual.result.lo = (f_resid : Fp))
+    (h_resid_sum : isNormalRange ((step.residual.result.hi.toVal : R) +
+                                   step.residual.result.lo.toVal) ∨
+                   (step.residual.result.hi.toVal : R) +
+                      step.residual.result.lo.toVal = 0)
+    -- Division: nonzero divisor + normal range + positive two_x1 (for
+    -- multiplying the bound through cleanly)
+    (h_two_x1_nz : step.two_x1.m ≠ 0)
+    (h_two_x1_pos : 0 < (step.two_x1.toVal : R))
+    (h_div_normal : isNormalRange ((step.residual.result.hi.toVal : R) /
+                                    step.two_x1.toVal) ∨
+                    (step.residual.result.hi.toVal : R) /
+                       step.two_x1.toVal = 0) :
+    |step.result.toVal (R := R) * step.result.toVal - a.toVal| ≤
+        step.correction.toVal * step.correction.toVal
+      + η * (|(step.prod.p_lo.toVal : R)| + |(step.prod.t1.toVal : R)|)
+      + η * (|(step.residual.e_hi.toVal : R) + a.lo.toVal| +
+             |(step.residual.e_lo_partial.toVal : R) - step.prod.result.lo.toVal|)
+      + η * |(step.residual.result.hi.toVal : R) +
+              step.residual.result.lo.toVal|
+      + η * |(step.residual.result.hi.toVal : R)| := by
+  -- (1) Auto-derive mulErr from DDMul.error_bound, specialized to ofFiniteFp x1
+  have h_mul_raw := step.prod.error_bound (R := R)
+    (by simpa [DoubleDouble.ofFiniteFp_hi, DoubleDouble.ofFiniteFp_lo,
+               FiniteFp.toVal_zero, mul_zero, zero_add] using h_mul_p_lo)
+    (by
+      have : ((DoubleDouble.ofFiniteFp step.x1).lo.toVal : R) * a.hi.toVal +
+             step.prod.t1.toVal = step.prod.t1.toVal := by
+        simp [DoubleDouble.ofFiniteFp_lo]
+      have heq : ((DoubleDouble.ofFiniteFp step.x1).lo.toVal : R) *
+                 (DoubleDouble.ofFiniteFp step.x1).hi.toVal +
+                 step.prod.t1.toVal = step.prod.t1.toVal := by
+        simp [DoubleDouble.ofFiniteFp_lo, DoubleDouble.ofFiniteFp_hi]
+      rw [heq]; exact h_mul_t1)
+  -- Simplify mulErr's bound: (ofFiniteFp x1).hi = x1, .lo = 0
+  have h_mulErr : |step.prod.result.toVal (R := R) -
+                    step.x1.toVal * step.x1.toVal| ≤
+      η * (|(step.prod.p_lo.toVal : R)| + |(step.prod.t1.toVal : R)|) := by
+    have h_aval : ((DoubleDouble.ofFiniteFp step.x1).toVal : R) = step.x1.toVal := by
+      simp [DoubleDouble.toVal_ofFiniteFp]
+    rw [h_aval] at h_mul_raw
+    have h_alo : ((DoubleDouble.ofFiniteFp step.x1).lo.toVal : R) = 0 := by
+      simp [DoubleDouble.ofFiniteFp_lo]
+    have h_ahi : ((DoubleDouble.ofFiniteFp step.x1).hi.toVal : R) = step.x1.toVal := by
+      simp [DoubleDouble.ofFiniteFp_hi]
+    rw [h_ahi, h_alo] at h_mul_raw
+    simp only [zero_mul, mul_zero, zero_add, abs_zero, add_zero] at h_mul_raw
+    exact h_mul_raw
+  -- (2) Auto-derive subErr from DDSub.error_bound
+  have h_subErr := step.residual.error_bound (R := R) h_sub_1 h_sub_2
+  -- (3) Auto-derive |residual.lo| via IsNormalized.lo_le_eta_sum
+  have h_resid_norm := step.residual.result_isNormalized (R := R)
+  have h_loBound : |step.residual.result.lo.toVal (R := R)| ≤
+      η * |(step.residual.result.hi.toVal : R) +
+             step.residual.result.lo.toVal| := by
+    have h := h_resid_norm.lo_le_eta_sum (R := R)
+              step.residual.result f_resid hf_resid h_resid_sum
+    -- Convert dd.lo / dd.hi to hi_out / lo_out via DDSubStep.result_lo / .result_hi
+    simpa using h
+  -- (4) Auto-derive |T·C - Rh| via fpDiv_error_or_zero scaled by two_x1
+  have h_div := KahanSum.fpDiv_error_or_zero (R := R)
+    step.residual.result.hi step.two_x1 step.correction h_two_x1_nz
+    step.hcorrection h_div_normal
+  -- h_div: |correction.toVal - residual.hi.toVal / two_x1.toVal| ≤ η · |...|
+  -- Multiply by two_x1.toVal (positive) to get |T·C - Rh| ≤ η · |Rh|
+  have h_TC_Rh : |step.two_x1.toVal * step.correction.toVal -
+                  step.residual.result.hi.toVal (R := R)| ≤
+                 η * |(step.residual.result.hi.toVal : R)| := by
+    have h_two_x1_ne : step.two_x1.toVal (R := R) ≠ 0 :=
+      ne_of_gt h_two_x1_pos
+    have h_eq : step.two_x1.toVal (R := R) * step.correction.toVal -
+                step.residual.result.hi.toVal =
+                step.two_x1.toVal *
+                  (step.correction.toVal -
+                    step.residual.result.hi.toVal / step.two_x1.toVal) := by
+      field_simp
+    rw [h_eq, abs_mul, abs_of_pos h_two_x1_pos]
+    have h_div_abs : |(step.residual.result.hi.toVal : R) / step.two_x1.toVal| =
+                     |(step.residual.result.hi.toVal : R)| / step.two_x1.toVal := by
+      rw [abs_div, abs_of_pos h_two_x1_pos]
+    have h_step : step.two_x1.toVal * (η * |(step.residual.result.hi.toVal : R) /
+                                            step.two_x1.toVal|) =
+                  η * |(step.residual.result.hi.toVal : R)| := by
+      rw [h_div_abs]; field_simp
+    calc step.two_x1.toVal * |step.correction.toVal -
+            step.residual.result.hi.toVal / step.two_x1.toVal|
+        ≤ step.two_x1.toVal * (η * |(step.residual.result.hi.toVal : R) /
+                                     step.two_x1.toVal|) := by
+            apply mul_le_mul_of_nonneg_left h_div (le_of_lt h_two_x1_pos)
+      _ = η * |(step.residual.result.hi.toVal : R)| := h_step
+  -- Compose via Stage 2b's abstract bound
+  exact step.result_squared_residual_bound (R := R) _ _ h_mulErr h_subErr |>.trans (by
+    gcongr)
+
 end DDSqrtNewtonStep
 
 /-! ### Constructors -/
