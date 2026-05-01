@@ -130,6 +130,107 @@ theorem result_isNormalized :
     step.x1 step.correction step.hi_out step.lo_out
     step.hhi_out step.hlo_out_exact
 
+/-! ### Stage 2: error bound
+
+Newton's iteration for `f(x) = x² − a` gives the elegant identity
+`result² − a = (x1² − a)² / (4·x1²)` in *exact* arithmetic — quadratic
+convergence directly. In FP arithmetic, additional rounding terms appear,
+giving:
+
+```
+result² − a  =  correction²              -- Newton's convergence term
+              + δ_sub                     -- DD-sub deviation
+              − δ_mul                     -- DD-mul deviation
+              − residual.lo               -- residual hi/lo split
+              + (T·C − Rh)                -- division rounding · 2·x1
+```
+
+where `T = 2·x1` and `Rh = residual.hi`. The first term is the
+"convergence", the rest are rounding artifacts. For inputs with `x1² ≈ a`
+(i.e., `x1` is a reasonable sqrt estimate), the `correction` is small
+(≈η·a/x1 ≈ η·x1), so `correction² ≈ η²·a` — quadratic convergence in the
+relative sense. -/
+
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] [RMode R]
+    [RoundIntSigMSound R] [RModeNearest R] [RModeConj R] [RModeIdem R] in
+/-- **Exact decomposition of `result² − a`.**
+
+Five terms: Newton's `correction²`, the DD-mul deviation, the DD-sub
+deviation, the residual hi/lo split, and the division rounding (scaled by
+`two_x1` to avoid expressing it as a quotient).
+
+This is the workhorse identity for the dd_sqrt error analysis: each term
+can be bounded independently, and Newton's quadratic convergence appears
+directly as the `correction²` term. -/
+theorem result_squared_minus_a :
+    step.result.toVal (R := R) * step.result.toVal - a.toVal =
+        step.correction.toVal * step.correction.toVal
+      + (step.residual.result.toVal - (a.toVal - step.prod.result.toVal))
+      - (step.prod.result.toVal - step.x1.toVal * step.x1.toVal)
+      - step.residual.result.lo.toVal
+      + (step.two_x1.toVal * step.correction.toVal -
+          step.residual.result.hi.toVal) := by
+  have h_result := step.result_value
+  have h_two_x1 := step.htwo_x1_val
+  have h_R : step.residual.result.toVal (R := R) =
+            step.residual.result.hi.toVal + step.residual.result.lo.toVal := rfl
+  show step.result.toVal (R := R) * step.result.toVal - a.toVal = _
+  rw [h_result, h_two_x1, h_R]
+  ring
+
+omit [FloorRing R] [RMode R] [RoundIntSigMSound R]
+    [RModeNearest R] [RModeConj R] [RModeIdem R] in
+/-- **Bound on `|result² − a|`** in terms of named per-step pieces.
+
+Five sources: Newton's `correction²` (quadratically small for good
+estimates), the two DD-arithmetic deviations (mul/sub), the residual hi/lo
+split, and the FP-division rounding scaled by `2·x1`. The hypothesis form
+is "magnitude of each error piece" — no normal-range preconditions; users
+compose this with `DDMulStep.error_bound`, `DDSubStep.error_bound`,
+`fpDiv` rounding, etc. for concrete instantiations.
+
+Note: `correction²` is positive, so `|correction²| = correction²`. -/
+theorem result_squared_residual_bound
+    (mulErr subErr : R)
+    (hMul : |step.prod.result.toVal (R := R) -
+              step.x1.toVal * step.x1.toVal| ≤ mulErr)
+    (hSub : |step.residual.result.toVal (R := R) -
+              (a.toVal - step.prod.result.toVal)| ≤ subErr) :
+    |step.result.toVal (R := R) * step.result.toVal - a.toVal| ≤
+        step.correction.toVal * step.correction.toVal
+      + mulErr + subErr
+      + |step.residual.result.lo.toVal (R := R)|
+      + |step.two_x1.toVal * step.correction.toVal -
+          step.residual.result.hi.toVal (R := R)| := by
+  rw [step.result_squared_minus_a]
+  -- Name the five pieces (e1 is Newton's positive term)
+  set e1 := step.correction.toVal (R := R) * step.correction.toVal
+  set e2 := step.residual.result.toVal (R := R) -
+            (a.toVal - step.prod.result.toVal)
+  set e3 := step.prod.result.toVal (R := R) - step.x1.toVal * step.x1.toVal
+  set e4 := step.residual.result.lo.toVal (R := R)
+  set e5 := step.two_x1.toVal * step.correction.toVal -
+            step.residual.result.hi.toVal (R := R)
+  -- Goal: |e1 + e2 - e3 - e4 + e5| ≤ e1 + mulErr + subErr + |e4| + |e5|
+  -- Use that e1 = correction² ≥ 0
+  have he1_nn : 0 ≤ e1 := mul_self_nonneg _
+  have hkey : (e1 + e2 - e3 - e4 + e5 : R) = e1 + (e2 + (-e3) + (-e4) + e5) := by ring
+  rw [hkey]
+  have h0 : |(e1 + (e2 + (-e3) + (-e4) + e5) : R)| ≤
+            e1 + |(e2 + (-e3) + (-e4) + e5 : R)| := by
+    calc |(e1 + (e2 + (-e3) + (-e4) + e5) : R)|
+        ≤ |e1| + |(e2 + (-e3) + (-e4) + e5 : R)| := abs_add_le _ _
+      _ = e1 + |(e2 + (-e3) + (-e4) + e5 : R)| := by rw [abs_of_nonneg he1_nn]
+  -- Now bound the four-term sum via triangle inequality
+  have h1 : |(e2 + (-e3) + (-e4) + e5 : R)| ≤
+            |(e2 + (-e3) + (-e4) : R)| + |e5| := abs_add_le _ _
+  have h2 : |(e2 + (-e3) + (-e4) : R)| ≤
+            |(e2 + (-e3) : R)| + |(-e4 : R)| := abs_add_le _ _
+  have h3 : |(e2 + (-e3) : R)| ≤ |e2| + |(-e3 : R)| := abs_add_le _ _
+  have hne3 : |(-e3 : R)| = |e3| := abs_neg _
+  have hne4 : |(-e4 : R)| = |e4| := abs_neg _
+  linarith [hMul, hSub, abs_nonneg e2, abs_nonneg e3, abs_nonneg e4, abs_nonneg e5]
+
 end DDSqrtNewtonStep
 
 /-! ### Constructors -/
