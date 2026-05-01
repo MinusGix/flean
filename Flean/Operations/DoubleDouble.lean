@@ -1024,6 +1024,76 @@ theorem exists_via_finalTwoSum
             hi_out hhi_out lo_out hlo_out_exact,
           ?_, ?_, ?_⟩ <;> rfl
 
+/-! ### Stage D2b: auto-quantitative bound
+
+Combines `DDMulStep.error_bound` (specialised to `ofFiniteFp q1` so `a.lo = 0`,
+collapsing the `a.lo · b.hi + t1` and `a.lo · b.lo` pieces) with
+`DDSubStep.error_bound` and `result_residual_bound` to produce a fully-derived
+five-term inequality. The user supplies four normal-range / exact-zero
+hypotheses (one per intermediate rounded step on the lo channel of the DD
+multiply and DD subtract) and gets back a closed-form bound. -/
+
+omit [RModeConj R] [RModeIdem R] in
+/-- **Auto-quantitative `dd_div` bound.**
+
+Five-term decomposition of `|result · b − a|` with the DD-mul and DD-sub
+deviations *automatically* bounded via their respective `error_bound`
+theorems. The remaining three terms (residual hi/lo split, FP-division
+rounding, b hi/lo split) are exposed verbatim as caller-bounded magnitudes.
+
+For normalized inputs, each of the five terms is `O(η²·|a|)`, giving the
+classical Newton-iteration `O(η²·|a/b|)` accuracy after dividing through
+by `|b|`. -/
+theorem error_bound (step : DDDivStep (R := R) a b)
+    (h_mul_1 : isNormalRange ((step.q1.toVal : R) * b.lo.toVal +
+                              step.prod.p_lo.toVal) ∨
+               (step.q1.toVal : R) * b.lo.toVal + step.prod.p_lo.toVal = 0)
+    (h_mul_2 : isNormalRange ((step.prod.t1.toVal : R)) ∨
+               (step.prod.t1.toVal : R) = 0)
+    (h_sub_1 : isNormalRange ((step.residual.e_hi.toVal : R) + a.lo.toVal) ∨
+               (step.residual.e_hi.toVal : R) + a.lo.toVal = 0)
+    (h_sub_2 : isNormalRange ((step.residual.e_lo_partial.toVal : R) -
+                              step.prod.result.lo.toVal) ∨
+               (step.residual.e_lo_partial.toVal : R) -
+                  step.prod.result.lo.toVal = 0) :
+    |step.result.toVal (R := R) * b.toVal - a.toVal| ≤
+      η * (|(step.q1.toVal : R) * b.lo.toVal + step.prod.p_lo.toVal| +
+           |(step.prod.t1.toVal : R)|)
+      + η * (|(step.residual.e_hi.toVal : R) + a.lo.toVal| +
+             |(step.residual.e_lo_partial.toVal : R) - step.prod.result.lo.toVal|)
+      + |step.residual.result.lo.toVal (R := R)|
+      + |step.q2.toVal * b.hi.toVal - step.residual.result.hi.toVal (R := R)|
+      + |step.q2.toVal * b.lo.toVal (R := R)| := by
+  -- Apply DDMulStep.error_bound on step.prod, then collapse the a.lo = 0 pieces
+  have h_mul_raw := step.prod.error_bound (R := R)
+    (by
+      -- (ofFiniteFp q1).hi = q1, so the hypothesis matches after simp
+      simpa [DoubleDouble.ofFiniteFp_hi] using h_mul_1)
+    (by
+      -- (ofFiniteFp q1).lo = 0, so 0·b.hi + t1 = t1
+      have : ((DoubleDouble.ofFiniteFp step.q1).lo.toVal : R) * b.hi.toVal +
+             step.prod.t1.toVal = step.prod.t1.toVal := by
+        simp [DoubleDouble.ofFiniteFp_lo]
+      rw [this]; exact h_mul_2)
+  -- Simplify h_mul_raw via (ofFiniteFp q1).hi = q1 and .lo = 0
+  have h_mul : |step.prod.result.toVal (R := R) - step.q1.toVal * b.toVal| ≤
+      η * (|(step.q1.toVal : R) * b.lo.toVal + step.prod.p_lo.toVal| +
+           |(step.prod.t1.toVal : R)|) := by
+    have h_aval : ((DoubleDouble.ofFiniteFp step.q1).toVal : R) = step.q1.toVal := by
+      simp [DoubleDouble.toVal_ofFiniteFp]
+    rw [h_aval] at h_mul_raw
+    have h_alo : ((DoubleDouble.ofFiniteFp step.q1).lo.toVal : R) = 0 := by
+      simp [DoubleDouble.ofFiniteFp_lo]
+    have h_ahi : ((DoubleDouble.ofFiniteFp step.q1).hi.toVal : R) = step.q1.toVal := by
+      simp [DoubleDouble.ofFiniteFp_hi]
+    rw [h_alo, h_ahi] at h_mul_raw
+    simp only [zero_mul, zero_add, abs_zero, add_zero] at h_mul_raw
+    exact h_mul_raw
+  -- Apply DDSubStep.error_bound on step.residual
+  have h_sub := step.residual.error_bound (R := R) h_sub_1 h_sub_2
+  -- Compose via result_residual_bound
+  exact step.result_residual_bound (R := R) _ _ h_mul h_sub
+
 end DDDivStep
 
 end DDDiv
