@@ -564,6 +564,26 @@ theorem overflowThreshold_lt_zpow_max_exp_succ [FloatFormat] {R : Type*} [Field 
 notation "ε" => eps _
 notation "η" => hEps _
 
+/-- Machine epsilon is positive. -/
+theorem eps_pos [FloatFormat] {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] : 0 < eps R := by
+  rw [eps_def]; positivity
+
+/-- Machine epsilon is nonnegative. -/
+theorem eps_nonneg [FloatFormat] {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] : 0 ≤ eps R :=
+  le_of_lt eps_pos
+
+/-- Half machine epsilon is positive. -/
+theorem hEps_pos [FloatFormat] {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] : 0 < hEps R := by
+  rw [hEps_def]; positivity
+
+/-- Half machine epsilon is nonnegative. -/
+theorem hEps_nonneg [FloatFormat] {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] : 0 ≤ hEps R :=
+  le_of_lt hEps_pos
+
 /-! ### Explicit-type variants
 
 `η[R]` / `ε[R]` force the ambient type at the notation level, avoiding

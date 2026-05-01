@@ -225,8 +225,7 @@ theorem DoubleDouble.IsNormalized.lo_le_eta_hi_div
   -- η · |hi + lo| ≤ η · (|hi| + |lo|) by triangle
   have h_tri : |(dd.hi.toVal : R) + dd.lo.toVal| ≤ |dd.hi.toVal| + |dd.lo.toVal| :=
     abs_add_le _ _
-  have h_eta_nn : 0 ≤ (η : R) := by
-    show 0 ≤ (FloatFormat.hEps R : R); rw [FloatFormat.hEps_def]; positivity
+  have h_eta_nn : 0 ≤ (η : R) := FloatFormat.hEps_nonneg
   have h1 : |dd.lo.toVal (R := R)| ≤ η * (|dd.hi.toVal| + |dd.lo.toVal|) :=
     h_loose.trans (by gcongr)
   -- Solve: |lo| ≤ η·|hi| + η·|lo| ⟹ |lo|·(1-η) ≤ η·|hi|
