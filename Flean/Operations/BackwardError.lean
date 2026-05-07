@@ -544,4 +544,83 @@ noncomputable def FpDotProductBound.toBackwardResult
     (fun i => ((xs i).toVal : R) * ((ys i).toVal : R))
     (b.result.toVal : R) b.relErr b.h_relErr_nn b.h_bound
 
+/-! ### Side-Attributed Backward Error (all-to-x / all-to-y)
+
+These attribute the entire backward error to a single side instead of to the
+products. Standard Higham presentation (Theorem 3.5 family): when one side has
+known structure (e.g., `ys` are fixed weights), it's natural to express
+`fl(x · y) = (x̃) · y` with `x̃ᵢ = (1+μᵢ)·xᵢ` — and symmetrically for `y`.
+
+Both forms follow trivially from the asymmetric attribution-to-products form by
+distributing `(1+μᵢ)` onto whichever factor. The bound `|μᵢ| ≤ b.relErr` is
+unchanged — what changes is only the algebraic shape of the result. -/
+
+/-- **All-to-x backward error**: attribute the dot-product error to perturbations
+    of the `xs` factors only, leaving `ys` exact. -/
+theorem FpDotProductBound_backward_error_to_x
+    {n : ℕ} {xs ys : Fin n → FiniteFp}
+    (b : FpDotProduct.FpDotProductBound xs ys R) :
+    ∃ mu : Fin n → R,
+      (b.result.toVal : R) =
+        ∑ i : Fin n,
+          ((1 + mu i) * ((xs i).toVal : R)) * ((ys i).toVal : R) ∧
+      ∀ i, |mu i| ≤ b.relErr := by
+  obtain ⟨mu, heq, hbnd⟩ := FpDotProductBound_backward_error b
+  refine ⟨mu, ?_, hbnd⟩
+  rw [heq]
+  apply Finset.sum_congr rfl
+  intro i _
+  ring
+
+/-- **All-to-y backward error**: attribute the dot-product error to perturbations
+    of the `ys` factors only, leaving `xs` exact. -/
+theorem FpDotProductBound_backward_error_to_y
+    {n : ℕ} {xs ys : Fin n → FiniteFp}
+    (b : FpDotProduct.FpDotProductBound xs ys R) :
+    ∃ mu : Fin n → R,
+      (b.result.toVal : R) =
+        ∑ i : Fin n,
+          ((xs i).toVal : R) * ((1 + mu i) * ((ys i).toVal : R)) ∧
+      ∀ i, |mu i| ≤ b.relErr := by
+  obtain ⟨mu, heq, hbnd⟩ := FpDotProductBound_backward_error b
+  refine ⟨mu, ?_, hbnd⟩
+  rw [heq]
+  apply Finset.sum_congr rfl
+  intro i _
+  ring
+
+/-- **Structured all-to-x backward result**: `BackwardResult` on the `xs`-space
+    only. Function maps `xs'` to `Σ xs'_i · ys_i`; `ys` are fixed weights. -/
+noncomputable def FpDotProductBound.toBackwardResult_x
+    {n : ℕ} (hn : 0 < n) {xs ys : Fin n → FiniteFp}
+    (b : FpDotProduct.FpDotProductBound xs ys R) :
+    BackwardResult
+      (componentwiseRelGauge n hn)
+      (fun x' => ∑ i : Fin n, x' i * ((ys i).toVal : R))
+      (fun i => ((xs i).toVal : R))
+      ((b.result.toVal : R)) :=
+  backwardResult_struct_of_forward_weighted_bound hn
+    (fun i => ((xs i).toVal : R)) (fun i => ((ys i).toVal : R))
+    (b.result.toVal : R) b.relErr b.h_relErr_nn b.h_bound
+
+/-- **Structured all-to-y backward result**: `BackwardResult` on the `ys`-space
+    only. Function maps `ys'` to `Σ ys'_i · xs_i`; `xs` are fixed weights. -/
+noncomputable def FpDotProductBound.toBackwardResult_y
+    {n : ℕ} (hn : 0 < n) {xs ys : Fin n → FiniteFp}
+    (b : FpDotProduct.FpDotProductBound xs ys R) :
+    BackwardResult
+      (componentwiseRelGauge n hn)
+      (fun y' => ∑ i : Fin n, y' i * ((xs i).toVal : R))
+      (fun i => ((ys i).toVal : R))
+      ((b.result.toVal : R)) := by
+  have h_bound' : |(b.result.toVal : R) -
+        ∑ i, ((ys i).toVal : R) * ((xs i).toVal : R)| ≤
+      b.relErr * ∑ i, |((ys i).toVal : R) * ((xs i).toVal : R)| := by
+    have h := b.h_bound
+    simp_rw [mul_comm ((xs _).toVal : R) ((ys _).toVal : R)] at h
+    exact h
+  exact backwardResult_struct_of_forward_weighted_bound hn
+    (fun i => ((ys i).toVal : R)) (fun i => ((xs i).toVal : R))
+    (b.result.toVal : R) b.relErr b.h_relErr_nn h_bound'
+
 end BackwardError

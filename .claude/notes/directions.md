@@ -333,6 +333,20 @@ Rounding/ files but narrow applicability.
   `|Δx_k| ≈ |Δaⱼ| · Πᵢ≠ₖ |x_k - x_i|⁻¹`. Connects to Newton-Horner convergence radius:
   ill-conditioned roots → smaller convergence basin → more Newton steps needed.
   Would need Mathlib Polynomial connection first.
+- [ ] **Triangular solve / LU / Cholesky backward error** — classical Wilkinson chapter,
+  big new chunk and the main remaining linear-algebra direction for the framework.
+  Triangular solve is the right entry point: simpler than full LU, but exercises matrix
+  algorithms end-to-end. Standard result (Higham Ch. 8): forward substitution computes
+  `x̂` satisfying `(L + ΔL)x̂ = b` with `|ΔL| ≤ γₙ · |L|` (componentwise). Then LU/Cholesky
+  build on top via composition. Multi-session arc:
+  - [ ] **Forward substitution backward error** — sequential `xᵢ = (bᵢ - Σⱼ<ᵢ Lᵢⱼxⱼ)/Lᵢᵢ`.
+    Per-row uses dot product + division + subtraction. Likely composes via existing
+    `FpDotProductBound` + scalar perturbation. Result lives on the `L` matrix space.
+  - [ ] **Back substitution** — symmetric to forward sub.
+  - [ ] **LU decomposition backward error** — Doolittle/Crout, plus row pivoting.
+    Combine with forward+back sub for full linear-system solve `(A+ΔA)x̂ = b`.
+  - [ ] **Cholesky** — for SPD matrices, tighter bound `|ΔA| ≤ γₙ₊₁·|L||Lᵀ|`.
+  - Would establish a `BackwardMatrixResult` analogue: perturbation gauge on matrix space.
 
 ## Mid-Term — ML Primitives
 - [x] **Softmax numerical stability** — `Softmax.lean`: mathematical softmax, shift invariance,
