@@ -361,4 +361,7 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
   (`fpMul_pow2_normal_eq` structural form) + `Flean/IntegerEquivalence/MulPow2.lean`
   (`setBiasedExponent` workhorse + `ofBits_setBiasedExponent_eq_fpMul_pow2`
   bridge), under "input + result both normal" carve-out.
-- ⏳ **Phase 2, comparison** — next.
+- ✅ **Phase 2, same-sign comparison ↔ unsigned bit comparison** (non-negative
+  bit-normal carve-out) — `Flean/IntegerEquivalence/Compare.lean`. Bit
+  decomposition + FiniteFp lex characterization + main bridge. Subnormal-
+  tolerant and non-positive variants are natural follow-ups.
