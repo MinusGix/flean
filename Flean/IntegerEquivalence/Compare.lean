@@ -718,6 +718,45 @@ theorem ofBits_lt_iff_b_toNat_lt_of_finite_nonneg
     rw [h1, h2]
   rw [FloatBits.b_toNat_lt_iff_of_same_sign b₁ b₂ hsbv]
 
+/-- **Phase 2 subnormal-tolerant bridge (non-positive).** For two non-positive
+finite `FloatBits` (subnormal or normal), IEEE 754 `Fp <` is anti-monotone in
+unsigned bit comparison — larger magnitude means larger bits but smaller
+(more negative) value. -/
+theorem ofBits_lt_iff_b_toNat_gt_of_finite_nonpos
+    (b₁ b₂ : FloatBits) (hf₁ : b₁.isFinite) (hf₂ : b₂.isFinite)
+    (hs₁ : b₁.sign = true) (hs₂ : b₂.sign = true) :
+    ofBits b₁ < ofBits b₂ ↔ b₂.b.toNat < b₁.b.toNat := by
+  set f₁ : FiniteFp := ⟨b₁.sign, b₁.FpExponent, b₁.FpSignificand,
+    FloatBits.isFinite_validFloatVal hf₁⟩
+  set f₂ : FiniteFp := ⟨b₂.sign, b₂.FpExponent, b₂.FpSignificand,
+    FloatBits.isFinite_validFloatVal hf₂⟩
+  have hofb₁ : ofBits b₁ = Fp.finite f₁ := ofBits_eq_finite_of_isFinite b₁ hf₁
+  have hofb₂ : ofBits b₂ = Fp.finite f₂ := ofBits_eq_finite_of_isFinite b₂ hf₂
+  rw [hofb₁, hofb₂]
+  show Fp.is_total_lt (Fp.finite f₁) (Fp.finite f₂) ↔ b₂.b.toNat < b₁.b.toNat
+  rw [show Fp.is_total_lt (Fp.finite f₁) (Fp.finite f₂) = (f₁ < f₂) from rfl]
+  -- Both negative: f₁ < f₂ ↔ is_mag_lt f₂ f₁ (REVERSED)
+  have h_lt_iff : f₁ < f₂ ↔ f₂.is_mag_lt f₁ := by
+    rw [FiniteFp.lt_def]
+    have h₁ : f₁.s = true := hs₁
+    have h₂ : f₂.s = true := hs₂
+    simp [h₁, h₂]
+  rw [h_lt_iff, is_mag_lt_iff_b_E_T_lt_of_finite b₂ b₁ hf₂ hf₁]
+  -- Same sign: both 1#1
+  have hsbv : b₂.toBitsTriple.sign = b₁.toBitsTriple.sign := by
+    have h1 : b₁.toBitsTriple.sign = 1#1 := by
+      unfold FloatBits.sign at hs₁
+      rcases BitVec.one_or b₁.toBitsTriple.sign with h | h
+      · rw [h] at hs₁; simp at hs₁
+      · exact h
+    have h2 : b₂.toBitsTriple.sign = 1#1 := by
+      unfold FloatBits.sign at hs₂
+      rcases BitVec.one_or b₂.toBitsTriple.sign with h | h
+      · rw [h] at hs₂; simp at hs₂
+      · exact h
+    rw [h1, h2]
+  rw [FloatBits.b_toNat_lt_iff_of_same_sign b₂ b₁ hsbv]
+
 end SubnormalTolerant
 
 end Fp
