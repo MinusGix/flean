@@ -214,12 +214,13 @@ private theorem FpExponent_eq_of_normal [FloatFormat] {b : FloatBits}
     b.FpExponent = (b.toBitsTriple.exponent.toNat : ℤ) - FloatFormat.exponentBias := by
   rw [FloatBits.FpExponent_def, if_neg hn.1]
 
-/-- For bit-normal `b`, `FpSignificand = 2^sigBits + T.toNat`. -/
-private theorem FpSignificand_eq_of_normal [FloatFormat] {b : FloatBits}
-    (hn : b.isNormal) :
+/-- For non-zero biased exponent (covers both bit-normal and bit-infinity),
+`FpSignificand = 2^sigBits + T.toNat`. -/
+private theorem FpSignificand_eq_of_E_ne_zero [FloatFormat] {b : FloatBits}
+    (hE : b.toBitsTriple.exponent ≠ 0) :
     b.FpSignificand
       = 2 ^ FloatFormat.significandBits + b.toBitsTriple.significand.toNat := by
-  rw [FloatBits.FpSignificand_def, if_neg hn.1]
+  rw [FloatBits.FpSignificand_def, if_neg hE]
   have hT_lt : b.toBitsTriple.significand.toNat < 2 ^ FloatFormat.significandBits :=
     b.toBitsTriple.significand.isLt
   rw [BitVec.toNat_append, ← Nat.shiftLeft_add_eq_or_of_lt hT_lt, Nat.shiftLeft_eq]
@@ -227,16 +228,39 @@ private theorem FpSignificand_eq_of_normal [FloatFormat] {b : FloatBits}
       + b.toBitsTriple.significand.toNat = _
   simp
 
-/-- Decoding `b : FloatBits` to its `Fp.finite` form for a bit-normal `b`. -/
-private theorem ofBits_eq_finite_of_normal [StdFloatFormat] (b : FloatBits)
+/-- For bit-normal `b`, `FpSignificand = 2^sigBits + T.toNat`. -/
+private theorem FpSignificand_eq_of_normal [FloatFormat] {b : FloatBits}
     (hn : b.isNormal) :
+    b.FpSignificand
+      = 2 ^ FloatFormat.significandBits + b.toBitsTriple.significand.toNat :=
+  FpSignificand_eq_of_E_ne_zero hn.1
+
+/-- For bit-subnormal `b` (`E = 0`), `FpExponent = min_exp`. -/
+private theorem FpExponent_eq_of_subnormal [FloatFormat] {b : FloatBits}
+    (hE : b.toBitsTriple.exponent = 0) :
+    b.FpExponent = FloatFormat.min_exp := by
+  rw [FloatBits.FpExponent_def, if_pos hE]
+
+/-- For bit-subnormal `b` (`E = 0`), `FpSignificand = T.toNat`. -/
+private theorem FpSignificand_eq_of_subnormal [FloatFormat] {b : FloatBits}
+    (hE : b.toBitsTriple.exponent = 0) :
+    b.FpSignificand = b.toBitsTriple.significand.toNat := by
+  rw [FloatBits.FpSignificand_def, if_pos hE]
+
+/-- For bit-subnormal `b`, `FpSignificand` is bounded above by `2^sigBits`. -/
+private theorem FpSignificand_lt_pow_of_subnormal [FloatFormat] {b : FloatBits}
+    (hE : b.toBitsTriple.exponent = 0) :
+    b.FpSignificand < 2 ^ FloatFormat.significandBits := by
+  rw [FpSignificand_eq_of_subnormal hE]
+  exact b.toBitsTriple.significand.isLt
+
+/-- Decoding `b : FloatBits` to its `Fp.finite` form when `b` is bit-finite. -/
+private theorem ofBits_eq_finite_of_isFinite [StdFloatFormat] (b : FloatBits)
+    (hf : b.isFinite) :
     ofBits b = Fp.finite ⟨b.sign, b.FpExponent, b.FpSignificand,
-      FloatBits.isFinite_validFloatVal
-        (FloatBits.notNaN_notInfinite b
-          (fun ⟨h, _⟩ => hn.2 h) (fun ⟨h, _⟩ => hn.2 h))⟩ := by
-  have hni : ¬b.isNaN := fun ⟨h, _⟩ => hn.2 h
-  have hii : ¬b.isInfinite := fun ⟨h, _⟩ => hn.2 h
-  have hf : b.isFinite := FloatBits.notNaN_notInfinite b hni hii
+      FloatBits.isFinite_validFloatVal hf⟩ := by
+  have hni : ¬b.isNaN := hf.1
+  have hii : ¬b.isInfinite := hf.2
   have h_step : ofBits b = Fp.finite ⟨b.toBitsTriple.sign.toNat == 1,
       b.FpExponent, b.FpSignificand, FloatBits.isFinite_validFloatVal hf⟩ := by
     unfold ofBits; rw [dif_neg hni, dif_neg hii]
@@ -246,6 +270,17 @@ private theorem ofBits_eq_finite_of_normal [StdFloatFormat] (b : FloatBits)
   show (b.toBitsTriple.sign.toNat == 1) = b.sign
   unfold FloatBits.sign
   rcases BitVec.one_or b.toBitsTriple.sign with h | h <;> rw [h] <;> rfl
+
+/-- Decoding `b : FloatBits` to its `Fp.finite` form for a bit-normal `b`. -/
+private theorem ofBits_eq_finite_of_normal [StdFloatFormat] (b : FloatBits)
+    (hn : b.isNormal) :
+    ofBits b = Fp.finite ⟨b.sign, b.FpExponent, b.FpSignificand,
+      FloatBits.isFinite_validFloatVal
+        (FloatBits.notNaN_notInfinite b
+          (fun ⟨h, _⟩ => hn.2 h) (fun ⟨h, _⟩ => hn.2 h))⟩ :=
+  ofBits_eq_finite_of_isFinite b
+    (FloatBits.notNaN_notInfinite b
+      (fun ⟨h, _⟩ => hn.2 h) (fun ⟨h, _⟩ => hn.2 h))
 
 /-! ## Main bridge: FP `<` ↔ unsigned bit comparison (non-negative bit-normal) -/
 
