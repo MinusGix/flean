@@ -123,4 +123,82 @@ theorem fpMul_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedR
         (g.toVal : R) = (f.toVal : R) * (2 : R) ^ k := by
   exact fpMulFinite_pow2_exact (R := R) f k hf_nz hk_lo hk_hi he_lo he_hi
 
+/-! ## Structural exactness: explicit `⟨s, e+k, m⟩` form
+
+When both the input and the result land in the normal range, the exact
+result `g` from `fpMul_pow2_exact` is uniquely the FiniteFp with the same
+sign, the same significand, and exponent shifted by `k`. The strengthening
+discharges the existential and is the value-level statement of "FP multiply
+by `2^k` is exactly an exponent shift". -/
+
+/-- The explicit `⟨f.s, f.e + k, f.m⟩` is a valid FiniteFp when `f` is normal
+and the shifted exponent stays in normal range. -/
+theorem isValidFiniteVal_shift_normal {f : FiniteFp} {k : ℤ}
+    (hf_normal : _root_.isNormal f.m)
+    (hres_lo : FloatFormat.min_exp ≤ f.e + k)
+    (hres_hi : f.e + k ≤ FloatFormat.max_exp) :
+    IsValidFiniteVal (f.e + k) f.m :=
+  ⟨hres_lo, hres_hi, f.valid.2.2.1, Or.inl hf_normal⟩
+
+/-- **Structural** `fpMul`-by-power-of-2 exactness: when `f` is normal and
+the shifted exponent stays in normal range, the product equals the explicit
+FiniteFp with the same sign and significand and exponent shifted by `k`. -/
+theorem fpMul_pow2_normal_eq {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] [FloorRing R] [RMode R] [RModeExec]
+    [RoundIntSigMSound R] [RModeIdem R]
+    (f : FiniteFp) (k : ℤ) (hf_normal : _root_.isNormal f.m)
+    (hk_lo : FloatFormat.min_exp ≤ k) (hk_hi : k ≤ FloatFormat.max_exp)
+    (hres_lo : FloatFormat.min_exp ≤ f.e + k)
+    (hres_hi : f.e + k ≤ FloatFormat.max_exp) :
+    f * pow2Float k hk_lo hk_hi =
+      (Fp.finite ⟨f.s, f.e + k, f.m,
+        isValidFiniteVal_shift_normal hf_normal hres_lo hres_hi⟩ : Fp) := by
+  set f' : FiniteFp := ⟨f.s, f.e + k, f.m,
+    isValidFiniteVal_shift_normal hf_normal hres_lo hres_hi⟩ with hf'_def
+  -- f.m > 0 since f is normal
+  have hf_nz : 0 < f.m := by
+    have h1 : (2 : ℕ) ^ (FloatFormat.prec - 1).toNat ≤ f.m := hf_normal.1
+    have h2 : 0 < (2 : ℕ) ^ (FloatFormat.prec - 1).toNat := Nat.pos_of_ne_zero (by positivity)
+    omega
+  -- Existential exact result
+  obtain ⟨g, hgM, hgV⟩ := fpMulFinite_pow2_exact (R := R) f k hf_nz hk_lo hk_hi
+    hres_lo hres_hi
+  -- f'.toVal = f.toVal * 2^k
+  have hf'_toVal : (f'.toVal : R) = (f.toVal : R) * (2 : R) ^ k := by
+    by_cases hs : f.s = false
+    · have hf's : f'.s = false := hs
+      rw [FiniteFp.toVal_pos_eq f' hf's, FiniteFp.toVal_pos_eq f hs]
+      show (f.m : R) * (2 : R) ^ (f.e + k - FloatFormat.prec + 1)
+          = (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) * (2 : R) ^ k
+      rw [show (f.e + k - FloatFormat.prec + 1 : ℤ)
+            = (f.e - FloatFormat.prec + 1) + k from by ring,
+          zpow_add₀ (by norm_num : (2 : R) ≠ 0)]
+      ring
+    · have hfs_t : f.s = true := by cases h : f.s <;> simp_all
+      have hf's_t : f'.s = true := hfs_t
+      have hnf_pos : (-f).s = false := by simp [hfs_t]
+      have hnf'_pos : (-f').s = false := by simp [hf's_t]
+      rw [show f'.toVal (R := R) = -((-f').toVal)
+            from by rw [FiniteFp.toVal_neg_eq_neg]; ring,
+          show f.toVal (R := R) = -((-f).toVal)
+            from by rw [FiniteFp.toVal_neg_eq_neg]; ring,
+          FiniteFp.toVal_pos_eq (-f') hnf'_pos,
+          FiniteFp.toVal_pos_eq (-f) hnf_pos]
+      show -((f.m : R) * (2 : R) ^ (f.e + k - FloatFormat.prec + 1))
+          = -((f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1)) * (2 : R) ^ k
+      rw [show (f.e + k - FloatFormat.prec + 1 : ℤ)
+            = (f.e - FloatFormat.prec + 1) + k from by ring,
+          zpow_add₀ (by norm_num : (2 : R) ≠ 0)]
+      ring
+  -- Uniqueness: g and f' agree on toVal, both nonzero, hence equal
+  have hf'_eq_g : f' = g := by
+    apply FiniteFp.eq_of_toVal_eq' (R := R) (Or.inl ?_) (hf'_toVal.trans hgV.symm)
+    show f'.m ≠ 0
+    show f.m ≠ 0
+    omega
+  -- The theorem statement's `*` is Fp-level (since RHS is Fp). Normalize first.
+  simp only [mul_eq_fpMul, fpMul_coe_coe, ← mul_finite_eq_fpMulFinite]
+  rw [hgM]
+  exact congr_arg Fp.finite hf'_eq_g.symm
+
 end MulPow2

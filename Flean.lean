@@ -19,3 +19,4 @@ import «Flean».Operations
 import «Flean».StorageFormats
 import «Flean».Tags
 import «Flean».IntegerEquivalence.Basic
+import «Flean».IntegerEquivalence.MulPow2
