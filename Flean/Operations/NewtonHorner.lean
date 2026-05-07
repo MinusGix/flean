@@ -772,6 +772,60 @@ theorem newton_perturbation_from_eval_errors
   have hden_pos : (0 : R) < |d_hat| * |p'_x| := by positivity
   linarith [div_le_div_of_nonneg_right hnum hden_pos.le]
 
+/-- **Newton-Horner perturbation bound with closed-form value error**.
+
+    Strengthens `newton_horner_perturbation_bound` by substituting the closed-form
+    Jet-Horner value bound `((1+η)^{2n} - 1) · p̃(|x|)` for the literal value
+    deviation `|v̂ - p(x)|`. The derivative bound `δ_d` is left as a parameter —
+    callers plug in `jetHorner_deriv_error_bound`'s gauge form, a tighter
+    application-specific bound, or just `|d̂ - p'(x)|` itself for the trivial
+    case (recovering the weak `newton_horner_perturbation_bound`).
+
+    The full bound captures the four error sources of one FP Newton step:
+    - subtraction rounding (`η · |x - q̂|`)
+    - division rounding (`η · |v̂/d̂|`)
+    - polynomial-value evaluation (`((1+η)^{2n} - 1) · p̃(|x|)`)
+    - polynomial-derivative evaluation (`δ_d`, parameterized) -/
+theorem newton_horner_perturbation_concrete
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeSticky R]
+    {init : FiniteFp} {coeffs : List FiniteFp} {x_cur : FiniteFp}
+    (step : NewtonStep init coeffs x_cur)
+    (hnr : NewtonStepNormalRange (R := R) init coeffs x_cur step)
+    (hd_hat_ne : (step.d_final.toVal : R) ≠ 0)
+    (hd_exact_ne : (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+        (init.toVal : R) 0 (x_cur.toVal : R)).2 ≠ 0)
+    {δ_d : R}
+    (hδd : |(step.d_final.toVal : R) -
+        (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+          (init.toVal : R) 0 (x_cur.toVal : R)).2| ≤ δ_d) :
+    let x_v := (x_cur.toVal : R)
+    let p_exact := hornerPoly (coeffs.map (fun c => c.toVal (R := R)))
+        (init.toVal : R) x_v
+    let d_exact := (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+        (init.toVal : R) 0 x_v).2
+    let v_hat := (step.v_final.toVal : R)
+    let d_hat := (step.d_final.toVal : R)
+    let p_abs := hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|))
+        |(init.toVal : R)| |x_v|
+    |(step.x_next.toVal : R) - (x_v - p_exact / d_exact)| ≤
+      η * |x_v - step.quot.toVal| +
+      η * |v_hat / d_hat| +
+      (((1 + η) ^ (2 * coeffs.length) - 1) * p_abs * |d_exact| +
+       |p_exact| * δ_d) /
+        (|d_hat| * |d_exact|) := by
+  intro x_v p_exact d_exact v_hat d_hat p_abs
+  have hp_eq : p_exact = (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+      (init.toVal : R) 0 x_v).1 :=
+    (jetHornerExact_fst_eq_hornerPoly _ _ _).symm
+  rw [hp_eq]
+  refine newton_perturbation_from_eval_errors hd_exact_ne hd_hat_ne
+    (newton_step_sub_error (R := R) step hnr.sub_normal)
+    (newton_step_div_error (R := R) step hnr.div_normal)
+    ?_ hδd
+  have h := jetHorner_value_error_bound (R := R) step.trace hnr.horner_normal
+  rw [← jetHornerExact_fst_eq_hornerPoly] at h
+  exact h
+
 /-- **Newton-Horner perturbation bound** (jet Horner instantiation).
 
     Corollary of `newton_perturbation_from_eval_errors` with jet Horner
@@ -806,5 +860,40 @@ theorem newton_horner_perturbation_bound
     (newton_step_div_error (R := R) step hnr.div_normal)
     (by linarith [jetHorner_value_error_bound (R := R) step.trace hnr.horner_normal])
     (by linarith [jetHorner_value_error_bound (R := R) step.trace hnr.horner_normal])
+
+/-- **Fully-instantiated Newton-Horner perturbation bound**.
+
+    Plugs the jet-Horner derivative gauge bound into `newton_horner_perturbation_concrete`,
+    closing the composition loop entirely. The remaining unknowns are the dimensional
+    quantities `|d̂|`, `|d_exact|`, and `|p_exact|` — the user's only remaining task is
+    to bound the magnitude of the polynomial value/derivative for their specific `x`. -/
+theorem newton_horner_perturbation_full
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeSticky R]
+    {init : FiniteFp} {coeffs : List FiniteFp} {x_cur : FiniteFp}
+    (step : NewtonStep init coeffs x_cur)
+    (hnr : NewtonStepNormalRange (R := R) init coeffs x_cur step)
+    (hd_hat_ne : (step.d_final.toVal : R) ≠ 0)
+    (hd_exact_ne : (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+        (init.toVal : R) 0 (x_cur.toVal : R)).2 ≠ 0) :
+    let x_v := (x_cur.toVal : R)
+    let p_exact := hornerPoly (coeffs.map (fun c => c.toVal (R := R)))
+        (init.toVal : R) x_v
+    let d_exact := (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+        (init.toVal : R) 0 x_v).2
+    let v_hat := (step.v_final.toVal : R)
+    let d_hat := (step.d_final.toVal : R)
+    let p_abs := hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|))
+        |(init.toVal : R)| |x_v|
+    let δ_d := weightedGaugeSum (jetHornerL1Gauge (R := R)) (|x_v| + 1)
+        (jetStepErrors (R := R) step.trace)
+    |(step.x_next.toVal : R) - (x_v - p_exact / d_exact)| ≤
+      η * |x_v - step.quot.toVal| +
+      η * |v_hat / d_hat| +
+      (((1 + η) ^ (2 * coeffs.length) - 1) * p_abs * |d_exact| +
+       |p_exact| * δ_d) /
+        (|d_hat| * |d_exact|) := by
+  have h_deriv := jetHorner_deriv_error_bound (R := R) step.trace hnr.horner_normal
+  simp only [FiniteFp.toVal_zero] at h_deriv
+  exact newton_horner_perturbation_concrete step hnr hd_hat_ne hd_exact_ne h_deriv
 
 end NewtonHorner
