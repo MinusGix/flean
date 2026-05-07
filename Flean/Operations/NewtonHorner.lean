@@ -970,4 +970,52 @@ theorem newton_horner_step_to_root
     exact abs_add_le _ _
   linarith [htri, hpert, hquad]
 
+/-! ## Multi-Step FP Newton Convergence
+
+Lifting `perturbed_newton_n_steps` to FP-typed iterate sequences. Given an
+infinite sequence of successful Newton-Horner steps with uniform per-step
+error and uniform real-Newton quadratic convergence on the ball, all
+iterates stay in the ball.
+
+Deriving the uniform bounds from polynomial continuity is application-specific
+(requires lower-bounding `|p'|` and upper-bounding `|p|`, `|p'|`, the
+quotient, etc. over the ball). The clean framework piece is the lift itself. -/
+
+omit [FloorRing R] in
+/-- **Multi-step FP Newton-Horner convergence on a ball**.
+
+    Given a sequence of FP iterates `xs_fp n` (with each step being a successful
+    `NewtonStep` from the previous iterate), if:
+    - the initial iterate is in the ball `|x_0 - r| ≤ ρ`,
+    - the real Newton operator satisfies quadratic convergence uniformly
+      on the ball: `|N(x) - r| ≤ C·|x - r|²` for all `x` with `|x - r| ≤ ρ`,
+    - each FP step's deviation from real Newton is uniformly bounded: `δ`,
+    - the ball is invariant: `C·ρ² + δ ≤ ρ`,
+
+    then every iterate stays in the ball: `|xs_fp n . toVal - r| ≤ ρ`.
+
+    The user is responsible for deriving the uniform per-step δ from their
+    specific polynomial (typically via `newton_horner_perturbation_full`
+    combined with uniform bounds on `|p|`, `|p'|`, and `1/|p'|` over the ball). -/
+theorem newton_horner_n_steps_in_ball
+    {init : FiniteFp} {coeffs : List FiniteFp}
+    {xs_fp : ℕ → FiniteFp}
+    {r ρ C δ : R}
+    (hC : 0 ≤ C) (hδ : 0 ≤ δ) (hρ : 0 ≤ ρ)
+    (hball : C * ρ ^ 2 + δ ≤ ρ)
+    (hx0 : |((xs_fp 0).toVal : R) - r| ≤ ρ)
+    (hquad : ∀ x : R, |x - r| ≤ ρ →
+        |x - hornerPoly (coeffs.map (fun c => c.toVal (R := R))) (init.toVal) x /
+            (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+              (init.toVal : R) 0 x).2 - r| ≤
+        C * |x - r| ^ 2)
+    (hsteps : ∀ n, |((xs_fp (n + 1)).toVal : R) -
+                    (((xs_fp n).toVal : R) -
+                     hornerPoly (coeffs.map (fun c => c.toVal (R := R))) (init.toVal)
+                       ((xs_fp n).toVal : R) /
+                     (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+                       (init.toVal : R) 0 ((xs_fp n).toVal : R)).2)| ≤ δ) :
+    ∀ n, |((xs_fp n).toVal : R) - r| ≤ ρ :=
+  perturbed_newton_n_steps hC hδ hρ hball hx0 hquad hsteps
+
 end NewtonHorner
