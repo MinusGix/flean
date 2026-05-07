@@ -1,6 +1,9 @@
 import Flean.Operations.BackwardErrorCore
 import Flean.Operations.DotProduct
 import Flean.Operations.Horner
+import Flean.Operations.HornerFMA
+import Flean.Operations.FpSum
+import Flean.Operations.FpDotProduct
 
 /-!
 # Backward Error — Floating-Point Instances
@@ -349,5 +352,196 @@ theorem horner_compose_round_eps
       (1 + η) ^ (2 * coeffs.length) - 1 := by
     simp only [horner_backward_result, backwardResult_struct_of_forward_weighted_bound]
   rw [heps, pow_succ]; ring
+
+/-! ### HornerFMA Backward Error -/
+
+/-- **Backward error for FMA-Horner evaluation**: with one rounding per step
+    instead of two, the exponent halves to `(1+η)^n - 1`.
+
+    `fl(p(x)) = Σ(1 + μᵢ) · cᵢ · x^{n-1-i}` where `|μᵢ| ≤ (1+η)^n - 1`. -/
+theorem hornerFMA_backward_error
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {x init final : FiniteFp} {coeffs : List FiniteFp}
+    (trace : HornerFMA.FMATrace x coeffs init final)
+    (hinit : init.toVal (R := R) = 0)
+    (hnr : trace.AllNormalRange (R := R)) :
+    ∃ mu : Fin coeffs.length → R,
+      (final.toVal : R) =
+        ∑ i : Fin coeffs.length,
+          (1 + mu i) * ((coeffs.get i).toVal (R := R) *
+            (x.toVal (R := R)) ^ (coeffs.length - 1 - i.val)) ∧
+      ∀ i, |mu i| ≤ (1 + η) ^ coeffs.length - 1 := by
+  have hfwd := HornerFMA.fma_horner_error_bound trace hnr
+  simp only [hinit, abs_zero] at hfwd
+  set vfun : Fin coeffs.length → R :=
+    fun i => (coeffs.get i).toVal (R := R) *
+      (x.toVal (R := R)) ^ (coeffs.length - 1 - i.val)
+  have hval : Horner.hornerPoly (coeffs.map (fun c => c.toVal (R := R))) 0 (x.toVal) =
+      ∑ i, vfun i := by
+    calc
+      Horner.hornerPoly (coeffs.map (fun c => c.toVal (R := R))) 0 (x.toVal) =
+          ∑ i : Fin (coeffs.map (fun c => c.toVal (R := R))).length,
+            (coeffs.map (fun c => c.toVal (R := R))).get i *
+              (x.toVal (R := R)) ^
+                ((coeffs.map (fun c => c.toVal (R := R))).length - 1 - i.val) := by
+            exact hornerPoly_eq_fin_sum (coeffs.map (fun c => c.toVal (R := R))) (x.toVal)
+      _ = ∑ i : Fin coeffs.length, vfun i := by
+        refine Finset.sum_equiv
+          (finCongr (List.length_map (f := fun c : FiniteFp => c.toVal (R := R)) (as := coeffs))) ?_ ?_
+        · intro i; simp
+        · intro i _
+          simp [vfun, List.length_map, List.get_eq_getElem, List.getElem_map]
+  have habs : Horner.hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|)) 0 |x.toVal (R := R)| =
+      ∑ i, |vfun i| := by
+    calc
+      Horner.hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|)) 0 |x.toVal (R := R)| =
+          ∑ i : Fin (coeffs.map (fun c => c.toVal (R := R))).length,
+            |(coeffs.map (fun c => c.toVal (R := R))).get i| *
+              |x.toVal (R := R)| ^
+                ((coeffs.map (fun c => c.toVal (R := R))).length - 1 - i.val) := by
+            simpa [List.map_map]
+              using hornerPoly_abs_eq_fin_sum (coeffs.map (fun c => c.toVal (R := R))) (x.toVal)
+      _ = ∑ i : Fin coeffs.length, |vfun i| := by
+        refine Finset.sum_equiv
+          (finCongr (List.length_map (f := fun c : FiniteFp => c.toVal (R := R)) (as := coeffs))) ?_ ?_
+        · intro i; simp
+        · intro i _
+          simp [vfun, List.length_map, List.get_eq_getElem, List.getElem_map, abs_mul, abs_pow]
+  have hfwd' : |(final.toVal : R) - ∑ i, vfun i| ≤
+      ((1 + η) ^ coeffs.length - 1) * ∑ i, |vfun i| := by
+    rw [← hval, ← habs]; exact hfwd
+  have heps_nn : (0 : R) ≤ (1 + η) ^ coeffs.length - 1 := by
+    have : (0 : R) < η := by simp only [FloatFormat.hEps_def]; positivity
+    exact sub_nonneg.mpr (one_le_pow₀ (show (1 : R) ≤ 1 + η by linarith))
+  exact backwardResult_of_forward_fin_bound coeffs.length vfun
+    (final.toVal : R) _ heps_nn hfwd'
+
+/-- **Structured backward error for FMA-Horner**: returns a `BackwardResult`
+    on the **coefficient space** with componentwise relative gauge.
+
+    `fl(p(x)) = p̃(x)` where `c̃ᵢ = (1+μᵢ)·cᵢ` and `max_i |μᵢ| ≤ (1+η)^n - 1`. -/
+noncomputable def hornerFMA_backward_result
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R]
+    {x init final : FiniteFp} {coeffs : List FiniteFp}
+    (hcoeffs : 0 < coeffs.length)
+    (trace : HornerFMA.FMATrace x coeffs init final)
+    (hinit : init.toVal (R := R) = 0)
+    (hnr : trace.AllNormalRange (R := R)) :
+    BackwardResult
+      (componentwiseRelGauge coeffs.length hcoeffs)
+      (fun c => ∑ i : Fin coeffs.length,
+        c i * (x.toVal (R := R)) ^ (coeffs.length - 1 - i.val))
+      (fun i => (coeffs.get i).toVal)
+      (final.toVal : R) := by
+  have hfwd := HornerFMA.fma_horner_error_bound trace hnr
+  simp only [hinit, abs_zero] at hfwd
+  set vfun : Fin coeffs.length → R :=
+    fun i => (coeffs.get i).toVal (R := R) *
+      (x.toVal (R := R)) ^ (coeffs.length - 1 - i.val)
+  have hval : Horner.hornerPoly (coeffs.map (fun c => c.toVal (R := R))) 0 (x.toVal) =
+      ∑ i, vfun i := by
+    calc _ = ∑ i : Fin (coeffs.map (fun c => c.toVal (R := R))).length,
+            (coeffs.map (fun c => c.toVal (R := R))).get i *
+              (x.toVal (R := R)) ^
+                ((coeffs.map (fun c => c.toVal (R := R))).length - 1 - i.val) :=
+            hornerPoly_eq_fin_sum _ _
+      _ = ∑ i : Fin coeffs.length, vfun i := by
+        refine Finset.sum_equiv
+          (finCongr (List.length_map (f := fun c : FiniteFp => c.toVal (R := R)) (as := coeffs))) ?_ ?_
+        · intro i; simp
+        · intro i _; simp [vfun, List.length_map, List.get_eq_getElem, List.getElem_map]
+  have habs : Horner.hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|)) 0 |x.toVal (R := R)| =
+      ∑ i, |vfun i| := by
+    calc _ = ∑ i : Fin (coeffs.map (fun c => c.toVal (R := R))).length,
+            |(coeffs.map (fun c => c.toVal (R := R))).get i| *
+              |x.toVal (R := R)| ^
+                ((coeffs.map (fun c => c.toVal (R := R))).length - 1 - i.val) := by
+            simpa [List.map_map]
+              using hornerPoly_abs_eq_fin_sum (coeffs.map (fun c => c.toVal (R := R))) (x.toVal)
+      _ = ∑ i : Fin coeffs.length, |vfun i| := by
+        refine Finset.sum_equiv
+          (finCongr (List.length_map (f := fun c : FiniteFp => c.toVal (R := R)) (as := coeffs))) ?_ ?_
+        · intro i; simp
+        · intro i _; simp [vfun, List.length_map, List.get_eq_getElem, List.getElem_map, abs_mul, abs_pow]
+  have hfwd' : |(final.toVal : R) - ∑ i, vfun i| ≤
+      ((1 + η) ^ coeffs.length - 1) * ∑ i, |vfun i| := by
+    rw [← hval, ← habs]; exact hfwd
+  have heps_nn : (0 : R) ≤ (1 + η) ^ coeffs.length - 1 := by
+    have : (0 : R) < η := by simp only [FloatFormat.hEps_def]; positivity
+    exact sub_nonneg.mpr (one_le_pow₀ (show (1 : R) ≤ 1 + η by linarith))
+  exact backwardResult_struct_of_forward_weighted_bound hcoeffs
+    (fun i => (coeffs.get i).toVal) (fun i => (x.toVal (R := R)) ^ (coeffs.length - 1 - i.val))
+    _ _ heps_nn hfwd'
+
+/-! ### FpSumBound → Backward Error -/
+
+/-- **Backward error for any FpSumBound**: every bundled FP summation immediately
+    yields a Wilkinson-style backward result. The computed sum equals the exact
+    sum of perturbed inputs `x'_i = (1 + μ_i) · x_i` with `|μ_i| ≤ b.relErr`.
+
+    Generic — works for naive, pairwise, Kahan, Neumaier, or any future summation
+    algorithm that produces an `FpSumBound`. -/
+theorem FpSumBound_backward_error
+    {n : ℕ} {xs : Fin n → FiniteFp} (b : FpSum.FpSumBound xs R) :
+    ∃ mu : Fin n → R,
+      (b.result.toVal : R) =
+        ∑ i : Fin n, (1 + mu i) * ((xs i).toVal : R) ∧
+      ∀ i, |mu i| ≤ b.relErr :=
+  backwardResult_of_forward_fin_bound n
+    (fun i => ((xs i).toVal : R)) (b.result.toVal : R) b.relErr
+    b.h_relErr_nn b.h_bound
+
+/-- **Structured backward result for any FpSumBound**: returns a `BackwardResult`
+    on the input space `Fin n → R` with componentwise relative gauge.
+
+    `fl(Σ xs) = Σ x'_i` where `max_i |μ_i| ≤ b.relErr` and `x'_i = (1+μ_i)·xs_i.toVal`. -/
+noncomputable def FpSumBound.toBackwardResult
+    {n : ℕ} (hn : 0 < n) {xs : Fin n → FiniteFp} (b : FpSum.FpSumBound xs R) :
+    BackwardResult
+      (componentwiseRelGauge n hn)
+      (fun w => ∑ i : Fin n, w i)
+      (fun i => ((xs i).toVal : R))
+      ((b.result.toVal : R)) :=
+  backwardResult_struct_of_forward_fin_bound hn
+    (fun i => ((xs i).toVal : R)) (b.result.toVal : R) b.relErr
+    b.h_relErr_nn b.h_bound
+
+/-! ### FpDotProductBound → Backward Error -/
+
+/-- **Backward error for any FpDotProductBound**: every bundled FP dot product
+    yields a backward result attributing all error to the products. The computed
+    dot product equals `Σ (1 + μ_i) · xs_i · ys_i` with `|μ_i| ≤ b.relErr`.
+
+    Generic — works for sequential dot product, FMA dot product, or any future
+    algorithm producing an `FpDotProductBound`. -/
+theorem FpDotProductBound_backward_error
+    {n : ℕ} {xs ys : Fin n → FiniteFp}
+    (b : FpDotProduct.FpDotProductBound xs ys R) :
+    ∃ mu : Fin n → R,
+      (b.result.toVal : R) =
+        ∑ i : Fin n, (1 + mu i) *
+          (((xs i).toVal : R) * ((ys i).toVal : R)) ∧
+      ∀ i, |mu i| ≤ b.relErr :=
+  backwardResult_of_forward_fin_bound n
+    (fun i => ((xs i).toVal : R) * ((ys i).toVal : R))
+    (b.result.toVal : R) b.relErr b.h_relErr_nn b.h_bound
+
+/-- **Structured backward result for any FpDotProductBound**: returns a
+    `BackwardResult` on the **product space** `Fin n → R` with componentwise
+    relative gauge.
+
+    `fl(x · y) = Σ p'_i` where `p'_i = (1+μ_i)·xs_i.toVal·ys_i.toVal` and
+    `max_i |μ_i| ≤ b.relErr`. Mirrors `dp_backward_result`. -/
+noncomputable def FpDotProductBound.toBackwardResult
+    {n : ℕ} (hn : 0 < n) {xs ys : Fin n → FiniteFp}
+    (b : FpDotProduct.FpDotProductBound xs ys R) :
+    BackwardResult
+      (componentwiseRelGauge n hn)
+      (fun w => ∑ i : Fin n, w i)
+      (fun i => ((xs i).toVal : R) * ((ys i).toVal : R))
+      ((b.result.toVal : R)) :=
+  backwardResult_struct_of_forward_fin_bound hn
+    (fun i => ((xs i).toVal : R) * ((ys i).toVal : R))
+    (b.result.toVal : R) b.relErr b.h_relErr_nn b.h_bound
 
 end BackwardError
