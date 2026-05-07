@@ -223,3 +223,142 @@ Then enough primitives to attempt a small **binary-weight ReLU layer end-to-end*
 as flagship — stresses every primitive (sign flip, masked select, integer
 popcount) and produces a result that's both correct and *visibly* a major
 simplification over the FP version.
+
+## Additional ideas / backlog
+
+Items not on the original 6-phase roadmap, in rough order of "natural to add
+once the surrounding infrastructure exists":
+
+### Bit-pattern classifiers (Phase 1.5)
+Each of these is a single bit-pattern test that decides an `Fp` predicate.
+Together they cover the IEEE 754 `fpClassify` enum.
+
+- [ ] **`isNaN_eq_bit_test`** — `f.isNaN ↔ b.isExponentAllOnes ∧ ¬b.isTSignificandZero`
+  (already a fact in `Encoding/Basic.lean`; surface as a bridge `Fp.isNaN ↔ ...`).
+- [ ] **`isInfinite_eq_bit_test`** — symmetric to above.
+- [ ] **`isFinite_eq_bit_test`**, **`isNormal_eq_bit_test`**,
+      **`isSubnormal_eq_bit_test`**, **`isZero_eq_bit_test`** — same idea.
+- [ ] **`fpClassify`** as a single ADT of these, with the tag computed from
+  `(b.toBitsTriple.exponent.isZero, b.toBitsTriple.exponent.isAllOnes,
+  b.toBitsTriple.significand.isZero)` (8 cases collapse to 5).
+- [ ] **`isPowerOfTwo`** — bit-pattern: trailing significand all zero, exponent
+  in normal range. Useful for compile-time mul-by-pow2 rewrites at *runtime*.
+
+### `nextUp` / `nextDown` / `nextAfter` (Phase 1.6)
+IEEE 754 §5.3.1: `nextUp x` is the smallest representable value greater than `x`.
+At the bit level, this is *integer increment* on the bit pattern (with sign-magnitude
+care: if positive, increment; if negative, decrement). Strong "integer pipeline"
+application — these are used in interval arithmetic, error analysis, and
+adversarial ML to compute exact ULP-level perturbations.
+
+- [ ] **`nextUp_eq_bit_increment`** for positive `f`; symmetric for negative.
+- [ ] **Sign-magnitude integer increment** as a bit-level operation, with the
+  zero-crossing case (smallest positive subnormal vs smallest negative subnormal).
+- [ ] **`fpUlp_eq_pow2`** — ULP at `f` is `2^(e - prec + 1)` for normal `f`,
+  representable directly as a bit pattern. Connects `Flean/Ulp.lean` to bit ops.
+
+### Total ordering ↔ signed-magnitude integer comparison (Phase 2.5)
+IEEE 754 §5.10: `totalOrder` on FP corresponds *exactly* to signed-magnitude
+integer comparison on the bit pattern (with NaN ordering convention). This is
+the strongest "FP comparison = integer comparison" theorem available, stronger
+than the same-sign carve-out. Hardware-relevant: no FP comparator needed for
+total-order checks.
+
+- [ ] **`totalOrder_eq_intCmp_signMagnitude`** — full theorem. Likely needs a
+  "view bits as signed-magnitude integer" helper at the `BitVec` level.
+
+### Format conversions (Phase 1.7 or Phase 4 add-on)
+Bit-level statement of widening/narrowing between FP formats. Already partially
+covered by `StorageFormats/MixedPrecision.lean` at the value level; the bit-level
+version states "widening = pad significand with zeros, rebias exponent".
+
+- [ ] **`widen_bits_eq_pad`** — Binary16 → Binary32 widening at the bit level.
+- [ ] **`narrow_bits_eq_round_truncate`** — Binary32 → Binary16 narrowing
+  (involves rounding, so the bit-level statement has an `RModeNearest` carve-out).
+
+### Comparison-derived ops (Phase 2.5)
+Beyond max/min, IEEE 754 / hardware exposes:
+
+- [ ] **`fpClamp_eq_bit_clamp`** — `clamp x lo hi`. Composes `fpMax` and `fpMin`,
+  so derives directly from Phase 2.
+- [ ] **`fpSign_eq_bit_test`** — `sign x ∈ {-1, 0, +1}` from bit pattern.
+- [ ] **`fpAbsCompare`** — compare by magnitude only, ignoring sign.
+
+### Activation function family (Phase 3+)
+Beyond ReLU/leaky ReLU/hardSigmoid/hardTanh:
+
+- [ ] **`prelu`** — parametric ReLU with FP slope; reduces to Phase 3 if slope
+  is a power of 2.
+- [ ] **`elu`** — uses `expm1`; relates to Phase 5 soft-`exp`.
+- [ ] **`swish`** / **`silu`** — `x * sigmoid(x)`. Bit-level equivalences
+  through approximate sigmoid + multiplication.
+- [ ] **`gelu` approximate variants** — tanh-based approximation has a Horner
+  polynomial that could be expressed via Phase 5 building blocks.
+- [ ] **Quantized activations**: bit-bucketing into a lookup-table is a *direct*
+  integer-op statement of an approximate activation. Could unlock practical
+  inference speedups.
+
+### Numerical recipes (Phase 5 expansions)
+Beyond Quake invsqrt and soft-log/exp:
+
+- [ ] **Reciprocal initial estimate** — `1/x ≈ magic - bits(x)` (similar magic
+  constant logic). Used in software-divide implementations.
+- [ ] **`expm1` near-zero fast path** — bit-level detection of "x close to 0"
+  triggers a Taylor approximation via Phase 5 polynomial.
+- [ ] **`log1p` near-one fast path** — symmetric.
+- [ ] **`pow(x, y)` via `exp(y · log(x))`** — composition of soft-exp and
+  soft-log. Big composition demo.
+- [ ] **`sqrt` Newton refinement** with Quake invsqrt as initial estimate.
+
+### Layer/architecture flagships (Phase 6 expansions)
+Beyond the binary-weight ReLU layer:
+
+- [ ] **Quantized linear layer (INT8)** — partially deferred per "out of scope".
+  Could revisit as a *targeted* proof showing INT8 kernel ↔ FP reference within
+  quantization error.
+- [ ] **Attention head**: `softmax(QK^T / √d) · V`. Composes Phase 2 (argmax for
+  stability) + Phase 5 (soft-exp) + matmul. Very visible payoff for transformer
+  inference.
+- [ ] **Convolution layer with binary/ternary weights** — natural extension of
+  binary-weight ReLU layer to 2D.
+- [ ] **MoE routing**: top-k argmax via Phase 2 + linear combo of expert outputs.
+  Argmax dominates MoE compute, so a Phase 2-based proof captures real value.
+- [ ] **Embedding lookup**: pure indexing — but interesting bit-level statement
+  about how embeddings are encoded. Probably out of scope (table indexing isn't
+  FP arithmetic).
+
+### Tactic / framework backlog (Phase 4 expansions)
+Beyond `EquivalentOn` and pattern-matching:
+
+- [ ] **`bit_equiv` tactic** — given `Fp` expression, find equivalent bit-op
+  expression. Starts simple (single-op rewrites) and grows to handle composition.
+- [ ] **`bit_simplify` simp set** — `@[bit_simp]` attribute on every theorem of
+  the form `Fp_op ↔ bit_op`, then `simp only [bit_simp]` rewrites entire FP
+  expressions in one pass.
+- [ ] **Reflection / decision procedure** for low-bit FP formats (E4M3, E5M2):
+  enumerate all bit patterns, mechanically check FP-op = bit-op equivalence.
+- [ ] **`BitEquivalent` typeclass** — distinct from `EquivalentOn`, captures
+  "FP op `f` and bit op `g` agree on all non-NaN inputs". Composes via instances.
+
+### Hardware-pipeline metadata (low priority)
+Tag theorems with metadata about which integer-pipeline instruction implements
+them. Not affecting math, but useful for downstream codegen/SIMD targeting.
+
+- [ ] **`@[hw_target ...]` attribute** on each bit-equivalence theorem,
+  recording AVX-512 / NEON / RVV instruction names and rough latency.
+- [ ] **Latency-aware fusion**: prefer chains of bit-ops with low cumulative
+  latency over slightly shorter FP chains.
+
+## Implementation status (live)
+
+(Updated as implementations land. See `MEMORY.md` and
+`memory/fp-integer-equivalence.md` for full provenance.)
+
+- ✅ **Phase 1, sign-bit ops** — `Flean/IntegerEquivalence/Basic.lean` (sign
+  flip ↔ neg, sign clear ↔ fpAbs, copySign bridge), via `setSign` / `withSign`
+  workhorses.
+- ✅ **Phase 1, fpMul ↔ exponent shift** — `Flean/Operations/MulPow2.lean`
+  (`fpMul_pow2_normal_eq` structural form) + `Flean/IntegerEquivalence/MulPow2.lean`
+  (`setBiasedExponent` workhorse + `ofBits_setBiasedExponent_eq_fpMul_pow2`
+  bridge), under "input + result both normal" carve-out.
+- ⏳ **Phase 2, comparison** — next.
