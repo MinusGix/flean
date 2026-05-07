@@ -18,3 +18,4 @@ import «Flean».MinMax
 import «Flean».Operations
 import «Flean».StorageFormats
 import «Flean».Tags
+import «Flean».IntegerEquivalence.Basic
