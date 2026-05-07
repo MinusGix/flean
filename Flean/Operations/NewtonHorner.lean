@@ -896,4 +896,78 @@ theorem newton_horner_perturbation_full
   simp only [FiniteFp.toVal_zero] at h_deriv
   exact newton_horner_perturbation_concrete step hnr hd_hat_ne hd_exact_ne h_deriv
 
+/-! ## Capstone: One-Step Newton-Horner to Root
+
+Combines `exact_newton_quadratic` (real Newton's quadratic convergence under
+Taylor + Lipschitz) with `newton_horner_perturbation_full` (FP step error)
+via `perturbed_newton_one_step` (perturbed-iterate triangle).
+
+Result: a single bound on `|x_next - r|` capturing both the inherent quadratic
+convergence and the FP rounding error. -/
+
+/-- **One-step Newton-Horner convergence under FP perturbation**.
+
+    Combining the exact Newton quadratic bound (with Taylor remainder constant
+    `M` and derivative Lipschitz constant `L`) with the FP Newton step
+    perturbation gives a closed-form bound on the FP iterate's distance from
+    the root after one step:
+
+    `|x_next - r| ≤ (L+M)·|x_cur - r|² / |p'(x_cur)| + (FP step error)`
+
+    The user supplies the Taylor and Lipschitz hypotheses; the FP-side bound
+    is computed mechanically from the trace. -/
+theorem newton_horner_step_to_root
+    [RModeExec] [RMode R] [RModeNearest R] [RoundIntSigMSound R] [RModeSticky R]
+    {init : FiniteFp} {coeffs : List FiniteFp} {x_cur : FiniteFp}
+    (step : NewtonStep init coeffs x_cur)
+    (hnr : NewtonStepNormalRange (R := R) init coeffs x_cur step)
+    (hd_hat_ne : (step.d_final.toVal : R) ≠ 0)
+    (hd_exact_ne : (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+        (init.toVal : R) 0 (x_cur.toVal : R)).2 ≠ 0)
+    {r M L : R}
+    (hTaylor : |hornerPoly (coeffs.map (fun c => c.toVal (R := R))) (init.toVal) (x_cur.toVal) -
+                 (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+                   (init.toVal : R) 0 r).2 * ((x_cur.toVal : R) - r)| ≤
+               M * |(x_cur.toVal : R) - r| ^ 2)
+    (hLip : |(jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+                (init.toVal : R) 0 (x_cur.toVal : R)).2 -
+             (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+                (init.toVal : R) 0 r).2| ≤
+             L * |(x_cur.toVal : R) - r|) :
+    let x_v := (x_cur.toVal : R)
+    let p_exact := hornerPoly (coeffs.map (fun c => c.toVal (R := R)))
+        (init.toVal : R) x_v
+    let d_exact := (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+        (init.toVal : R) 0 x_v).2
+    let v_hat := (step.v_final.toVal : R)
+    let d_hat := (step.d_final.toVal : R)
+    let p_abs := hornerPoly (coeffs.map (fun c => |c.toVal (R := R)|))
+        |(init.toVal : R)| |x_v|
+    let δ_d := weightedGaugeSum (jetHornerL1Gauge (R := R)) (|x_v| + 1)
+        (jetStepErrors (R := R) step.trace)
+    |(step.x_next.toVal : R) - r| ≤
+      (L + M) * |x_v - r| ^ 2 / |d_exact| +
+      (η * |x_v - step.quot.toVal| +
+       η * |v_hat / d_hat| +
+       (((1 + η) ^ (2 * coeffs.length) - 1) * p_abs * |d_exact| +
+        |p_exact| * δ_d) /
+         (|d_hat| * |d_exact|)) := by
+  intro x_v p_exact d_exact v_hat d_hat p_abs δ_d
+  have hquad := exact_newton_quadratic
+    (p := fun y => hornerPoly (coeffs.map (fun c => c.toVal (R := R))) (init.toVal) y)
+    (p' := fun y => (jetHornerExact (coeffs.map (fun c => c.toVal (R := R)))
+                      (init.toVal : R) 0 y).2)
+    (x := (x_cur.toVal : R)) (r := r)
+    hd_exact_ne hTaylor hLip
+  simp only [] at hquad
+  have hpert := newton_horner_perturbation_full (R := R) step hnr hd_hat_ne hd_exact_ne
+  have htri : |(step.x_next.toVal : R) - r| ≤
+      |(step.x_next.toVal : R) - (x_v - p_exact / d_exact)| +
+      |(x_v - p_exact / d_exact) - r| := by
+    rw [show (step.x_next.toVal : R) - r =
+        ((step.x_next.toVal : R) - (x_v - p_exact / d_exact)) +
+          ((x_v - p_exact / d_exact) - r) from by ring]
+    exact abs_add_le _ _
+  linarith [htri, hpert, hquad]
+
 end NewtonHorner
