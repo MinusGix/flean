@@ -361,9 +361,11 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
   (`fpMul_pow2_normal_eq` structural form) + `Flean/IntegerEquivalence/MulPow2.lean`
   (`setBiasedExponent` workhorse + `ofBits_setBiasedExponent_eq_fpMul_pow2`
   bridge), under "input + result both normal" carve-out.
-- ✅ **Phase 2, same-sign comparison ↔ unsigned bit comparison** (both non-negative
-  and non-positive, bit-normal carve-out) — `Flean/IntegerEquivalence/Compare.lean`.
-  Bit decomposition + FiniteFp lex characterization + main bridges
-  `ofBits_lt_iff_b_toNat_{lt_of_normal_nonneg, gt_of_normal_nonpos}`. The
-  non-positive case is anti-monotone in bit value. Subnormal-tolerant variant
-  deferred (stepping-stone helpers shipped).
+- ✅ **Phase 2, same-sign comparison ↔ unsigned bit comparison** —
+  `Flean/IntegerEquivalence/Compare.lean`. Three bridges all sorry-free:
+  `ofBits_lt_iff_b_toNat_lt_of_normal_nonneg` (non-negative, normal-only),
+  `ofBits_lt_iff_b_toNat_gt_of_normal_nonpos` (non-positive, normal-only,
+  anti-monotone), and `ofBits_lt_iff_b_toNat_lt_of_finite_nonneg`
+  (subnormal-tolerant non-negative — works for any non-negative finite via 4
+  sub-cases on `(E vs 0)×(E vs 0)`). Subnormal-tolerant non-positive variant
+  is the natural follow-up (symmetric structure).

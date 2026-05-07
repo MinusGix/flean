@@ -403,4 +403,321 @@ theorem ofBits_lt_iff_b_toNat_gt_of_normal_nonpos
     · left; omega
     · right; exact ⟨by omega, by omega⟩
 
+/-! ## Subnormal-tolerant Phase 2 bridge (non-negative case)
+
+Generalizes `ofBits_lt_iff_b_toNat_lt_of_normal_nonneg` to allow any
+non-negative finite `FloatBits` (subnormal or normal). The key arithmetic
+fact: in standard formats `min_exp + bias = 1`, so the smallest normal
+binade (E=1) and the subnormal binade (E=0) share `f.e = min_exp`. The
+significand bound transition `T < 2^sb ≤ 2^sb + T'` makes the lex
+comparison agree with the FP value comparison across the boundary. -/
+
+section SubnormalTolerant
+variable [StdFloatFormat]
+
+/-- Decoded `f.e` for non-zero biased exponent. -/
+private theorem FpExponent_eq_of_E_ne_zero {b : FloatBits}
+    (hE : b.toBitsTriple.exponent ≠ 0) :
+    b.FpExponent = (b.toBitsTriple.exponent.toNat : ℤ) - FloatFormat.exponentBias := by
+  rw [FloatBits.FpExponent_def, if_neg hE]
+
+/-- Standard format relation: `min_exp + bias = 1`. -/
+private theorem min_exp_plus_bias_eq_one :
+    FloatFormat.min_exp + FloatFormat.exponentBias = 1 := by
+  have := StdFloatFormat.st
+  unfold FloatFormat.isStandardExpRange at this
+  unfold FloatFormat.exponentBias; omega
+
+/-- `2 * 2^sigBits = 2^prec`, the basic format identity. -/
+private theorem two_mul_pow_sigBits_eq_pow_prec :
+    2 * 2 ^ FloatFormat.significandBits = 2 ^ FloatFormat.prec.toNat := by
+  have hprec_eq : (FloatFormat.prec - 1).toNat + 1 = FloatFormat.prec.toNat := by
+    rw [FloatFormat.prec_sub_one_toNat_eq_toNat_sub]
+    have := FloatFormat.valid_prec; omega
+  show 2 * 2 ^ (FloatFormat.prec - 1).toNat = _
+  conv_rhs => rw [← hprec_eq]
+  rw [pow_succ]; ring
+
+/-! ### The four (E vs 0) sub-cases of `is_mag_lt ↔ bit_lt` -/
+
+/-- (sub, sub): same e = min_exp, m = T. Comparison reduces to T comparison. -/
+private theorem is_mag_lt_iff_bit_sub_sub
+    {b₁ b₂ : FloatBits} (hf₁ : b₁.isFinite) (hf₂ : b₂.isFinite)
+    (hZ₁ : b₁.toBitsTriple.exponent = 0) (hZ₂ : b₂.toBitsTriple.exponent = 0) :
+    (⟨b₁.sign, b₁.FpExponent, b₁.FpSignificand,
+        FloatBits.isFinite_validFloatVal hf₁⟩ : FiniteFp).is_mag_lt
+    ⟨b₂.sign, b₂.FpExponent, b₂.FpSignificand,
+        FloatBits.isFinite_validFloatVal hf₂⟩ ↔
+      b₁.toBitsTriple.significand.toNat < b₂.toBitsTriple.significand.toNat := by
+  have he₁ := FpExponent_eq_of_subnormal hZ₁
+  have he₂ := FpExponent_eq_of_subnormal hZ₂
+  have hm₁ := FpSignificand_eq_of_subnormal hZ₁
+  have hm₂ := FpSignificand_eq_of_subnormal hZ₂
+  unfold FiniteFp.is_mag_lt
+  show (if b₁.FpExponent = b₂.FpExponent then b₁.FpSignificand < b₂.FpSignificand
+        else _) ↔ _
+  rw [if_pos (he₁.trans he₂.symm), hm₁, hm₂]
+
+/-- (sub, norm): always TRUE. f₁.m = T₁ < 2^sb ≤ p + T₂ ≤ f₂.m * 2^k. -/
+private theorem is_mag_lt_iff_bit_sub_norm
+    {b₁ b₂ : FloatBits} (hf₁ : b₁.isFinite) (hf₂ : b₂.isFinite)
+    (hZ₁ : b₁.toBitsTriple.exponent = 0) (hZ₂ : b₂.toBitsTriple.exponent ≠ 0) :
+    (⟨b₁.sign, b₁.FpExponent, b₁.FpSignificand,
+        FloatBits.isFinite_validFloatVal hf₁⟩ : FiniteFp).is_mag_lt
+    ⟨b₂.sign, b₂.FpExponent, b₂.FpSignificand,
+        FloatBits.isFinite_validFloatVal hf₂⟩ := by
+  have he₁ : b₁.FpExponent = FloatFormat.min_exp := FpExponent_eq_of_subnormal hZ₁
+  have he₂ : b₂.FpExponent
+      = (b₂.toBitsTriple.exponent.toNat : ℤ) - FloatFormat.exponentBias :=
+    FpExponent_eq_of_E_ne_zero hZ₂
+  have hm₁ : b₁.FpSignificand = b₁.toBitsTriple.significand.toNat :=
+    FpSignificand_eq_of_subnormal hZ₁
+  have hm₂ : b₂.FpSignificand
+      = 2 ^ FloatFormat.significandBits + b₂.toBitsTriple.significand.toNat :=
+    FpSignificand_eq_of_E_ne_zero hZ₂
+  have hT₁_lt : b₁.toBitsTriple.significand.toNat < 2 ^ FloatFormat.significandBits :=
+    b₁.toBitsTriple.significand.isLt
+  have hE₂_pos : 0 < b₂.toBitsTriple.exponent.toNat := by
+    rw [Nat.pos_iff_ne_zero]; intro h
+    exact hZ₂ (BitVec.eq_of_toNat_eq h)
+  have h_min : FloatFormat.min_exp + FloatFormat.exponentBias = 1 := min_exp_plus_bias_eq_one
+  have h_2p : 2 * 2 ^ FloatFormat.significandBits = 2 ^ FloatFormat.prec.toNat :=
+    two_mul_pow_sigBits_eq_pow_prec
+  unfold FiniteFp.is_mag_lt
+  show (if b₁.FpExponent = b₂.FpExponent then b₁.FpSignificand < b₂.FpSignificand
+        else if b₁.FpExponent > b₂.FpExponent then _
+        else b₁.FpSignificand < b₂.FpSignificand
+              * 2 ^ (b₂.FpExponent - b₁.FpExponent).natAbs)
+  -- f₁.e ≤ f₂.e always (since f₁.e = min_exp = 1 - bias ≤ E₂ - bias = f₂.e for E₂ ≥ 1)
+  have h_e_le : b₁.FpExponent ≤ b₂.FpExponent := by
+    rw [he₁, he₂]; omega
+  by_cases h_eq : b₁.FpExponent = b₂.FpExponent
+  · rw [if_pos h_eq, hm₁, hm₂]; omega
+  · rw [if_neg h_eq]
+    have h_lt : b₁.FpExponent < b₂.FpExponent := lt_of_le_of_ne h_e_le h_eq
+    rw [if_neg (not_lt.mpr (le_of_lt h_lt)), hm₁, hm₂]
+    -- T₁ < (p + T₂) * 2^k. T₁ < p ≤ p + T₂ ≤ (p + T₂) * 1 ≤ (p + T₂) * 2^k.
+    have hk : 1 ≤ (b₂.FpExponent - b₁.FpExponent).natAbs := by
+      rcases Int.natAbs_eq (b₂.FpExponent - b₁.FpExponent) with heq | heq <;> omega
+    have h_pow_pos : 1 ≤ 2 ^ (b₂.FpExponent - b₁.FpExponent).natAbs :=
+      Nat.one_le_two_pow
+    have : (2 ^ FloatFormat.significandBits + b₂.toBitsTriple.significand.toNat)
+        ≤ (2 ^ FloatFormat.significandBits + b₂.toBitsTriple.significand.toNat)
+            * 2 ^ (b₂.FpExponent - b₁.FpExponent).natAbs := by
+      nlinarith [h_pow_pos]
+    omega
+
+/-- (norm, sub): always FALSE. f₁.m = p + T₁ ≥ p > T₂ = f₂.m, etc. -/
+private theorem not_is_mag_lt_norm_sub
+    {b₁ b₂ : FloatBits} (hf₁ : b₁.isFinite) (hf₂ : b₂.isFinite)
+    (hZ₁ : b₁.toBitsTriple.exponent ≠ 0) (hZ₂ : b₂.toBitsTriple.exponent = 0) :
+    ¬(⟨b₁.sign, b₁.FpExponent, b₁.FpSignificand,
+        FloatBits.isFinite_validFloatVal hf₁⟩ : FiniteFp).is_mag_lt
+    ⟨b₂.sign, b₂.FpExponent, b₂.FpSignificand,
+        FloatBits.isFinite_validFloatVal hf₂⟩ := by
+  have he₁ : b₁.FpExponent
+      = (b₁.toBitsTriple.exponent.toNat : ℤ) - FloatFormat.exponentBias :=
+    FpExponent_eq_of_E_ne_zero hZ₁
+  have he₂ : b₂.FpExponent = FloatFormat.min_exp := FpExponent_eq_of_subnormal hZ₂
+  have hm₁ : b₁.FpSignificand
+      = 2 ^ FloatFormat.significandBits + b₁.toBitsTriple.significand.toNat :=
+    FpSignificand_eq_of_E_ne_zero hZ₁
+  have hm₂ : b₂.FpSignificand = b₂.toBitsTriple.significand.toNat :=
+    FpSignificand_eq_of_subnormal hZ₂
+  have hT₂_lt : b₂.toBitsTriple.significand.toNat < 2 ^ FloatFormat.significandBits :=
+    b₂.toBitsTriple.significand.isLt
+  have hE₁_pos : 0 < b₁.toBitsTriple.exponent.toNat := by
+    rw [Nat.pos_iff_ne_zero]; intro h; exact hZ₁ (BitVec.eq_of_toNat_eq h)
+  have h_min : FloatFormat.min_exp + FloatFormat.exponentBias = 1 := min_exp_plus_bias_eq_one
+  have h_2p : 2 * 2 ^ FloatFormat.significandBits = 2 ^ FloatFormat.prec.toNat :=
+    two_mul_pow_sigBits_eq_pow_prec
+  unfold FiniteFp.is_mag_lt
+  show ¬(if b₁.FpExponent = b₂.FpExponent then b₁.FpSignificand < b₂.FpSignificand
+         else if b₁.FpExponent > b₂.FpExponent then b₁.FpSignificand
+            * 2 ^ (b₁.FpExponent - b₂.FpExponent).natAbs < b₂.FpSignificand
+         else _)
+  have h_e_ge : b₂.FpExponent ≤ b₁.FpExponent := by
+    rw [he₁, he₂]; omega
+  by_cases h_eq : b₁.FpExponent = b₂.FpExponent
+  · rw [if_pos h_eq, hm₁, hm₂]; omega
+  · rw [if_neg h_eq]
+    have h_gt : b₂.FpExponent < b₁.FpExponent := lt_of_le_of_ne h_e_ge (Ne.symm h_eq)
+    rw [if_pos h_gt, hm₁, hm₂]
+    -- (p + T₁) * 2^k < T₂ but T₂ < p ≤ p + T₁ ≤ (p + T₁) * 2^k.
+    have h_pow_pos : 1 ≤ 2 ^ (b₁.FpExponent - b₂.FpExponent).natAbs :=
+      Nat.one_le_two_pow
+    have : (2 ^ FloatFormat.significandBits + b₁.toBitsTriple.significand.toNat)
+        ≤ (2 ^ FloatFormat.significandBits + b₁.toBitsTriple.significand.toNat)
+            * 2 ^ (b₁.FpExponent - b₂.FpExponent).natAbs := by
+      nlinarith [h_pow_pos]
+    omega
+
+/-! ### Combined: `is_mag_lt ↔ bit_lt` for any non-negative finite -/
+
+/-- Substantive lemma: for any two non-negative-finite-decoded FiniteFps,
+`is_mag_lt` reduces to additive `(E, T)` comparison on bit fields.
+Combines the four (E vs 0) sub-cases. -/
+private theorem is_mag_lt_iff_b_E_T_lt_of_finite
+    (b₁ b₂ : FloatBits) (hf₁ : b₁.isFinite) (hf₂ : b₂.isFinite) :
+    (⟨b₁.sign, b₁.FpExponent, b₁.FpSignificand,
+      FloatBits.isFinite_validFloatVal hf₁⟩ : FiniteFp).is_mag_lt
+    ⟨b₂.sign, b₂.FpExponent, b₂.FpSignificand,
+      FloatBits.isFinite_validFloatVal hf₂⟩ ↔
+      b₁.toBitsTriple.exponent.toNat * 2 ^ FloatFormat.significandBits
+        + b₁.toBitsTriple.significand.toNat
+      < b₂.toBitsTriple.exponent.toNat * 2 ^ FloatFormat.significandBits
+        + b₂.toBitsTriple.significand.toNat := by
+  -- Use abbreviations for readability without `set`
+  have hp_pos : 0 < (2 : ℕ) ^ FloatFormat.significandBits :=
+    Nat.pos_of_ne_zero (by positivity)
+  have hT₁_lt : b₁.toBitsTriple.significand.toNat < 2 ^ FloatFormat.significandBits :=
+    b₁.toBitsTriple.significand.isLt
+  have hT₂_lt : b₂.toBitsTriple.significand.toNat < 2 ^ FloatFormat.significandBits :=
+    b₂.toBitsTriple.significand.isLt
+  by_cases hZ₁ : b₁.toBitsTriple.exponent = 0
+  · have hE₁_zero : b₁.toBitsTriple.exponent.toNat = 0 := by rw [hZ₁]; rfl
+    by_cases hZ₂ : b₂.toBitsTriple.exponent = 0
+    · -- (sub, sub)
+      have hE₂_zero : b₂.toBitsTriple.exponent.toNat = 0 := by rw [hZ₂]; rfl
+      rw [is_mag_lt_iff_bit_sub_sub hf₁ hf₂ hZ₁ hZ₂, hE₁_zero, hE₂_zero]
+      simp
+    · -- (sub, norm): always TRUE
+      have hE₂_pos : 0 < b₂.toBitsTriple.exponent.toNat := by
+        rw [Nat.pos_iff_ne_zero]; intro h
+        exact hZ₂ (BitVec.eq_of_toNat_eq h)
+      have h_lt := is_mag_lt_iff_bit_sub_norm hf₁ hf₂ hZ₁ hZ₂
+      have h_bit : b₁.toBitsTriple.exponent.toNat * 2 ^ FloatFormat.significandBits
+                    + b₁.toBitsTriple.significand.toNat
+                  < b₂.toBitsTriple.exponent.toNat * 2 ^ FloatFormat.significandBits
+                    + b₂.toBitsTriple.significand.toNat := by
+        have h1 : 2 ^ FloatFormat.significandBits
+                ≤ b₂.toBitsTriple.exponent.toNat * 2 ^ FloatFormat.significandBits := by
+          have := Nat.mul_le_mul_right (2 ^ FloatFormat.significandBits) hE₂_pos
+          rwa [Nat.one_mul] at this
+        rw [hE₁_zero]
+        omega
+      exact iff_of_true h_lt h_bit
+  · have hE₁_pos : 0 < b₁.toBitsTriple.exponent.toNat := by
+      rw [Nat.pos_iff_ne_zero]; intro h
+      exact hZ₁ (BitVec.eq_of_toNat_eq h)
+    by_cases hZ₂ : b₂.toBitsTriple.exponent = 0
+    · -- (norm, sub): always FALSE
+      have hE₂_zero : b₂.toBitsTriple.exponent.toNat = 0 := by rw [hZ₂]; rfl
+      have h_not_lt := not_is_mag_lt_norm_sub hf₁ hf₂ hZ₁ hZ₂
+      have h_not_bit : ¬(b₁.toBitsTriple.exponent.toNat * 2 ^ FloatFormat.significandBits
+                          + b₁.toBitsTriple.significand.toNat
+                        < b₂.toBitsTriple.exponent.toNat * 2 ^ FloatFormat.significandBits
+                          + b₂.toBitsTriple.significand.toNat) := by
+        have h1 : 2 ^ FloatFormat.significandBits
+                ≤ b₁.toBitsTriple.exponent.toNat * 2 ^ FloatFormat.significandBits := by
+          have := Nat.mul_le_mul_right (2 ^ FloatFormat.significandBits) hE₁_pos
+          rwa [Nat.one_mul] at this
+        rw [hE₂_zero]
+        omega
+      exact iff_of_false h_not_lt h_not_bit
+    · -- (norm, norm): use existing
+      have hE₂_pos : 0 < b₂.toBitsTriple.exponent.toNat := by
+        rw [Nat.pos_iff_ne_zero]; intro h
+        exact hZ₂ (BitVec.eq_of_toNat_eq h)
+      have hn₁ : b₁.isNormal :=
+        ⟨hZ₁, FloatBits.isFinite_exponent_not_allOnes b₁ hf₁⟩
+      have hn₂ : b₂.isNormal :=
+        ⟨hZ₂, FloatBits.isFinite_exponent_not_allOnes b₂ hf₂⟩
+      have hn₁_val := isNormal_FpSignificand_of_isNormal hn₁
+      have hn₂_val := isNormal_FpSignificand_of_isNormal hn₂
+      rw [FiniteFp.is_mag_lt_iff_lex_of_normal hn₁_val hn₂_val]
+      have he₁ : (⟨b₁.sign, b₁.FpExponent, b₁.FpSignificand,
+            FloatBits.isFinite_validFloatVal hf₁⟩ : FiniteFp).e
+          = (b₁.toBitsTriple.exponent.toNat : ℤ) - FloatFormat.exponentBias :=
+        FpExponent_eq_of_normal hn₁
+      have he₂ : (⟨b₂.sign, b₂.FpExponent, b₂.FpSignificand,
+            FloatBits.isFinite_validFloatVal hf₂⟩ : FiniteFp).e
+          = (b₂.toBitsTriple.exponent.toNat : ℤ) - FloatFormat.exponentBias :=
+        FpExponent_eq_of_normal hn₂
+      have hm₁ : (⟨b₁.sign, b₁.FpExponent, b₁.FpSignificand,
+            FloatBits.isFinite_validFloatVal hf₁⟩ : FiniteFp).m
+          = 2 ^ FloatFormat.significandBits + b₁.toBitsTriple.significand.toNat :=
+        FpSignificand_eq_of_E_ne_zero hZ₁
+      have hm₂ : (⟨b₂.sign, b₂.FpExponent, b₂.FpSignificand,
+            FloatBits.isFinite_validFloatVal hf₂⟩ : FiniteFp).m
+          = 2 ^ FloatFormat.significandBits + b₂.toBitsTriple.significand.toNat :=
+        FpSignificand_eq_of_E_ne_zero hZ₂
+      rw [he₁, he₂, hm₁, hm₂]
+      constructor
+      · rintro (h | ⟨he, hm⟩)
+        · -- ↑E₁ - bias < ↑E₂ - bias → bit comparison
+          have hE_lt : b₁.toBitsTriple.exponent.toNat
+                     < b₂.toBitsTriple.exponent.toNat := by zify; linarith
+          have h1 : (b₁.toBitsTriple.exponent.toNat + 1) * 2 ^ FloatFormat.significandBits
+              ≤ b₂.toBitsTriple.exponent.toNat * 2 ^ FloatFormat.significandBits :=
+            Nat.mul_le_mul_right _ (by omega)
+          nlinarith [hT₁_lt, hT₂_lt, h1]
+        · -- ↑E₁ - bias = ↑E₂ - bias ∧ p + T₁ < p + T₂ → bit lex
+          have hE_eq_nat : b₁.toBitsTriple.exponent.toNat
+                         = b₂.toBitsTriple.exponent.toNat := by zify; linarith
+          rw [hE_eq_nat]; omega
+      · intro h
+        by_cases hE_eq : b₁.toBitsTriple.exponent.toNat
+                       = b₂.toBitsTriple.exponent.toNat
+        · right
+          have h_eq_int : (b₁.toBitsTriple.exponent.toNat : ℤ)
+                        = b₂.toBitsTriple.exponent.toNat := by exact_mod_cast hE_eq
+          refine ⟨by linarith, ?_⟩
+          rw [hE_eq] at h
+          omega
+        · left
+          have hE_lt : b₁.toBitsTriple.exponent.toNat
+                     < b₂.toBitsTriple.exponent.toNat := by
+            by_contra hge
+            push_neg at hge
+            have hgt : b₂.toBitsTriple.exponent.toNat
+                     < b₁.toBitsTriple.exponent.toNat := lt_of_le_of_ne hge (Ne.symm hE_eq)
+            have h1 : (b₂.toBitsTriple.exponent.toNat + 1) * 2 ^ FloatFormat.significandBits
+                ≤ b₁.toBitsTriple.exponent.toNat * 2 ^ FloatFormat.significandBits :=
+              Nat.mul_le_mul_right _ (by omega)
+            nlinarith [hT₁_lt, hT₂_lt, h1]
+          have : (b₁.toBitsTriple.exponent.toNat : ℤ)
+                < b₂.toBitsTriple.exponent.toNat := by exact_mod_cast hE_lt
+          linarith
+
+/-- **Phase 2 subnormal-tolerant bridge (non-negative).** For two non-negative
+finite `FloatBits` (allowing subnormal or normal), IEEE 754 `Fp` ordering on
+`ofBits` agrees with unsigned integer comparison on the bit pattern. -/
+theorem ofBits_lt_iff_b_toNat_lt_of_finite_nonneg
+    (b₁ b₂ : FloatBits) (hf₁ : b₁.isFinite) (hf₂ : b₂.isFinite)
+    (hs₁ : b₁.sign = false) (hs₂ : b₂.sign = false) :
+    ofBits b₁ < ofBits b₂ ↔ b₁.b.toNat < b₂.b.toNat := by
+  set f₁ : FiniteFp := ⟨b₁.sign, b₁.FpExponent, b₁.FpSignificand,
+    FloatBits.isFinite_validFloatVal hf₁⟩
+  set f₂ : FiniteFp := ⟨b₂.sign, b₂.FpExponent, b₂.FpSignificand,
+    FloatBits.isFinite_validFloatVal hf₂⟩
+  have hofb₁ : ofBits b₁ = Fp.finite f₁ := ofBits_eq_finite_of_isFinite b₁ hf₁
+  have hofb₂ : ofBits b₂ = Fp.finite f₂ := ofBits_eq_finite_of_isFinite b₂ hf₂
+  rw [hofb₁, hofb₂]
+  show Fp.is_total_lt (Fp.finite f₁) (Fp.finite f₂) ↔ b₁.b.toNat < b₂.b.toNat
+  rw [show Fp.is_total_lt (Fp.finite f₁) (Fp.finite f₂) = (f₁ < f₂) from rfl]
+  -- Both positive: f₁ < f₂ ↔ is_mag_lt f₁ f₂
+  have h_lt_iff : f₁ < f₂ ↔ f₁.is_mag_lt f₂ := by
+    rw [FiniteFp.lt_def]
+    have h₁ : f₁.s = false := hs₁
+    have h₂ : f₂.s = false := hs₂
+    simp [h₁, h₂]
+  rw [h_lt_iff, is_mag_lt_iff_b_E_T_lt_of_finite b₁ b₂ hf₁ hf₂]
+  -- Same sign: both 0#1
+  have hsbv : b₁.toBitsTriple.sign = b₂.toBitsTriple.sign := by
+    have h1 : b₁.toBitsTriple.sign = 0#1 := by
+      unfold FloatBits.sign at hs₁
+      rcases BitVec.one_or b₁.toBitsTriple.sign with h | h
+      · exact h
+      · rw [h] at hs₁; simp at hs₁
+    have h2 : b₂.toBitsTriple.sign = 0#1 := by
+      unfold FloatBits.sign at hs₂
+      rcases BitVec.one_or b₂.toBitsTriple.sign with h | h
+      · exact h
+      · rw [h] at hs₂; simp at hs₂
+    rw [h1, h2]
+  rw [FloatBits.b_toNat_lt_iff_of_same_sign b₁ b₂ hsbv]
+
+end SubnormalTolerant
+
 end Fp
