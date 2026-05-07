@@ -671,3 +671,12 @@ Rounding/ files but narrow applicability.
   framework is essentially forward-mode AD for polynomials; generalize to arbitrary
   composition of elementary ops. Each op introduces rounding in both value and derivative
   channels (cross-coupling, as in jet Horner).
+- [ ] **FP ↔ Integer equivalence** — see [fp-integer-equivalence.md](fp-integer-equivalence.md).
+  Prove FP ops (and compositions) equal simpler integer/bitwise expressions under
+  preconditions. Bridges `FiniteFp` to `Encoding/`'s bit level. 6-phase roadmap:
+  trivial bit-level (Phase 1, fpNeg/fpAbs/×2^k as bit ops), comparison/ordering (Phase 2),
+  ReLU as masked select (Phase 3), `EquivalentOn` framework + tactic (Phase 4),
+  numerical tricks (Phase 5: Quake invsqrt, soft-log/exp), layer-level fusion flagship
+  (Phase 6: binary-weight ReLU layer = XNOR + popcount). Prefer exactness; "approximately
+  correct" with explicit ε also welcome. Quantized inference / sub-8-bit explicitly
+  de-emphasized — well-trodden externally, less research value than core-logic simplification.
