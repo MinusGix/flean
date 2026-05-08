@@ -361,6 +361,12 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
   (`fpMul_pow2_normal_eq` structural form) + `Flean/IntegerEquivalence/MulPow2.lean`
   (`setBiasedExponent` workhorse + `ofBits_setBiasedExponent_eq_fpMul_pow2`
   bridge), under "input + result both normal" carve-out.
+- ✅ **Phase 1.5, bit-pattern classifiers** —
+  `Flean/IntegerEquivalence/Classify.lean`. Bridges `Fp.isNaN/isInfinite/isFinite`
+  to bit-level tests via `ofBits`. Plus FiniteFp-level decoded predicates
+  (`isNormal`, `isSubnormal`, `isZero`, IEEE-strict subnormal) and
+  `FiniteFp.isPositivePowerOfTwo` with its bit-level characterization (T = 0 and
+  bit-normal exponent).
 - ✅ **Phase 2, same-sign comparison ↔ unsigned bit comparison** (FULLY SHIPPED) —
   `Flean/IntegerEquivalence/Compare.lean`. Four bridges all sorry-free:
   - `ofBits_lt_iff_b_toNat_lt_of_normal_nonneg` (non-negative, normal-only)

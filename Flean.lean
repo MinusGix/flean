@@ -21,3 +21,4 @@ import «Flean».Tags
 import «Flean».IntegerEquivalence.Basic
 import «Flean».IntegerEquivalence.MulPow2
 import «Flean».IntegerEquivalence.Compare
+import «Flean».IntegerEquivalence.Classify
