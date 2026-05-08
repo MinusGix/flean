@@ -554,5 +554,29 @@ theorem nextUp_ofBits_eq_ofBits_bitNextUpCross_normal_cross
   exact (ofBits_bitNextUpCross_eq_successorPos_normal_cross b hs hf hE_nz hE_succ_lt
     hE_succ_not_max hT_max he_lt).symm
 
+/-- Headline identity for the **cross-binade saturated** case. When `b` is
+the encoding of `largestFiniteFloat`, both sides are `+∞`. -/
+theorem nextUp_ofBits_eq_ofBits_bitNextUpCross_saturated
+    [StdFloatFormat]
+    (b : FloatBits) (hs : b.sign = false) (hf : b.isFinite)
+    (hE_succ_max : b.toBitsTriple.exponent + 1 = BitVec.allOnes FloatFormat.exponentBits)
+    (hT_max : b.FpSignificand + 1 = 2 ^ FloatFormat.prec.toNat)
+    (h_e_eq_max : b.FpExponent = FloatFormat.max_exp) :
+    nextUp (ofBits b) = ofBits (FloatBits.bitNextUpCross b) := by
+  -- LHS: nextUp (ofBits b) = nextUp (Fp.finite f_b) = nextUp (Fp.finite largestFiniteFloat) = +∞
+  rw [ofBits_eq_finite_of_isFinite b hf]
+  -- f_b = largestFiniteFloat
+  set f_b : FiniteFp := ⟨b.sign, b.FpExponent, b.FpSignificand,
+    FloatBits.isFinite_validFloatVal hf⟩ with hf_b_def
+  have hf_b_eq : f_b = FiniteFp.largestFiniteFloat := by
+    apply (FiniteFp.eq_def _ _).mpr
+    refine ⟨hs, h_e_eq_max, ?_⟩
+    show b.FpSignificand = 2^FloatFormat.prec.toNat - 1
+    have hpos : 0 < (2 : ℕ) ^ FloatFormat.prec.toNat := Nat.two_pow_pos _
+    omega
+  rw [hf_b_eq, nextUp_largestFiniteFloat]
+  -- RHS: ofBits (bitNextUpCross b) = +∞ from saturation
+  exact (ofBits_bitNextUpCross_eq_pos_inf_of_saturated b hs hE_succ_max).symm
+
 end Fp
 
