@@ -261,19 +261,27 @@ adversarial ML to compute exact ULP-level perturbations.
   within-binade, cross-binade, saturation-to-+∞. Proves
   `(successorPos f).toVal = f.toVal + 2^(f.e - prec + 1)` uniformly.
   Shipped 2026-05-07.
+- [x] **`successorNeg` structural definition + value bridge** (negative case,
+  sign-cross at -0). Same file. Three branches: -0→+smallestPosSubnormal,
+  cross-binade descent, within-binade descent. *Cross-binade negative* has a
+  gap of `2^(f.e - prec)` (half the within-binade ulp) — IEEE 754 binade-
+  boundary asymmetry. Shipped 2026-05-07.
 - [ ] **Bridge to `nextUp` value-level**: prove `successorPos f = nextUp (Fp.finite f)`
-  for positive `f`. Routes through `findSuccessor (f.toVal + neighborStep)
-  = roundNormalUp ...` — substantial proof unwinding `roundNormalUp`'s
-  ceiling-on-scaled-mantissa construction.
+  for positive `f` (and analogously for negative). Two paths:
+  (a) **Adjacency**: prove "no representable strictly between f and successorPos f",
+      then combine with existing `finite_lt_nextUp` + `nextUp_no_float_between`
+      to force equality. Adjacency casework covers (h.e vs f.e) × (h normal /
+      subnormal). Both-normal case routes through `is_mag_lt_iff_lex_of_normal`.
+  (b) **Direct unwind**: compute `findSuccessor (stepUpVal f) = roundNormalUp`
+      via ceiling-on-scaled-mantissa form; show `m_scaled = f.m + δ` with
+      `0 < δ < 1` ⇒ `⌈m_scaled⌉ = f.m + 1`. Substantial.
 - [ ] **`nextUp_eq_bit_increment`**: define `FloatBits.bitIncrement b := ⟨b.b + 1⟩`
-  and prove `ofBits (bitIncrement b) = successorPos (decoded b)` for positive
-  finite `b`. Negative case: bit decrement. Zero-crossing (-0 ↔ +0)
-  as a special case.
-- [ ] **Sign-magnitude integer increment** as a bit-level operation, with the
-  zero-crossing case (smallest positive subnormal vs smallest negative subnormal).
-- [ ] **`successorNeg`** — extension of `successorPos` to negative `f`. Moves
-  *toward* zero (decrement on magnitude), with `-0 → +smallestPosSubnormal`
-  as the sign-crossing edge.
+  (or structurally via case-split on T+1 vs allOnes) and prove
+  `ofBits (bitIncrement b) = .finite (successorPos (decoded b))` for positive
+  finite `b`. Three cases: T+1 ≠ 0 (within-binade), T+1 = 0 ∧ E+1 valid
+  (cross-binade), T+1 = 0 ∧ E+1 = allOnes (saturation→+∞).
+- [ ] **Sign-magnitude integer increment** for negative inputs: bit decrement
+  (toward zero), with the -0 ↔ +0 sign-crossing edge.
 
 ### Total ordering ↔ signed-magnitude integer comparison (Phase 2.5)
 IEEE 754 §5.10: `totalOrder` on FP corresponds *exactly* to signed-magnitude
@@ -509,17 +517,22 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
   (`isNormal`, `isSubnormal`, `isZero`, IEEE-strict subnormal) and
   `FiniteFp.isPositivePowerOfTwo` with its bit-level characterization (T = 0 and
   bit-normal exponent).
-- ✅ **Phase 1.6, ulp ↔ pow2Float + structural successor (positive)** (2026-05-07):
+- ✅ **Phase 1.6, ulp ↔ pow2Float + structural successor (both signs)** (2026-05-07):
   - `Flean/IntegerEquivalence/UlpPow2.lean`: `ulp_eq_pow2Float_toVal` for `v` in
     normal range with the ulp exponent fitting `pow2Float`'s range, plus
     `ulp_finite_eq_pow2Float_toVal` FiniteFp specialization. Routes through
     `ulp_har_eq_ulp` + `ulp_har_normal_eq` (no private-helper access).
-  - `Flean/IntegerEquivalence/Successor.lean`: `FiniteFp.successorPos f : Fp`
-    (positive-only) with three structural branches (within-binade,
-    cross-binade, +∞ saturation). Master toVal formula
-    `(successorPos f).toVal = f.toVal + 2^(f.e - prec + 1)` covers all
-    finite cases uniformly. Open follow-ups: bridge to `nextUp`, bit-level
-    `bitIncrement`, negative-input case.
+  - `Flean/IntegerEquivalence/Successor.lean`: 
+    - `FiniteFp.successorPos f : Fp` — positive-input structural successor,
+      three branches (within-binade, cross-binade, +∞ saturation). Master toVal
+      formula `(successorPos f).toVal = f.toVal + 2^(f.e - prec + 1)`.
+    - `FiniteFp.successorNeg f : Fp` — negative-input structural successor,
+      three branches (-0 → +smallestPosSubnormal sign-cross, cross-binade descent,
+      within-binade descent). **toVal asymmetry**: within-binade gap is
+      `2^(f.e - prec + 1)` (same as positive), but cross-binade negative has gap
+      `2^(f.e - prec)` (half the within-binade ulp) — binade-boundary asymmetry
+      from IEEE 754 spacing. Caught a bug here while writing the proof.
+  - Open follow-ups: bridge to `nextUp` value-side, bit-level `bitIncrement`.
 - ✅ **Phase 2, same-sign comparison ↔ unsigned bit comparison** (FULLY SHIPPED) —
   `Flean/IntegerEquivalence/Compare.lean`. Four bridges all sorry-free:
   - `ofBits_lt_iff_b_toNat_lt_of_normal_nonneg` (non-negative, normal-only)
