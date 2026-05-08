@@ -25,3 +25,4 @@ import «Flean».IntegerEquivalence.Compare
 import «Flean».IntegerEquivalence.Classify
 import «Flean».IntegerEquivalence.TotalOrder
 import «Flean».IntegerEquivalence.UlpPow2
+import «Flean».IntegerEquivalence.Successor
