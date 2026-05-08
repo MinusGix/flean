@@ -93,4 +93,77 @@ theorem fpDiv_pow2_exact {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedR
         (g.toVal : R) = (f.toVal : R) / (2 : R) ^ k := by
   exact fpDivFinite_pow2_exact (R := R) f k hf_nz hk_lo hk_hi he_lo he_hi
 
+/-! ## Structural exactness: explicit `⟨s, e-k, m⟩` form
+
+Mirror of `fpMul_pow2_normal_eq`. When `f` is normal and the *shifted-down*
+exponent stays in normal range, dividing `f` by `pow2Float k` yields exactly
+the FiniteFp with the same sign and significand and exponent shifted by `-k`.
+This is the value-level statement of "FP divide by `2^k` is exactly an
+exponent shift". -/
+
+/-- **Structural** `fpDiv`-by-power-of-2 exactness: when `f` is normal and
+the result exponent `f.e - k` stays in normal range, the quotient equals the
+explicit FiniteFp with the same sign and significand and exponent shifted by
+`-k`. -/
+theorem fpDiv_pow2_normal_eq {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] [FloorRing R] [RMode R] [RModeExec]
+    [RoundIntSigMSound R] [RModeIdem R]
+    (f : FiniteFp) (k : ℤ) (hf_normal : _root_.isNormal f.m)
+    (hk_lo : FloatFormat.min_exp ≤ k) (hk_hi : k ≤ FloatFormat.max_exp)
+    (hres_lo : FloatFormat.min_exp ≤ f.e - k)
+    (hres_hi : f.e - k ≤ FloatFormat.max_exp) :
+    f / pow2Float k hk_lo hk_hi =
+      (Fp.finite ⟨f.s, f.e - k, f.m,
+        isValidFiniteVal_shift_normal (k := -k) hf_normal
+          (by linarith) (by linarith)⟩ : Fp) := by
+  set f' : FiniteFp := ⟨f.s, f.e - k, f.m,
+    isValidFiniteVal_shift_normal (k := -k) hf_normal
+      (by linarith) (by linarith)⟩ with hf'_def
+  have hf_nz : 0 < f.m := by
+    have h1 : (2 : ℕ) ^ (FloatFormat.prec - 1).toNat ≤ f.m := hf_normal.1
+    have h2 : 0 < (2 : ℕ) ^ (FloatFormat.prec - 1).toNat := Nat.pos_of_ne_zero (by positivity)
+    omega
+  obtain ⟨g, hgM, hgV⟩ := fpDivFinite_pow2_exact (R := R) f k hf_nz hk_lo hk_hi
+    hres_lo hres_hi
+  -- f'.toVal = f.toVal / 2^k
+  have htwo_ne : (2 : R) ≠ 0 := by norm_num
+  have hzpow_ne : (2 : R) ^ k ≠ 0 := zpow_ne_zero _ htwo_ne
+  have hf'_toVal : (f'.toVal : R) = (f.toVal : R) / (2 : R) ^ k := by
+    by_cases hs : f.s = false
+    · have hf's : f'.s = false := hs
+      rw [FiniteFp.toVal_pos_eq f' hf's, FiniteFp.toVal_pos_eq f hs]
+      show (f.m : R) * (2 : R) ^ (f.e - k - FloatFormat.prec + 1)
+          = (f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1) / (2 : R) ^ k
+      rw [show (f.e - k - FloatFormat.prec + 1 : ℤ)
+            = (f.e - FloatFormat.prec + 1) + (-k) from by ring,
+          zpow_add₀ htwo_ne, zpow_neg]
+      field_simp
+    · have hfs_t : f.s = true := by cases h : f.s <;> simp_all
+      have hf's_t : f'.s = true := hfs_t
+      have hnf_pos : (-f).s = false := by simp [hfs_t]
+      have hnf'_pos : (-f').s = false := by simp [hf's_t]
+      rw [show f'.toVal (R := R) = -((-f').toVal)
+            from by rw [FiniteFp.toVal_neg_eq_neg]; ring,
+          show f.toVal (R := R) = -((-f).toVal)
+            from by rw [FiniteFp.toVal_neg_eq_neg]; ring,
+          FiniteFp.toVal_pos_eq (-f') hnf'_pos,
+          FiniteFp.toVal_pos_eq (-f) hnf_pos]
+      show -((f.m : R) * (2 : R) ^ (f.e - k - FloatFormat.prec + 1))
+          = -((f.m : R) * (2 : R) ^ (f.e - FloatFormat.prec + 1)) / (2 : R) ^ k
+      rw [show (f.e - k - FloatFormat.prec + 1 : ℤ)
+            = (f.e - FloatFormat.prec + 1) + (-k) from by ring,
+          zpow_add₀ htwo_ne, zpow_neg]
+      field_simp
+  have hf'_eq_g : f' = g := by
+    apply FiniteFp.eq_of_toVal_eq' (R := R) (Or.inl ?_) (hf'_toVal.trans hgV.symm)
+    show f'.m ≠ 0
+    show f.m ≠ 0
+    omega
+  -- LHS is `Fp.finite f / Fp.finite (pow2Float k) : Fp`. Reduce to `fpDivFinite`.
+  have hb_nz : (pow2Float k hk_lo hk_hi).m ≠ 0 :=
+    (pow2Float_m_pos k hk_lo hk_hi).ne'
+  rw [fpDiv_finite_finite f (pow2Float k hk_lo hk_hi) hb_nz,
+      ← div_finite_eq_fpDivFinite, hgM]
+  exact congr_arg Fp.finite hf'_eq_g.symm
+
 end DivPow2

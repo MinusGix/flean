@@ -75,7 +75,7 @@ Fastest wins; building blocks for everything later.
 - [ ] **`fpMul_pow2_eq_exponent_add`**: `bits (fpMul x (encode_pow2 k)) =
       bit_increment_exponent (bits x) k`, under "result is normal" hypothesis.
   - [ ] Subnormal-tolerant variant — entry/exit cases via existing infrastructure.
-- [ ] **`fpDiv_pow2_eq_exponent_sub`** — symmetric.
+- [x] **`fpDiv_pow2_eq_exponent_sub`** — symmetric. Shipped 2026-05-07.
 - [ ] **`fpCopySign`**: extract sign of one, replace sign of another.
 
 ### Phase 2 — Comparison and ordering
@@ -474,6 +474,11 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
   (`fpMul_pow2_normal_eq` structural form) + `Flean/IntegerEquivalence/MulPow2.lean`
   (`setBiasedExponent` workhorse + `ofBits_setBiasedExponent_eq_fpMul_pow2`
   bridge), under "input + result both normal" carve-out.
+- ✅ **Phase 1, fpDiv ↔ exponent shift (symmetric)** — `Flean/Operations/DivPow2.lean`
+  (`fpDiv_pow2_normal_eq` structural form, mirrors `fpMul_pow2_normal_eq` with
+  `f.e - k`) + `Flean/IntegerEquivalence/DivPow2.lean`
+  (`ofBits_setBiasedExponent_eq_fpDiv_pow2` bridge), under same normal carve-out.
+  Shipped 2026-05-07.
 - ✅ **Phase 2.5, total ordering ↔ signed-magnitude bit comparison** (finite
   case) — `Flean/IntegerEquivalence/TotalOrder.lean`. `Fp.totalOrderBitLt` def
   + bridge `ofBits_lt_iff_totalOrderBitLt_of_finite`. Composes Phase 2
