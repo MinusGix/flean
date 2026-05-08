@@ -714,4 +714,44 @@ theorem nextUp_finite_eq_successorPos_of_finite
       FiniteFp.eq_of_toVal_eq' (R := ℚ) (Or.inl (by simp [FiniteFp.isZero]; omega)) h_uv_eq_gv
     rw [hu_eq_g]
 
+/-- **Bridge to `nextUp` (positive, saturated case).** When `successorPos f`
+overflows to `+∞`, `f` must be `largestFiniteFloat`, and `nextUp` agrees. -/
+theorem nextUp_finite_eq_successorPos_of_saturated
+    (f : FiniteFp) (hs : f.s = false)
+    (hg : successorPos f = Fp.infinite false) :
+    nextUp (Fp.finite f) = Fp.infinite false := by
+  -- Extract f = largestFiniteFloat from hg.
+  -- split_ifs auto-discharges the within-binade and cross-binade cases since
+  -- their hg has form Fp.finite _ = Fp.infinite false.
+  unfold successorPos at hg
+  split_ifs at hg with hsmax hemax
+  -- Saturated branch only: ¬hsmax ∧ ¬hemax.
+  have hm_eq : f.m + 1 = 2 ^ FloatFormat.prec.toNat := by
+    have := f.valid.2.2.1; omega
+  have he_eq : f.e = FloatFormat.max_exp := by
+    have := f.valid.2.1; omega
+  have hf_eq_largest : f = FiniteFp.largestFiniteFloat := by
+    apply (FiniteFp.eq_def _ _).mpr
+    refine ⟨hs, he_eq, ?_⟩
+    show f.m = 2^FloatFormat.prec.toNat - 1
+    have hpos : 0 < (2 : ℕ) ^ FloatFormat.prec.toNat := Nat.two_pow_pos _
+    omega
+  rw [hf_eq_largest, nextUp_largestFiniteFloat]
+
+/-- **Bridge to `nextUp` (positive, master form).** For positive `f`,
+`nextUp (Fp.finite f) = successorPos f` — unifying both the finite-result
+and saturation cases. -/
+theorem nextUp_finite_eq_successorPos
+    (f : FiniteFp) (hs : f.s = false) :
+    nextUp (Fp.finite f) = successorPos f := by
+  match h : successorPos f with
+  | Fp.finite g => exact nextUp_finite_eq_successorPos_of_finite f hs h
+  | Fp.infinite false => exact nextUp_finite_eq_successorPos_of_saturated f hs h
+  | Fp.infinite true => exact absurd h (by
+      unfold successorPos
+      split_ifs <;> intro hh <;> nomatch hh)
+  | Fp.NaN => exact absurd h (by
+      unfold successorPos
+      split_ifs <;> intro hh <;> nomatch hh)
+
 end FiniteFp
