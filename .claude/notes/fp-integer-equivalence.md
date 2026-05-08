@@ -266,15 +266,13 @@ adversarial ML to compute exact ULP-level perturbations.
   cross-binade descent, within-binade descent. *Cross-binade negative* has a
   gap of `2^(f.e - prec)` (half the within-binade ulp) — IEEE 754 binade-
   boundary asymmetry. Shipped 2026-05-07.
-- [ ] **Bridge to `nextUp` value-level**: prove `successorPos f = nextUp (Fp.finite f)`
-  for positive `f` (and analogously for negative). Two paths:
-  (a) **Adjacency**: prove "no representable strictly between f and successorPos f",
-      then combine with existing `finite_lt_nextUp` + `nextUp_no_float_between`
-      to force equality. Adjacency casework covers (h.e vs f.e) × (h normal /
-      subnormal). Both-normal case routes through `is_mag_lt_iff_lex_of_normal`.
-  (b) **Direct unwind**: compute `findSuccessor (stepUpVal f) = roundNormalUp`
-      via ceiling-on-scaled-mantissa form; show `m_scaled = f.m + δ` with
-      `0 < δ < 1` ⇒ `⌈m_scaled⌉ = f.m + 1`. Substantial.
+- [x] **Bridge to `nextUp` value-level (positive case)**: shipped 2026-05-07.
+  `nextUp_finite_eq_successorPos f hs : nextUp (Fp.finite f) = successorPos f` for
+  positive `f`. Path (a) — adjacency proof shipped via direct toVal arithmetic,
+  combined with existing `finite_le_nextUp`/`finite_lt_nextUp` + saturation
+  reduction (`nextUp_largestFiniteFloat`). Sub-theorems:
+  `successorPos_le_of_toVal_lt` (adjacency), `nextUp_finite_eq_successorPos_of_finite`,
+  `nextUp_finite_eq_successorPos_of_saturated`. Negative case TBD.
 - [ ] **`nextUp_eq_bit_increment`**: define `FloatBits.bitIncrement b := ⟨b.b + 1⟩`
   (or structurally via case-split on T+1 vs allOnes) and prove
   `ofBits (bitIncrement b) = .finite (successorPos (decoded b))` for positive
@@ -517,12 +515,11 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
   (`isNormal`, `isSubnormal`, `isZero`, IEEE-strict subnormal) and
   `FiniteFp.isPositivePowerOfTwo` with its bit-level characterization (T = 0 and
   bit-normal exponent).
-- ✅ **Phase 1.6, ulp ↔ pow2Float + structural successor (both signs)** (2026-05-07):
+- ✅ **Phase 1.6, ulp ↔ pow2Float + successor + nextUp value bridge (positive)** (2026-05-07):
   - `Flean/IntegerEquivalence/UlpPow2.lean`: `ulp_eq_pow2Float_toVal` for `v` in
     normal range with the ulp exponent fitting `pow2Float`'s range, plus
-    `ulp_finite_eq_pow2Float_toVal` FiniteFp specialization. Routes through
-    `ulp_har_eq_ulp` + `ulp_har_normal_eq` (no private-helper access).
-  - `Flean/IntegerEquivalence/Successor.lean`: 
+    `ulp_finite_eq_pow2Float_toVal` FiniteFp specialization.
+  - `Flean/IntegerEquivalence/Successor.lean`:
     - `FiniteFp.successorPos f : Fp` — positive-input structural successor,
       three branches (within-binade, cross-binade, +∞ saturation). Master toVal
       formula `(successorPos f).toVal = f.toVal + 2^(f.e - prec + 1)`.
@@ -531,8 +528,19 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
       within-binade descent). **toVal asymmetry**: within-binade gap is
       `2^(f.e - prec + 1)` (same as positive), but cross-binade negative has gap
       `2^(f.e - prec)` (half the within-binade ulp) — binade-boundary asymmetry
-      from IEEE 754 spacing. Caught a bug here while writing the proof.
-  - Open follow-ups: bridge to `nextUp` value-side, bit-level `bitIncrement`.
+      from IEEE 754 spacing.
+    - **Adjacency** `successorPos_le_of_toVal_lt`: for positive `f` with
+      `successorPos f = .finite g`, no representable strictly between `f` and `g`.
+      Direct toVal arithmetic, casework on (within-binade vs cross-binade) ×
+      (h.e vs f.e) × (h normal vs subnormal).
+    - **Bridge to `nextUp` (positive)** `nextUp_finite_eq_successorPos`:
+      master form unifying finite-result and saturation cases. Sub-theorems:
+      `nextUp_finite_eq_successorPos_of_finite` (combines upper bound from
+      `nextUp_finite_le_of_stepUpVal_le` with adjacency-derived lower bound),
+      `nextUp_finite_eq_successorPos_of_saturated` (routes through existing
+      `nextUp_largestFiniteFloat` after extracting `f = largestFiniteFloat`).
+  - Open follow-ups: bit-level `bitIncrement` bridge (structural bit pattern +1),
+    negative-side nextUp bridge (mirror of positive via `successorNeg`).
 - ✅ **Phase 2, same-sign comparison ↔ unsigned bit comparison** (FULLY SHIPPED) —
   `Flean/IntegerEquivalence/Compare.lean`. Four bridges all sorry-free:
   - `ofBits_lt_iff_b_toNat_lt_of_normal_nonneg` (non-negative, normal-only)
