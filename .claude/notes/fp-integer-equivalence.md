@@ -273,11 +273,15 @@ adversarial ML to compute exact ULP-level perturbations.
   reduction (`nextUp_largestFiniteFloat`). Sub-theorems:
   `successorPos_le_of_toVal_lt` (adjacency), `nextUp_finite_eq_successorPos_of_finite`,
   `nextUp_finite_eq_successorPos_of_saturated`. Negative case TBD.
-- [ ] **`nextUp_eq_bit_increment`**: define `FloatBits.bitIncrement b := ⟨b.b + 1⟩`
-  (or structurally via case-split on T+1 vs allOnes) and prove
-  `ofBits (bitIncrement b) = .finite (successorPos (decoded b))` for positive
-  finite `b`. Three cases: T+1 ≠ 0 (within-binade), T+1 = 0 ∧ E+1 valid
-  (cross-binade), T+1 = 0 ∧ E+1 = allOnes (saturation→+∞).
+- [x] **`nextUp_eq_bit_increment` (within-binade case, positive)** (2026-05-07):
+  `FloatBits.bitNextUpWithin b` defined structurally as a triple-form increment
+  (T → T+1, same s, E). Bridge `nextUp_ofBits_eq_ofBits_bitNextUpWithin`:
+  for positive finite `b` with `T.toNat + 1 < 2^sigBits` and result-significand
+  in normal range, `nextUp (ofBits b) = ofBits (bitNextUpWithin b)`. File:
+  `Flean/IntegerEquivalence/BitNextUp.lean`.
+- [ ] **Cross-binade bit-level cases**: T+1 = 0 ∧ E ≠ 0 (cross-binade),
+  T+1 = 0 ∧ E+1 = allOnes (saturation→+∞), T+1 = 0 ∧ E = 0 (subnormal→normal).
+  Each requires its own ofBits decoding case.
 - [ ] **Sign-magnitude integer increment** for negative inputs: bit decrement
   (toward zero), with the -0 ↔ +0 sign-crossing edge.
 
@@ -539,8 +543,18 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
       `nextUp_finite_le_of_stepUpVal_le` with adjacency-derived lower bound),
       `nextUp_finite_eq_successorPos_of_saturated` (routes through existing
       `nextUp_largestFiniteFloat` after extracting `f = largestFiniteFloat`).
-  - Open follow-ups: bit-level `bitIncrement` bridge (structural bit pattern +1),
-    negative-side nextUp bridge (mirror of positive via `successorNeg`).
+  - **Bit-level `nextUp` bridge (within-binade)** shipped 2026-05-07 in
+    `Flean/IntegerEquivalence/BitNextUp.lean`. `FloatBits.bitNextUpWithin b`
+    defined structurally on the triple (T → T+1, same s, E). Headline identity
+    `nextUp_ofBits_eq_ofBits_bitNextUpWithin` proves
+    `nextUp (ofBits b) = ofBits (bitNextUpWithin b)` for positive finite `b` with
+    `T.toNat + 1 < 2^sigBits` and `b.FpSignificand + 1 < 2^prec.toNat`.
+    Sub-theorems: `bitNextUpWithin_isFinite` (E unchanged ⇒ finite preserved),
+    `bitNextUpWithin_FpExponent`, `bitNextUpWithin_FpSignificand` (decoded
+    significand bumps by 1; case-splits on E = 0 via `Nat.shiftLeft_add_eq_or_of_lt`).
+  - Open follow-ups: cross-binade bit-level cases (T = allOnes), saturation,
+    subnormal-to-normal transition; negative-side nextUp bridge (mirror via
+    `successorNeg`).
 - ✅ **Phase 2, same-sign comparison ↔ unsigned bit comparison** (FULLY SHIPPED) —
   `Flean/IntegerEquivalence/Compare.lean`. Four bridges all sorry-free:
   - `ofBits_lt_iff_b_toNat_lt_of_normal_nonneg` (non-negative, normal-only)
