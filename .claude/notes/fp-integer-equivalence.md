@@ -564,13 +564,43 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
     Sub-theorems: `bitNextUpWithin_isFinite` (E unchanged ⇒ finite preserved),
     `bitNextUpWithin_FpExponent`, `bitNextUpWithin_FpSignificand` (decoded
     significand bumps by 1; case-splits on E = 0 via `Nat.shiftLeft_add_eq_or_of_lt`).
-  - Open follow-ups: cross-binade bit-level cases (T = allOnes), saturation,
-    subnormal-to-normal transition; negative-side nextUp bridge (mirror via
-    `successorNeg`).
+- ✅ **Phase 1.6, negative-side `nextUp` value bridge** (2026-05-08) —
+  `Successor.lean::nextUp_finite_eq_successorNeg`. Pivot trick avoids
+  re-doing adjacency casework: `successorPos_neg_of_successorNeg`
+  shows `successorPos (-g) = .finite (-f)` for both within-binade-desc
+  and cross-binade-desc. Then `successorNeg_le_of_toVal_lt` follows by
+  contrapositive of `successorPos_le_of_toVal_lt` at `f' := -g` (single
+  proof handles all h-signs uniformly). Sub-bridges:
+  `_of_neg_zero` (-0 → +smallestPos via existing `nextUp_neg_zero`),
+  `_of_neg_smallestPosSubnormal` (-smallestPos → -0 via existing
+  `nextUp_neg_smallestPosSubnormal`), `_of_general` (general via
+  upper-bound + adjacency, requires `g.notNegZero`). Helpers
+  `e_eq_min_exp_of_m_zero`, `e_eq_min_exp_of_m_one`.
+- ✅ **Phase 1.6, bit-level `bitNextUpNegWithin`** (2026-05-08) —
+  `BitNextUp.lean`. Sign-magnitude decrement (T - 1, same E) for
+  finite negative within-binade descent. Bridge
+  `ofBits_bitNextUpNegWithin_eq_successorNeg_within` and headline
+  `nextUp_ofBits_eq_ofBits_bitNextUpNegWithin`. Helper
+  `T_minus_one_toNat` (BitVec subtraction). Cross-binade-descent
+  (T = 0, E > 0) and sign-cross-at-`-0` (T = 0, E = 0) deferred.
+- ✅ **`nextDown` via symmetry** (2026-05-08) — `NextDown.lean` (~140
+  lines). Symmetry primitive `nextDown_finite_eq_neg_nextUp_neg`
+  (general for all FiniteFp; uses `findSuccessor_symm` + casework on
+  sign of `stepDownVal f`, which is provably nonzero for any
+  representable `f`). Structural `predecessorPos f := -successorNeg
+  (-f)` and `predecessorNeg f := -successorPos (-f)`. Bridges
+  `nextDown_finite_eq_predecessorPos` (positive case) and
+  `nextDown_finite_eq_predecessorNeg` (negative case) follow as
+  one-liners.
 - ✅ **Phase 2, same-sign comparison ↔ unsigned bit comparison** (FULLY SHIPPED) —
   `Flean/IntegerEquivalence/Compare.lean`. Four bridges all sorry-free:
   - `ofBits_lt_iff_b_toNat_lt_of_normal_nonneg` (non-negative, normal-only)
   - `ofBits_lt_iff_b_toNat_gt_of_normal_nonpos` (non-positive, normal-only)
   - `ofBits_lt_iff_b_toNat_lt_of_finite_nonneg` (non-negative, sub-tolerant)
   - `ofBits_lt_iff_b_toNat_gt_of_finite_nonpos` (non-positive, sub-tolerant)
-  Cross-sign / total ordering remains as a Phase 2.5 candidate.
+- ✅ **Phase 2.5, ±∞ extension of totalOrder bridge** (2026-05-08) —
+  `TotalOrder.lean::ofBits_lt_iff_totalOrderBitLt_of_non_nan`. Same
+  `totalOrderBitLt` formula handles ±∞ uniformly (sign decides
+  cross-sign; ±∞ has maximal bit-magnitude in its sign class). New
+  helpers `sign_toNat_zero_of_sign_false`, `sign_toNat_one_of_sign_true`,
+  `sign_bv_toNat_eq_of_same_sign`, `finite_b_toNat_lt_inf_of_same_sign`.

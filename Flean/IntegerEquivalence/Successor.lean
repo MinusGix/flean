@@ -1,6 +1,7 @@
 import Flean.IntegerEquivalence.UlpPow2
 import Flean.Rounding.Neighbor.Order
 import Flean.Rounding.Neighbor.Properties
+import Flean.Rounding.Neighbor.Boundary
 
 /-! # FP ↔ Integer equivalence: structural successor (positive case)
 
@@ -753,5 +754,409 @@ theorem nextUp_finite_eq_successorPos
   | Fp.NaN => exact absurd h (by
       unfold successorPos
       split_ifs <;> intro hh <;> nomatch hh)
+
+end FiniteFp
+
+/-! ## Negative-side adjacency and `nextUp` bridge
+
+Mirror of the positive-side bridge for genuinely negative `f` (`f.s = true ∧
+f.m > 0`). The key trick: `successorPos (-g) = .finite (-f)` for every
+non-degenerate negative-successor case. So negative adjacency follows from
+the positive adjacency by contrapositive (no fresh binade casework).
+
+The two degenerate cases (`f = -0` → `+smallestPosSubnormal` sign-cross;
+`f = -smallestPosSubnormal` → `g = -0`) are dispatched directly to the
+existing `nextUp_neg_zero` / `nextUp_neg_smallestPosSubnormal` boundary
+lemmas. -/
+
+namespace FiniteFp
+
+variable [FloatFormat]
+
+/-- For genuinely negative `f` (`f.s = true ∧ f.m > 0`) with `successorNeg f =
+.finite g`, the structural successorNeg always yields `g.s = true` (whether
+within-binade-descent producing `⟨true, f.e, f.m - 1⟩` or cross-binade-descent
+producing `⟨true, f.e - 1, 2^prec - 1⟩`). The sign-cross only happens at the
+`-0` input branch, which we exclude here via `hm_pos`. -/
+private theorem successorNeg_sign_of_general
+    (f : FiniteFp) (hm_pos : 0 < f.m)
+    {g : FiniteFp} (hg : successorNeg f = Fp.finite g) :
+    g.s = true := by
+  have hzero_neg : ¬ f.m = 0 := by omega
+  unfold successorNeg at hg
+  rw [dif_neg hzero_neg] at hg
+  by_cases hcross : f.m = 2^(FloatFormat.prec - 1).toNat ∧ FloatFormat.min_exp < f.e
+  · rw [dif_pos hcross] at hg
+    have := (Fp.finite.inj hg).symm; rw [this]
+  · rw [dif_neg hcross] at hg
+    have := (Fp.finite.inj hg).symm; rw [this]
+
+/-- For genuinely negative `f` (`f.s = true ∧ f.m > 0`), the structural
+predecessor relation `successorPos (-g) = .finite (-f)` holds where
+`g = successorNeg f`. This is the structural pivot that lets us reuse
+positive adjacency for the negative-side proof.
+
+The proof equates two Fp.finite forms by establishing s/e/m field equality. -/
+private theorem successorPos_neg_of_successorNeg
+    (f : FiniteFp) (hs : f.s = true) (hm_pos : 0 < f.m)
+    {g : FiniteFp} (hg : successorNeg f = Fp.finite g) :
+    successorPos (-g) = Fp.finite (-f) := by
+  have hzero_neg : ¬ f.m = 0 := by omega
+  unfold successorNeg at hg
+  rw [dif_neg hzero_neg] at hg
+  -- (-f).s = false, (-f).e = f.e, (-f).m = f.m.
+  have hnegf_s : (-f).s = false := by rw [FiniteFp.neg_def]; simp [hs]
+  have hnegf_e : (-f).e = f.e := by rw [FiniteFp.neg_def]
+  have hnegf_m : (-f).m = f.m := by rw [FiniteFp.neg_def]
+  by_cases hcross : f.m = 2^(FloatFormat.prec - 1).toNat ∧ FloatFormat.min_exp < f.e
+  · -- Cross-binade descent.
+    rw [dif_pos hcross] at hg
+    have hg_eq : g = ⟨true, f.e - 1, 2^FloatFormat.prec.toNat - 1,
+        successor_neg_cross_valid hcross.2⟩ :=
+      (Fp.finite.inj hg).symm
+    have hneg_g_s : (-g).s = false := by rw [hg_eq]; rfl
+    have hneg_g_e : (-g).e = f.e - 1 := by rw [hg_eq]; rfl
+    have hneg_g_m : (-g).m = 2^FloatFormat.prec.toNat - 1 := by rw [hg_eq]; rfl
+    -- Compute successorPos (-g).
+    unfold successorPos
+    have hpec : 0 < (2 : ℕ) ^ FloatFormat.prec.toNat := Nat.two_pow_pos _
+    have hsmax_neg : ¬ (-g).m + 1 < 2^FloatFormat.prec.toNat := by rw [hneg_g_m]; omega
+    rw [dif_neg hsmax_neg]
+    have hemax : (-g).e + 1 ≤ FloatFormat.max_exp := by
+      rw [hneg_g_e]; have := f.valid.2.1; omega
+    rw [dif_pos hemax]
+    -- Result: ⟨false, (-g).e + 1, 2^(prec-1).toNat, _⟩.
+    -- We want this to equal Fp.finite (-f).
+    apply congrArg
+    apply (FiniteFp.eq_def _ _).mpr
+    refine ⟨hnegf_s.symm, ?_, ?_⟩
+    · -- (-g).e + 1 = (-f).e
+      rw [hnegf_e]; linarith [hneg_g_e]
+    · -- 2^(prec-1).toNat = (-f).m
+      rw [hnegf_m]; exact hcross.1.symm
+  · -- Within-binade descent.
+    rw [dif_neg hcross] at hg
+    have hg_eq : g = ⟨true, f.e, f.m - 1,
+        successor_neg_within_valid hm_pos
+          (by
+            push_neg at hcross
+            by_cases hm : f.m = 2^(FloatFormat.prec - 1).toNat
+            · right
+              have := hcross hm
+              have := f.valid.1
+              omega
+            · left; exact hm)⟩ :=
+      (Fp.finite.inj hg).symm
+    have hneg_g_s : (-g).s = false := by rw [hg_eq]; rfl
+    have hneg_g_e : (-g).e = f.e := by rw [hg_eq]; rfl
+    have hneg_g_m : (-g).m = f.m - 1 := by rw [hg_eq]; rfl
+    -- successorPos: hsmax (f.m - 1) + 1 = f.m < 2^prec ✓.
+    unfold successorPos
+    have hsmax : (-g).m + 1 < 2^FloatFormat.prec.toNat := by
+      rw [hneg_g_m]; have := f.valid.2.2.1; omega
+    rw [dif_pos hsmax]
+    apply congrArg
+    apply (FiniteFp.eq_def _ _).mpr
+    refine ⟨hnegf_s.symm, ?_, ?_⟩
+    · rw [hnegf_e]; exact hneg_g_e
+    · -- LHS is `⟨false, (-g).e, (-g).m + 1, _⟩.m = (-g).m + 1`. RHS is (-f).m = f.m.
+      -- With hneg_g_m: (-g).m = f.m - 1.
+      show (-g).m + 1 = (-f).m
+      rw [hnegf_m, hneg_g_m]
+      omega
+
+/-- **Negative adjacency.** For genuinely negative `f` with finite
+`successorNeg f = .finite g`, any `h : FiniteFp` with `f.toVal < h.toVal`
+satisfies `g.toVal ≤ h.toVal`. Equivalently: no representable value lies
+strictly between `f` and `successorNeg f` (in the toVal order).
+
+Proof is by contrapositive of `successorPos_le_of_toVal_lt` applied at
+`f' := -g` (positive), using the structural pivot
+`successorPos (-g) = .finite (-f)`. -/
+theorem successorNeg_le_of_toVal_lt
+    (f : FiniteFp) (hs : f.s = true) (hm_pos : 0 < f.m)
+    {g : FiniteFp} (hg : successorNeg f = Fp.finite g)
+    (h : FiniteFp) (h_lt : (f.toVal : ℚ) < (h.toVal : ℚ)) :
+    (g.toVal : ℚ) ≤ (h.toVal : ℚ) := by
+  by_contra h_gt
+  push_neg at h_gt
+  -- Pivot: -g positive, successorPos (-g) = .finite (-f).
+  have h_pivot : successorPos (-g) = Fp.finite (-f) :=
+    successorPos_neg_of_successorNeg f hs hm_pos hg
+  -- -g has s = false (mirrors g.s = true; for the f.m=1 case g = -0 also has s = true).
+  have hg_s : g.s = true := successorNeg_sign_of_general f hm_pos hg
+  have hneg_g_s : (-g).s = false := by rw [FiniteFp.neg_def]; simp [hg_s]
+  -- Apply positive adjacency at f' = -g with h' = -h.
+  have hh' : ((-g).toVal : ℚ) < ((-h).toVal : ℚ) := by
+    rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg]
+    linarith [h_gt]
+  have h_concl : ((-f).toVal : ℚ) ≤ ((-h).toVal : ℚ) :=
+    successorPos_le_of_toVal_lt (-g) hneg_g_s h_pivot (-h) hh'
+  rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg] at h_concl
+  linarith
+
+/-! ### Sub-bridges + master form -/
+
+/-- Helper: when `f.m = 0`, `f.e = min_exp` (forced by `f.valid` since `m = 0`
+fails `isNormal`). -/
+private theorem e_eq_min_exp_of_m_zero (f : FiniteFp) (hm : f.m = 0) :
+    f.e = FloatFormat.min_exp := by
+  rcases f.valid.2.2.2 with hn | hsub
+  · -- m=0 contradicts isNormal (which needs m ≥ 2^(prec-1) ≥ 2 since prec ≥ 2).
+    exfalso
+    have h1 : 2^(FloatFormat.prec - 1).toNat ≤ f.m := hn.1
+    have hp : 1 ≤ (FloatFormat.prec - 1).toNat := by
+      have := FloatFormat.valid_prec
+      have h2 : (FloatFormat.prec : ℤ) - 1 ≥ 1 := by omega
+      have h3 := FloatFormat.prec_sub_one_toNat_eq
+      omega
+    have : 2 ≤ (2 : ℕ) ^ (FloatFormat.prec - 1).toNat := by
+      calc 2 = 2^1 := by norm_num
+        _ ≤ 2^(FloatFormat.prec - 1).toNat := Nat.pow_le_pow_right (by norm_num) hp
+    omega
+  · exact hsub.1
+
+/-- Helper: when `f.m = 1`, `f.e = min_exp` (since `m = 1 < 2^(prec-1)` for
+`prec ≥ 2`, so `f` must be subnormal). -/
+private theorem e_eq_min_exp_of_m_one (f : FiniteFp) (hm : f.m = 1) :
+    f.e = FloatFormat.min_exp := by
+  rcases f.valid.2.2.2 with hn | hsub
+  · exfalso
+    have h1 : 2^(FloatFormat.prec - 1).toNat ≤ f.m := hn.1
+    have hp : 1 ≤ (FloatFormat.prec - 1).toNat := by
+      have := FloatFormat.valid_prec
+      have h2 : (FloatFormat.prec : ℤ) - 1 ≥ 1 := by omega
+      have h3 := FloatFormat.prec_sub_one_toNat_eq
+      omega
+    have : 2 ≤ (2 : ℕ) ^ (FloatFormat.prec - 1).toNat := by
+      calc 2 = 2^1 := by norm_num
+        _ ≤ 2^(FloatFormat.prec - 1).toNat := Nat.pow_le_pow_right (by norm_num) hp
+    omega
+  · exact hsub.1
+
+/-- **Bridge to `nextUp` (`f = -0` case).** Routes through `nextUp_neg_zero`. -/
+theorem nextUp_finite_eq_successorNeg_of_neg_zero
+    (f : FiniteFp) (hs : f.s = true) (hm : f.m = 0) :
+    nextUp (Fp.finite f) = successorNeg f := by
+  -- f equals (-0 : FiniteFp) at the structural level via s/e/m match.
+  have hf_e : f.e = FloatFormat.min_exp := e_eq_min_exp_of_m_zero f hm
+  have hf_eq : f = (-0 : FiniteFp) := by
+    apply (FiniteFp.eq_def _ _).mpr
+    refine ⟨?_, ?_, ?_⟩
+    · rw [hs, FiniteFp.neg_def]; rfl
+    · rw [hf_e, FiniteFp.neg_def]; rfl
+    · rw [hm, FiniteFp.neg_def]; rfl
+  rw [hf_eq, nextUp_neg_zero]
+  symm
+  -- successorNeg (-0) = .finite smallestPosSubnormal: takes the f.m = 0 dispatch.
+  unfold successorNeg
+  -- With f = -0, f.m = 0, so the dif_pos (f.m = 0) branch fires.
+  -- But after rw [hf_eq], f became (-0 : FiniteFp); we need to use (-0).m = 0.
+  have h0_m : (-0 : FiniteFp).m = 0 := by rw [FiniteFp.neg_def]; rfl
+  rw [dif_pos h0_m]
+
+/-- **Bridge to `nextUp` (`f = -smallestPosSubnormal` case, `g = -0`).** Routes
+through `nextUp_neg_smallestPosSubnormal`. -/
+theorem nextUp_finite_eq_successorNeg_of_neg_smallestPosSubnormal
+    (f : FiniteFp) (hs : f.s = true) (hm : f.m = 1) :
+    nextUp (Fp.finite f) = successorNeg f := by
+  have hf_e : f.e = FloatFormat.min_exp := e_eq_min_exp_of_m_one f hm
+  have hf_eq : f = -FiniteFp.smallestPosSubnormal := by
+    apply (FiniteFp.eq_def _ _).mpr
+    refine ⟨?_, ?_, ?_⟩
+    · rw [hs, FiniteFp.neg_def]; rfl
+    · rw [hf_e, FiniteFp.neg_def]; rfl
+    · rw [hm, FiniteFp.neg_def]; rfl
+  rw [hf_eq, nextUp_neg_smallestPosSubnormal]
+  symm
+  -- successorNeg (-smallestPosSubnormal): m=1 ≠ 0, not cross-binade,
+  -- so within-binade descent: g = ⟨true, min_exp, 0, _⟩ = -0.
+  unfold successorNeg
+  have h_sps_m : (-FiniteFp.smallestPosSubnormal).m = 1 := by rw [FiniteFp.neg_def]; rfl
+  have h_sps_e : (-FiniteFp.smallestPosSubnormal).e = FloatFormat.min_exp := by
+    rw [FiniteFp.neg_def]; rfl
+  have hzero_neg : ¬ (-FiniteFp.smallestPosSubnormal).m = 0 := by rw [h_sps_m]; omega
+  have hcross_neg :
+      ¬((-FiniteFp.smallestPosSubnormal).m = 2 ^ (FloatFormat.prec - 1).toNat
+        ∧ FloatFormat.min_exp < (-FiniteFp.smallestPosSubnormal).e) := by
+    intro ⟨hm_eq, _⟩
+    rw [h_sps_m] at hm_eq
+    have hp : 1 ≤ (FloatFormat.prec - 1).toNat := by
+      have := FloatFormat.valid_prec
+      have h2 : (FloatFormat.prec : ℤ) - 1 ≥ 1 := by omega
+      have h3 := FloatFormat.prec_sub_one_toNat_eq
+      omega
+    have h1 : 2 ≤ (2 : ℕ) ^ (FloatFormat.prec - 1).toNat := by
+      calc 2 = 2^1 := by norm_num
+        _ ≤ 2^(FloatFormat.prec - 1).toNat := Nat.pow_le_pow_right (by norm_num) hp
+    omega
+  rw [dif_neg hzero_neg, dif_neg hcross_neg]
+  apply congrArg
+  apply (FiniteFp.eq_def _ _).mpr
+  refine ⟨?_, ?_, ?_⟩
+  · -- LHS .s = true; RHS = (-0 : FiniteFp).s = !0.s = true.
+    show true = (-(0 : FiniteFp)).s
+    rfl
+  · -- LHS .e = (-smallestPosSubnormal).e = min_exp; RHS = (-0).e = min_exp.
+    show (-FiniteFp.smallestPosSubnormal).e = (-(0 : FiniteFp)).e
+    rw [h_sps_e]; rfl
+  · -- LHS .m = (-smallestPosSubnormal).m - 1 = 0; RHS = (-0).m = 0.
+    show (-FiniteFp.smallestPosSubnormal).m - 1 = (-(0 : FiniteFp)).m
+    rw [h_sps_m]; rfl
+
+/-- For the within/cross-binade descent cases (`f.m > 0`, `g.m > 0`),
+`g.notNegZero` holds. The carve-out `g.m = 0` (i.e., `f.m = 1` within-binade
+giving `g = -0`) is handled separately above. -/
+private theorem successorNeg_notNegZero_of_general
+    (f : FiniteFp) (hm_pos : 0 < f.m)
+    {g : FiniteFp} (hg : successorNeg f = Fp.finite g)
+    (h_not_one : ¬ f.m = 1) :
+    g.notNegZero := by
+  have hzero_neg : ¬ f.m = 0 := by omega
+  unfold successorNeg at hg
+  rw [dif_neg hzero_neg] at hg
+  by_cases hcross : f.m = 2^(FloatFormat.prec - 1).toNat ∧ FloatFormat.min_exp < f.e
+  · rw [dif_pos hcross] at hg
+    have hg_eq : g = ⟨true, f.e - 1, 2^FloatFormat.prec.toNat - 1,
+        successor_neg_cross_valid hcross.2⟩ :=
+      (Fp.finite.inj hg).symm
+    right
+    rw [hg_eq]
+    have hpec : 0 < (2 : ℕ) ^ FloatFormat.prec.toNat := Nat.two_pow_pos _
+    show 0 < 2^FloatFormat.prec.toNat - 1
+    have hp : 1 ≤ FloatFormat.prec.toNat := by
+      have := FloatFormat.valid_prec
+      have : (FloatFormat.prec : ℤ) ≥ 2 := by omega
+      have := FloatFormat.prec_toNat_eq
+      omega
+    have : 2 ≤ (2 : ℕ) ^ FloatFormat.prec.toNat :=
+      calc 2 = 2^1 := by norm_num
+        _ ≤ 2^FloatFormat.prec.toNat := Nat.pow_le_pow_right (by norm_num) hp
+    omega
+  · rw [dif_neg hcross] at hg
+    -- Within-binade: g.m = f.m - 1.
+    have hg_eq : g.m = f.m - 1 := by
+      have h := (Fp.finite.inj hg).symm; rw [h]
+    right
+    -- f.m ≠ 1 and f.m > 0 ⇒ f.m ≥ 2 ⇒ g.m ≥ 1.
+    show 0 < g.m
+    rw [hg_eq]; omega
+
+/-- **Bridge to `nextUp` (general negative case).** When `f.m ≥ 2`, or
+`f.m = 2^(prec-1)` with `f.e > min_exp` (any case where `g.m > 0`),
+upper-bound + adjacency force `nextUp (.finite f) = .finite g`. -/
+theorem nextUp_finite_eq_successorNeg_of_general
+    (f : FiniteFp) (hs : f.s = true) (hm_pos : 0 < f.m) (h_not_one : ¬ f.m = 1)
+    {g : FiniteFp} (hg : successorNeg f = Fp.finite g) :
+    nextUp (Fp.finite f) = Fp.finite g := by
+  have hg_nnz : g.notNegZero := successorNeg_notNegZero_of_general f hm_pos hg h_not_one
+  have hg_s : g.s = true := successorNeg_sign_of_general f hm_pos hg
+  have hneg_g_s : (-g).s = false := by rw [FiniteFp.neg_def]; simp [hg_s]
+  -- Pivot: successorPos (-g) = .finite (-f).
+  have h_pivot : successorPos (-g) = Fp.finite (-f) :=
+    successorPos_neg_of_successorNeg f hs hm_pos hg
+  -- f.toVal < g.toVal: derived by negating positive successorPos value formula.
+  have hg_gt : (f.toVal : ℚ) < (g.toVal : ℚ) := by
+    have hpivot_val : ((-f).toVal : ℚ) = ((-g).toVal : ℚ) +
+        (2 : ℚ) ^ ((-g).e - FloatFormat.prec + 1) :=
+      successorPos_toVal_of_finite (-g) hneg_g_s h_pivot
+    have hzpos : (0 : ℚ) < (2 : ℚ) ^ ((-g).e - FloatFormat.prec + 1) := by positivity
+    rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg] at hpivot_val
+    linarith
+  -- stepUpVal f ≤ g.toVal: gap ≥ smallestPosSub.toVal > neighborStep.
+  have h_step_le : stepUpVal f ≤ (g.toVal : ℚ) := by
+    have h_gap_ge_sps :
+        (FiniteFp.smallestPosSubnormal.toVal : ℚ) ≤ (g.toVal : ℚ) - (f.toVal : ℚ) := by
+      -- The gap is either 2^(f.e - prec + 1) (within) or 2^(f.e - prec) (cross),
+      -- both ≥ 2^(min_exp - prec + 1) = smallestPosSub.toVal. Use the positive-side
+      -- value formula on -g.
+      have hpivot_val : ((-f).toVal : ℚ) = ((-g).toVal : ℚ) +
+          (2 : ℚ) ^ ((-g).e - FloatFormat.prec + 1) :=
+        successorPos_toVal_of_finite (-g) hneg_g_s h_pivot
+      rw [FiniteFp.toVal_neg_eq_neg, FiniteFp.toVal_neg_eq_neg] at hpivot_val
+      -- Now: -f.toVal = -g.toVal + 2^((-g).e - prec + 1), so g - f = 2^((-g).e - prec + 1).
+      have hgap_eq : (g.toVal : ℚ) - (f.toVal : ℚ) =
+          (2 : ℚ) ^ ((-g).e - FloatFormat.prec + 1) := by linarith
+      rw [hgap_eq, FiniteFp.smallestPosSubnormal_toVal]
+      apply zpow_le_zpow_right₀ (by norm_num : (1 : ℚ) ≤ 2)
+      -- (-g).e ≥ min_exp.
+      have := (-g).valid.1
+      omega
+    have h_ns_lt_sps := neighborStep_lt_smallestPosSubnormal
+    show (f.toVal : ℚ) + neighborStep ≤ (g.toVal : ℚ)
+    linarith
+  -- Upper bound: nextUp ≤ Fp.finite g.
+  have h_upper : nextUp (Fp.finite f) ≤ Fp.finite g :=
+    nextUp_finite_le_of_stepUpVal_le f g hg_nnz h_step_le
+  -- Lower bound + adjacency to pin down nextUp.
+  have h_lower : Fp.finite f ≤ nextUp (Fp.finite f) := finite_le_nextUp f
+  match h_nu : nextUp (Fp.finite f) with
+  | Fp.NaN =>
+    rw [h_nu] at h_lower; exact absurd h_lower (by simp)
+  | Fp.infinite false =>
+    rw [h_nu] at h_upper; exact absurd h_upper (by simp)
+  | Fp.infinite true =>
+    rw [h_nu] at h_lower
+    rw [Fp.le_neg_inf_iff] at h_lower
+    rcases h_lower with h | h <;> nomatch h
+  | Fp.finite u =>
+    rw [h_nu] at h_upper
+    rw [Fp.finite_le_finite_iff] at h_upper
+    have h_u_le_g : (u.toVal : ℚ) ≤ (g.toVal : ℚ) := FiniteFp.le_toVal_le ℚ h_upper
+    have h_f_lt_u_fp : Fp.finite f < Fp.finite u := finite_lt_nextUp f u h_nu
+    -- Convert to toVal lt. Use no-zero argument.
+    have h_f_ne_u : ¬f.isZero ∨ ¬u.isZero := by
+      left
+      intro hfz
+      simp [FiniteFp.isZero] at hfz
+      omega
+    have h_f_lt_u_val : (f.toVal : ℚ) < (u.toVal : ℚ) :=
+      FiniteFp.lt_toVal_lt ℚ h_f_lt_u_fp h_f_ne_u
+    have h_g_le_u : (g.toVal : ℚ) ≤ (u.toVal : ℚ) :=
+      successorNeg_le_of_toVal_lt f hs hm_pos hg u h_f_lt_u_val
+    have h_uv_eq_gv : (u.toVal : ℚ) = (g.toVal : ℚ) := le_antisymm h_u_le_g h_g_le_u
+    -- Sign-based equality: g.s = u.s, then eq_of_toVal_eq.
+    have hg_m_pos : 0 < g.m := by
+      rcases hg_nnz with h | h
+      · exfalso; rw [h] at hg_s; exact absurd hg_s (by simp)
+      · exact h
+    have hu_neg_val : (u.toVal : ℚ) < 0 := by
+      -- u.toVal = g.toVal < 0 (g.s = true ∧ g.m > 0).
+      rw [h_uv_eq_gv]
+      have := FiniteFp.toVal_pos (R := ℚ) (-g) (by rw [FiniteFp.neg_def]; simp [hg_s]) (by
+        rw [FiniteFp.neg_def]; exact hg_m_pos)
+      rw [FiniteFp.toVal_neg_eq_neg] at this
+      linarith
+    have hu_s : u.s = true := by
+      by_contra hu_s_eq
+      rw [Bool.not_eq_true] at hu_s_eq
+      have := FiniteFp.toVal_nonneg u hu_s_eq (R := ℚ)
+      linarith
+    have hu_eq_g : u = g :=
+      FiniteFp.eq_of_toVal_eq (R := ℚ) (by rw [hu_s, hg_s]) h_uv_eq_gv
+    rw [hu_eq_g]
+
+/-- **Bridge to `nextUp` (negative master form).** For genuinely negative `f`
+(or `f = -0`), `nextUp (.finite f) = successorNeg f`. -/
+theorem nextUp_finite_eq_successorNeg
+    (f : FiniteFp) (hs : f.s = true) :
+    nextUp (Fp.finite f) = successorNeg f := by
+  by_cases hzero : f.m = 0
+  · exact nextUp_finite_eq_successorNeg_of_neg_zero f hs hzero
+  · by_cases hone : f.m = 1
+    · exact nextUp_finite_eq_successorNeg_of_neg_smallestPosSubnormal f hs hone
+    · -- f.m ≥ 2 (or cross-binade with m = 2^(prec-1)). General case.
+      have hm_pos : 0 < f.m := by omega
+      match h : successorNeg f with
+      | Fp.finite g => exact nextUp_finite_eq_successorNeg_of_general f hs hm_pos hone h
+      | Fp.infinite false => exact absurd h (by
+          unfold successorNeg
+          split_ifs <;> intro hh <;> nomatch hh)
+      | Fp.infinite true => exact absurd h (by
+          unfold successorNeg
+          split_ifs <;> intro hh <;> nomatch hh)
+      | Fp.NaN => exact absurd h (by
+          unfold successorNeg
+          split_ifs <;> intro hh <;> nomatch hh)
 
 end FiniteFp
