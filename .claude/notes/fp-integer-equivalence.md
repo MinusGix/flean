@@ -279,9 +279,14 @@ adversarial ML to compute exact ULP-level perturbations.
   for positive finite `b` with `T.toNat + 1 < 2^sigBits` and result-significand
   in normal range, `nextUp (ofBits b) = ofBits (bitNextUpWithin b)`. File:
   `Flean/IntegerEquivalence/BitNextUp.lean`.
-- [ ] **Cross-binade bit-level cases**: T+1 = 0 ∧ E ≠ 0 (cross-binade),
-  T+1 = 0 ∧ E+1 = allOnes (saturation→+∞), T+1 = 0 ∧ E = 0 (subnormal→normal).
-  Each requires its own ofBits decoding case.
+- [x] **Cross-binade bit-level cases** (2026-05-07): all three sub-cases
+  shipped in `BitNextUp.lean` with both structural bridges to `successorPos`
+  and headline identities to `nextUp`:
+  - Saturation (E + 1 = allOnes ⇒ +∞)
+  - Normal cross-binade (E ≠ 0 ∧ E + 1 ≠ allOnes ⇒ next-binade smallest)
+  - Subnormal-to-normal (E = 0 ⇒ smallest normal at min_exp)
+  Theorems: `bitNextUpCross`, `ofBits_bitNextUpCross_eq_*`,
+  `nextUp_ofBits_eq_ofBits_bitNextUpCross_*`.
 - [ ] **Sign-magnitude integer increment** for negative inputs: bit decrement
   (toward zero), with the -0 ↔ +0 sign-crossing edge.
 
