@@ -5,6 +5,7 @@ import Flean.Operations.TwoProduct
 import Flean.Operations.HornerFMA
 import Flean.Operations.Div
 import Flean.Operations.Sqrt
+import Mathlib.Data.Prod.Lex
 
 /-! # Double-Double Arithmetic — Foundations
 
@@ -120,6 +121,45 @@ variable {R : Type*} [Field R]
 @[simp] theorem toVal_ofFiniteFp (f : FiniteFp) :
     toVal (R := R) (ofFiniteFp f) = f.toVal := by
   simp [toVal, ofFiniteFp]
+
+/-! ## Order
+
+Lexicographic order on `DoubleDouble` (hi first, lo as tiebreaker), lifted
+from the `LinearOrder` on `FiniteFp`. This gives `<`, `≤`, `min`, `max`, and
+all the standard `LinearOrder` API for free.
+
+For *normalized* DDs the lexicographic order agrees with the value-level
+order on `toVal`, but the agreement theorem requires ulp-level reasoning
+about non-overlap of `hi` and `lo`, and is left to consumers that need it.
+The structural order is correct as a total order on the `DoubleDouble` type
+(and is the natural sort key) — it just doesn't unconditionally match
+`toVal`-comparison for unnormalized pairs. -/
+
+/-- Lexicographic key for `DoubleDouble`: `(hi, lo)` lifted to `Lex`. -/
+def toLexPair (dd : DoubleDouble) : FiniteFp ×ₗ FiniteFp := toLex (dd.hi, dd.lo)
+
+@[simp] theorem toLexPair_mk (hi lo : FiniteFp) :
+    toLexPair ⟨hi, lo⟩ = toLex (hi, lo) := rfl
+
+theorem toLexPair_injective : Function.Injective toLexPair := by
+  intro a b h
+  obtain ⟨_, _⟩ := a
+  obtain ⟨_, _⟩ := b
+  have := toLex_inj.mp h
+  cases this
+  rfl
+
+instance : LinearOrder DoubleDouble := LinearOrder.lift' toLexPair toLexPair_injective
+
+/-- `a < b` unfolds to lexicographic comparison on `(hi, lo)`. -/
+theorem lt_iff (a b : DoubleDouble) :
+    a < b ↔ a.hi < b.hi ∨ (a.hi = b.hi ∧ a.lo < b.lo) :=
+  Prod.Lex.toLex_lt_toLex
+
+/-- `a ≤ b` unfolds to lexicographic comparison on `(hi, lo)`. -/
+theorem le_iff (a b : DoubleDouble) :
+    a ≤ b ↔ a.hi < b.hi ∨ (a.hi = b.hi ∧ a.lo ≤ b.lo) :=
+  Prod.Lex.toLex_le_toLex
 
 /-! ## Normalization predicate
 
@@ -240,6 +280,191 @@ theorem DoubleDouble.IsNormalized.lo_le_eta_hi_div
     _ = η / (1 - η) * |dd.hi.toVal| := by ring
 
 end IsNormalized
+
+/-! ## Egress: round back to a single FP value
+
+Convert a `DoubleDouble` to a single `Fp` (or `FiniteFp` via a finiteness
+witness) by rounding `hi + lo`. For *normalized* DDs the result is exactly
+`hi`'s value (that's the operational meaning of `IsNormalized`), so the
+egress is essentially free. For unnormalized DDs the result is the
+correctly-rounded sum, which is the natural notion of "the FP value of
+this DD". -/
+
+section Egress
+
+variable [RModeExec]
+
+namespace DoubleDouble
+
+/-- Round a `DoubleDouble` to a single `Fp`. Total — overflow lands in
+    `Fp.inf`/`Fp.neg_inf`/`Fp.nan` like any other FP add. -/
+def toFp (dd : DoubleDouble) : Fp := dd.hi + dd.lo
+
+@[simp] theorem toFp_mk (hi lo : FiniteFp) :
+    toFp ⟨hi, lo⟩ = hi + lo := rfl
+
+/-- For a normalized DD, every finite rounding of `hi + lo` agrees in value
+    with `hi`. This is just `IsNormalized` applied to the witness. -/
+theorem IsNormalized.toFp_value
+    {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    [RMode R] [RoundIntSigMSound R] [RModeIdem R]
+    {dd : DoubleDouble} (hnorm : dd.IsNormalized (R := R))
+    {f : FiniteFp} (hf : dd.toFp = Fp.finite f) :
+    (f.toVal : R) = dd.hi.toVal :=
+  hnorm hf
+
+end DoubleDouble
+
+end Egress
+
+/-! ## Lex / `toVal` agreement on normalized DDs
+
+The structural lex order on `DoubleDouble` (compare `hi` first, `lo` as
+tiebreaker) agrees with the value-level order on `toVal` whenever both DDs
+are *normalized* (round of `hi + lo` lands at `hi`'s value) and have
+finiteness witnesses. The proof is via monotonicity of round-to-nearest:
+since `hi.toVal = round(hi + lo).toVal` for a normalized DD, comparing
+`a.hi.toVal` and `b.hi.toVal` is the same as comparing `round(a.toVal)` and
+`round(b.toVal)`.
+
+Strict-`<` agreement requires excluding signed-zero corner cases
+(`a = ⟨-0, 0⟩` vs `b = ⟨+0, 0⟩` lex-compares as `<` but has equal `toVal`).
+We add a "nonzero hi" hypothesis to rule those out at the hi level, and
+state the strict iff under an additional `a.toVal ≠ b.toVal` premise. The
+weaker `lex < → toVal ≤` form holds without the value-disequality. -/
+
+section LexAgreement
+
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    [RMode R] [RModeExec] [RoundIntSigMSound R] [RModeNearest R] [RModeIdem R]
+
+namespace DoubleDouble
+
+omit [RModeNearest R] [RModeIdem R] in
+/-- The rounding of `dd.toVal` equals the finiteness witness for `dd.hi + dd.lo`.
+    A direct consequence of `fpAddFinite_correct`; doesn't actually need
+    `IsNormalized` (the round-back-to-`hi.toVal` part comes from `IsNormalized`
+    separately when needed by callers). -/
+theorem round_toVal_eq_of_fin
+    {dd : DoubleDouble}
+    {f : FiniteFp} (hfin : dd.hi + dd.lo = Fp.finite f)
+    (hne : dd.toVal (R := R) ≠ 0) :
+    ○(dd.toVal (R := R)) = Fp.finite f := by
+  have h_corr := fpAddFinite_correct (R := R) dd.hi dd.lo hne
+  show ○((dd.hi.toVal : R) + dd.lo.toVal) = Fp.finite f
+  rw [← h_corr]; exact hfin
+
+omit [RModeIdem R] in
+/-- **Cross-binade strict-`<` agreement.** For normalized DDs with finiteness +
+    nonzero values: a strict R-level `hi.toVal` inequality lifts to a strict
+    `toVal` inequality. Proof via monotonicity of round-to-nearest plus the
+    `IsNormalized` round-back identity. -/
+theorem hi_toVal_lt_imp_toVal_lt
+    {a b : DoubleDouble}
+    (ha_norm : a.IsNormalized (R := R)) (hb_norm : b.IsNormalized (R := R))
+    {f_a : FiniteFp} (ha_fin : a.hi + a.lo = Fp.finite f_a)
+    {f_b : FiniteFp} (hb_fin : b.hi + b.lo = Fp.finite f_b)
+    (ha_ne : a.toVal (R := R) ≠ 0) (hb_ne : b.toVal (R := R) ≠ 0)
+    (h : (a.hi.toVal : R) < b.hi.toVal) :
+    a.toVal (R := R) < b.toVal := by
+  by_contra h_contra
+  push_neg at h_contra
+  have h_round_le : ○(b.toVal (R := R)) ≤ ○(a.toVal) :=
+    RModeMono.round_mono h_contra
+  rw [round_toVal_eq_of_fin hb_fin hb_ne,
+      round_toVal_eq_of_fin ha_fin ha_ne] at h_round_le
+  rw [Fp.finite_le_finite_iff] at h_round_le
+  have h_le : (f_b.toVal : R) ≤ f_a.toVal := FiniteFp.le_toVal_le R h_round_le
+  rw [hb_norm hb_fin, ha_norm ha_fin] at h_le
+  linarith
+
+omit [RModeIdem R] in
+/-- **Forward direction (weak):** lex `<` implies `toVal ≤`. The strict form
+    fails only at signed-zero corner cases (e.g. `⟨-0, 0⟩ < ⟨+0, 0⟩` lex but
+    equal in value). For the strict iff use `lt_iff_toVal_lt_of_ne`. -/
+theorem lt_imp_toVal_le
+    {a b : DoubleDouble}
+    (ha_norm : a.IsNormalized (R := R)) (hb_norm : b.IsNormalized (R := R))
+    {f_a : FiniteFp} (ha_fin : a.hi + a.lo = Fp.finite f_a)
+    {f_b : FiniteFp} (hb_fin : b.hi + b.lo = Fp.finite f_b)
+    (ha_ne : a.toVal (R := R) ≠ 0) (hb_ne : b.toVal (R := R) ≠ 0)
+    (h_hi_nz : ¬a.hi.isZero ∨ ¬b.hi.isZero)
+    (h : a < b) :
+    a.toVal (R := R) ≤ b.toVal := by
+  rw [lt_iff] at h
+  obtain (h_hi_lt | ⟨h_hi_eq, h_lo_lt⟩) := h
+  · have h_hi_toVal_lt : (a.hi.toVal : R) < b.hi.toVal :=
+      FiniteFp.lt_toVal_lt R h_hi_lt h_hi_nz
+    exact le_of_lt
+      (hi_toVal_lt_imp_toVal_lt ha_norm hb_norm ha_fin hb_fin
+        ha_ne hb_ne h_hi_toVal_lt)
+  · have h_hi_toVal_eq : (a.hi.toVal : R) = b.hi.toVal :=
+      FiniteFp.imp_toVal_eq h_hi_eq
+    have h_lo_le : (a.lo.toVal : R) ≤ b.lo.toVal :=
+      FiniteFp.le_toVal_le R (FiniteFp.lt_imp_is_le h_lo_lt)
+    show (a.hi.toVal : R) + a.lo.toVal ≤ b.hi.toVal + b.lo.toVal
+    linarith
+
+omit [RModeIdem R] in
+/-- **Backward direction:** `toVal` strict implies lex strict, under
+    normalization + finiteness + nonzero hyps. This is the more useful
+    direction in practice — it lets you discharge a structural comparison
+    from a value-level inequality. -/
+theorem toVal_lt_imp_lt
+    {a b : DoubleDouble}
+    (ha_norm : a.IsNormalized (R := R)) (hb_norm : b.IsNormalized (R := R))
+    {f_a : FiniteFp} (ha_fin : a.hi + a.lo = Fp.finite f_a)
+    {f_b : FiniteFp} (hb_fin : b.hi + b.lo = Fp.finite f_b)
+    (ha_ne : a.toVal (R := R) ≠ 0) (hb_ne : b.toVal (R := R) ≠ 0)
+    (h_hi_nz : ¬a.hi.isZero ∨ ¬b.hi.isZero)
+    (h : a.toVal (R := R) < b.toVal) :
+    a < b := by
+  -- Round both sides; monotonicity gives f_a ≤ f_b at FiniteFp level.
+  have h_round_le : ○(a.toVal (R := R)) ≤ ○(b.toVal) :=
+    RModeMono.round_mono (le_of_lt h)
+  rw [round_toVal_eq_of_fin ha_fin ha_ne,
+      round_toVal_eq_of_fin hb_fin hb_ne] at h_round_le
+  rw [Fp.finite_le_finite_iff] at h_round_le
+  have h_hi_toVal_le : (a.hi.toVal : R) ≤ b.hi.toVal := by
+    have := FiniteFp.le_toVal_le R h_round_le
+    rwa [ha_norm ha_fin, hb_norm hb_fin] at this
+  rcases lt_or_eq_of_le h_hi_toVal_le with h_hi_lt | h_hi_toVal_eq
+  · -- a.hi.toVal < b.hi.toVal: lift to FiniteFp lt, lex case 1.
+    rw [lt_iff]
+    exact Or.inl (FiniteFp.toVal_lt R h_hi_lt)
+  · -- a.hi.toVal = b.hi.toVal: structurally equal at hi via nonzero hyp,
+    -- then a.lo.toVal < b.lo.toVal from h.
+    have h_hi_fp_eq : a.hi = b.hi :=
+      FiniteFp.eq_of_toVal_eq' h_hi_nz h_hi_toVal_eq
+    have h_lo_toVal_lt : (a.lo.toVal : R) < b.lo.toVal := by
+      have h_sum : (a.hi.toVal : R) + a.lo.toVal < b.hi.toVal + b.lo.toVal := h
+      linarith
+    rw [lt_iff]
+    exact Or.inr ⟨h_hi_fp_eq, FiniteFp.toVal_lt R h_lo_toVal_lt⟩
+
+/-- **Strict iff under value-disequality.** Combines forward + backward
+    directions: when `a.toVal ≠ b.toVal`, lex `<` and `toVal` `<` agree.
+    The disequality premise rules out the signed-zero corner cases at the
+    `lo` level. -/
+theorem lt_iff_toVal_lt_of_ne
+    {a b : DoubleDouble}
+    (ha_norm : a.IsNormalized (R := R)) (hb_norm : b.IsNormalized (R := R))
+    {f_a : FiniteFp} (ha_fin : a.hi + a.lo = Fp.finite f_a)
+    {f_b : FiniteFp} (hb_fin : b.hi + b.lo = Fp.finite f_b)
+    (ha_ne : a.toVal (R := R) ≠ 0) (hb_ne : b.toVal (R := R) ≠ 0)
+    (h_hi_nz : ¬a.hi.isZero ∨ ¬b.hi.isZero)
+    (h_val_ne : a.toVal (R := R) ≠ b.toVal) :
+    a < b ↔ a.toVal (R := R) < b.toVal := by
+  refine ⟨fun h => ?_, fun h => ?_⟩
+  · have h_le := lt_imp_toVal_le ha_norm hb_norm ha_fin hb_fin
+                   ha_ne hb_ne h_hi_nz h
+    exact lt_of_le_of_ne h_le h_val_ne
+  · exact toVal_lt_imp_lt ha_norm hb_norm ha_fin hb_fin
+           ha_ne hb_ne h_hi_nz h
+
+end DoubleDouble
+
+end LexAgreement
 
 /-! ## TwoSum lifts to a normalized DoubleDouble
 
