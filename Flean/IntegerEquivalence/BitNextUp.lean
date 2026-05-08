@@ -580,3 +580,368 @@ theorem nextUp_ofBits_eq_ofBits_bitNextUpCross_saturated
 
 end Fp
 
+/-! ## Master positive-input bit-level successor
+
+The unifier `bitNextUpPos b` automatically dispatches between
+`bitNextUpWithin` (T + 1 doesn't carry) and `bitNextUpCross` (T = allOnes
+wraps, E increments). The master bridge `ofBits_bitNextUpPos_eq_successorPos`
+takes only basic positive-finite hypotheses; the within/cross branch
+dispatch happens internally. -/
+
+namespace Fp.FloatBits
+
+variable [StdFloatFormat]
+
+/-- **Master positive-input bit-level successor.** Dispatches between
+within-binade and cross-binade based on whether `T + 1` carries. -/
+def bitNextUpPos (b : FloatBits) : FloatBits :=
+  if b.toBitsTriple.significand + 1 = 0 then bitNextUpCross b
+  else bitNextUpWithin b
+
+/-- For finite positive `b`, deriving `T.toNat + 1 < 2^sigBits` from
+`T + 1 ≠ 0` (BitVec). -/
+private theorem T_succ_lt_of_T_succ_ne_zero (b : FloatBits)
+    (hT_succ_ne : b.toBitsTriple.significand + 1 ≠ 0) :
+    b.toBitsTriple.significand.toNat + 1 < 2 ^ FloatFormat.significandBits := by
+  have hT_lt : b.toBitsTriple.significand.toNat < 2 ^ FloatFormat.significandBits :=
+    b.toBitsTriple.significand.isLt
+  -- T.toNat + 1 ≤ 2^sigBits, with strict iff T+1 ≠ 0 BitVec
+  rcases Nat.lt_or_eq_of_le (Nat.succ_le_of_lt hT_lt) with h | h
+  · exact h
+  · exfalso
+    apply hT_succ_ne
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_add]
+    show (b.toBitsTriple.significand.toNat + (1 : BitVec _).toNat)
+        % 2 ^ FloatFormat.significandBits = (0 : BitVec _).toNat
+    have h_one : (1 : BitVec FloatFormat.significandBits).toNat = 1 := by
+      have hsb := FloatFormat.significandBits_pos
+      have hpow : 1 < 2 ^ FloatFormat.significandBits :=
+        calc 1 = 2 ^ 0 := by norm_num
+          _ < 2 ^ FloatFormat.significandBits :=
+              Nat.pow_lt_pow_right (by norm_num) hsb
+      show BitVec.toNat 1 = 1
+      simp
+    rw [h_one]
+    -- h : T.toNat + 1 = 2^sigBits (from Nat.succ_le_of_lt + Nat.lt_or_eq_of_le)
+    have h' : b.toBitsTriple.significand.toNat + 1 = 2 ^ FloatFormat.significandBits := h
+    rw [h', Nat.mod_self]
+    show (0 : ℕ) = (0 : BitVec FloatFormat.significandBits).toNat
+    simp
+
+/-- For finite positive `b` and within-binade case (T + 1 ≠ 0),
+the result-mantissa is in normal range (` < 2^prec`). -/
+private theorem FpSignificand_succ_lt_prec_of_within (b : FloatBits)
+    (hT_succ_lt : b.toBitsTriple.significand.toNat + 1 < 2 ^ FloatFormat.significandBits) :
+    b.FpSignificand + 1 < 2 ^ FloatFormat.prec.toNat := by
+  rw [FloatBits.FpSignificand_def]
+  have h_one_plus : 1 + FloatFormat.significandBits = FloatFormat.prec.toNat :=
+    FloatFormat.one_plus_significandBits
+  have h_two_prec : (2 : ℕ) ^ FloatFormat.prec.toNat
+        = 2 * 2 ^ FloatFormat.significandBits := by
+    rw [← h_one_plus]; ring
+  by_cases hE : b.toBitsTriple.exponent = 0
+  · rw [if_pos hE]
+    -- FpSignificand = T.toNat, T.toNat + 1 < 2^sigBits ≤ 2^prec
+    have h_le : 2 ^ FloatFormat.significandBits ≤ 2 ^ FloatFormat.prec.toNat := by
+      rw [h_two_prec]; omega
+    omega
+  · rw [if_neg hE]
+    -- FpSignificand = (1 ++ T).toNat = 2^sigBits + T.toNat
+    rw [BitVec.toNat_append]
+    have hT_lt : b.toBitsTriple.significand.toNat < 2 ^ FloatFormat.significandBits :=
+      b.toBitsTriple.significand.isLt
+    rw [← Nat.shiftLeft_add_eq_or_of_lt hT_lt, Nat.shiftLeft_eq]
+    show ((BitVec.ofBool true).toNat * 2 ^ FloatFormat.significandBits
+          + b.toBitsTriple.significand.toNat) + 1 < 2 ^ FloatFormat.prec.toNat
+    have hbool : (BitVec.ofBool true).toNat = 1 := by simp
+    rw [hbool, h_two_prec]
+    omega
+
+end Fp.FloatBits
+
+namespace Fp
+
+/-- **Master positive-input bit-level bridge.** For finite positive `b`,
+the bit-level master successor `bitNextUpPos` matches `successorPos` of
+the decoded FiniteFp. Auto-dispatches between within-binade, normal
+cross-binade, subnormal-to-normal, and saturation cases. -/
+theorem ofBits_bitNextUpPos_eq_successorPos
+    [StdFloatFormat]
+    (b : FloatBits) (hs : b.sign = false) (hf : b.isFinite) :
+    let f_b : FiniteFp := ⟨b.sign, b.FpExponent, b.FpSignificand,
+      FloatBits.isFinite_validFloatVal hf⟩
+    ofBits (FloatBits.bitNextUpPos b) = FiniteFp.successorPos f_b := by
+  simp only
+  unfold FloatBits.bitNextUpPos
+  by_cases hT_max : b.toBitsTriple.significand + 1 = 0
+  · -- Cross-binade case: T = allOnes.
+    rw [if_pos hT_max]
+    -- T.toNat + 1 = 2^sigBits (since T + 1 = 0 BitVec).
+    -- Equivalent: T = allOnes, T.toNat = 2^sigBits - 1.
+    have hT_eq_allOnes : b.toBitsTriple.significand
+          = BitVec.allOnes FloatFormat.significandBits := by
+      have hT_lt : b.toBitsTriple.significand.toNat < 2 ^ FloatFormat.significandBits :=
+        b.toBitsTriple.significand.isLt
+      apply BitVec.eq_of_toNat_eq
+      rw [BitVec.toNat_allOnes]
+      have hcast := congrArg BitVec.toNat hT_max
+      rw [BitVec.toNat_add] at hcast
+      have h_one : (1 : BitVec FloatFormat.significandBits).toNat = 1 := by
+        have hsb := FloatFormat.significandBits_pos
+        have hpow : 1 < 2 ^ FloatFormat.significandBits :=
+          calc 1 = 2 ^ 0 := by norm_num
+            _ < 2 ^ FloatFormat.significandBits :=
+                Nat.pow_lt_pow_right (by norm_num) hsb
+        show BitVec.toNat 1 = 1
+        simp
+      rw [h_one] at hcast
+      have h_zero_toNat : (0 : BitVec FloatFormat.significandBits).toNat = 0 := by simp
+      rw [h_zero_toNat] at hcast
+      -- hcast : (T.toNat + 1) % 2^sigBits = 0
+      have hpow_pos : 0 < (2 : ℕ) ^ FloatFormat.significandBits := Nat.two_pow_pos _
+      have hT_succ_le : b.toBitsTriple.significand.toNat + 1 ≤ 2 ^ FloatFormat.significandBits := by
+        omega
+      rcases Nat.lt_or_eq_of_le hT_succ_le with hlt | heq
+      · exfalso
+        rw [Nat.mod_eq_of_lt hlt] at hcast
+        omega
+      · omega
+    have hT_succ_eq_pow : b.toBitsTriple.significand.toNat + 1
+          = 2 ^ FloatFormat.significandBits := by
+      have h := congrArg BitVec.toNat hT_eq_allOnes
+      rw [BitVec.toNat_allOnes] at h
+      have hpow_pos : 0 < (2 : ℕ) ^ FloatFormat.significandBits := Nat.two_pow_pos _
+      omega
+    by_cases hE_zero : b.toBitsTriple.exponent = 0
+    · -- Subnormal-to-normal case
+      apply ofBits_bitNextUpCross_eq_successorPos_sub_to_norm b hs hf hE_zero
+      -- Need: b.FpSignificand + 1 = 2^(prec-1).toNat
+      rw [FloatBits.FpSignificand_def, if_pos hE_zero,
+          ← FloatFormat.significandBits_eq]
+      omega
+    · -- E ≠ 0: normal cross-binade or saturation
+      by_cases hE_succ_max : b.toBitsTriple.exponent + 1 = BitVec.allOnes FloatFormat.exponentBits
+      · -- Saturation
+        rw [ofBits_bitNextUpCross_eq_pos_inf_of_saturated b hs hE_succ_max]
+        -- Show successorPos f_b = +∞: f_b is largestFiniteFloat
+        -- FpSignificand = 2^prec - 1 (since E ≠ 0 and T = allOnes)
+        have hFpSig_eq : b.FpSignificand = 2 ^ FloatFormat.prec.toNat - 1 := by
+          rw [FloatBits.FpSignificand_def, if_neg hE_zero]
+          rw [BitVec.toNat_append]
+          have hT_lt : b.toBitsTriple.significand.toNat <
+              2 ^ FloatFormat.significandBits := b.toBitsTriple.significand.isLt
+          rw [← Nat.shiftLeft_add_eq_or_of_lt hT_lt, Nat.shiftLeft_eq]
+          show (BitVec.ofBool true).toNat * 2 ^ FloatFormat.significandBits
+              + b.toBitsTriple.significand.toNat = 2 ^ FloatFormat.prec.toNat - 1
+          have hbool : (BitVec.ofBool true).toNat = 1 := by simp
+          have h_two_prec : (2 : ℕ) ^ FloatFormat.prec.toNat
+                = 2 * 2 ^ FloatFormat.significandBits := by
+            rw [← FloatFormat.one_plus_significandBits]; ring
+          rw [hbool]; omega
+        -- f_b.e = max_exp (from E + 1 = allOnes)
+        have hFpExp_eq : b.FpExponent = FloatFormat.max_exp := by
+          rw [FloatBits.FpExponent_def, if_neg hE_zero]
+          have hE_eq : b.toBitsTriple.exponent.toNat = (BitVec.allOnes FloatFormat.exponentBits).toNat - 1 := by
+            have hcast := congrArg BitVec.toNat hE_succ_max
+            rw [BitVec.toNat_add] at hcast
+            rw [BitVec.toNat_allOnes] at hcast
+            have h_one : (1 : BitVec FloatFormat.exponentBits).toNat = 1 := by
+              have hpos := FloatFormat.exponentBits_pos
+              have hpow : 1 < 2 ^ FloatFormat.exponentBits :=
+                calc 1 = 2 ^ 0 := by norm_num
+                  _ < 2 ^ FloatFormat.exponentBits :=
+                      Nat.pow_lt_pow_right (by norm_num) hpos
+              show BitVec.toNat 1 = 1; simp
+            rw [h_one] at hcast
+            rw [BitVec.toNat_allOnes]
+            -- hcast: (E.toNat + 1) % 2^expBits = 2^expBits - 1
+            have hE_lt : b.toBitsTriple.exponent.toNat < 2 ^ FloatFormat.exponentBits :=
+              b.toBitsTriple.exponent.isLt
+            -- E.toNat + 1 ≤ 2^expBits, so mod is just E.toNat + 1 if < 2^expBits, else 0.
+            by_cases hE_eq_max : b.toBitsTriple.exponent.toNat + 1 = 2 ^ FloatFormat.exponentBits
+            · -- E = allOnes: contradiction with finite (since E = allOnes ⇒ NaN/Inf)
+              exfalso
+              apply hf.2
+              refine ⟨?_, ?_⟩
+              · unfold FloatBits.isExponentAllOnes
+                apply BitVec.eq_of_toNat_eq
+                rw [BitVec.toNat_allOnes]
+                omega
+              · -- T = 0? But T = allOnes from hT_max
+                exfalso; apply hf.1
+                refine ⟨?_, ?_⟩
+                · unfold FloatBits.isExponentAllOnes
+                  apply BitVec.eq_of_toNat_eq
+                  rw [BitVec.toNat_allOnes]
+                  omega
+                · unfold FloatBits.isTSignificandZero
+                  intro hT_eq_zero
+                  -- T = 0 contradicts hT_max (T = allOnes)
+                  have hT_zero_toNat : b.toBitsTriple.significand.toNat = 0 := by
+                    rw [hT_eq_zero]
+                    simp
+                  have hsb := FloatFormat.significandBits_pos
+                  have hpow_lt : 1 < 2 ^ FloatFormat.significandBits :=
+                    calc 1 = 2 ^ 0 := by norm_num
+                      _ < 2 ^ FloatFormat.significandBits :=
+                          Nat.pow_lt_pow_right (by norm_num) hsb
+                  omega
+            · have hE_lt_pow : b.toBitsTriple.exponent.toNat + 1 < 2 ^ FloatFormat.exponentBits := by
+                omega
+              rw [Nat.mod_eq_of_lt hE_lt_pow] at hcast
+              omega
+          show (b.toBitsTriple.exponent.toNat : ℤ) - FloatFormat.exponentBias = FloatFormat.max_exp
+          rw [hE_eq]
+          rw [BitVec.toNat_allOnes]
+          -- (2^expBits - 1 - 1) - bias = max_exp
+          have hstd := StdFloatFormat.st
+          unfold FloatFormat.isStandardExpRange at hstd
+          unfold FloatFormat.exponentBias
+          have h_expB := StdFloatFormat.exponentBits_def
+          have h_pow_pos := StdFloatFormat.exp_pow_pos
+          have h_max_def := StdFloatFormat.max_exp_def
+          have h2 : (2 : ℕ) ^ (StdFloatFormat.exp_pow + 1)
+                = 2 * 2 ^ StdFloatFormat.exp_pow := by ring
+          have h2_pos : 0 < (2 : ℕ) ^ StdFloatFormat.exp_pow := Nat.two_pow_pos _
+          push_cast
+          rw [h_expB, h_max_def]
+          rw [h2]
+          have h2_int : ((2 * 2 ^ StdFloatFormat.exp_pow - 1 - 1 : ℕ) : ℤ)
+                = 2 * (2 : ℤ) ^ StdFloatFormat.exp_pow - 2 := by
+            have h_pow_pos : 1 ≤ (2 : ℕ) ^ StdFloatFormat.exp_pow := Nat.one_le_two_pow
+            have h_pos : 2 ≤ 2 * (2 : ℕ) ^ StdFloatFormat.exp_pow := by omega
+            rw [show (2 * 2 ^ StdFloatFormat.exp_pow - 1 - 1 : ℕ)
+                  = 2 * 2 ^ StdFloatFormat.exp_pow - 2 from by omega]
+            push_cast [Nat.cast_sub h_pos]
+            ring
+          rw [h2_int]
+          ring
+        set f_b : FiniteFp := ⟨b.sign, b.FpExponent, b.FpSignificand,
+          FloatBits.isFinite_validFloatVal hf⟩
+        have hf_b_eq : f_b = FiniteFp.largestFiniteFloat := by
+          apply (FiniteFp.eq_def _ _).mpr
+          refine ⟨hs, hFpExp_eq, hFpSig_eq⟩
+        rw [hf_b_eq]
+        unfold FiniteFp.successorPos
+        have hsmax_neg : ¬(FiniteFp.largestFiniteFloat.m + 1 < 2 ^ FloatFormat.prec.toNat) := by
+          show ¬(2^FloatFormat.prec.toNat - 1 + 1 < 2 ^ FloatFormat.prec.toNat)
+          have hpos : 0 < (2 : ℕ) ^ FloatFormat.prec.toNat := Nat.two_pow_pos _
+          omega
+        have hemax_neg : ¬(FiniteFp.largestFiniteFloat.e + 1 ≤ FloatFormat.max_exp) := by
+          show ¬(FloatFormat.max_exp + 1 ≤ FloatFormat.max_exp)
+          omega
+        rw [dif_neg hsmax_neg, dif_neg hemax_neg]
+      · -- Normal cross-binade
+        have hE_succ_lt : b.toBitsTriple.exponent.toNat + 1 < 2 ^ FloatFormat.exponentBits := by
+          have hE_lt : b.toBitsTriple.exponent.toNat < 2 ^ FloatFormat.exponentBits :=
+            b.toBitsTriple.exponent.isLt
+          by_contra h_neg
+          push_neg at h_neg
+          have hE_eq_pow : b.toBitsTriple.exponent.toNat + 1 = 2 ^ FloatFormat.exponentBits := by omega
+          -- E.toNat = 2^expBits - 1 = allOnes.toNat ⇒ E = allOnes ⇒ b not finite (b.isExponentAllOnes)
+          exfalso
+          apply hf.1
+          refine ⟨?_, ?_⟩
+          · unfold FloatBits.isExponentAllOnes
+            apply BitVec.eq_of_toNat_eq
+            rw [BitVec.toNat_allOnes]
+            omega
+          · unfold FloatBits.isTSignificandZero
+            -- T ≠ 0 since T = allOnes (from hT_succ_eq_pow)
+            intro hT_eq_zero
+            have hT_zero_toNat : b.toBitsTriple.significand.toNat = 0 := by
+              rw [hT_eq_zero]; simp
+            have hsb := FloatFormat.significandBits_pos
+            have hpow_lt : 1 < 2 ^ FloatFormat.significandBits :=
+              calc 1 = 2 ^ 0 := by norm_num
+                _ < 2 ^ FloatFormat.significandBits :=
+                    Nat.pow_lt_pow_right (by norm_num) hsb
+            omega
+        have hres_m : b.FpSignificand + 1 = 2 ^ FloatFormat.prec.toNat := by
+          rw [FloatBits.FpSignificand_def, if_neg hE_zero]
+          rw [BitVec.toNat_append]
+          have hT_lt : b.toBitsTriple.significand.toNat <
+              2 ^ FloatFormat.significandBits := b.toBitsTriple.significand.isLt
+          rw [← Nat.shiftLeft_add_eq_or_of_lt hT_lt, Nat.shiftLeft_eq]
+          show (BitVec.ofBool true).toNat * 2 ^ FloatFormat.significandBits
+              + b.toBitsTriple.significand.toNat + 1 = 2 ^ FloatFormat.prec.toNat
+          have hbool : (BitVec.ofBool true).toNat = 1 := by simp
+          have h_two_prec : (2 : ℕ) ^ FloatFormat.prec.toNat
+                = 2 * 2 ^ FloatFormat.significandBits := by
+            rw [← FloatFormat.one_plus_significandBits]; ring
+          rw [hbool]; omega
+        have he_lt : b.FpExponent + 1 ≤ FloatFormat.max_exp := by
+          rw [FloatBits.FpExponent_def, if_neg hE_zero]
+          -- E + 1 ≠ allOnes ⇒ (E+1).toNat ≤ allOnes.toNat - 1 = 2^expBits - 2 ⇒ E.toNat ≤ 2^expBits - 3.
+          -- Or simpler: f_b.e + 1 = (E.toNat + 1) - bias ≤ ?
+          -- Actually use that for std: f_b.e ≤ max_exp - 1 in this case.
+          -- Specifically, (E+1).toNat ≠ allOnes.toNat.
+          -- Use bit-level reasoning.
+          have hE_succ_toNat : (b.toBitsTriple.exponent + 1).toNat
+                = b.toBitsTriple.exponent.toNat + 1 := by
+            rw [BitVec.toNat_add]
+            have h_one : (1 : BitVec FloatFormat.exponentBits).toNat = 1 := by
+              have hpos := FloatFormat.exponentBits_pos
+              have hpow : 1 < 2 ^ FloatFormat.exponentBits :=
+                calc 1 = 2 ^ 0 := by norm_num
+                  _ < 2 ^ FloatFormat.exponentBits :=
+                      Nat.pow_lt_pow_right (by norm_num) hpos
+              show BitVec.toNat 1 = 1; simp
+            rw [h_one]
+            exact Nat.mod_eq_of_lt hE_succ_lt
+          -- (E+1).toNat ≠ 2^expBits - 1
+          have hcast : ¬((b.toBitsTriple.exponent + 1).toNat
+                = (BitVec.allOnes FloatFormat.exponentBits).toNat) := by
+            intro hh
+            apply hE_succ_max
+            exact BitVec.eq_of_toNat_eq hh
+          rw [BitVec.toNat_allOnes] at hcast
+          rw [hE_succ_toNat] at hcast
+          show (b.toBitsTriple.exponent.toNat : ℤ) - FloatFormat.exponentBias + 1 ≤ FloatFormat.max_exp
+          have h_max_def := StdFloatFormat.max_exp_def
+          have h_expB := StdFloatFormat.exponentBits_def
+          have hE_lt : b.toBitsTriple.exponent.toNat < 2 ^ FloatFormat.exponentBits :=
+            b.toBitsTriple.exponent.isLt
+          -- E.toNat + 1 ≠ 2^expBits - 1 and E.toNat + 1 < 2^expBits ⇒ E.toNat + 1 ≤ 2^expBits - 2
+          have hE_le : b.toBitsTriple.exponent.toNat + 1 ≤ 2 ^ FloatFormat.exponentBits - 2 := by
+            omega
+          unfold FloatFormat.exponentBias
+          have h_pow_pos := StdFloatFormat.exp_pow_pos
+          have h2 : (2 : ℕ) ^ FloatFormat.exponentBits = 2 * 2 ^ StdFloatFormat.exp_pow := by
+            rw [h_expB]; ring
+          rw [h2] at hE_le
+          have h2_pos : 1 ≤ (2 : ℕ) ^ StdFloatFormat.exp_pow := Nat.one_le_two_pow
+          have hle_int : (b.toBitsTriple.exponent.toNat : ℤ) + 1
+                ≤ 2 * (2 : ℤ) ^ StdFloatFormat.exp_pow - 2 := by
+            -- hE_le : T.E.toNat + 1 ≤ 2 * 2^exp_pow - 2 (in ℕ)
+            have h_pow_pos : 1 ≤ (2 : ℕ) ^ StdFloatFormat.exp_pow := Nat.one_le_two_pow
+            have h2_pos : 2 ≤ 2 * (2 : ℕ) ^ StdFloatFormat.exp_pow := by omega
+            have h_cast_int : ((2 * 2 ^ StdFloatFormat.exp_pow - 2 : ℕ) : ℤ)
+                  = 2 * (2 : ℤ) ^ StdFloatFormat.exp_pow - 2 := by
+              push_cast [Nat.cast_sub h2_pos]; ring
+            zify at hE_le
+            omega
+          rw [h_max_def]
+          push_cast
+          linarith [hle_int]
+        apply ofBits_bitNextUpCross_eq_successorPos_normal_cross b hs hf hE_zero
+          hE_succ_lt hE_succ_max hres_m he_lt
+  · -- Within-binade case: T + 1 ≠ 0
+    rw [if_neg hT_max]
+    have hT_succ_lt := FloatBits.T_succ_lt_of_T_succ_ne_zero b hT_max
+    apply ofBits_bitNextUpWithin_eq_successorPos_within b hs hf hT_succ_lt
+    exact FloatBits.FpSignificand_succ_lt_prec_of_within b hT_succ_lt
+
+/-- **Headline master identity (positive)**: for finite positive `b`,
+`nextUp` agrees with the bit-level master successor. -/
+theorem nextUp_ofBits_eq_ofBits_bitNextUpPos
+    [StdFloatFormat]
+    (b : FloatBits) (hs : b.sign = false) (hf : b.isFinite) :
+    nextUp (ofBits b) = ofBits (FloatBits.bitNextUpPos b) := by
+  rw [ofBits_eq_finite_of_isFinite b hf]
+  rw [FiniteFp.nextUp_finite_eq_successorPos _ hs]
+  exact (ofBits_bitNextUpPos_eq_successorPos b hs hf).symm
+
+end Fp
+
