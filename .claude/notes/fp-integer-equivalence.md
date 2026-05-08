@@ -340,6 +340,119 @@ Beyond `EquivalentOn` and pattern-matching:
 - [ ] **`BitEquivalent` typeclass** — distinct from `EquivalentOn`, captures
   "FP op `f` and bit op `g` agree on all non-NaN inputs". Composes via instances.
 
+### Bit-level libm intrinsics (Phase 1.8)
+The traditional libm bit-twiddle functions are direct bit operations with
+specifications already covered by IEEE 754. Each is a small, focused proof.
+
+- [ ] **`frexp`** (`x → (m, e)` such that `x = m * 2^e`, `m ∈ [0.5, 1)`). Bit
+  level: split at the exponent boundary. The "exponent" output is the biased
+  exponent minus a constant.
+- [ ] **`ldexp x k`** (= `x * 2^k`). Already done as `fpMul_pow2_eq_exponent_add`,
+  but the libm `ldexp` is the standard external-facing name; surface a
+  `ldexp_eq_setBiasedExponent` corollary for downstream codegen.
+- [ ] **`signbit x`** — single bit extract. Trivial after `signFlip` / `setSign`.
+- [ ] **`fdim x y`** = `max(x - y, 0)`. Decomposes via `fpSub` + Phase 3 ReLU.
+- [ ] **`scalbln`** / **`scalbn`** — close cousins of `ldexp`; same bit-level
+  story.
+- [ ] **`logb`** / **`ilogb`** — extract biased exponent (subtract bias);
+  already there via `Fp.logB_exact` in `Operations/LogBScaleB.lean`. Surface
+  as a bit-level corollary.
+
+### Round-to-integer family (Phase 1.9 or new phase)
+For finite FP that fits in the integer range, rounding to integer can be
+implemented as a bit-level shift + masking operation.
+
+- [ ] **`trunc`** (toward zero): clear bits below the integer-binade boundary.
+- [ ] **`floor`** / **`ceil`**: trunc with sign-aware adjustment.
+- [ ] **`round_to_nearest_int`**: round-to-nearest-even applied to the integer
+  binade. The "round bit + sticky" rule is bit-level extraction.
+- [ ] **`fpModf`**: `(integer_part, fractional_part)` decomposition. Bit-level
+  splits the significand at the integer-binade boundary.
+- [ ] **`fpFmod`** (`x mod y`): more involved, but for `y` a power of 2, it's
+  a low-bit mask.
+
+### FP equality and ordering shortcuts (Phase 2.7)
+Beyond `<`, the ordering primitives have bit-level versions.
+
+- [ ] **`fpEq_iff_bit_eq` (modulo NaN)**: `x = y` (Fp `=`) iff `bits x = bits y`,
+  with the carve-out that NaN doesn't equal anything. The bit-level
+  formulation is `b₁ = b₂ ∨ (b₁.isZero ∧ b₂.isZero)` (handle ±0 collapse).
+- [ ] **`fpNeq` via bit XOR**: `x ≠ y` iff bits differ (modulo ±0 and NaN).
+- [ ] **`fpUnordered`**: NaN check shortcut. Single bit test.
+
+### Constant detection / compile-time recognizers (Phase 1.5 extension)
+Recognize specific FP values via their bit pattern. Useful for compile-time
+specialization (e.g., recognize `f * 1.0` and elide).
+
+- [ ] **`isOne_iff_bit`**: `f = 1` iff `b.toBitsTriple = (false, bias, 0)`.
+- [ ] **`isMinusOne_iff_bit`**: same but `(true, bias, 0)`.
+- [ ] **`isInteger_iff_bit_low_zero`**: `f ∈ ℤ` for finite `f` iff its
+  trailing significand bits below the integer-binade boundary are zero.
+- [ ] **`isHalfInteger_iff_bit`**: `f ∈ ℤ + 1/2`. Similar bit-level test.
+
+### Single-rounding FMA at the bit level (Phase 5 flagship)
+The IEEE 754 fused multiply-add `FMA(a, b, c) = round(a·b + c)` with single
+rounding is *the* canonical hardware FP op that doesn't decompose into simpler
+FP ops without losing precision.
+
+- [ ] **`fpFMA_eq_bit_pattern`**: bit-level recipe that matches single-rounding
+  FMA. Probably involves wide intermediate (2× precision) addition + final
+  rounding. Could become a major framework theorem; the proof is non-trivial
+  but well-trodden in the verified-FP literature.
+
+### Stochastic rounding (Phase 5 expansion)
+Modern ML training uses stochastic rounding for low-precision training.
+
+- [ ] **`stochasticRound_eq_bit_recipe`**: SR can be implemented as
+  "deterministic round-down + add a random bit at the rounding position".
+  Bit-level statement: `SR(x, r) = trunc(x) + (if r < frac(x) then 1 ULP else 0)`.
+- [ ] **Unbiasedness**: prove `E[SR(x, U)] = x` over uniform `U` — useful for
+  ML training convergence proofs.
+
+### Verified soft-FP library (Phase 6 flagship)
+Take the union of bit-equivalence theorems shipped in earlier phases and
+package as a *complete* soft-FP library: every IEEE 754 FP op implemented at
+the integer level with a bit-equivalence theorem.
+
+- [ ] **`SoftFp` namespace**: parallel to `Fp` but every op is a function on
+  `FloatBits` rather than `Fp`. Each `SoftFp.fpAdd`, `SoftFp.fpMul`, etc.
+  computes via integer ops only.
+- [ ] **Equivalence theorem family**: `ofBits (SoftFp.fpAdd b₁ b₂) = fpAdd
+  (ofBits b₁) (ofBits b₂)` for each op (with NaN/normal/sub carve-outs).
+- [ ] **Decoupled execution**: a downstream consumer wanting "FP from
+  integer pipeline" can use `SoftFp` directly + the equivalence theorems for
+  correctness.
+
+### bit_decide tactic for low-bit formats (Phase 4 expansion)
+Low-bit FP formats (E4M3, E5M2, FP4) have ≤256 bit patterns. Mechanical
+verification of FP-op = bit-op equivalence is tractable.
+
+- [ ] **`bit_decide` tactic**: takes a goal of the form
+  `∀ b₁ b₂ : FloatBits, P b₁ b₂` (where `b` is over a low-bit format), and
+  closes by exhaustive enumeration. Uses Lean's `Decidable` instance machinery.
+- [ ] **Pre-baked verification suite**: run `bit_decide` for every shipped
+  bit-equivalence theorem on E4M3 / E5M2 to confirm correctness against
+  hardware-style ground truth.
+
+### Bit-level magic constants (Phase 5 expansion)
+Famous magic constants that show up in bit hacks; proven correct against
+their intended approximations.
+
+- [ ] **`quakeInverseSqrtMagic`**: the `0x5f3759df` constant, with the
+  approximation theorem `|invsqrt_approx x - 1/√x| ≤ ε`.
+- [ ] **`exp2Magic`** / **`log2Magic`**: similar magic constants for soft-exp /
+  soft-log fast paths.
+
+### Reproducibility / determinism via bit equivalences (Phase 5+ expansion)
+Bit-level equivalences can ground reproducibility claims.
+
+- [ ] **Order-independent sum criterion**: bit-level test on input range that
+  guarantees `sum(perm(xs))` is order-independent. (Roughly: all values fit
+  in a single binade at the accumulator's precision.)
+- [ ] **Cross-platform bit-equivalence**: prove that a specific algorithm
+  produces bit-identical results across IEEE 754 conformant hardware (no
+  fused ops, no extended precision, no FTZ).
+
 ### Hardware-pipeline metadata (low priority)
 Tag theorems with metadata about which integer-pipeline instruction implements
 them. Not affecting math, but useful for downstream codegen/SIMD targeting.
