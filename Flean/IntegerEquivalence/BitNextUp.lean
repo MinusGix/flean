@@ -804,7 +804,6 @@ theorem ofBits_bitNextUpPos_eq_successorPos
           have h2 : (2 : ℕ) ^ (StdFloatFormat.exp_pow + 1)
                 = 2 * 2 ^ StdFloatFormat.exp_pow := by ring
           have h2_pos : 0 < (2 : ℕ) ^ StdFloatFormat.exp_pow := Nat.two_pow_pos _
-          push_cast
           rw [h_expB, h_max_def]
           rw [h2]
           have h2_int : ((2 * 2 ^ StdFloatFormat.exp_pow - 1 - 1 : ℕ) : ℤ)
@@ -923,7 +922,6 @@ theorem ofBits_bitNextUpPos_eq_successorPos
             zify at hE_le
             omega
           rw [h_max_def]
-          push_cast
           linarith [hle_int]
         apply ofBits_bitNextUpCross_eq_successorPos_normal_cross b hs hf hE_zero
           hE_succ_lt hE_succ_max hres_m he_lt
