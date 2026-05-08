@@ -523,5 +523,36 @@ theorem ofBits_bitNextUpCross_eq_successorPos_sub_to_norm
     show 2 ^ (FloatFormat.prec - 1).toNat = b.FpSignificand + 1
     exact hT_max.symm
 
+/-! ### Headline cross-binade identities
+
+These compose the structural cross-binade bridges with the value-level
+`nextUp_finite_eq_successorPos`. -/
+
+/-- Headline identity for the **cross-binade subnormal-to-normal** case. -/
+theorem nextUp_ofBits_eq_ofBits_bitNextUpCross_sub_to_norm
+    [StdFloatFormat]
+    (b : FloatBits) (hs : b.sign = false) (hf : b.isFinite)
+    (hE_zero : b.toBitsTriple.exponent = 0)
+    (hT_max : b.FpSignificand + 1 = 2 ^ (FloatFormat.prec - 1).toNat) :
+    nextUp (ofBits b) = ofBits (FloatBits.bitNextUpCross b) := by
+  rw [ofBits_eq_finite_of_isFinite b hf]
+  rw [FiniteFp.nextUp_finite_eq_successorPos _ hs]
+  exact (ofBits_bitNextUpCross_eq_successorPos_sub_to_norm b hs hf hE_zero hT_max).symm
+
+/-- Headline identity for the **cross-binade normal** case. -/
+theorem nextUp_ofBits_eq_ofBits_bitNextUpCross_normal_cross
+    [StdFloatFormat]
+    (b : FloatBits) (hs : b.sign = false) (hf : b.isFinite)
+    (hE_nz : b.toBitsTriple.exponent ≠ 0)
+    (hE_succ_lt : b.toBitsTriple.exponent.toNat + 1 < 2 ^ FloatFormat.exponentBits)
+    (hE_succ_not_max : b.toBitsTriple.exponent + 1 ≠ BitVec.allOnes FloatFormat.exponentBits)
+    (hT_max : b.FpSignificand + 1 = 2 ^ FloatFormat.prec.toNat)
+    (he_lt : b.FpExponent + 1 ≤ FloatFormat.max_exp) :
+    nextUp (ofBits b) = ofBits (FloatBits.bitNextUpCross b) := by
+  rw [ofBits_eq_finite_of_isFinite b hf]
+  rw [FiniteFp.nextUp_finite_eq_successorPos _ hs]
+  exact (ofBits_bitNextUpCross_eq_successorPos_normal_cross b hs hf hE_nz hE_succ_lt
+    hE_succ_not_max hT_max he_lt).symm
+
 end Fp
 
