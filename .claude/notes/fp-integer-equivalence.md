@@ -251,11 +251,29 @@ care: if positive, increment; if negative, decrement). Strong "integer pipeline"
 application — these are used in interval arithmetic, error analysis, and
 adversarial ML to compute exact ULP-level perturbations.
 
-- [ ] **`nextUp_eq_bit_increment`** for positive `f`; symmetric for negative.
+- [x] **`fpUlp_eq_pow2`** — ULP at `f` is `2^(e - prec + 1)` for normal `f`,
+  representable directly as a `pow2Float` value. Shipped 2026-05-07 in
+  `Flean/IntegerEquivalence/UlpPow2.lean`. Generic `ulp_eq_pow2Float_toVal`
+  for any value in normal range, plus FiniteFp specialization.
+- [x] **`successorPos` structural definition + value bridge** (positive case):
+  `Flean/IntegerEquivalence/Successor.lean`. Defines `FiniteFp.successorPos f`
+  via case split on (m + 1 < 2^prec, e + 1 ≤ max_exp), with three branches:
+  within-binade, cross-binade, saturation-to-+∞. Proves
+  `(successorPos f).toVal = f.toVal + 2^(f.e - prec + 1)` uniformly.
+  Shipped 2026-05-07.
+- [ ] **Bridge to `nextUp` value-level**: prove `successorPos f = nextUp (Fp.finite f)`
+  for positive `f`. Routes through `findSuccessor (f.toVal + neighborStep)
+  = roundNormalUp ...` — substantial proof unwinding `roundNormalUp`'s
+  ceiling-on-scaled-mantissa construction.
+- [ ] **`nextUp_eq_bit_increment`**: define `FloatBits.bitIncrement b := ⟨b.b + 1⟩`
+  and prove `ofBits (bitIncrement b) = successorPos (decoded b)` for positive
+  finite `b`. Negative case: bit decrement. Zero-crossing (-0 ↔ +0)
+  as a special case.
 - [ ] **Sign-magnitude integer increment** as a bit-level operation, with the
   zero-crossing case (smallest positive subnormal vs smallest negative subnormal).
-- [ ] **`fpUlp_eq_pow2`** — ULP at `f` is `2^(e - prec + 1)` for normal `f`,
-  representable directly as a bit pattern. Connects `Flean/Ulp.lean` to bit ops.
+- [ ] **`successorNeg`** — extension of `successorPos` to negative `f`. Moves
+  *toward* zero (decrement on magnitude), with `-0 → +smallestPosSubnormal`
+  as the sign-crossing edge.
 
 ### Total ordering ↔ signed-magnitude integer comparison (Phase 2.5)
 IEEE 754 §5.10: `totalOrder` on FP corresponds *exactly* to signed-magnitude
@@ -491,6 +509,17 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
   (`isNormal`, `isSubnormal`, `isZero`, IEEE-strict subnormal) and
   `FiniteFp.isPositivePowerOfTwo` with its bit-level characterization (T = 0 and
   bit-normal exponent).
+- ✅ **Phase 1.6, ulp ↔ pow2Float + structural successor (positive)** (2026-05-07):
+  - `Flean/IntegerEquivalence/UlpPow2.lean`: `ulp_eq_pow2Float_toVal` for `v` in
+    normal range with the ulp exponent fitting `pow2Float`'s range, plus
+    `ulp_finite_eq_pow2Float_toVal` FiniteFp specialization. Routes through
+    `ulp_har_eq_ulp` + `ulp_har_normal_eq` (no private-helper access).
+  - `Flean/IntegerEquivalence/Successor.lean`: `FiniteFp.successorPos f : Fp`
+    (positive-only) with three structural branches (within-binade,
+    cross-binade, +∞ saturation). Master toVal formula
+    `(successorPos f).toVal = f.toVal + 2^(f.e - prec + 1)` covers all
+    finite cases uniformly. Open follow-ups: bridge to `nextUp`, bit-level
+    `bitIncrement`, negative-input case.
 - ✅ **Phase 2, same-sign comparison ↔ unsigned bit comparison** (FULLY SHIPPED) —
   `Flean/IntegerEquivalence/Compare.lean`. Four bridges all sorry-free:
   - `ofBits_lt_iff_b_toNat_lt_of_normal_nonneg` (non-negative, normal-only)
