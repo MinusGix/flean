@@ -1,5 +1,6 @@
 import Flean.Operations.TwoSum6Op
 import Flean.Operations.KahanSum
+import Flean.Operations.DoubleDouble
 import Flean.Rounding.SplitPositive
 
 /-! # TwoSum-Compensated Summation
@@ -718,3 +719,91 @@ theorem cs_error_bound_self_contained [RModeExec]
   linarith
 
 end CompensatedSum
+
+/-! ## Bridge: compensated state ↔ `DoubleDouble`
+
+The `CSState` and `KahanSum.State` records are structurally just pairs of
+`FiniteFp` representing a corrected sum, which is exactly what a
+`DoubleDouble` is. Reinterpreting them as `DoubleDouble`s lets the
+double-double API (`toVal`, `IsNormalized`) consume compensated traces
+directly.
+
+The two conventions differ in sign:
+
+| | Corrected sum | DD encoding |
+|---|---|---|
+| `CSState` (additive) | `sum + err` | `⟨sum, err⟩` |
+| `KahanSum.State` (subtractive) | `sum − comp` | `⟨sum, −comp⟩` |
+
+For `CSState`, the bridge is structural and the `twosum_exact` field of every
+`CSStep` automatically witnesses `IsNormalized` of the next state via
+`isNormalized_of_value_witness`. The Kahan bridge is value-only — Kahan steps
+leave a `(ρ₁ − ρ₃ − ρ₄)` residual on the corrected sum, so the resulting pair
+is *not* normalized in the DD sense. -/
+
+namespace CompensatedSum
+
+variable [FloatFormat]
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+    [RMode R] [RModeExec] [RoundIntSigMSound R]
+
+/-- Reinterpret a compensated state as a `DoubleDouble`. The corrected sum
+    `sum + err` matches `DoubleDouble.toVal` exactly. -/
+def CSState.toDoubleDouble (st : CSState) : DoubleDouble :=
+  ⟨st.sum, st.err⟩
+
+omit [RModeExec] in
+@[simp] theorem CSState.toDoubleDouble_hi (st : CSState) :
+    st.toDoubleDouble.hi = st.sum := rfl
+
+omit [RModeExec] in
+@[simp] theorem CSState.toDoubleDouble_lo (st : CSState) :
+    st.toDoubleDouble.lo = st.err := rfl
+
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] [RMode R] [RModeExec]
+    [RoundIntSigMSound R] in
+@[simp] theorem CSState.toVal_toDoubleDouble (st : CSState) :
+    st.toDoubleDouble.toVal (R := R) = st.sigma := rfl
+
+/-- **Every compensated-sum step yields a normalized DoubleDouble.**
+
+The 6-op TwoSum identity `t + err' = sum + y` is exactly the value-witness
+condition `isNormalized_of_value_witness` needs, so the next state's DD
+encoding `⟨t, err'⟩` is normalized over `R`. This is the structural reason
+the compensated-summation infrastructure inhabits the DD precision tier:
+each step *is* a normalized DD construction. -/
+theorem CSStep.nextState_isNormalized
+    {st : CSState} {x : FiniteFp} (step : CSStep (R := R) st x) :
+    step.nextState.toDoubleDouble.IsNormalized (R := R) :=
+  isNormalized_of_value_witness (R := R)
+    st.sum step.y step.t step.err' step.ht step.twosum_exact
+
+end CompensatedSum
+
+/-! ### Kahan bridge (value-only) -/
+
+namespace KahanSum
+
+variable [FloatFormat]
+variable {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R]
+
+/-- Reinterpret a Kahan state as a `DoubleDouble`. Because Kahan stores the
+    compensator with opposite sign (`σ = sum − comp`), the DD's `lo`
+    component is `−comp`. -/
+def State.toDoubleDouble (st : State) : DoubleDouble :=
+  ⟨st.sum, -st.comp⟩
+
+@[simp] theorem State.toDoubleDouble_hi (st : State) :
+    st.toDoubleDouble.hi = st.sum := rfl
+
+@[simp] theorem State.toDoubleDouble_lo (st : State) :
+    st.toDoubleDouble.lo = -st.comp := rfl
+
+omit [LinearOrder R] [IsStrictOrderedRing R] [FloorRing R] in
+/-- The DD value of a Kahan state is its corrected sum `sum − comp`. -/
+@[simp] theorem State.toVal_toDoubleDouble (st : State) :
+    st.toDoubleDouble.toVal (R := R) = (st.sum.toVal : R) - st.comp.toVal := by
+  show (st.sum.toVal : R) + (-st.comp).toVal = (st.sum.toVal : R) - st.comp.toVal
+  rw [FiniteFp.toVal_neg_eq_neg]; ring
+
+end KahanSum
