@@ -287,6 +287,13 @@ adversarial ML to compute exact ULP-level perturbations.
   - Subnormal-to-normal (E = 0 ⇒ smallest normal at min_exp)
   Theorems: `bitNextUpCross`, `ofBits_bitNextUpCross_eq_*`,
   `nextUp_ofBits_eq_ofBits_bitNextUpCross_*`.
+- [x] **Master `bitNextUpPos` unifier** (2026-05-07): single function
+  dispatching on `T + 1 = 0` between within-binade and cross-binade.
+  Master bridge `ofBits_bitNextUpPos_eq_successorPos` and **headline
+  master identity** `nextUp_ofBits_eq_ofBits_bitNextUpPos` take only basic
+  positive-finite hypotheses (`b.sign = false`, `b.isFinite`); all four
+  sub-cases (within-binade, sub-to-norm, normal-cross, saturation) dispatch
+  internally based on bit-level structure. The clean integer-pipeline result.
 - [ ] **Sign-magnitude integer increment** for negative inputs: bit decrement
   (toward zero), with the -0 ↔ +0 sign-crossing edge.
 
