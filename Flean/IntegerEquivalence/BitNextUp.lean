@@ -352,3 +352,176 @@ theorem ofBits_bitNextUpCross_eq_successorPos_normal_cross
 
 end Fp
 
+/-! ### Subnormal-to-normal transition (E = 0, T = allOnes) -/
+
+namespace Fp.FloatBits
+
+variable [StdFloatFormat]
+
+/-- For subnormal `b` (`E = 0`), the cross-binade incrementer produces
+`E_new = 1`, which decodes to FpExponent = `min_exp` (using the std format
+identity `1 - bias = min_exp`). -/
+theorem bitNextUpCross_FpExponent_of_subnormal (b : FloatBits)
+    (hE_zero : b.toBitsTriple.exponent = 0) :
+    (bitNextUpCross b).FpExponent = FloatFormat.min_exp := by
+  rw [FloatBits.FpExponent_def, bitNextUpCross_exponent_bv, hE_zero]
+  -- E + 1 = 0 + 1 = 1 (BitVec), ≠ 0
+  have h_one_ne : (0 : BitVec FloatFormat.exponentBits) + 1 ≠ 0 := by
+    intro h
+    have hcast := congrArg BitVec.toNat h
+    rw [BitVec.toNat_add] at hcast
+    have h_one : (1 : BitVec FloatFormat.exponentBits).toNat = 1 := by
+      have hpos := FloatFormat.exponentBits_pos
+      have hpow : 1 < 2 ^ FloatFormat.exponentBits :=
+        calc 1 = 2 ^ 0 := by norm_num
+          _ < 2 ^ FloatFormat.exponentBits :=
+              Nat.pow_lt_pow_right (by norm_num) hpos
+      show BitVec.toNat 1 = 1
+      simp
+    rw [h_one] at hcast
+    simp at hcast
+  rw [if_neg h_one_ne]
+  -- ((0 : BitVec n) + 1).toNat = 1
+  have h_succ_zero_toNat : ((0 : BitVec FloatFormat.exponentBits) + 1).toNat = 1 := by
+    rw [BitVec.toNat_add]
+    have h_one : (1 : BitVec FloatFormat.exponentBits).toNat = 1 := by
+      have hpos := FloatFormat.exponentBits_pos
+      have hpow : 1 < 2 ^ FloatFormat.exponentBits :=
+        calc 1 = 2 ^ 0 := by norm_num
+          _ < 2 ^ FloatFormat.exponentBits :=
+              Nat.pow_lt_pow_right (by norm_num) hpos
+      show BitVec.toNat 1 = 1
+      simp
+    rw [h_one]
+    have hpos := FloatFormat.exponentBits_pos
+    have hpow : (1 : ℕ) < 2 ^ FloatFormat.exponentBits :=
+      calc 1 = 2 ^ 0 := by norm_num
+        _ < 2 ^ FloatFormat.exponentBits :=
+            Nat.pow_lt_pow_right (by norm_num) hpos
+    -- (0 + 1) % 2^expBits = 1 since 1 < 2^expBits
+    show (0 + 1) % 2 ^ FloatFormat.exponentBits = 1
+    exact Nat.mod_eq_of_lt hpow
+  show ((0 : BitVec FloatFormat.exponentBits) + 1).toNat - (FloatFormat.exponentBias : ℤ) = FloatFormat.min_exp
+  rw [h_succ_zero_toNat]
+  -- 1 - bias = min_exp: std format identity
+  have hstd := StdFloatFormat.st
+  unfold FloatFormat.isStandardExpRange at hstd
+  unfold FloatFormat.exponentBias
+  push_cast; linarith
+
+/-- For subnormal `b` (`E = 0`), the cross-binade incrementer's decoded
+significand is `2^(prec-1).toNat` (smallest normal). -/
+theorem bitNextUpCross_FpSignificand_of_subnormal (b : FloatBits)
+    (hE_zero : b.toBitsTriple.exponent = 0) :
+    (bitNextUpCross b).FpSignificand = 2 ^ (FloatFormat.prec - 1).toNat := by
+  rw [FloatBits.FpSignificand_def, bitNextUpCross_exponent_bv,
+      bitNextUpCross_significand_bv, hE_zero]
+  have h_one_ne : (0 : BitVec FloatFormat.exponentBits) + 1 ≠ 0 := by
+    intro h
+    have hcast := congrArg BitVec.toNat h
+    rw [BitVec.toNat_add] at hcast
+    have h_one : (1 : BitVec FloatFormat.exponentBits).toNat = 1 := by
+      have hpos := FloatFormat.exponentBits_pos
+      have hpow : 1 < 2 ^ FloatFormat.exponentBits :=
+        calc 1 = 2 ^ 0 := by norm_num
+          _ < 2 ^ FloatFormat.exponentBits :=
+              Nat.pow_lt_pow_right (by norm_num) hpos
+      show BitVec.toNat 1 = 1
+      simp
+    rw [h_one] at hcast
+    simp at hcast
+  rw [if_neg h_one_ne]
+  rw [BitVec.toNat_append]
+  show 1 <<< FloatFormat.significandBits ||| 0 = 2 ^ (FloatFormat.prec - 1).toNat
+  simp [Nat.shiftLeft_eq]
+
+/-- For subnormal `b` (`E = 0`), `bitNextUpCross b` is finite (E + 1 = 1 ≠ allOnes
+since allOnes requires `2^exponentBits - 1 ≥ 3`, but 1 < 3). -/
+theorem bitNextUpCross_isFinite_of_subnormal (b : FloatBits)
+    (hE_zero : b.toBitsTriple.exponent = 0) :
+    (bitNextUpCross b).isFinite := by
+  -- E + 1 = 1 ≠ allOnes (since allOnes.toNat = 2^expBits - 1 ≥ 1 with strict for std formats)
+  have h_succ_ne_max : b.toBitsTriple.exponent + 1 ≠ BitVec.allOnes FloatFormat.exponentBits := by
+    intro h
+    rw [hE_zero] at h
+    have hcast := congrArg BitVec.toNat h
+    rw [BitVec.toNat_allOnes] at hcast
+    -- (0 + 1).toNat = 1, but should equal 2^expBits - 1.
+    have h_succ : ((0 : BitVec FloatFormat.exponentBits) + 1).toNat = 1 := by
+      rw [BitVec.toNat_add]
+      have h_one : (1 : BitVec FloatFormat.exponentBits).toNat = 1 := by
+        have hpos := FloatFormat.exponentBits_pos
+        have hpow : 1 < 2 ^ FloatFormat.exponentBits :=
+          calc 1 = 2 ^ 0 := by norm_num
+            _ < 2 ^ FloatFormat.exponentBits :=
+                Nat.pow_lt_pow_right (by norm_num) hpos
+        show BitVec.toNat 1 = 1
+        simp
+      rw [h_one]
+      have hpos := FloatFormat.exponentBits_pos
+      have hpow : (1 : ℕ) < 2 ^ FloatFormat.exponentBits :=
+        calc 1 = 2 ^ 0 := by norm_num
+          _ < 2 ^ FloatFormat.exponentBits :=
+              Nat.pow_lt_pow_right (by norm_num) hpos
+      show (0 + 1) % 2 ^ FloatFormat.exponentBits = 1
+      exact Nat.mod_eq_of_lt hpow
+    rw [h_succ] at hcast
+    -- For std format, 2^expBits = 2 * 2^exp_pow ≥ 2*1 = 2... but allOnes.toNat = 2*2^exp_pow - 1.
+    -- For exp_pow ≥ 1: allOnes.toNat ≥ 3. So 1 ≠ allOnes.toNat.
+    have h_expB := StdFloatFormat.exponentBits_def
+    have h_pow_pos := StdFloatFormat.exp_pow_pos
+    have h2 : (2 : ℕ) ^ FloatFormat.exponentBits ≥ 4 := by
+      rw [h_expB]
+      calc 4 = 2 ^ 2 := by norm_num
+        _ ≤ 2 ^ (StdFloatFormat.exp_pow + 1) := Nat.pow_le_pow_right (by norm_num) (by omega)
+    omega
+  exact bitNextUpCross_isFinite_of_E_succ_lt b h_succ_ne_max
+
+end Fp.FloatBits
+
+namespace Fp
+
+/-- **Subnormal-to-normal bit-level bridge.** For finite positive `b` with
+`E = 0` (subnormal) and `T = allOnes` (so `T + 1` BitVec-wraps), the
+cross-binade increment produces the smallest normal at `min_exp`, matching
+`successorPos`'s within-binade case where `f_b.m + 1 = 2^(prec-1)`. -/
+theorem ofBits_bitNextUpCross_eq_successorPos_sub_to_norm
+    [StdFloatFormat]
+    (b : FloatBits) (hs : b.sign = false) (hf : b.isFinite)
+    (hE_zero : b.toBitsTriple.exponent = 0)
+    (hT_max : b.FpSignificand + 1 = 2 ^ (FloatFormat.prec - 1).toNat) :
+    let f_b : FiniteFp := ⟨b.sign, b.FpExponent, b.FpSignificand,
+      FloatBits.isFinite_validFloatVal hf⟩
+    ofBits (FloatBits.bitNextUpCross b) = FiniteFp.successorPos f_b := by
+  simp only
+  -- successorPos hits within-binade (m + 1 = 2^(prec-1) < 2^prec)
+  set f_b : FiniteFp := ⟨b.sign, b.FpExponent, b.FpSignificand,
+    FloatBits.isFinite_validFloatVal hf⟩
+  have hsmax : f_b.m + 1 < 2 ^ FloatFormat.prec.toNat := by
+    show b.FpSignificand + 1 < 2 ^ FloatFormat.prec.toNat
+    rw [hT_max]
+    exact FloatFormat.nat_two_pow_prec_sub_one_lt_two_pow_prec
+  unfold FiniteFp.successorPos
+  rw [dif_pos hsmax]
+  -- f_b.e = b.FpExponent = min_exp (since E = 0)
+  have hfe : f_b.e = FloatFormat.min_exp := by
+    show b.FpExponent = FloatFormat.min_exp
+    rw [FloatBits.FpExponent_def, if_pos hE_zero]
+  -- Decode bitNextUpCross b
+  have hf' : (FloatBits.bitNextUpCross b).isFinite :=
+    FloatBits.bitNextUpCross_isFinite_of_subnormal b hE_zero
+  rw [ofBits_eq_finite_of_isFinite (FloatBits.bitNextUpCross b) hf']
+  congr 1
+  apply (FiniteFp.eq_def _ _).mpr
+  refine ⟨?_, ?_, ?_⟩
+  · show (FloatBits.bitNextUpCross b).sign = false
+    rw [FloatBits.bitNextUpCross_sign]; exact hs
+  · show (FloatBits.bitNextUpCross b).FpExponent = f_b.e
+    rw [FloatBits.bitNextUpCross_FpExponent_of_subnormal b hE_zero, hfe]
+  · show (FloatBits.bitNextUpCross b).FpSignificand = f_b.m + 1
+    rw [FloatBits.bitNextUpCross_FpSignificand_of_subnormal b hE_zero]
+    show 2 ^ (FloatFormat.prec - 1).toNat = b.FpSignificand + 1
+    exact hT_max.symm
+
+end Fp
+
