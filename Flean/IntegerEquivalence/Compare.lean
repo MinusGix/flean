@@ -255,7 +255,7 @@ private theorem FpSignificand_lt_pow_of_subnormal [FloatFormat] {b : FloatBits}
   exact b.toBitsTriple.significand.isLt
 
 /-- Decoding `b : FloatBits` to its `Fp.finite` form when `b` is bit-finite. -/
-private theorem ofBits_eq_finite_of_isFinite [StdFloatFormat] (b : FloatBits)
+theorem ofBits_eq_finite_of_isFinite [StdFloatFormat] (b : FloatBits)
     (hf : b.isFinite) :
     ofBits b = Fp.finite ⟨b.sign, b.FpExponent, b.FpSignificand,
       FloatBits.isFinite_validFloatVal hf⟩ := by

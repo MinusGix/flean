@@ -361,6 +361,12 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
   (`fpMul_pow2_normal_eq` structural form) + `Flean/IntegerEquivalence/MulPow2.lean`
   (`setBiasedExponent` workhorse + `ofBits_setBiasedExponent_eq_fpMul_pow2`
   bridge), under "input + result both normal" carve-out.
+- ✅ **Phase 2.5, total ordering ↔ signed-magnitude bit comparison** (finite
+  case) — `Flean/IntegerEquivalence/TotalOrder.lean`. `Fp.totalOrderBitLt` def
+  + bridge `ofBits_lt_iff_totalOrderBitLt_of_finite`. Composes Phase 2
+  sub-tolerant for same-sign with direct sign-decided cross-sign cases.
+  Distinguishes `-0 < +0` correctly. Extension to ∞ is mechanical (sign decides;
+  bit-magnitude is naturally maximal for ±∞).
 - ✅ **Phase 1.5, bit-pattern classifiers** —
   `Flean/IntegerEquivalence/Classify.lean`. Bridges `Fp.isNaN/isInfinite/isFinite`
   to bit-level tests via `ofBits`. Plus FiniteFp-level decoded predicates
