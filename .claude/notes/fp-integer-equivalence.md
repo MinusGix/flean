@@ -642,3 +642,17 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
   cross-sign; ±∞ has maximal bit-magnitude in its sign class). New
   helpers `sign_toNat_zero_of_sign_false`, `sign_toNat_one_of_sign_true`,
   `sign_bv_toNat_eq_of_same_sign`, `finite_b_toNat_lt_inf_of_same_sign`.
+- ✅ **Phase 2 closure: `fpMax`/`fpMin` ↔ bit-pattern argmax/argmin**
+  (2026-05-09) — `MaxMin.lean` (~360 lines). `fpMin` defined in
+  `Softmax.lean` mirroring `fpMax` (`Finset.inf'`). New `≤`-bridges
+  `ofBits_le_iff_b_toNat_le_of_finite_nonneg` and
+  `_ge_of_finite_nonpos` derived from existing `<`-bridges via
+  `f₁ ≤ f₂ ↔ ¬(f₂ < f₁)` on the FiniteFp linear order.
+  `FiniteFp_le_iff_finite_b_toNat_{le,ge}` lift to FiniteFp inputs via
+  `FloatBits.finite f.s f.e f.m f.valid` encoding. Headlines:
+  `fpMax_eq_of_bit_argmax_nonneg`, `fpMin_eq_of_bit_argmin_nonneg`,
+  `fpMax_eq_of_bit_argmin_nonpos` (anti-monotone), `fpMin_eq_of_bit_argmax_nonpos`.
+  Existence wrappers (auto-derive index via `Finset.exists_max_image`/
+  `_min_image`): `fpMax_eq_bit_argmax_nonneg`, `fpMin_eq_bit_argmin_nonneg`,
+  `fpMax_eq_bit_argmin_nonpos`, `fpMin_eq_bit_argmax_nonpos`. Each gives
+  `∃ i₀, fpMax/Min xs hn = xs i₀ ∧ <bit-pattern characterization>`.

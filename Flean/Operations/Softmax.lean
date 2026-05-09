@@ -2331,6 +2331,11 @@ noncomputable def fpMax {n : ℕ} (xs : Fin n → FiniteFp) (hn : 0 < n) : Finit
   (Finset.univ : Finset (Fin n)).sup' (Finset.univ_nonempty_iff.mpr
     (Fin.pos_iff_nonempty.mp hn)) (fun i => (xs i))
 
+/-- Min of a `Fin n → FiniteFp` via `Finset.inf'`, using the FP order. -/
+noncomputable def fpMin {n : ℕ} (xs : Fin n → FiniteFp) (hn : 0 < n) : FiniteFp :=
+  (Finset.univ : Finset (Fin n)).inf' (Finset.univ_nonempty_iff.mpr
+    (Fin.pos_iff_nonempty.mp hn)) (fun i => (xs i))
+
 /-- `fpSoftmaxShift xs c i = fpSubFinite (xs i) c` — subtracts `c` from each input. -/
 def fpSoftmaxShift {n : ℕ} (xs : Fin n → FiniteFp) (c : FiniteFp) : Fin n → Fp :=
   fun i => fpSubFinite (xs i) c
