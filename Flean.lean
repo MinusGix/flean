@@ -35,3 +35,4 @@ import «Flean».IntegerEquivalence.LeakyReluBits
 import «Flean».IntegerEquivalence.LibmIntrinsics
 import «Flean».IntegerEquivalence.Frexp
 import «Flean».IntegerEquivalence.RoundToIntBits
+import «Flean».IntegerEquivalence.TruncMidExp

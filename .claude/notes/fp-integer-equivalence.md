@@ -770,13 +770,31 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
       exact-subtraction reasoning.
     - **`fpFmod`**: `x - trunc(x/y) · y` (the C `fmod` definition).
       Bit-level form for `y = 2^k` (low-bit mask) deferred.
-  - Open follow-ups: **mid-exp bit-level form for `trunc`** —
-    "clear bottom k bits" of T when `0 ≤ b.FpExponent ≤ prec - 2`,
-    where `k = prec - 1 - b.FpExponent`. Value-level math shipped via
-    existing roundToInt machinery; the literal "T_new = (T >>> k) <<< k"
-    bit-level theorem requires ~250-300 lines of BitVec/Nat plumbing
-    (toNat lemmas for shiftLeft/shiftRight composition, M_new range
-    calculation, validity proof for the new FiniteFp). Substantial
-    follow-up. Also: `nearbyint`/`round` passthrough analog (mostly
+  - Open follow-ups: `nearbyint`/`round` passthrough analog (mostly
     mechanical given `IntRound.tiesToEven_int` / `tiesAway_int`); full
-    bit-level form for `fpFmod` when `y = 2^k`.
+    bit-level form for `fpFmod` when `y = 2^k` (low-bit mask).
+- ✅ **Phase 1.9 mid-exp bit-level trunc** (2026-05-09) —
+  `TruncMidExp.lean` (~470 lines). The clear-bottom-k-bits form for
+  the middle range `0 ≤ b.FpExponent ≤ prec - 2`, with `k = prec - 1 - b.FpExponent`.
+  - **Structural FiniteFp form**: `truncMidExp_FiniteFp f hn he_lo he_hi
+    : FiniteFp` with `s = f.s, e = f.e, m = (f.m / 2^k) * 2^k`.
+    Plus `M_new_isNormal_of_normal` (validity preservation) and
+    `M_new_valid_of_normal` (full IsValidFiniteVal).
+  - **Math identity**: `truncMidExp_FiniteFp_toVal` proves
+    `g.toVal = (if f.s then -1 else 1) * (f.m / 2^k : ℕ)`.
+  - **Connection to roundToInt**: `roundToIntTrunc_finite_eq_truncMidExp_FiniteFp`
+    proves `Fp.roundToIntTrunc (Fp.finite f) = Fp.finite g`. Routes
+    through `Fp.roundToInt_finite_nonzero`, `truncate_of_neg/of_nonneg`,
+    `Int.floor_div_natCast`, and `roundDown_idempotent`. Helper:
+    `floor_abs_toVal_eq_div` showing `⌊|f.toVal|⌋ = f.m / 2^k` in ℤ
+    via Mathlib's `Int.floor_div_natCast`.
+  - **Bit-level operator**: `bitTruncMidExp b k := mk' b.sign b.E
+    (BitVec.ofNat sigBits ((T.toNat / 2^k) * 2^k))`.
+  - **Bit-level decoded match**: `ofBits_bitTruncMidExp_eq_truncMidExp_FiniteFp`
+    proves the bit-level result decodes to the structural FiniteFp.
+    Key step: `(2^sigBits + T.toNat) / 2^k * 2^k = 2^sigBits + (T.toNat / 2^k) * 2^k`
+    via private `nat_pow_add_div` (Nat division identity).
+  - **Headline**: `trunc_ofBits_eq_ofBits_bitTruncMidExp` —
+    `Fp.trunc (ofBits b) = ofBits (bitTruncMidExp b k)` for bit-normal
+    inputs in the mid-exp range. The clean integer-pipeline trunc
+    statement for the meat of the `[1, 2^(prec-1))` range.
