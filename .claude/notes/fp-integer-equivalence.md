@@ -725,7 +725,39 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
     subtraction, no FP path.
   - `logb` and `scaleB` already shipped in `LogBScaleB.lean`; Phase 1.8
     just adds the bit-level corollary for the most-used special case.
-  - Open follow-up: `frexp x → (m, e)` returning a pair `(m, e)` such
-    that `x = m · 2^e` with `m ∈ [0.5, 1)`. Bit-level: split E off,
-    rebias mantissa to `[0.5, 1)`. More work because of the pair output
-    and the mantissa adjustment.
+- ✅ **Phase 1.8, frexp** (2026-05-09) — `Frexp.lean` (~165 lines).
+  Splits `f = m · 2^e` with `m ∈ [0.5, 1)` for normal inputs.
+  - `FiniteFp.frexp_significand f hn h_min_exp : FiniteFp` — sign and
+    significand preserved, unbiased exponent set to `-1`. Requires
+    format hypothesis `min_exp ≤ -1` (all real binary FP formats
+    satisfy this).
+  - `FiniteFp.frexp_exponent f := f.e + 1` (returns ℤ).
+  - `frexp_reconstruct`: `f.toVal = (frexp_significand f _).toVal · 2^(frexp_exponent f)`.
+  - `frexp_significand_abs_in_half_one`: `|m.toVal| ∈ [1/2, 1)`.
+  - The literal "set biased exponent to bias - 1 at the bit level" form
+    is direct via existing `setBiasedExponent` (Phase 1, MulPow2.lean);
+    explicit bit-level theorem deferred since the structural identity
+    + setBiasedExponent already gives the integer-pipeline target.
+- ✅ **Phase 1.9, round-to-integer family (libm aliases + integer
+  passthrough)** (2026-05-09) — `RoundToIntBits.lean` (~250 lines).
+  Surface the C99/IEEE 754 §5.9 round-to-integer functions under their
+  libm canonical names. The general bit-level "clear bottom k bits"
+  form (per-position bit mask construction) is deferred; we ship the
+  trivial "input is already integer ⇒ identity" case.
+  - Aliases: `Fp.trunc`, `Fp.floor`, `Fp.ceil`, `Fp.nearbyint`
+    (ties-to-even), `Fp.round` (ties-away — libm semantics).
+  - `FiniteFp.toVal_eq_int_of_normal_high_exp`: for normal `f` with
+    `f.e ≥ prec - 1`, `f.toVal` is exactly an integer in ℚ. The
+    integer is `±(f.m · 2^(f.e - prec + 1))`.
+  - Identity-passthrough headlines for `trunc`/`floor`/`ceil`: under
+    `b.isNormal` and `b.FpExponent ≥ prec - 1`, the rounding op is
+    identity on the input. Composes with `Fp.roundToInt_of_int_eq`
+    from `Operations/RoundToIntegral.lean` and the existing IntRound
+    integer-input lemmas (`truncate_int`, `Int.floor_intCast`,
+    `Int.ceil_intCast`).
+  - Open follow-ups: bit-level "clear bottom k bits" form for
+    `trunc` when `0 ≤ b.FpExponent < prec - 1` (substantial new
+    bit-level work); `nearbyint`/`round` passthrough analog (need
+    a `tiesToEven_int` / `tiesAway_int` lemma — exists for
+    `tiesToEven` and `tiesAway`); `fpModf`/`fpFmod` (separate
+    operations entirely, deferred).
