@@ -702,3 +702,30 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
     underflow when input is near `min_exp`); ±∞ handling (similar to
     fpRelu); literal hardware-style sign-mask + ASR encoding (deferred
     same as ReluBits).
+- ✅ **Phase 1.8, libm intrinsics** (2026-05-09) — `LibmIntrinsics.lean`
+  (~190 lines). Surface the standard libm bit-twiddle functions under
+  their canonical C99/IEEE 754 names, each backed by a bit-level
+  corollary or alias. Pure naming-parity polish; downstream codegen
+  recognizes these.
+  - `Fp.signbit x := x.sign` (reducible alias). Bridge `signbit_ofBits`
+    matches the bit-level sign for non-NaN inputs.
+  - `Fp.ldexp k _ _ x := fpMul x (pow2Float k)`. Bit-level corollary
+    `ldexp_eq_ofBits_setBiasedExponent` reuses
+    `ofBits_setBiasedExponent_eq_fpMul_pow2` from MulPow2.lean.
+  - `Fp.scalbn` and `Fp.scalbln` are noncomputable abbreviations of `ldexp`
+    (semantics-equal in IEEE 754; differ only in C exponent type).
+  - `Fp.fdim x y := fpRelu (fpSub x y)` — composes Phase 3 ReLU with
+    Operations.Sub. Structural form `fdim_finite_inner_toVal` for finite
+    operands with finite difference: result is
+    `Fp.finite (if c.s then 0 else c)` where `c = fpSub x y` (FiniteFp).
+  - `FiniteFp.ilogb f := f.logBInt` (reducible alias of the existing def
+    in LogBScaleB.lean). Bit-level corollary
+    `ilogb_of_normal_eq_unbiased_exponent`: for bit-normal `b`, the
+    integer log₂ equals `E.toNat - exponentBias` — a single integer
+    subtraction, no FP path.
+  - `logb` and `scaleB` already shipped in `LogBScaleB.lean`; Phase 1.8
+    just adds the bit-level corollary for the most-used special case.
+  - Open follow-up: `frexp x → (m, e)` returning a pair `(m, e)` such
+    that `x = m · 2^e` with `m ∈ [0.5, 1)`. Bit-level: split E off,
+    rebias mantissa to `[0.5, 1)`. More work because of the pair output
+    and the mantissa adjustment.

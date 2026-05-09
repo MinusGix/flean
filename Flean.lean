@@ -32,3 +32,4 @@ import «Flean».IntegerEquivalence.MaxMin
 import «Flean».IntegerEquivalence.SignBitOps
 import «Flean».IntegerEquivalence.ReluBits
 import «Flean».IntegerEquivalence.LeakyReluBits
+import «Flean».IntegerEquivalence.LibmIntrinsics
