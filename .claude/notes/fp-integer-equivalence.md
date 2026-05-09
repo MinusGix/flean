@@ -672,3 +672,20 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
   (T section / E section / sign section). The encoding identity
   `b = mk' (ofBool b.sign) E T` (from `appendToBitsTriple_eq`) is the
   workhorse that puts both sides into the explicit `sign ++ E ++ T` form.
+- ✅ **Phase 3, ReLU as masked select** (2026-05-09) — `ReluBits.lean`
+  (~165 lines). Phase 3 entry: ReLU as a sign-bit-dispatched masked select.
+  Defines `FloatBits.bitRelu b := if b.sign then 0 else b` and
+  `Fp.fpRelu x := if x.sign then 0 else x`. Bridge
+  `ofBits_bitRelu_eq_fpRelu` for non-NaN inputs (NaN carve-out same as
+  Phase 1/2; `Fp.NaN.sign = false` so `fpRelu NaN = NaN` holds at the
+  Fp level, but bit-level NaN with sign=true would munge to `+0`).
+  Math-level connection: `fpRelu_finite_inner_toVal` and
+  `fpRelu_finite_eq_activation_relu` (matches `Flean.Activation.relu`).
+  Edge-case sanity theorems: `fpRelu_zero/_neg_zero/_pos_inf/_neg_inf`
+  (concretely: `relu(+0) = +0`, `relu(-0) = +0`, `relu(+∞) = +∞`,
+  `relu(-∞) = +0`). All match the sign-bit-dispatch semantics.
+  Open follow-ups: leakyRelu (negative branch is exponent-decrement
+  for `2^k` slopes — composes with `fpMul_pow2`); literal
+  hardware-style mask via arithmetic-shift-right of the sign bit
+  (deferred — current conditional form is verifiable, mask-based form
+  is hardware-specific micro-optimization).
