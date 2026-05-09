@@ -1129,3 +1129,662 @@ theorem nextUp_ofBits_eq_ofBits_bitNextUpNegWithin
 
 end Fp
 
+/-! ## Cross-binade-descent case for negative inputs (T = 0, E > 0)
+
+When `T = 0` and `E > 0`, the bit-level decrement (T - 1) wraps T to allOnes
+and decrements E. Two sub-cases by E:
+- `E = 1`: the new exponent decodes to `min_exp` (subnormal). At the value
+  level this is `successorNeg`'s within-binade-descent (since
+  `f.e = min_exp ⇒ ¬hcross`).
+- `E > 1`: the new exponent stays in the normal range. At the value level
+  this is `successorNeg`'s cross-binade-descent. -/
+
+namespace Fp.FloatBits
+
+variable [FloatFormat]
+
+/-- **Bit-level negative cross-binade-descent successor.** When `T = 0` and
+`E > 0`, the bit-level decrement: `T → allOnes, E → E - 1`. Caller must
+ensure `E ≠ 0` (else BitVec subtraction wraps and we'd hit the
+sign-cross-at-`-0` case). -/
+def bitNextUpNegCross (b : FloatBits) : FloatBits :=
+  FloatBits.mk' b.toBitsTriple.sign (b.toBitsTriple.exponent - 1)
+    (BitVec.allOnes FloatFormat.significandBits)
+
+@[simp] theorem bitNextUpNegCross_sign_bv (b : FloatBits) :
+    (bitNextUpNegCross b).toBitsTriple.sign = b.toBitsTriple.sign :=
+  construct_sign_eq_BitsTriple _ _ _
+
+@[simp] theorem bitNextUpNegCross_exponent_bv (b : FloatBits) :
+    (bitNextUpNegCross b).toBitsTriple.exponent
+      = b.toBitsTriple.exponent - 1 :=
+  construct_exponent_eq_BitsTriple _ _ _
+
+@[simp] theorem bitNextUpNegCross_significand_bv (b : FloatBits) :
+    (bitNextUpNegCross b).toBitsTriple.significand
+      = BitVec.allOnes FloatFormat.significandBits :=
+  construct_significand_eq_BitsTriple _ _ _
+
+@[simp] theorem bitNextUpNegCross_sign (b : FloatBits) :
+    (bitNextUpNegCross b).sign = b.sign := by
+  unfold FloatBits.sign; rw [bitNextUpNegCross_sign_bv]
+
+/-- BitVec decrement: `(E - 1).toNat = E.toNat - 1` when `E ≠ 0`. Mirrors
+`T_minus_one_toNat` for the exponent field. -/
+private theorem E_minus_one_toNat (b : FloatBits)
+    (hE_pos : 0 < b.toBitsTriple.exponent.toNat) :
+    (b.toBitsTriple.exponent - 1).toNat
+      = b.toBitsTriple.exponent.toNat - 1 := by
+  have hpos := FloatFormat.exponentBits_pos
+  have hpow : 1 < 2 ^ FloatFormat.exponentBits :=
+    calc 1 = 2 ^ 0 := by norm_num
+      _ < 2 ^ FloatFormat.exponentBits :=
+          Nat.pow_lt_pow_right (by norm_num) hpos
+  rw [BitVec.toNat_sub]
+  have h_one : (1 : BitVec FloatFormat.exponentBits).toNat = 1 := by
+    show BitVec.toNat 1 = 1
+    simp
+  rw [h_one]
+  have hE_lt : b.toBitsTriple.exponent.toNat < 2 ^ FloatFormat.exponentBits :=
+    b.toBitsTriple.exponent.isLt
+  have hpow_pos : 0 < (2 : ℕ) ^ FloatFormat.exponentBits := Nat.two_pow_pos _
+  have hrewrite : 2 ^ FloatFormat.exponentBits - 1 + b.toBitsTriple.exponent.toNat
+        = (b.toBitsTriple.exponent.toNat - 1) + 2 ^ FloatFormat.exponentBits := by omega
+  rw [hrewrite]
+  rw [Nat.add_mod_right]
+  rw [Nat.mod_eq_of_lt
+    (by omega : b.toBitsTriple.exponent.toNat - 1 < 2 ^ FloatFormat.exponentBits)]
+
+/-- `bitNextUpNegCross` preserves `isFinite` when `E ≠ 0` (the new E is
+strictly less than the old one and stays away from `allOnes`). -/
+theorem bitNextUpNegCross_isFinite (b : FloatBits)
+    (hE_nz : b.toBitsTriple.exponent ≠ 0) :
+    (bitNextUpNegCross b).isFinite := by
+  -- E.toNat ≥ 1 (from hE_nz).
+  have hE_pos : 0 < b.toBitsTriple.exponent.toNat := by
+    rcases Nat.eq_zero_or_pos b.toBitsTriple.exponent.toNat with hz | hp
+    · exfalso; apply hE_nz
+      apply BitVec.eq_of_toNat_eq
+      rw [hz]; rfl
+    · exact hp
+  -- E_new.toNat = E.toNat - 1 ≤ 2^expBits - 2 (well below allOnes.toNat).
+  have hE_new_toNat := E_minus_one_toNat b hE_pos
+  have hE_lt : b.toBitsTriple.exponent.toNat < 2 ^ FloatFormat.exponentBits :=
+    b.toBitsTriple.exponent.isLt
+  have hE_new_not_max : ¬(bitNextUpNegCross b).isExponentAllOnes := by
+    intro hE'
+    unfold FloatBits.isExponentAllOnes at hE'
+    rw [bitNextUpNegCross_exponent_bv] at hE'
+    have h := congrArg BitVec.toNat hE'
+    rw [BitVec.toNat_allOnes, hE_new_toNat] at h
+    omega
+  refine ⟨?_, ?_⟩
+  · intro ⟨hE, _⟩; exact hE_new_not_max hE
+  · intro ⟨hE, _⟩; exact hE_new_not_max hE
+
+end Fp.FloatBits
+
+/-! ### Sub-case: E = 1 (decodes to subnormal at `min_exp`) -/
+
+namespace Fp.FloatBits
+
+variable [StdFloatFormat]
+
+/-- For `b` with `E = 1`, the cross-binade-decrementer's decoded exponent
+is `min_exp` (since `(E - 1) = 0_bv`). -/
+theorem bitNextUpNegCross_FpExponent_of_E_eq_one (b : FloatBits)
+    (hE_one : b.toBitsTriple.exponent = (1 : BitVec FloatFormat.exponentBits)) :
+    (bitNextUpNegCross b).FpExponent = FloatFormat.min_exp := by
+  rw [FloatBits.FpExponent_def, bitNextUpNegCross_exponent_bv, hE_one]
+  -- (1 - 1) = 0 (BitVec).
+  have h_sub_zero : (1 : BitVec FloatFormat.exponentBits)
+        - (1 : BitVec FloatFormat.exponentBits) = 0 := by
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_sub]
+    have h_one : (1 : BitVec FloatFormat.exponentBits).toNat = 1 := by
+      show BitVec.toNat 1 = 1; simp
+    rw [h_one]
+    have hpos := FloatFormat.exponentBits_pos
+    have hpow : 1 < 2 ^ FloatFormat.exponentBits :=
+      calc 1 = 2 ^ 0 := by norm_num
+        _ < 2 ^ FloatFormat.exponentBits :=
+            Nat.pow_lt_pow_right (by norm_num) hpos
+    show (2 ^ FloatFormat.exponentBits - 1 + 1) % 2 ^ FloatFormat.exponentBits
+        = (0 : BitVec FloatFormat.exponentBits).toNat
+    rw [show 2 ^ FloatFormat.exponentBits - 1 + 1 = 2 ^ FloatFormat.exponentBits from by omega,
+        Nat.mod_self]
+    simp
+  rw [h_sub_zero, if_pos rfl]
+
+/-- For `b` with `E = 1`, the cross-binade-decrementer's decoded significand
+is `2^(prec-1) - 1` (largest subnormal magnitude). -/
+theorem bitNextUpNegCross_FpSignificand_of_E_eq_one (b : FloatBits)
+    (hE_one : b.toBitsTriple.exponent = (1 : BitVec FloatFormat.exponentBits)) :
+    (bitNextUpNegCross b).FpSignificand
+      = 2 ^ (FloatFormat.prec - 1).toNat - 1 := by
+  rw [FloatBits.FpSignificand_def, bitNextUpNegCross_exponent_bv,
+      bitNextUpNegCross_significand_bv, hE_one]
+  -- (1 - 1) = 0 (BitVec) — same as above.
+  have h_sub_zero : (1 : BitVec FloatFormat.exponentBits)
+        - (1 : BitVec FloatFormat.exponentBits) = 0 := by
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_sub]
+    have h_one : (1 : BitVec FloatFormat.exponentBits).toNat = 1 := by
+      show BitVec.toNat 1 = 1; simp
+    rw [h_one]
+    have hpos := FloatFormat.exponentBits_pos
+    have hpow : 1 < 2 ^ FloatFormat.exponentBits :=
+      calc 1 = 2 ^ 0 := by norm_num
+        _ < 2 ^ FloatFormat.exponentBits :=
+            Nat.pow_lt_pow_right (by norm_num) hpos
+    show (2 ^ FloatFormat.exponentBits - 1 + 1) % 2 ^ FloatFormat.exponentBits
+        = (0 : BitVec FloatFormat.exponentBits).toNat
+    rw [show 2 ^ FloatFormat.exponentBits - 1 + 1 = 2 ^ FloatFormat.exponentBits from by omega,
+        Nat.mod_self]
+    simp
+  rw [h_sub_zero, if_pos rfl]
+  rw [BitVec.toNat_allOnes, ← FloatFormat.significandBits_eq]
+
+/-! ### Sub-case: E > 1 (decodes to normal in lower binade) -/
+
+/-- For `b` with `E > 1` (so `E ≠ 0` and `E - 1 ≠ 0`), the cross-binade-
+decrementer's decoded exponent is `b.FpExponent - 1`. -/
+theorem bitNextUpNegCross_FpExponent_of_E_gt_one (b : FloatBits)
+    (hE_pos : 1 < b.toBitsTriple.exponent.toNat) :
+    (bitNextUpNegCross b).FpExponent = b.FpExponent - 1 := by
+  rw [FloatBits.FpExponent_def, FloatBits.FpExponent_def,
+      bitNextUpNegCross_exponent_bv]
+  have hE_nz : b.toBitsTriple.exponent ≠ 0 := by
+    intro h; rw [h] at hE_pos
+    simp at hE_pos
+  rw [if_neg hE_nz]
+  have hE_pos' : 0 < b.toBitsTriple.exponent.toNat := by omega
+  have hE_minus_toNat := E_minus_one_toNat b hE_pos'
+  -- (E - 1) ≠ 0 since (E - 1).toNat = E.toNat - 1 ≥ 1.
+  have hE_minus_nz : b.toBitsTriple.exponent - 1 ≠ 0 := by
+    intro h
+    have hcast := congrArg BitVec.toNat h
+    rw [hE_minus_toNat] at hcast
+    simp at hcast
+    omega
+  rw [if_neg hE_minus_nz, hE_minus_toNat]
+  have h_ge : 1 ≤ b.toBitsTriple.exponent.toNat := by omega
+  push_cast [Nat.cast_sub h_ge]
+  ring
+
+/-- For `b` with `E > 1`, the cross-binade-decrementer's decoded
+significand is `2^prec - 1` (max normal magnitude in the lower binade). -/
+theorem bitNextUpNegCross_FpSignificand_of_E_gt_one (b : FloatBits)
+    (hE_pos : 1 < b.toBitsTriple.exponent.toNat) :
+    (bitNextUpNegCross b).FpSignificand = 2 ^ FloatFormat.prec.toNat - 1 := by
+  rw [FloatBits.FpSignificand_def, bitNextUpNegCross_exponent_bv,
+      bitNextUpNegCross_significand_bv]
+  have hE_pos' : 0 < b.toBitsTriple.exponent.toNat := by omega
+  have hE_minus_toNat := E_minus_one_toNat b hE_pos'
+  have hE_minus_nz : b.toBitsTriple.exponent - 1 ≠ 0 := by
+    intro h
+    have hcast := congrArg BitVec.toNat h
+    rw [hE_minus_toNat] at hcast
+    simp at hcast
+    omega
+  rw [if_neg hE_minus_nz]
+  -- ((BitVec.ofBool true) ++ allOnes_sigBits).toNat = 2^prec - 1.
+  rw [BitVec.toNat_append, BitVec.toNat_allOnes]
+  have hT_lt : 2 ^ FloatFormat.significandBits - 1
+        < 2 ^ FloatFormat.significandBits := by
+    have hp : 0 < (2 : ℕ) ^ FloatFormat.significandBits := Nat.two_pow_pos _
+    omega
+  rw [← Nat.shiftLeft_add_eq_or_of_lt hT_lt, Nat.shiftLeft_eq]
+  show (BitVec.ofBool true).toNat * 2 ^ FloatFormat.significandBits
+        + (2 ^ FloatFormat.significandBits - 1) = 2 ^ FloatFormat.prec.toNat - 1
+  have hbool : (BitVec.ofBool true).toNat = 1 := by simp
+  have h_two_prec : (2 : ℕ) ^ FloatFormat.prec.toNat
+        = 2 * 2 ^ FloatFormat.significandBits := by
+    rw [← FloatFormat.one_plus_significandBits]; ring
+  rw [hbool]; omega
+
+end Fp.FloatBits
+
+namespace Fp
+
+/-- Helper: when `b` has `T = 0` and `E ≠ 0`, the decoded `f_b.m = 2^(prec-1)`. -/
+private theorem FpSignificand_eq_pow_prec_sub_one_of_T_zero_E_nz
+    [StdFloatFormat]
+    (b : FloatBits) (hT_zero : b.toBitsTriple.significand = 0)
+    (hE_nz : b.toBitsTriple.exponent ≠ 0) :
+    b.FpSignificand = 2 ^ (FloatFormat.prec - 1).toNat := by
+  rw [FloatBits.FpSignificand_def, if_neg hE_nz, hT_zero]
+  rw [BitVec.toNat_append]
+  show 1 <<< FloatFormat.significandBits ||| 0 = 2 ^ (FloatFormat.prec - 1).toNat
+  simp [Nat.shiftLeft_eq]
+
+/-- **Bit-level negative cross-binade-descent bridge.** For finite negative
+`b` with `T = 0` and `E ≠ 0` (so the decoded magnitude is `2^(prec-1)`,
+the smallest normal at this binade), the bit-level decrementer matches
+`successorNeg` of the decoded FiniteFp.
+
+Internally splits on `E.toNat = 1` (decodes to within-binade-descent at
+value level — the input is the smallest normal at `min_exp`, the result
+is the largest subnormal) vs `E.toNat > 1` (cross-binade-descent at value
+level — strictly normal-to-normal). -/
+theorem ofBits_bitNextUpNegCross_eq_successorNeg
+    [StdFloatFormat]
+    (b : FloatBits) (hs : b.sign = true) (hf : b.isFinite)
+    (hT_zero : b.toBitsTriple.significand = 0)
+    (hE_nz : b.toBitsTriple.exponent ≠ 0) :
+    let f_b : FiniteFp := ⟨b.sign, b.FpExponent, b.FpSignificand,
+      FloatBits.isFinite_validFloatVal hf⟩
+    ofBits (FloatBits.bitNextUpNegCross b) = FiniteFp.successorNeg f_b := by
+  simp only
+  set f_b : FiniteFp := ⟨b.sign, b.FpExponent, b.FpSignificand,
+    FloatBits.isFinite_validFloatVal hf⟩ with hf_b_def
+  -- f_b.m = 2^(prec-1).toNat
+  have hf_b_m : f_b.m = 2 ^ (FloatFormat.prec - 1).toNat :=
+    FpSignificand_eq_pow_prec_sub_one_of_T_zero_E_nz b hT_zero hE_nz
+  -- f_b.m > 0 ⇒ skip dif_pos zero
+  have h_pec_pos : 0 < (2 : ℕ) ^ (FloatFormat.prec - 1).toNat := Nat.two_pow_pos _
+  have hf_b_m_pos : 0 < f_b.m := by rw [hf_b_m]; exact h_pec_pos
+  have hzero_neg : ¬ f_b.m = 0 := by omega
+  -- E.toNat ≥ 1 (from hE_nz).
+  have hE_pos : 0 < b.toBitsTriple.exponent.toNat := by
+    rcases Nat.eq_zero_or_pos b.toBitsTriple.exponent.toNat with hz | hp
+    · exfalso; apply hE_nz; apply BitVec.eq_of_toNat_eq; rw [hz]; rfl
+    · exact hp
+  -- f_b.e = E.toNat - bias (from FpExponent_def with E ≠ 0).
+  have hf_b_e_eq : f_b.e = (b.toBitsTriple.exponent.toNat : ℤ) - FloatFormat.exponentBias := by
+    show b.FpExponent = _
+    rw [FloatBits.FpExponent_def, if_neg hE_nz]
+  -- Decode the bit-level cross result.
+  have hf' : (FloatBits.bitNextUpNegCross b).isFinite :=
+    FloatBits.bitNextUpNegCross_isFinite b hE_nz
+  rw [ofBits_eq_finite_of_isFinite (FloatBits.bitNextUpNegCross b) hf']
+  -- Case-split on E.toNat = 1 vs > 1.
+  rcases Nat.lt_or_ge 1 b.toBitsTriple.exponent.toNat with hE_gt_one | hE_le_one
+  · -- E.toNat > 1: cross-binade-desc at value level.
+    -- f_b.e > min_exp.
+    have hstd := StdFloatFormat.st
+    unfold FloatFormat.isStandardExpRange at hstd
+    have hf_b_e_gt : FloatFormat.min_exp < f_b.e := by
+      rw [hf_b_e_eq]; unfold FloatFormat.exponentBias; omega
+    -- successorNeg's cross-binade-desc fires.
+    rw [FiniteFp.successorNeg_cross f_b hf_b_m hf_b_e_gt]
+    congr 1
+    apply (FiniteFp.eq_def _ _).mpr
+    refine ⟨?_, ?_, ?_⟩
+    · show (FloatBits.bitNextUpNegCross b).sign = true
+      rw [FloatBits.bitNextUpNegCross_sign]; exact hs
+    · show (FloatBits.bitNextUpNegCross b).FpExponent = f_b.e - 1
+      rw [FloatBits.bitNextUpNegCross_FpExponent_of_E_gt_one b hE_gt_one]
+    · show (FloatBits.bitNextUpNegCross b).FpSignificand
+            = 2 ^ FloatFormat.prec.toNat - 1
+      rw [FloatBits.bitNextUpNegCross_FpSignificand_of_E_gt_one b hE_gt_one]
+  · -- E.toNat ≤ 1, combined with E.toNat ≥ 1 gives E.toNat = 1.
+    have hE_eq_one : b.toBitsTriple.exponent.toNat = 1 := by omega
+    have hE_eq_one_bv : b.toBitsTriple.exponent = (1 : BitVec FloatFormat.exponentBits) := by
+      apply BitVec.eq_of_toNat_eq
+      rw [hE_eq_one]
+      have hpos := FloatFormat.exponentBits_pos
+      have hpow : 1 < 2 ^ FloatFormat.exponentBits :=
+        calc 1 = 2 ^ 0 := by norm_num
+          _ < 2 ^ FloatFormat.exponentBits :=
+              Nat.pow_lt_pow_right (by norm_num) hpos
+      show 1 = (1 : BitVec _).toNat
+      have h_one : (1 : BitVec FloatFormat.exponentBits).toNat = 1 := by
+        show BitVec.toNat 1 = 1; simp
+      omega
+    -- f_b.e = min_exp.
+    have hstd := StdFloatFormat.st
+    unfold FloatFormat.isStandardExpRange at hstd
+    have hf_b_e_eq_min : f_b.e = FloatFormat.min_exp := by
+      rw [hf_b_e_eq, hE_eq_one]
+      unfold FloatFormat.exponentBias; omega
+    -- successorNeg's within-binade-desc fires (m = 2^(prec-1) but f.e = min_exp).
+    have hcase : f_b.m ≠ 2 ^ (FloatFormat.prec - 1).toNat
+        ∨ f_b.e = FloatFormat.min_exp := Or.inr hf_b_e_eq_min
+    rw [FiniteFp.successorNeg_toVal_of_within f_b hf_b_m_pos hcase]
+    congr 1
+    apply (FiniteFp.eq_def _ _).mpr
+    refine ⟨?_, ?_, ?_⟩
+    · show (FloatBits.bitNextUpNegCross b).sign = true
+      rw [FloatBits.bitNextUpNegCross_sign]; exact hs
+    · show (FloatBits.bitNextUpNegCross b).FpExponent = f_b.e
+      rw [FloatBits.bitNextUpNegCross_FpExponent_of_E_eq_one b hE_eq_one_bv,
+          hf_b_e_eq_min]
+    · show (FloatBits.bitNextUpNegCross b).FpSignificand = f_b.m - 1
+      rw [FloatBits.bitNextUpNegCross_FpSignificand_of_E_eq_one b hE_eq_one_bv,
+          hf_b_m]
+
+/-- **Headline identity (cross-binade, negative).** For finite negative `b`
+with `T = 0` and `E ≠ 0`, `nextUp` agrees with the bit-level cross-binade
+decrementer. -/
+theorem nextUp_ofBits_eq_ofBits_bitNextUpNegCross
+    [StdFloatFormat]
+    (b : FloatBits) (hs : b.sign = true) (hf : b.isFinite)
+    (hT_zero : b.toBitsTriple.significand = 0)
+    (hE_nz : b.toBitsTriple.exponent ≠ 0) :
+    nextUp (ofBits b) = ofBits (FloatBits.bitNextUpNegCross b) := by
+  rw [ofBits_eq_finite_of_isFinite b hf]
+  rw [FiniteFp.nextUp_finite_eq_successorNeg _ hs]
+  exact (ofBits_bitNextUpNegCross_eq_successorNeg b hs hf hT_zero hE_nz).symm
+
+end Fp
+
+/-! ## Sign-cross-at-`-0` case (T = 0, E = 0, sign = true)
+
+The single degenerate case where `b` decodes to `-0`. Bit-level: flip sign
+to false, set T = 1, keep E = 0 — the bit pattern of `+smallestPosSubnormal`.
+At the value level this is `successorNeg(-0) = +smallestPosSubnormal`. -/
+
+namespace Fp.FloatBits
+
+variable [FloatFormat]
+
+/-- **Bit-level sign-cross-at-`-0` successor.** Produces the `+smallestPosSubnormal`
+bit pattern: sign = false, E = 0, T = 1. The output is independent of the
+input; the operator only fires when `b` is `-0` (`T = 0, E = 0, sign = true`). -/
+def bitNextUpNegSignCross : FloatBits :=
+  FloatBits.mk' (0 : BitVec FloatFormat.signBits)
+    (0 : BitVec FloatFormat.exponentBits)
+    (1 : BitVec FloatFormat.significandBits)
+
+@[simp] theorem bitNextUpNegSignCross_sign_bv :
+    (bitNextUpNegSignCross : FloatBits).toBitsTriple.sign
+      = (0 : BitVec FloatFormat.signBits) :=
+  construct_sign_eq_BitsTriple _ _ _
+
+@[simp] theorem bitNextUpNegSignCross_exponent_bv :
+    (bitNextUpNegSignCross : FloatBits).toBitsTriple.exponent
+      = (0 : BitVec FloatFormat.exponentBits) :=
+  construct_exponent_eq_BitsTriple _ _ _
+
+@[simp] theorem bitNextUpNegSignCross_significand_bv :
+    (bitNextUpNegSignCross : FloatBits).toBitsTriple.significand
+      = (1 : BitVec FloatFormat.significandBits) :=
+  construct_significand_eq_BitsTriple _ _ _
+
+@[simp] theorem bitNextUpNegSignCross_sign :
+    (bitNextUpNegSignCross : FloatBits).sign = false := by
+  unfold FloatBits.sign
+  rw [bitNextUpNegSignCross_sign_bv]
+  rfl
+
+theorem bitNextUpNegSignCross_isFinite :
+    (bitNextUpNegSignCross : FloatBits).isFinite := by
+  -- E = 0, so E ≠ allOnes (allOnes.toNat = 2^expBits - 1 ≥ 1 since expBits ≥ 1).
+  have hE_ne_allOnes :
+      (0 : BitVec FloatFormat.exponentBits)
+        ≠ BitVec.allOnes FloatFormat.exponentBits := by
+    intro h
+    have hcast := congrArg BitVec.toNat h
+    rw [BitVec.toNat_allOnes] at hcast
+    have hpos := FloatFormat.exponentBits_pos
+    have hpow : 1 < 2 ^ FloatFormat.exponentBits :=
+      calc 1 = 2 ^ 0 := by norm_num
+        _ < 2 ^ FloatFormat.exponentBits :=
+            Nat.pow_lt_pow_right (by norm_num) hpos
+    have h_zero : (0 : BitVec FloatFormat.exponentBits).toNat = 0 := by simp
+    rw [h_zero] at hcast
+    omega
+  refine ⟨?_, ?_⟩
+  · intro ⟨hE, _⟩
+    apply hE_ne_allOnes
+    unfold FloatBits.isExponentAllOnes at hE
+    rw [bitNextUpNegSignCross_exponent_bv] at hE; exact hE
+  · intro ⟨hE, _⟩
+    apply hE_ne_allOnes
+    unfold FloatBits.isExponentAllOnes at hE
+    rw [bitNextUpNegSignCross_exponent_bv] at hE; exact hE
+
+end Fp.FloatBits
+
+namespace Fp
+
+/-- For finite negative `b` with `T = 0` and `E = 0` (the `-0` case), the
+decoded `f_b` equals `-(0 : FiniteFp)`. -/
+private theorem decoded_neg_zero_of_T_E_zero
+    [StdFloatFormat]
+    (b : FloatBits) (hs : b.sign = true) (hf : b.isFinite)
+    (hT_zero : b.toBitsTriple.significand = 0)
+    (hE_zero : b.toBitsTriple.exponent = 0) :
+    let f_b : FiniteFp := ⟨b.sign, b.FpExponent, b.FpSignificand,
+      FloatBits.isFinite_validFloatVal hf⟩
+    f_b = (-0 : FiniteFp) := by
+  simp only
+  apply (FiniteFp.eq_def _ _).mpr
+  refine ⟨?_, ?_, ?_⟩
+  · rw [FiniteFp.neg_def]
+    show b.sign = !(0 : FiniteFp).s
+    rw [hs]; rfl
+  · rw [FiniteFp.neg_def]
+    show b.FpExponent = (0 : FiniteFp).e
+    rw [FloatBits.FpExponent_def, if_pos hE_zero]
+    rfl
+  · rw [FiniteFp.neg_def]
+    show b.FpSignificand = (0 : FiniteFp).m
+    rw [FloatBits.FpSignificand_def, if_pos hE_zero, hT_zero]
+    rfl
+
+/-- Decoding the sign-cross bit pattern gives `+smallestPosSubnormal`. -/
+theorem ofBits_bitNextUpNegSignCross_eq_smallestPosSubnormal
+    [StdFloatFormat] :
+    ofBits (FloatBits.bitNextUpNegSignCross : FloatBits)
+      = Fp.finite FiniteFp.smallestPosSubnormal := by
+  have hf' : (FloatBits.bitNextUpNegSignCross : FloatBits).isFinite :=
+    FloatBits.bitNextUpNegSignCross_isFinite
+  rw [ofBits_eq_finite_of_isFinite _ hf']
+  congr 1
+  apply (FiniteFp.eq_def _ _).mpr
+  refine ⟨?_, ?_, ?_⟩
+  · -- sign = false = smallestPosSubnormal.s
+    show (FloatBits.bitNextUpNegSignCross : FloatBits).sign
+        = FiniteFp.smallestPosSubnormal.s
+    rw [FloatBits.bitNextUpNegSignCross_sign]; rfl
+  · -- FpExponent = min_exp = smallestPosSubnormal.e
+    show (FloatBits.bitNextUpNegSignCross : FloatBits).FpExponent
+        = FiniteFp.smallestPosSubnormal.e
+    rw [FloatBits.FpExponent_def, FloatBits.bitNextUpNegSignCross_exponent_bv,
+        if_pos rfl]
+    rfl
+  · -- FpSignificand = 1 = smallestPosSubnormal.m
+    show (FloatBits.bitNextUpNegSignCross : FloatBits).FpSignificand
+        = FiniteFp.smallestPosSubnormal.m
+    rw [FloatBits.FpSignificand_def, FloatBits.bitNextUpNegSignCross_exponent_bv,
+        FloatBits.bitNextUpNegSignCross_significand_bv, if_pos rfl]
+    have h_one : (1 : BitVec FloatFormat.significandBits).toNat = 1 := by
+      have hsb := FloatFormat.significandBits_pos
+      have hpow : 1 < 2 ^ FloatFormat.significandBits :=
+        calc 1 = 2 ^ 0 := by norm_num
+          _ < 2 ^ FloatFormat.significandBits :=
+              Nat.pow_lt_pow_right (by norm_num) hsb
+      show BitVec.toNat 1 = 1; simp
+    rw [h_one]; rfl
+
+/-- **Bit-level sign-cross bridge.** For finite negative `b` with `T = 0` and
+`E = 0` (the `-0` case), the bit-level sign-cross result matches
+`successorNeg` of the decoded `f_b = -0`. -/
+theorem ofBits_bitNextUpNegSignCross_eq_successorNeg
+    [StdFloatFormat]
+    (b : FloatBits) (hs : b.sign = true) (hf : b.isFinite)
+    (hT_zero : b.toBitsTriple.significand = 0)
+    (hE_zero : b.toBitsTriple.exponent = 0) :
+    let f_b : FiniteFp := ⟨b.sign, b.FpExponent, b.FpSignificand,
+      FloatBits.isFinite_validFloatVal hf⟩
+    ofBits (FloatBits.bitNextUpNegSignCross : FloatBits)
+      = FiniteFp.successorNeg f_b := by
+  simp only
+  set f_b : FiniteFp := ⟨b.sign, b.FpExponent, b.FpSignificand,
+    FloatBits.isFinite_validFloatVal hf⟩ with hf_b_def
+  -- f_b = -0.
+  have hf_b_eq_neg_zero : f_b = (-0 : FiniteFp) :=
+    decoded_neg_zero_of_T_E_zero b hs hf hT_zero hE_zero
+  -- successorNeg(-0) = .finite smallestPosSubnormal.
+  have h_neg_zero_m : (-0 : FiniteFp).m = 0 := by rw [FiniteFp.neg_def]; rfl
+  rw [hf_b_eq_neg_zero, FiniteFp.successorNeg_neg_zero _ h_neg_zero_m]
+  exact ofBits_bitNextUpNegSignCross_eq_smallestPosSubnormal
+
+/-- **Headline identity (sign-cross-at-`-0`).** For finite negative `b` with
+`T = 0` and `E = 0` (= `-0`), `nextUp` produces `+smallestPosSubnormal`,
+matching the bit-level sign-cross output. -/
+theorem nextUp_ofBits_eq_ofBits_bitNextUpNegSignCross
+    [StdFloatFormat]
+    (b : FloatBits) (hs : b.sign = true) (hf : b.isFinite)
+    (hT_zero : b.toBitsTriple.significand = 0)
+    (hE_zero : b.toBitsTriple.exponent = 0) :
+    nextUp (ofBits b) = ofBits (FloatBits.bitNextUpNegSignCross : FloatBits) := by
+  rw [ofBits_eq_finite_of_isFinite b hf]
+  rw [FiniteFp.nextUp_finite_eq_successorNeg _ hs]
+  exact (ofBits_bitNextUpNegSignCross_eq_successorNeg b hs hf hT_zero hE_zero).symm
+
+end Fp
+
+/-! ## Master negative-input bit-level successor
+
+The unifier `bitNextUpNeg b` automatically dispatches between
+`bitNextUpNegWithin` (T > 0), `bitNextUpNegCross` (T = 0, E > 0), and
+`bitNextUpNegSignCross` (T = 0, E = 0). The master bridge
+`ofBits_bitNextUpNeg_eq_successorNeg` takes only basic negative-finite
+hypotheses; the within/cross/sign-cross dispatch happens internally. -/
+
+namespace Fp.FloatBits
+
+variable [FloatFormat]
+
+/-- **Master negative-input bit-level successor.** Dispatches between
+within-binade-desc, cross-binade-desc, and sign-cross-at-`-0`. -/
+def bitNextUpNeg (b : FloatBits) : FloatBits :=
+  if b.toBitsTriple.significand = 0 then
+    if b.toBitsTriple.exponent = 0 then bitNextUpNegSignCross
+    else bitNextUpNegCross b
+  else bitNextUpNegWithin b
+
+/-- Helper: when `T > 0` and `E ≠ 0`, `b.FpSignificand > 2^(prec-1)` (so
+the within-binade `hcase` left disjunct holds). -/
+private theorem FpSignificand_gt_pow_prec_sub_one_of_T_pos_E_nz
+    (b : FloatBits)
+    (hT_pos : 0 < b.toBitsTriple.significand.toNat)
+    (hE_nz : b.toBitsTriple.exponent ≠ 0) :
+    b.FpSignificand > 2 ^ (FloatFormat.prec - 1).toNat := by
+  rw [FloatBits.FpSignificand_def, if_neg hE_nz]
+  rw [BitVec.toNat_append]
+  have hT_lt : b.toBitsTriple.significand.toNat <
+      2 ^ FloatFormat.significandBits := b.toBitsTriple.significand.isLt
+  rw [← Nat.shiftLeft_add_eq_or_of_lt hT_lt, Nat.shiftLeft_eq]
+  show (BitVec.ofBool true).toNat * 2 ^ FloatFormat.significandBits
+        + b.toBitsTriple.significand.toNat > 2 ^ (FloatFormat.prec - 1).toNat
+  have hbool : (BitVec.ofBool true).toNat = 1 := by simp
+  rw [hbool, ← FloatFormat.significandBits_eq]
+  omega
+
+/-- Helper: when `T > 0`, `0 < b.FpSignificand`. -/
+private theorem FpSignificand_pos_of_T_pos
+    (b : FloatBits)
+    (hT_pos : 0 < b.toBitsTriple.significand.toNat) :
+    0 < b.FpSignificand := by
+  rw [FloatBits.FpSignificand_def]
+  by_cases hE : b.toBitsTriple.exponent = 0
+  · rw [if_pos hE]; exact hT_pos
+  · -- (1 ++ T).toNat ≥ 2^sigBits > 0
+    rw [if_neg hE, BitVec.toNat_append]
+    have hT_lt : b.toBitsTriple.significand.toNat <
+        2 ^ FloatFormat.significandBits := b.toBitsTriple.significand.isLt
+    rw [← Nat.shiftLeft_add_eq_or_of_lt hT_lt, Nat.shiftLeft_eq]
+    have hbool : (BitVec.ofBool true).toNat = 1 := by simp
+    rw [hbool]
+    have hpos : 0 < (2 : ℕ) ^ FloatFormat.significandBits := Nat.two_pow_pos _
+    omega
+
+end Fp.FloatBits
+
+namespace Fp
+
+/-- **Master negative-input bit-level bridge.** For finite negative `b`,
+the bit-level master successor `bitNextUpNeg` matches `successorNeg` of
+the decoded FiniteFp. Auto-dispatches between within-binade-desc
+(T > 0), cross-binade-desc (T = 0, E > 0), and sign-cross-at-`-0`
+(T = 0, E = 0). -/
+theorem ofBits_bitNextUpNeg_eq_successorNeg
+    [StdFloatFormat]
+    (b : FloatBits) (hs : b.sign = true) (hf : b.isFinite) :
+    let f_b : FiniteFp := ⟨b.sign, b.FpExponent, b.FpSignificand,
+      FloatBits.isFinite_validFloatVal hf⟩
+    ofBits (FloatBits.bitNextUpNeg b) = FiniteFp.successorNeg f_b := by
+  simp only
+  unfold FloatBits.bitNextUpNeg
+  by_cases hT_zero : b.toBitsTriple.significand = 0
+  · -- T = 0
+    rw [if_pos hT_zero]
+    by_cases hE_zero : b.toBitsTriple.exponent = 0
+    · -- T = 0, E = 0 ⇒ sign-cross-at-`-0`
+      rw [if_pos hE_zero]
+      exact ofBits_bitNextUpNegSignCross_eq_successorNeg b hs hf hT_zero hE_zero
+    · -- T = 0, E ≠ 0 ⇒ cross-binade-desc
+      rw [if_neg hE_zero]
+      exact ofBits_bitNextUpNegCross_eq_successorNeg b hs hf hT_zero hE_zero
+  · -- T ≠ 0 ⇒ within-binade-desc
+    rw [if_neg hT_zero]
+    have hT_pos : 0 < b.toBitsTriple.significand.toNat := by
+      rcases Nat.eq_zero_or_pos b.toBitsTriple.significand.toNat with hz | hp
+      · exfalso; apply hT_zero; apply BitVec.eq_of_toNat_eq; rw [hz]; rfl
+      · exact hp
+    have hf_b_m_pos := FloatBits.FpSignificand_pos_of_T_pos b hT_pos
+    have hcase : b.FpSignificand ≠ 2 ^ (FloatFormat.prec - 1).toNat
+        ∨ b.FpExponent = FloatFormat.min_exp := by
+      by_cases hE_zero : b.toBitsTriple.exponent = 0
+      · right
+        show b.FpExponent = FloatFormat.min_exp
+        rw [FloatBits.FpExponent_def, if_pos hE_zero]
+      · left
+        have h := FloatBits.FpSignificand_gt_pow_prec_sub_one_of_T_pos_E_nz b hT_pos hE_zero
+        omega
+    exact ofBits_bitNextUpNegWithin_eq_successorNeg_within
+      b hs hf hT_pos hf_b_m_pos hcase
+
+/-- **Headline master identity (negative).** For finite negative `b`,
+`nextUp` agrees with the bit-level master successor. -/
+theorem nextUp_ofBits_eq_ofBits_bitNextUpNeg
+    [StdFloatFormat]
+    (b : FloatBits) (hs : b.sign = true) (hf : b.isFinite) :
+    nextUp (ofBits b) = ofBits (FloatBits.bitNextUpNeg b) := by
+  rw [ofBits_eq_finite_of_isFinite b hf]
+  rw [FiniteFp.nextUp_finite_eq_successorNeg _ hs]
+  exact (ofBits_bitNextUpNeg_eq_successorNeg b hs hf).symm
+
+end Fp
+
+/-! ## Master sign-dispatching bit-level `nextUp`
+
+The top-level `bitNextUp b` dispatches between `bitNextUpPos` (sign = false)
+and `bitNextUpNeg` (sign = true). The headline
+`nextUp_ofBits_eq_ofBits_bitNextUp` works on any finite input, regardless
+of sign. -/
+
+namespace Fp.FloatBits
+
+variable [StdFloatFormat]
+
+/-- **Master bit-level `nextUp` operator.** Sign-dispatches between
+`bitNextUpPos` and `bitNextUpNeg`. -/
+def bitNextUp (b : FloatBits) : FloatBits :=
+  if b.sign then bitNextUpNeg b else bitNextUpPos b
+
+end Fp.FloatBits
+
+namespace Fp
+
+/-- **Headline master identity.** For any finite `b` (regardless of sign),
+the bit-level `bitNextUp` matches `nextUp`. This is the clean integer-
+pipeline statement of IEEE 754 `nextUp` for finite non-NaN inputs. -/
+theorem nextUp_ofBits_eq_ofBits_bitNextUp
+    [StdFloatFormat]
+    (b : FloatBits) (hf : b.isFinite) :
+    nextUp (ofBits b) = ofBits (FloatBits.bitNextUp b) := by
+  unfold FloatBits.bitNextUp
+  by_cases hs : b.sign
+  · rw [if_pos hs]
+    exact nextUp_ofBits_eq_ofBits_bitNextUpNeg b hs hf
+  · rw [if_neg hs]
+    rw [Bool.not_eq_true] at hs
+    exact nextUp_ofBits_eq_ofBits_bitNextUpPos b hs hf
+
+end Fp
+

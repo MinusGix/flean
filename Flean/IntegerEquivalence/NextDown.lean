@@ -133,3 +133,124 @@ theorem nextDown_finite_eq_predecessorNeg [FloatFormat]
   rfl
 
 end Fp
+
+/-! ## Bit-level `nextDown` via symmetry
+
+Define `bitNextDown b := signFlip (bitNextUp (signFlip b))`. The headline
+identity `nextDown_ofBits_eq_ofBits_bitNextDown` follows by composing the
+symmetry primitive `nextDown_finite_eq_neg_nextUp_neg` with the bit-level
+`signFlip` ↔ `Neg.neg` bridge and the master `nextUp` bit-level identity. -/
+
+namespace Fp.FloatBits
+
+section FloatFormatOnly
+variable [FloatFormat]
+
+/-- `bitNextUpNeg b` is finite for any finite input (within-binade-desc,
+cross-binade-desc, and sign-cross-at-`-0` all produce finite outputs). -/
+theorem bitNextUpNeg_isFinite (b : FloatBits) (hf : b.isFinite) :
+    (bitNextUpNeg b).isFinite := by
+  unfold bitNextUpNeg
+  by_cases hT_zero : b.toBitsTriple.significand = 0
+  · rw [if_pos hT_zero]
+    by_cases hE_zero : b.toBitsTriple.exponent = 0
+    · rw [if_pos hE_zero]
+      exact bitNextUpNegSignCross_isFinite
+    · rw [if_neg hE_zero]
+      exact bitNextUpNegCross_isFinite b hE_zero
+  · rw [if_neg hT_zero]
+    exact bitNextUpNegWithin_isFinite b hf
+
+end FloatFormatOnly
+
+section StdFormat
+variable [StdFloatFormat]
+
+/-- `bitNextUpPos b` is non-NaN for any finite input — the only "non-finite"
+output is the saturation case which produces `+∞` (infinite, not NaN). -/
+theorem bitNextUpPos_not_isNaN (b : FloatBits)
+    (hf : b.isFinite) : ¬(bitNextUpPos b).isNaN := by
+  unfold bitNextUpPos
+  by_cases hT_max : b.toBitsTriple.significand + 1 = 0
+  · rw [if_pos hT_max]
+    -- Cross-binade. Either saturation (infinite, non-NaN) or finite.
+    by_cases hE_succ_max :
+        b.toBitsTriple.exponent + 1 = BitVec.allOnes FloatFormat.exponentBits
+    · -- Saturation: infinite.
+      have hii : (bitNextUpCross b).isInfinite :=
+        bitNextUpCross_isInfinite_of_E_succ_max b hE_succ_max
+      exact fun ⟨_, hT⟩ => hT hii.2
+    · -- Finite.
+      have hfi : (bitNextUpCross b).isFinite :=
+        bitNextUpCross_isFinite_of_E_succ_lt b hE_succ_max
+      exact hfi.1
+  · rw [if_neg hT_max]
+    -- Within-binade. Finite.
+    have hfi : (bitNextUpWithin b).isFinite :=
+      bitNextUpWithin_isFinite b hf
+    exact hfi.1
+
+/-- `bitNextUp b` is non-NaN for any finite input. -/
+theorem bitNextUp_not_isNaN (b : FloatBits)
+    (hf : b.isFinite) : ¬(bitNextUp b).isNaN := by
+  unfold bitNextUp
+  by_cases hs : b.sign
+  · rw [if_pos hs]
+    exact (bitNextUpNeg_isFinite b hf).1
+  · rw [if_neg hs]
+    exact bitNextUpPos_not_isNaN b hf
+
+/-- **Bit-level `nextDown`.** Defined via symmetry with `nextUp`: flip the
+sign bit, apply `bitNextUp`, flip the sign bit back. -/
+def bitNextDown (b : FloatBits) : FloatBits :=
+  signFlip (bitNextUp (signFlip b))
+
+end StdFormat
+
+end Fp.FloatBits
+
+namespace Fp
+
+/-- **Headline identity for bit-level `nextDown`.** For any finite input,
+`nextDown` agrees with the bit-level `bitNextDown`. The clean integer-
+pipeline result for IEEE 754 `nextDown` on finite non-NaN inputs. -/
+theorem nextDown_ofBits_eq_ofBits_bitNextDown
+    [StdFloatFormat]
+    (b : FloatBits) (hf : b.isFinite) :
+    nextDown (ofBits b) = ofBits (FloatBits.bitNextDown b) := by
+  unfold FloatBits.bitNextDown
+  -- `signFlip b` is finite (sign-flip preserves isFinite).
+  have hf_flip : (FloatBits.signFlip b).isFinite := by
+    rw [FloatBits.signFlip_def, FloatBits.setSign_isFinite]; exact hf
+  -- `b` is non-NaN.
+  have hn_b : ¬b.isNaN := FloatBits.isFinite_notNaN _ hf
+  -- `signFlip b` is non-NaN.
+  have hn_flip : ¬(FloatBits.signFlip b).isNaN := by
+    rw [FloatBits.signFlip_def, FloatBits.setSign_isNaN]; exact hn_b
+  -- `bitNextUp (signFlip b)` is non-NaN.
+  have hn_nu : ¬(FloatBits.bitNextUp (FloatBits.signFlip b)).isNaN :=
+    FloatBits.bitNextUp_not_isNaN _ hf_flip
+  -- Decode: ofBits (signFlip b) = -(ofBits b).
+  have h_flip : ofBits (FloatBits.signFlip b) = -(ofBits b) :=
+    ofBits_signFlip_eq_neg b hn_b
+  -- Master nextUp identity at `signFlip b`.
+  have h_master :
+      nextUp (ofBits (FloatBits.signFlip b))
+        = ofBits (FloatBits.bitNextUp (FloatBits.signFlip b)) :=
+    nextUp_ofBits_eq_ofBits_bitNextUp _ hf_flip
+  -- Outer signFlip lifts to negation.
+  have h_outer :
+      ofBits (FloatBits.signFlip
+        (FloatBits.bitNextUp (FloatBits.signFlip b)))
+        = -(ofBits (FloatBits.bitNextUp (FloatBits.signFlip b))) :=
+    ofBits_signFlip_eq_neg _ hn_nu
+  -- Compose with the value-level symmetry primitive.
+  rw [h_outer, ← h_master, h_flip]
+  -- Goal: nextDown (ofBits b) = -nextUp (-ofBits b).
+  -- For finite b, ofBits b = Fp.finite f_b; apply value-level symmetry.
+  rw [ofBits_eq_finite_of_isFinite b hf]
+  rw [nextDown_finite_eq_neg_nextUp_neg]
+  -- -(Fp.finite f_b) = Fp.finite (-f_b) — these are definitionally equal.
+  rfl
+
+end Fp

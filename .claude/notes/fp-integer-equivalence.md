@@ -581,17 +581,55 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
   finite negative within-binade descent. Bridge
   `ofBits_bitNextUpNegWithin_eq_successorNeg_within` and headline
   `nextUp_ofBits_eq_ofBits_bitNextUpNegWithin`. Helper
-  `T_minus_one_toNat` (BitVec subtraction). Cross-binade-descent
-  (T = 0, E > 0) and sign-cross-at-`-0` (T = 0, E = 0) deferred.
-- ✅ **`nextDown` via symmetry** (2026-05-08) — `NextDown.lean` (~140
-  lines). Symmetry primitive `nextDown_finite_eq_neg_nextUp_neg`
-  (general for all FiniteFp; uses `findSuccessor_symm` + casework on
-  sign of `stepDownVal f`, which is provably nonzero for any
-  representable `f`). Structural `predecessorPos f := -successorNeg
-  (-f)` and `predecessorNeg f := -successorPos (-f)`. Bridges
+  `T_minus_one_toNat` (BitVec subtraction).
+- ✅ **Phase 1.6, bit-level `bitNextUpNegCross`** (2026-05-09) —
+  `BitNextUp.lean`. Cross-binade-descent for T = 0, E > 0:
+  `mk' s_bv (E - 1) allOnes`. Internal case-split on `E.toNat = 1`
+  (decodes to within-binade-desc at value level — input is smallest
+  normal at min_exp, output is largest subnormal) vs `E.toNat > 1`
+  (cross-binade-desc). Bridge `ofBits_bitNextUpNegCross_eq_successorNeg`
+  + headline `nextUp_ofBits_eq_ofBits_bitNextUpNegCross`. Helpers
+  `E_minus_one_toNat`, `bitNextUpNegCross_FpExponent/_FpSignificand_of_E_eq_one/_gt_one`.
+- ✅ **Phase 1.6, bit-level `bitNextUpNegSignCross`** (2026-05-09) —
+  `BitNextUp.lean`. Sign-cross-at-`-0` for T = 0, E = 0, sign = true:
+  fixed `mk' false 0_bv 1_bv` bit pattern (= +smallestPosSubnormal
+  encoding). Output is independent of input; only fires when `b = -0`.
+  Bridge `ofBits_bitNextUpNegSignCross_eq_successorNeg` (routes through
+  `decoded_neg_zero_of_T_E_zero` private helper + `successorNeg_neg_zero`)
+  + headline `nextUp_ofBits_eq_ofBits_bitNextUpNegSignCross`.
+- ✅ **Phase 1.6, master `bitNextUpNeg` unifier** (2026-05-09) —
+  `BitNextUp.lean`. `bitNextUpNeg b` dispatches on `T = 0` (then on
+  `E = 0` for sign-cross vs `E ≠ 0` for cross-binade) vs `T ≠ 0`
+  (within-binade-desc). Master bridge
+  `ofBits_bitNextUpNeg_eq_successorNeg` + headline
+  `nextUp_ofBits_eq_ofBits_bitNextUpNeg` requiring only
+  `b.sign = true ∧ b.isFinite`. Helpers
+  `FpSignificand_pos_of_T_pos`, `FpSignificand_gt_pow_prec_sub_one_of_T_pos_E_nz`
+  derive the within-binade theorem's `hf_b_m_pos` and `hcase`
+  hypotheses from raw bit-level conditions.
+- ✅ **Phase 1.6, master `bitNextUp` (sign-dispatch)** (2026-05-09) —
+  `BitNextUp.lean`. Top-level `bitNextUp b := if b.sign then
+  bitNextUpNeg b else bitNextUpPos b`. THE clean headline
+  `nextUp_ofBits_eq_ofBits_bitNextUp` requires only `b.isFinite`. The
+  IEEE 754 `nextUp` ↔ integer-pipeline result for any finite non-NaN
+  input.
+- ✅ **`nextDown` via symmetry** (2026-05-08, extended 2026-05-09) —
+  `NextDown.lean`. Phase 1: symmetry primitive
+  `nextDown_finite_eq_neg_nextUp_neg` (general for all FiniteFp; uses
+  `findSuccessor_symm` + casework on sign of `stepDownVal f`, which is
+  provably nonzero for any representable `f`). Structural
+  `predecessorPos f := -successorNeg (-f)` and
+  `predecessorNeg f := -successorPos (-f)`. Bridges
   `nextDown_finite_eq_predecessorPos` (positive case) and
   `nextDown_finite_eq_predecessorNeg` (negative case) follow as
-  one-liners.
+  one-liners. Phase 2 (2026-05-09): bit-level
+  `bitNextDown b := signFlip (bitNextUp (signFlip b))` with headline
+  `nextDown_ofBits_eq_ofBits_bitNextDown` for any finite input.
+  Composes the value-level symmetry primitive with `signFlip ↔ Neg.neg`
+  bridge (`ofBits_signFlip_eq_neg`) and the master `nextUp` bit-level
+  identity. Preservation lemmas: `bitNextUpNeg_isFinite` (always
+  finite for finite input), `bitNextUpPos_not_isNaN` (saturation gives
+  ±∞ which is non-NaN), `bitNextUp_not_isNaN`.
 - ✅ **Phase 2, same-sign comparison ↔ unsigned bit comparison** (FULLY SHIPPED) —
   `Flean/IntegerEquivalence/Compare.lean`. Four bridges all sorry-free:
   - `ofBits_lt_iff_b_toNat_lt_of_normal_nonneg` (non-negative, normal-only)
