@@ -29,3 +29,4 @@ import «Flean».IntegerEquivalence.Successor
 import «Flean».IntegerEquivalence.BitNextUp
 import «Flean».IntegerEquivalence.NextDown
 import «Flean».IntegerEquivalence.MaxMin
+import «Flean».IntegerEquivalence.SignBitOps

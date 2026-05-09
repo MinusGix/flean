@@ -656,3 +656,19 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
   `_min_image`): `fpMax_eq_bit_argmax_nonneg`, `fpMin_eq_bit_argmin_nonneg`,
   `fpMax_eq_bit_argmin_nonpos`, `fpMin_eq_bit_argmax_nonpos`. Each gives
   `∃ i₀, fpMax/Min xs hn = xs i₀ ∧ <bit-pattern characterization>`.
+- ✅ **Phase 1 literal XOR/AND forms** (2026-05-09) — `SignBitOps.lean`
+  (~190 lines). The literal hardware-targetable bit-twiddle forms of
+  `fpNeg`/`fpAbs`. Defines `signMask : BitVec FloatFormat.bitSize`
+  (top bit set, others 0) via `mk' (ofBool true) 0 0`. Two BitVec-level
+  identities: `signFlip_b_eq_xor_signMask : (signFlip b).b = b.b ^^^ signMask`
+  and `signClear_b_eq_and_not_signMask : (signClear b).b = b.b &&& (~~~signMask)`.
+  Headlines `ofBits_xor_signMask_eq_neg : ofBits ⟨b.b ^^^ signMask⟩ = -(ofBits b)`
+  and `ofBits_and_not_signMask_eq_fpAbs : ofBits ⟨b.b &&& ~~~signMask⟩ = fpAbs (ofBits b)`,
+  each for non-NaN inputs. Composes the BitVec identity with existing
+  `ofBits_signFlip_eq_neg`/`ofBits_signClear_eq_fpAbs` bridges from `Basic.lean`.
+  Helpers: private `cast_xor_distrib`, `cast_and_distrib`, `cast_not_distrib`
+  (BitVec.cast distributes over xor/and/not). Proof technique:
+  `BitVec.eq_of_getElem_eq` extensionality with case-split on bit position
+  (T section / E section / sign section). The encoding identity
+  `b = mk' (ofBool b.sign) E T` (from `appendToBitsTriple_eq`) is the
+  workhorse that puts both sides into the explicit `sign ++ E ++ T` form.
