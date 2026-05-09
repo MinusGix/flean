@@ -684,8 +684,21 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
   Edge-case sanity theorems: `fpRelu_zero/_neg_zero/_pos_inf/_neg_inf`
   (concretely: `relu(+0) = +0`, `relu(-0) = +0`, `relu(+∞) = +∞`,
   `relu(-∞) = +0`). All match the sign-bit-dispatch semantics.
-  Open follow-ups: leakyRelu (negative branch is exponent-decrement
-  for `2^k` slopes — composes with `fpMul_pow2`); literal
-  hardware-style mask via arithmetic-shift-right of the sign bit
-  (deferred — current conditional form is verifiable, mask-based form
-  is hardware-specific micro-optimization).
+- ✅ **Phase 3, leaky ReLU with `2^(-k)` slope** (2026-05-09) —
+  `LeakyReluBits.lean` (~190 lines). Composes today's `bitRelu`
+  sign-dispatch with `setBiasedExponent` decrement for the negative
+  branch — the negative-branch slope `2^(-k)` is exactly an exponent
+  decrement at the bit level, no FP multiplication needed.
+  - `Fp.fpLeakyRelu k _ _ x := if x.sign then fpMul x (pow2Float (-k)) else x`.
+  - `FloatBits.bitLeakyRelu E_new b := if b.sign then setBiasedExponent E_new b else b`
+    (caller provides the new biased exponent, typically `b.E - k_bv`).
+  - `ofBits_bitLeakyRelu_eq_fpLeakyRelu`: bridge for finite normal inputs
+    with normal-range result. Reuses `ofBits_setBiasedExponent_eq_fpMul_pow2`
+    from `MulPow2.lean`. Same carve-out as the underlying mul-pow2 bridge.
+  - Convenience theorems: `fpLeakyRelu_pos` (passthrough for non-negative),
+    `fpLeakyRelu_finite_neg_normal_eq` (structural form for negative normal),
+    `fpLeakyRelu_finite_neg_toVal` (math-level: `g.toVal = 2^(-k) · f.toVal`).
+  - Open follow-ups: subnormal-tolerant variant (negative branch may
+    underflow when input is near `min_exp`); ±∞ handling (similar to
+    fpRelu); literal hardware-style sign-mask + ASR encoding (deferred
+    same as ReluBits).

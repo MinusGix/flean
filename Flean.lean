@@ -31,3 +31,4 @@ import «Flean».IntegerEquivalence.NextDown
 import «Flean».IntegerEquivalence.MaxMin
 import «Flean».IntegerEquivalence.SignBitOps
 import «Flean».IntegerEquivalence.ReluBits
+import «Flean».IntegerEquivalence.LeakyReluBits
