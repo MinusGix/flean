@@ -755,9 +755,28 @@ them. Not affecting math, but useful for downstream codegen/SIMD targeting.
     from `Operations/RoundToIntegral.lean` and the existing IntRound
     integer-input lemmas (`truncate_int`, `Int.floor_intCast`,
     `Int.ceil_intCast`).
-  - Open follow-ups: bit-level "clear bottom k bits" form for
-    `trunc` when `0 ≤ b.FpExponent < prec - 1` (substantial new
-    bit-level work); `nearbyint`/`round` passthrough analog (need
-    a `tiesToEven_int` / `tiesAway_int` lemma — exists for
-    `tiesToEven` and `tiesAway`); `fpModf`/`fpFmod` (separate
-    operations entirely, deferred).
+  - Phase 1.9 extensions shipped 2026-05-09:
+    - **Low-exp passthrough for trunc**: `trunc_ofBits_eq_signed_zero_of_normal_low_exp`
+      for `b.isNormal ∧ b.FpExponent < 0` (i.e., `|x| < 1`). Result is
+      `setSign b.sign 0` (= `±0` bit pattern). Uses
+      `FiniteFp.toVal_abs_lt_one_of_normal_low_exp` (value-side argument:
+      `|f.toVal| < 2^(f.e+1) ≤ 1`) and a private helper
+      `truncate_eq_zero_of_abs_lt_one` (showing `truncate q = 0` when
+      `|q| < 1`).
+    - **`fpModf`**: `(trunc x, fpSub x (trunc x))`. Pair-decomposition
+      satisfying `x = integer_part + fractional_part` (modulo `fpSub`
+      rounding). Reconstruction theorem available with explicit
+      decoding witnesses; full automatic version requires Sterbenz-style
+      exact-subtraction reasoning.
+    - **`fpFmod`**: `x - trunc(x/y) · y` (the C `fmod` definition).
+      Bit-level form for `y = 2^k` (low-bit mask) deferred.
+  - Open follow-ups: **mid-exp bit-level form for `trunc`** —
+    "clear bottom k bits" of T when `0 ≤ b.FpExponent ≤ prec - 2`,
+    where `k = prec - 1 - b.FpExponent`. Value-level math shipped via
+    existing roundToInt machinery; the literal "T_new = (T >>> k) <<< k"
+    bit-level theorem requires ~250-300 lines of BitVec/Nat plumbing
+    (toNat lemmas for shiftLeft/shiftRight composition, M_new range
+    calculation, validity proof for the new FiniteFp). Substantial
+    follow-up. Also: `nearbyint`/`round` passthrough analog (mostly
+    mechanical given `IntRound.tiesToEven_int` / `tiesAway_int`); full
+    bit-level form for `fpFmod` when `y = 2^k`.
