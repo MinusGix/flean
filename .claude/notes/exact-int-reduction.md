@@ -71,18 +71,23 @@ integers to **fixed-point** `m · 2^s` (common scale `s`; `ExactInt` = `s=0`). L
 add), `fpMulFinite_scaled_exact` (scales add: `s_a + s_b`), `structure ScaledExact`
 (fp, m, s, agree: `fp.toVal = m·2^s`), `value`/`value_eq_toVal`. Sorry-free, in aggregator.
 
-KEY FINDING (correction op, the actual C-teeth): there is **no generic `○`-level error
-bound** in Flean — only mode-specific ones (`roundNearestTiesToEven_abs_error_le_ulp_half`
-in `Rounding/RelativeErrorBounds.lean`, which also need `isNormalRange x`). So the
-correction op must (a) commit to a rounding policy — `[UseRoundingPolicy
-RoundNearestEvenPolicy]`, (b) carry `isNormalRange`, (c) connect the generic `○`/fpAddFinite
-to `roundNearestTiesToEven` under that policy, then bound the deviation by `ulp/2`. That is
-the next focused piece — the rounding-policy plumbing IS its content. Result shape: a
-float op on common-scale values `= (integer op on significands)·2^s + correction`, with
-`|correction| ≤ ½ ulp`. Then the inexact `ScaledInt` (carry an `err` field) wraps it.
+SHIPPED — `Flean/Operations/ScaledCorrection.lean` (the C-teeth): `fpAddFinite_scaled_correction`
+/ `fpMulFinite_scaled_correction`. Float op on exact common-scale inputs `= (integer op on
+significands)·2^scale + correction`, `|correction| ≤ η·|value| + 2^(min_exp-prec)`. Exact
+when the result fits (correction 0, via the `ScaledExact` lemmas); bounded otherwise.
 
-TODO on `ScaledExact` (mechanical, when needed): `sub`/`neg`, data-carrying
-`addExact`/`mulExact` constructors + `.fp` provenance bridges (mirror `ExactIntAlgebra`).
+CORRECTION TO EARLIER FINDING: a **generic** round-error bound DID already exist — I'd
+grepped the wrong file. `round_preserves_abs_error_unified` (`Rounding/RoundPreserves.lean`)
+is generic over **any nearest mode** `[RModeNearest R]` (both RNE and RNA provide it), needs
+**no** `isNormalRange` (subnormals → the `2^(min_exp-prec)` tail), and gives `|f.toVal - x| ≤
+η·|x| + 2^(min_exp-prec)`. So the correction op was just *applying* it — not policy-locked,
+not normal-range-gated. (The mode-specific `roundNearestTiesToEven_abs_error_le_ulp_half` in
+`RelativeErrorBounds.lean` gives the cleaner `≤ ½ ulp` form if a tighter/ulp-shaped bound is
+wanted later.)
+
+NEXT: inexact `ScaledInt` carrying `err : R` — compose these per-op corrections across a
+computation (forward error in fixed-point coordinates). Plus mechanical `ScaledExact`
+`sub`/`neg` + data-carrying constructors when a consumer needs them.
 
 ## Design notes / gotchas
 
