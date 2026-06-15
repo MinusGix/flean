@@ -22,6 +22,8 @@ import Flean.Operations.FMA
 import Flean.Operations.Sterbenz
 import Flean.Operations.MulPow2
 import Flean.Operations.ExactInt
+import Flean.Operations.ExactIntZero
+import Flean.Operations.ExactIntAlgebra
 import Flean.Operations.DivPow2
 import Flean.Operations.AddErrorRepresentable
 import Flean.Operations.Fast2Sum
