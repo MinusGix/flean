@@ -110,9 +110,16 @@ the FiniteFp-add vs Fp-add coercion forms differ syntactically — `rw [fpAddFin
 on the goal LHS fails; instead `rwa [← fpAddFinite_correct ...] at h` (match the unambiguous
 `○ sum` RHS in a hypothesis).
 
-NEXT (this layer): (1) **multi-op chain demo** (`ofExact` → several `add`/`mul`s) showing
-err actually accumulating — the payoff, makes composition tangible. (2) zero-sum handling.
-(3) n-ary `dotN`. Plus mechanical `ScaledExact` `sub`/`neg`.
+UPDATE 2026-06-15: (a) `round_isFinite_of_abs_le_largest` PROMOTED to
+`Rounding/RoundPreserves.lean` (generic, was in ScaledInt). (b) `add_err`/`mul_err` simp
+accessors added. (c) **chain demo SHIPPED**: `ScaledInt.chain_two_adds_err` — two chained
+adds on exact (`err=0`) inputs gives `η(1+η)·|first sum| + η·|total| + (2+η)·2^(min_exp-prec)`
+by `simp + ring`, making the accumulation visible (two rounding contributions, first
+amplified by `(1+η)`).
+
+NEXT (this layer): (1) zero-sum handling. (2) n-ary `dotN`/list-fold (the bound bookkeeping
+is now ready). (3) `ScaledExact` `sub`/`neg`. (4) the concrete modular-arith net (the
+aspirational target — now has the full exact+inexact+bound stack under it).
 
 ## Design notes / gotchas
 

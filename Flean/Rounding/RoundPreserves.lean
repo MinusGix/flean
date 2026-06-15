@@ -363,4 +363,34 @@ theorem round_preserves_abs_bound_unified [FloorRing R]
           have := mul_le_mul_of_nonneg_left hxc h1η_nn
           linarith
 
+/-- A value within `largestFiniteFloat` in magnitude rounds to a finite float, for any
+monotone + idempotent rounding mode. The signed generalization of Softmax's nonneg-only
+`round_exists_finite_of_nonneg_bounded`. -/
+theorem round_isFinite_of_abs_le_largest [RMode R] [RModeMono R] [RModeIdem R] (x : R)
+    (h : |x| ≤ FiniteFp.largestFiniteFloat.toVal (R := R)) :
+    (○ x).isFinite := by
+  rw [abs_le] at h
+  have hlarge_m : 0 < FiniteFp.largestFiniteFloat.m := by
+    have h2 : 2 ≤ 2 ^ FloatFormat.prec.toNat :=
+      calc 2 = 2 ^ 1 := (pow_one 2).symm
+        _ ≤ 2 ^ FloatFormat.prec.toNat :=
+          Nat.pow_le_pow_right (by norm_num) (by have := FloatFormat.valid_prec; omega)
+    show 0 < 2 ^ FloatFormat.prec.toNat - 1
+    omega
+  have hhi : (○ x : Fp) ≤ Fp.finite FiniteFp.largestFiniteFloat :=
+    (RModeMono.round_mono h.2).trans_eq (RModeIdem.round_idempotent _ (Or.inl rfl))
+  have hlo : Fp.finite (-FiniteFp.largestFiniteFloat) ≤ (○ x : Fp) := by
+    have hidem : (○ ((-FiniteFp.largestFiniteFloat).toVal (R := R)) : Fp)
+        = Fp.finite (-FiniteFp.largestFiniteFloat) :=
+      RModeIdem.round_idempotent _ (Or.inr (by rw [FiniteFp.neg_m]; exact hlarge_m))
+    rw [← hidem]
+    exact RModeMono.round_mono (by rw [FiniteFp.toVal_neg_eq_neg]; exact h.1)
+  cases hr : (○ x : Fp) with
+  | finite f => exact Fp.finite_isFinite f
+  | infinite b =>
+    cases b with
+    | false => rw [hr] at hhi; simp at hhi
+    | true => rw [hr] at hlo; simp at hlo
+  | NaN => rw [hr] at hlo; simp at hlo
+
 end RoundPreserves

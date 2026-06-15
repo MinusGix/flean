@@ -111,6 +111,10 @@ def ScaledInt.add (a b : ScaledInt R) (hs : a.s = b.s)
     (a.add b hs hsum_ne hfin).s = a.s := rfl
 @[simp] theorem ScaledInt.add_fp (a b : ScaledInt R) (hs hsum_ne hfin) :
     (a.add b hs hsum_ne hfin).fp = (a.fp + b.fp).toFiniteOr0 := rfl
+@[simp] theorem ScaledInt.add_err (a b : ScaledInt R) (hs hsum_ne hfin) :
+    (a.add b hs hsum_ne hfin).err
+      = (1 + η) * (a.err + b.err) + η * |((a.m + b.m : ℤ) : R) * 2 ^ a.s|
+        + (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) := rfl
 
 /-- **Composition building block (multiplication).** Multiplying two inexact values: scales
 add, and the deviation of the float result from the ideal product `(m_a·m_b)·2^(s_a+s_b)` is
@@ -191,52 +195,22 @@ def ScaledInt.mul (a b : ScaledInt R)
     (a.mul b hprod_ne hfin).s = a.s + b.s := rfl
 @[simp] theorem ScaledInt.mul_fp (a b : ScaledInt R) (hprod_ne hfin) :
     (a.mul b hprod_ne hfin).fp = (a.fp * b.fp).toFiniteOr0 := rfl
+@[simp] theorem ScaledInt.mul_err (a b : ScaledInt R) (hprod_ne hfin) :
+    (a.mul b hprod_ne hfin).err
+      = η * |((a.m * b.m : ℤ) : R) * 2 ^ (a.s + b.s)|
+        + (1 + η) * (|(a.m : R) * 2 ^ a.s| * b.err + a.err * |(b.m : R) * 2 ^ b.s|
+            + a.err * b.err)
+        + (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) := rfl
 
 end Compose
 
 /-! ## Deriving finiteness from a magnitude bound
 
-The `add`/`mul` ops above still ask the caller for an `isFinite` Prop. This section derives
-it from a no-overflow magnitude bound (`|value| ≤ largestFiniteFloat`), so callers who carry
+The `add`/`mul` ops above ask the caller for an `isFinite` Prop. These variants derive it
+from a no-overflow magnitude bound (`|value| ≤ largestFiniteFloat`), via the generic
+`round_isFinite_of_abs_le_largest` (in `Rounding/RoundPreserves.lean`), so callers who carry
 a bound — which the running `err` already provides — need not establish finiteness directly.
-
-`round_isFinite_of_abs_le_largest` is generic (monotonicity + idempotence; could be promoted
-to `Rounding/`). -/
-
-section Overflow
-
-variable [RMode R] [RModeMono R] [RModeIdem R]
-
-/-- A value within `largestFiniteFloat` in magnitude rounds to a finite float (any monotone,
-idempotent mode). The signed analogue of Softmax's nonneg `round_exists_finite_of_*`. -/
-theorem round_isFinite_of_abs_le_largest (x : R)
-    (h : |x| ≤ FiniteFp.largestFiniteFloat.toVal (R := R)) :
-    (○ x).isFinite := by
-  rw [abs_le] at h
-  have hlarge_m : 0 < FiniteFp.largestFiniteFloat.m := by
-    have h2 : 2 ≤ 2 ^ FloatFormat.prec.toNat :=
-      calc 2 = 2 ^ 1 := (pow_one 2).symm
-        _ ≤ 2 ^ FloatFormat.prec.toNat :=
-          Nat.pow_le_pow_right (by norm_num) (by have := FloatFormat.valid_prec; omega)
-    show 0 < 2 ^ FloatFormat.prec.toNat - 1
-    omega
-  have hhi : (○ x : Fp) ≤ Fp.finite FiniteFp.largestFiniteFloat :=
-    (RModeMono.round_mono h.2).trans_eq (RModeIdem.round_idempotent _ (Or.inl rfl))
-  have hlo : Fp.finite (-FiniteFp.largestFiniteFloat) ≤ (○ x : Fp) := by
-    have hidem : (○ ((-FiniteFp.largestFiniteFloat).toVal (R := R)) : Fp)
-        = Fp.finite (-FiniteFp.largestFiniteFloat) :=
-      RModeIdem.round_idempotent _ (Or.inr (by rw [FiniteFp.neg_m]; exact hlarge_m))
-    rw [← hidem]
-    exact RModeMono.round_mono (by rw [FiniteFp.toVal_neg_eq_neg]; exact h.1)
-  cases hr : (○ x : Fp) with
-  | finite f => exact Fp.finite_isFinite f
-  | infinite b =>
-    cases b with
-    | false => rw [hr] at hhi; simp at hhi
-    | true => rw [hr] at hlo; simp at hlo
-  | NaN => rw [hr] at hlo; simp at hlo
-
-end Overflow
+-/
 
 section BoundedOps
 
@@ -260,5 +234,29 @@ def ScaledInt.mulOfBound (a b : ScaledInt R)
   a.mul b hprod_ne (by
     have h := round_isFinite_of_abs_le_largest (R := R) ((a.fp.toVal : R) * b.fp.toVal) hbnd
     rwa [← fpMulFinite_correct (R := R) a.fp b.fp hprod_ne] at h)
+
+/-! ## Demo: error accumulates along a chain
+
+Starting from three *exact* values (`err = 0`), a chain of two additions builds the error up
+term by term. The closed form makes the accumulation visible: a `η·magnitude` term per op,
+and the first op's rounding tail amplified by `(1+η)` when the second op consumes it. -/
+
+omit [RModeMono R] [RModeIdem R] in
+/-- Two chained additions on exact inputs: the running error, by `rfl`-level computation, is
+`η(1+η)·|first sum| + η·|total| + (2+η)·2^(min_exp-prec)` — two rounding contributions, the
+first amplified by `(1+η)`. (Compare the inputs' `err = 0`.) -/
+theorem ScaledInt.chain_two_adds_err (a b c : ScaledInt R)
+    (ha0 : a.err = 0) (hb0 : b.err = 0) (hc0 : c.err = 0)
+    (hsab : a.s = b.s) (hsac : a.s = c.s)
+    (hne1 : (a.fp.toVal : R) + b.fp.toVal ≠ 0)
+    (hfin1 : (a.fp + b.fp).isFinite)
+    (hne2 : ((a.add b hsab hne1 hfin1).fp.toVal : R) + c.fp.toVal ≠ 0)
+    (hfin2 : ((a.add b hsab hne1 hfin1).fp + c.fp).isFinite) :
+    ((a.add b hsab hne1 hfin1).add c hsac hne2 hfin2).err
+      = η * (1 + η) * |((a.m + b.m : ℤ) : R) * 2 ^ a.s|
+        + η * |((a.m + b.m + c.m : ℤ) : R) * 2 ^ a.s|
+        + (2 + η) * (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) := by
+  simp only [ScaledInt.add_err, ScaledInt.add_m, ScaledInt.add_s, ha0, hb0, hc0]
+  ring
 
 end BoundedOps
