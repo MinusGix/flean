@@ -22,6 +22,8 @@ New this session:
    `fpAddFinite_exact_cancel_sign` after deriving `addAlignedSumInt = 0` from
    `fpAddFinite_exact_sum`; mul: `roundIntSigM _ 0 _ = Fp.finite (signed 0)` after
    `a.m*b.m = 0`; sub: reduces to add-of-neg). Nonzero case delegates to the base lemmas.
+2. `Flean/Operations/ExactIntBound.lean` — `ExactIntB R` (extends `ExactInt R` with a
+   running magnitude bound; see Deferred §2 below for details). The interval layer.
 1. `Flean/Operations/ExactIntAlgebra.lean` — `ExactInt R` structure carries
    the float as **honest data** (`fp : FiniteFp`, `n : ℤ`, `agree : fp.toVal = n`), no `∃`.
    - `Fp.toFiniteOr0` — total `Fp → FiniteFp` extraction (default 0) so op outputs (type
@@ -44,16 +46,18 @@ All sorry-free; wired into `Flean/Operations.lean`; full build green.
 1. ~~**Zero-admission**~~ — DONE 2026-06-15 (`ExactIntZero.lean`; algebra side-condition-free
    on zero). ("zero-tolerance" was the working name; "zero-admitting" is the honester one —
    we *welcome* zero, not tolerate it.)
-2. **Running magnitude bound** (NEXT). Carry one `|n| ≤ B` field in `ExactInt` and derive the
-   per-op `< 2^prec` from `B` (e.g. `mul` needs `B² ≤ 2^prec`, `add` needs `2B < 2^prec`).
-   This is the start of the **interval-analysis layer** — the bound is what licenses the
-   exactness. After this, chaining stops re-proving bounds per op (currently `dot2` still
-   takes three explicit `< 2^prec` bounds; with a carried `B` they'd collapse to one).
-3. **Concrete net**. Once 2 lands, interval-propagate a small concrete network and extract
-   its integer/modular behavior. The aspirational target.
-
-Also possible: an n-ary `dotN` / `List (ExactInt R)` sum once the magnitude bound removes
-the per-op bound bookkeeping.
+2. ~~**Running magnitude bound**~~ — DONE 2026-06-15 (`ExactIntBound.lean`). `ExactIntB R`
+   `extends ExactInt R` + `bound : ℕ` + `hbound : |n| ≤ bound`. Bound propagates: mul →
+   `bₐ·b_b`, add/sub → `bₐ+b_b`, neg → `bₐ`; each op *derives* its `< 2^prec`
+   representability from the propagated bound (via `Int.natAbs_mul`/`Int.natAbs_add_le`/
+   `Int.natAbs_sub_le`). Total `Zero`/`One`/`Neg`. Payoff: `ExactIntB.dot2` takes a
+   **single** representability hypothesis `bₐ₁·b_b₁ + bₐ₂·b_b₂ < 2^prec` (implies each
+   product fits AND the sum fits, summands nonneg). `dot2_n`/`dot2_bound` by `rfl`.
+3. **n-ary sum / `dotN`** (NEXT, now unblocked). `List (ExactIntB R)` fold with a single
+   running-bound hypothesis; the bound bookkeeping is now a fold over `bound`. Natural
+   bridge to matvec.
+4. **Concrete net**. Interval-propagate a small concrete network (bounds flow via
+   `ExactIntB`) and extract its integer/modular behavior. The aspirational target.
 
 ## Design notes / gotchas
 
