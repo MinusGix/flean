@@ -85,9 +85,19 @@ not normal-range-gated. (The mode-specific `roundNearestTiesToEven_abs_error_le_
 `RelativeErrorBounds.lean` gives the cleaner `≤ ½ ulp` form if a tighter/ulp-shaped bound is
 wanted later.)
 
-NEXT: inexact `ScaledInt` carrying `err : R` — compose these per-op corrections across a
-computation (forward error in fixed-point coordinates). Plus mechanical `ScaledExact`
-`sub`/`neg` + data-carrying constructors when a consumer needs them.
+SHIPPED — `Flean/Operations/ScaledInt.lean` (the composing inexact layer): `ScaledInt R` =
+`fp : FiniteFp` + ideal `(m, s)` + `err : R` + `herr : |fp.toVal - m·2^s| ≤ err`. `ofExact`
+(err=0 base), `value`. Building-block theorem `fpAddFinite_scaled_inexact` (forward-error
+triangle: new error = input errors + this op's rounding correction, bounded against the
+ideal magnitude). `ScaledInt.add` (same-scale, takes finite-result `g` + nonzero-sum
+witness) grows err by `(1+η)(err_a+err_b) + η|value| + 2^(min_exp-prec)`. `add_m/s/fp` simp.
+This is forward error in fixed-point coordinates — the reduction extended from one op to a
+chain.
+
+NEXT (this layer): `ScaledInt.mul` (parallel, scales add — needs an inexact mul lemma);
+smarter `add` that derives `g`/finiteness via `toFiniteOr0` + an overflow bound instead of
+taking them as hypotheses; a multi-op chain demo showing err accumulation (the payoff);
+zero-sum handling. Plus mechanical `ScaledExact` `sub`/`neg`.
 
 ## Design notes / gotchas
 
