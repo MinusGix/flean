@@ -59,6 +59,31 @@ All sorry-free; wired into `Flean/Operations.lean`; full build green.
 4. **Concrete net**. Interval-propagate a small concrete network (bounds flow via
    `ExactIntB`) and extract its integer/modular behavior. The aspirational target.
 
+## Fixed-point / correction layer (the inexact frontier — started 2026-06-15)
+
+Crossing from exact to "simpler form + bounded correction" (the reductionist payoff:
+"multistep float ops → integer fn + minor correcting factor"). Staged as exact-first.
+
+SHIPPED — `Flean/Operations/ScaledExact.lean` (the exact on-ramp): widens `ExactInt` from
+integers to **fixed-point** `m · 2^s` (common scale `s`; `ExactInt` = `s=0`). Leans on
+`exists_finiteFp_of_int_mul_zpow` (ToVal.lean) for scaled representability. Pieces:
+`scaled_round_exact` (scaled `int_round_exact`), `fpAddFinite_scaled_exact` (same-scale
+add), `fpMulFinite_scaled_exact` (scales add: `s_a + s_b`), `structure ScaledExact`
+(fp, m, s, agree: `fp.toVal = m·2^s`), `value`/`value_eq_toVal`. Sorry-free, in aggregator.
+
+KEY FINDING (correction op, the actual C-teeth): there is **no generic `○`-level error
+bound** in Flean — only mode-specific ones (`roundNearestTiesToEven_abs_error_le_ulp_half`
+in `Rounding/RelativeErrorBounds.lean`, which also need `isNormalRange x`). So the
+correction op must (a) commit to a rounding policy — `[UseRoundingPolicy
+RoundNearestEvenPolicy]`, (b) carry `isNormalRange`, (c) connect the generic `○`/fpAddFinite
+to `roundNearestTiesToEven` under that policy, then bound the deviation by `ulp/2`. That is
+the next focused piece — the rounding-policy plumbing IS its content. Result shape: a
+float op on common-scale values `= (integer op on significands)·2^s + correction`, with
+`|correction| ≤ ½ ulp`. Then the inexact `ScaledInt` (carry an `err` field) wraps it.
+
+TODO on `ScaledExact` (mechanical, when needed): `sub`/`neg`, data-carrying
+`addExact`/`mulExact` constructors + `.fp` provenance bridges (mirror `ExactIntAlgebra`).
+
 ## Design notes / gotchas
 
 - `HMul`/`HAdd`/`HSub FiniteFp FiniteFp Fp` (result is `Fp`, coerced back). That `Fp`

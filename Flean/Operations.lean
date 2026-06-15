@@ -25,6 +25,7 @@ import Flean.Operations.ExactInt
 import Flean.Operations.ExactIntZero
 import Flean.Operations.ExactIntAlgebra
 import Flean.Operations.ExactIntBound
+import Flean.Operations.ScaledExact
 import Flean.Operations.DivPow2
 import Flean.Operations.AddErrorRepresentable
 import Flean.Operations.Fast2Sum

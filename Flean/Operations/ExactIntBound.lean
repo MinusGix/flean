@@ -112,4 +112,8 @@ dot product. -/
 @[simp] theorem dot2_bound (a₁ b₁ a₂ b₂ : ExactIntB R) (hb h_exp) :
     (dot2 a₁ b₁ a₂ b₂ hb h_exp).bound = a₁.bound * b₁.bound + a₂.bound * b₂.bound := rfl
 
+-- TODO: n-ary `dotN` / `List (ExactIntB R)` fold (single running-bound hypothesis,
+-- bound = fold over per-term `bound`s). Mechanical; implement when a consumer needs it
+-- (matvec / concrete net).
+
 end ExactIntB
