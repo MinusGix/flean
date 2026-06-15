@@ -1,4 +1,5 @@
 import Flean.Operations.ScaledCorrection
+import Flean.Operations.ExactIntAlgebra
 
 /-! # Inexact fixed-point values — composing corrections (forward error in scale coords)
 
@@ -89,25 +90,106 @@ theorem fpAddFinite_scaled_inexact (a b : FiniteFp) (m_a m_b s : ℤ) (err_a err
           + (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) := by ring
 
 /-- **Inexact same-scale addition.** Errors compose: `err' = (1+η)(err_a+err_b) + η|value| +
-2^(min_exp-prec)`. Takes the (finite) result float `g` and the nonzero-sum witness. -/
-def ScaledInt.add (a b : ScaledInt R) (g : FiniteFp) (hs : a.s = b.s)
+2^(min_exp-prec)`. The result float is computed automatically (`toFiniteOr0`); the caller
+supplies only that the sum is finite (no overflow) and nonzero. -/
+def ScaledInt.add (a b : ScaledInt R) (hs : a.s = b.s)
     (hsum_ne : (a.fp.toVal : R) + b.fp.toVal ≠ 0)
-    (hfin : a.fp + b.fp = Fp.finite g) : ScaledInt R where
-  fp := g
+    (hfin : (a.fp + b.fp).isFinite) : ScaledInt R where
+  fp := (a.fp + b.fp).toFiniteOr0
   m := a.m + b.m
   s := a.s
   err := (1 + η) * (a.err + b.err) + η * |((a.m + b.m : ℤ) : R) * 2 ^ a.s|
           + (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ)
   herr := by
     have hb' : |(b.fp.toVal : R) - (b.m : R) * 2 ^ a.s| ≤ b.err := by rw [hs]; exact b.herr
-    exact fpAddFinite_scaled_inexact a.fp b.fp a.m b.m a.s a.err b.err g a.herr hb'
-      hsum_ne hfin
+    exact fpAddFinite_scaled_inexact a.fp b.fp a.m b.m a.s a.err b.err _ a.herr hb'
+      hsum_ne (Fp.eq_finite_toFiniteOr0 hfin)
 
-@[simp] theorem ScaledInt.add_m (a b : ScaledInt R) (g : FiniteFp) (hs hsum_ne hfin) :
-    (a.add b g hs hsum_ne hfin).m = a.m + b.m := rfl
-@[simp] theorem ScaledInt.add_s (a b : ScaledInt R) (g : FiniteFp) (hs hsum_ne hfin) :
-    (a.add b g hs hsum_ne hfin).s = a.s := rfl
-@[simp] theorem ScaledInt.add_fp (a b : ScaledInt R) (g : FiniteFp) (hs hsum_ne hfin) :
-    (a.add b g hs hsum_ne hfin).fp = g := rfl
+@[simp] theorem ScaledInt.add_m (a b : ScaledInt R) (hs hsum_ne hfin) :
+    (a.add b hs hsum_ne hfin).m = a.m + b.m := rfl
+@[simp] theorem ScaledInt.add_s (a b : ScaledInt R) (hs hsum_ne hfin) :
+    (a.add b hs hsum_ne hfin).s = a.s := rfl
+@[simp] theorem ScaledInt.add_fp (a b : ScaledInt R) (hs hsum_ne hfin) :
+    (a.add b hs hsum_ne hfin).fp = (a.fp + b.fp).toFiniteOr0 := rfl
+
+/-- **Composition building block (multiplication).** Multiplying two inexact values: scales
+add, and the deviation of the float result from the ideal product `(m_a·m_b)·2^(s_a+s_b)` is
+the propagated input error `|ideal_a|·err_b + err_a·|ideal_b| + err_a·err_b` plus this op's
+rounding correction. -/
+theorem fpMulFinite_scaled_inexact (a b : FiniteFp) (m_a m_b s_a s_b : ℤ) (err_a err_b : R)
+    (f : FiniteFp)
+    (ha : |(a.toVal : R) - (m_a : R) * 2 ^ s_a| ≤ err_a)
+    (hb : |(b.toVal : R) - (m_b : R) * 2 ^ s_b| ≤ err_b)
+    (hprod_ne : (a.toVal : R) * b.toVal ≠ 0)
+    (hf : a * b = Fp.finite f) :
+    |(f.toVal : R) - ((m_a * m_b : ℤ) : R) * 2 ^ (s_a + s_b)|
+      ≤ η * |((m_a * m_b : ℤ) : R) * 2 ^ (s_a + s_b)|
+        + (1 + η) * (|(m_a : R) * 2 ^ s_a| * err_b + err_a * |(m_b : R) * 2 ^ s_b|
+            + err_a * err_b)
+        + (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) := by
+  have hη_nn : (0 : R) ≤ η := by positivity
+  have herr_a_nn : (0 : R) ≤ err_a := le_trans (abs_nonneg _) ha
+  have hround : (○((a.toVal : R) * b.toVal) : Fp) = Fp.finite f := by
+    rw [← fpMulFinite_correct (R := R) a b hprod_ne]; exact hf
+  have hrb := round_preserves_abs_error_unified (R := R) ((a.toVal : R) * b.toVal) hround
+  have hval_eq : ((m_a : R) * 2 ^ s_a) * ((m_b : R) * 2 ^ s_b)
+      = ((m_a * m_b : ℤ) : R) * 2 ^ (s_a + s_b) := by
+    rw [zpow_add₀ (by norm_num : (2 : R) ≠ 0)]; push_cast; ring
+  have hinput : |(a.toVal : R) * b.toVal - ((m_a * m_b : ℤ) : R) * 2 ^ (s_a + s_b)|
+      ≤ |(m_a : R) * 2 ^ s_a| * err_b + err_a * |(m_b : R) * 2 ^ s_b| + err_a * err_b := by
+    have hexp : (a.toVal : R) * b.toVal - ((m_a * m_b : ℤ) : R) * 2 ^ (s_a + s_b)
+        = ((m_a : R) * 2 ^ s_a) * ((b.toVal : R) - (m_b : R) * 2 ^ s_b)
+          + ((a.toVal : R) - (m_a : R) * 2 ^ s_a) * ((m_b : R) * 2 ^ s_b)
+          + ((a.toVal : R) - (m_a : R) * 2 ^ s_a) * ((b.toVal : R) - (m_b : R) * 2 ^ s_b) := by
+      rw [← hval_eq]; ring
+    rw [hexp]
+    refine (abs_add_le _ _).trans (add_le_add ((abs_add_le _ _).trans (add_le_add ?_ ?_)) ?_)
+    · rw [abs_mul]; exact mul_le_mul_of_nonneg_left hb (abs_nonneg _)
+    · rw [abs_mul]; exact mul_le_mul_of_nonneg_right ha (abs_nonneg _)
+    · rw [abs_mul]; exact mul_le_mul ha hb (abs_nonneg _) herr_a_nn
+  have hmag : |(a.toVal : R) * b.toVal|
+      ≤ |((m_a * m_b : ℤ) : R) * 2 ^ (s_a + s_b)|
+        + (|(m_a : R) * 2 ^ s_a| * err_b + err_a * |(m_b : R) * 2 ^ s_b| + err_a * err_b) := by
+    have h1 := abs_sub_abs_le_abs_sub ((a.toVal : R) * b.toVal)
+      (((m_a * m_b : ℤ) : R) * 2 ^ (s_a + s_b))
+    linarith [hinput, h1]
+  calc |(f.toVal : R) - ((m_a * m_b : ℤ) : R) * 2 ^ (s_a + s_b)|
+      ≤ |(f.toVal : R) - (a.toVal : R) * b.toVal|
+          + |(a.toVal : R) * b.toVal - ((m_a * m_b : ℤ) : R) * 2 ^ (s_a + s_b)| := abs_sub_le _ _ _
+    _ ≤ (η * |(a.toVal : R) * b.toVal|
+          + (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ))
+        + (|(m_a : R) * 2 ^ s_a| * err_b + err_a * |(m_b : R) * 2 ^ s_b| + err_a * err_b) :=
+        add_le_add hrb hinput
+    _ ≤ (η * (|((m_a * m_b : ℤ) : R) * 2 ^ (s_a + s_b)|
+            + (|(m_a : R) * 2 ^ s_a| * err_b + err_a * |(m_b : R) * 2 ^ s_b| + err_a * err_b))
+          + (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ))
+        + (|(m_a : R) * 2 ^ s_a| * err_b + err_a * |(m_b : R) * 2 ^ s_b| + err_a * err_b) := by
+        gcongr
+    _ = η * |((m_a * m_b : ℤ) : R) * 2 ^ (s_a + s_b)|
+        + (1 + η) * (|(m_a : R) * 2 ^ s_a| * err_b + err_a * |(m_b : R) * 2 ^ s_b|
+            + err_a * err_b)
+        + (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ) := by ring
+
+/-- **Inexact multiplication.** Scales add (`s_a + s_b`); errors compose with the product
+propagation. Result float computed automatically; caller supplies finiteness + nonzero. -/
+def ScaledInt.mul (a b : ScaledInt R)
+    (hprod_ne : (a.fp.toVal : R) * b.fp.toVal ≠ 0)
+    (hfin : (a.fp * b.fp).isFinite) : ScaledInt R where
+  fp := (a.fp * b.fp).toFiniteOr0
+  m := a.m * b.m
+  s := a.s + b.s
+  err := η * |((a.m * b.m : ℤ) : R) * 2 ^ (a.s + b.s)|
+          + (1 + η) * (|(a.m : R) * 2 ^ a.s| * b.err + a.err * |(b.m : R) * 2 ^ b.s|
+              + a.err * b.err)
+          + (2 : R) ^ (FloatFormat.min_exp - FloatFormat.prec : ℤ)
+  herr := fpMulFinite_scaled_inexact a.fp b.fp a.m b.m a.s b.s a.err b.err _ a.herr b.herr
+    hprod_ne (Fp.eq_finite_toFiniteOr0 hfin)
+
+@[simp] theorem ScaledInt.mul_m (a b : ScaledInt R) (hprod_ne hfin) :
+    (a.mul b hprod_ne hfin).m = a.m * b.m := rfl
+@[simp] theorem ScaledInt.mul_s (a b : ScaledInt R) (hprod_ne hfin) :
+    (a.mul b hprod_ne hfin).s = a.s + b.s := rfl
+@[simp] theorem ScaledInt.mul_fp (a b : ScaledInt R) (hprod_ne hfin) :
+    (a.mul b hprod_ne hfin).fp = (a.fp * b.fp).toFiniteOr0 := rfl
 
 end Compose

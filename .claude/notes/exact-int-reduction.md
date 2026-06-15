@@ -94,10 +94,19 @@ witness) grows err by `(1+η)(err_a+err_b) + η|value| + 2^(min_exp-prec)`. `add
 This is forward error in fixed-point coordinates — the reduction extended from one op to a
 chain.
 
-NEXT (this layer): `ScaledInt.mul` (parallel, scales add — needs an inexact mul lemma);
-smarter `add` that derives `g`/finiteness via `toFiniteOr0` + an overflow bound instead of
-taking them as hypotheses; a multi-op chain demo showing err accumulation (the payoff);
-zero-sum handling. Plus mechanical `ScaledExact` `sub`/`neg`.
+UPDATE 2026-06-15: `ScaledInt.mul` SHIPPED (`fpMulFinite_scaled_inexact` — product-error
+propagation `|ideal_a|·err_b + err_a·|ideal_b| + err_a·err_b` + the op's rounding; scales
+add). Smarter `add`/`mul` SHIPPED: result float computed via `Fp.toFiniteOr0` (helper
+`Fp.eq_finite_toFiniteOr0 : x.isFinite → x = Fp.finite x.toFiniteOr0` added in
+`ExactIntAlgebra.lean`), caller supplies only an `isFinite` Prop + nonzero — no explicit
+result-float witness.
+
+NEXT (this layer): (1) **multi-op chain demo** (`ofExact` → several `add`/`mul`s) showing
+err actually accumulating — the payoff, makes composition tangible. (2) Derive the
+`isFinite` witness from a *magnitude bound* (no-overflow) so callers don't even supply
+finiteness — needs the overflow API (`overflowThreshold`; `rnEven_ge_inf` etc., may be
+mode-specific). (3) zero-sum handling. (4) n-ary `dotN`. Plus mechanical `ScaledExact`
+`sub`/`neg`.
 
 ## Design notes / gotchas
 

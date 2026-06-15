@@ -42,6 +42,14 @@ def toFiniteOr0 : Fp → FiniteFp
 
 @[simp] theorem toFiniteOr0_finite (f : FiniteFp) : (Fp.finite f).toFiniteOr0 = f := rfl
 
+/-- A finite `Fp` is recovered from its `toFiniteOr0` extraction. Lets a consumer carry an
+op output as data given only a finiteness Prop (no explicit witness float). -/
+theorem eq_finite_toFiniteOr0 {x : Fp} (h : x.isFinite) : x = Fp.finite x.toFiniteOr0 := by
+  cases x with
+  | finite f => rfl
+  | infinite b => simp [Fp.isFinite] at h
+  | NaN => simp [Fp.isFinite] at h
+
 end Fp
 
 /-- A float paired with the integer it represents exactly. The `fp` value is honest data,
