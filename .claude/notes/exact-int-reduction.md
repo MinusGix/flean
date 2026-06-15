@@ -101,12 +101,18 @@ add). Smarter `add`/`mul` SHIPPED: result float computed via `Fp.toFiniteOr0` (h
 `ExactIntAlgebra.lean`), caller supplies only an `isFinite` Prop + nonzero — no explicit
 result-float witness.
 
+UPDATE 2026-06-15: finiteness-from-bound SHIPPED. `round_isFinite_of_abs_le_largest`
+(generic, `RModeMono` + `RModeIdem`: `|x| ≤ largestFiniteFloat ⇒ (○x).isFinite`; signed
+analogue of Softmax's nonneg `round_exists_finite_of_*` — could be promoted to `Rounding/`).
+`ScaledInt.addOfBound` / `mulOfBound`: take a no-overflow magnitude bound on the float
+sum/product instead of an `isFinite` Prop, deriving finiteness internally. Gotcha logged:
+the FiniteFp-add vs Fp-add coercion forms differ syntactically — `rw [fpAddFinite_correct]`
+on the goal LHS fails; instead `rwa [← fpAddFinite_correct ...] at h` (match the unambiguous
+`○ sum` RHS in a hypothesis).
+
 NEXT (this layer): (1) **multi-op chain demo** (`ofExact` → several `add`/`mul`s) showing
-err actually accumulating — the payoff, makes composition tangible. (2) Derive the
-`isFinite` witness from a *magnitude bound* (no-overflow) so callers don't even supply
-finiteness — needs the overflow API (`overflowThreshold`; `rnEven_ge_inf` etc., may be
-mode-specific). (3) zero-sum handling. (4) n-ary `dotN`. Plus mechanical `ScaledExact`
-`sub`/`neg`.
+err actually accumulating — the payoff, makes composition tangible. (2) zero-sum handling.
+(3) n-ary `dotN`. Plus mechanical `ScaledExact` `sub`/`neg`.
 
 ## Design notes / gotchas
 
