@@ -12,6 +12,7 @@ import Flean.Tags.BoundedRange
 import Flean.Tags.BoundedRangeOn
 import Flean.Tags.BoundedRangePropagate
 import Flean.Tags.Bridges.ToIsNormalRange
+import Flean.Tags.Bridges.ExactIntDomains
 import Flean.Tags.SoftmaxBounded
 import Flean.Tags.LayerNorm
 import Flean.Tags.SterbenzShift
