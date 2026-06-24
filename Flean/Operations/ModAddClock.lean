@@ -1,6 +1,7 @@
 import Mathlib.Data.ZMod.Basic
 import Mathlib.Algebra.Field.ZMod
 import Mathlib.Analysis.SpecialFunctions.Trigonometric.Basic
+import Mathlib.Analysis.SpecialFunctions.Trigonometric.Bounds
 import Mathlib.Algebra.Order.BigOperators.Group.Finset
 
 /-! # The idealized "clock" algorithm for modular addition — with margins and a failure set
@@ -62,6 +63,11 @@ theorem clockLogit_self (K : Finset (ZMod p)) (s : ZMod p) :
   rw [clockLogit, Finset.sum_congr rfl (fun k _ => hone k), Finset.sum_const, nsmul_eq_mul,
     mul_one]
 
+/-- A single-frequency clock has just one term. -/
+theorem clockLogit_singleton (k s c : ZMod p) :
+    clockLogit {k} s c = Real.cos (phase k (s - c)) := by
+  rw [clockLogit, Finset.sum_singleton]
+
 variable [hp : Fact p.Prime]
 
 /-- A nonzero frequency aligned with a nonzero offset gives a cosine strictly below `1`: the phase is
@@ -90,6 +96,40 @@ theorem cos_phase_lt_one {k m : ZMod p} (hk : k ≠ 0) (hm : m ≠ 0) :
     have hA : 0 < n := by exact_mod_cast hAR
     have hB : n < 1 := by exact_mod_cast hBR
     omega
+
+/-- **The strongest competitor is the adjacent class.** For a nonzero residue `r`, the cosine of its
+phase is at most `cos(2π/p)` — the value at the residue closest to `0`. Cosine folds: `cos(2π·t/p)`
+for `t ∈ {1,…,p−1}` is maximized at the ends `t = 1` and `t = p−1`. -/
+theorem cos_two_pi_val_le {r : ZMod p} (hr : r ≠ 0) :
+    Real.cos (2 * π * (r.val : ℝ) / p) ≤ Real.cos (2 * π / p) := by
+  haveI : NeZero p := ⟨hp.out.pos.ne'⟩
+  have hπ := Real.pi_pos
+  have hpr : (0 : ℝ) < p := by exact_mod_cast hp.out.pos
+  have ht1 : 1 ≤ r.val := ZMod.val_pos.mpr hr
+  have htlt : r.val < p := ZMod.val_lt r
+  -- For `1 ≤ a` with `2a ≤ p` the angle is in `[2π/p, π]`, so cosine is antitone there.
+  have key : ∀ a : ℕ, 1 ≤ a → 2 * a ≤ p → Real.cos (2 * π * (a : ℝ) / p) ≤ Real.cos (2 * π / p) := by
+    intro a ha1 ha2
+    have har : (1 : ℝ) ≤ a := by exact_mod_cast ha1
+    have ha2r : (2 * a : ℝ) ≤ p := by exact_mod_cast ha2
+    refine Real.cos_le_cos_of_nonneg_of_le_pi (by positivity) ?_ ?_
+    · rw [div_le_iff₀ hpr]; nlinarith [mul_nonneg hπ.le (by linarith : (0 : ℝ) ≤ p - 2 * a)]
+    · rw [show 2 * π * (a : ℝ) / p = (2 * π / p) * a from by ring]
+      exact le_mul_of_one_le_right (by positivity) har
+  rcases le_or_gt (2 * r.val) p with hcase | hcase
+  · exact key r.val ht1 hcase
+  · -- Fold `t` to `p − t`: `cos(2π t/p) = cos(2π(p−t)/p)`, and `p − t` lands in the first half.
+    have huc : ((p - r.val : ℕ) : ℝ) = (p : ℝ) - r.val := by rw [Nat.cast_sub htlt.le]
+    have hcast : 2 * π * (r.val : ℝ) / p = 2 * π - 2 * π * ((p - r.val : ℕ) : ℝ) / p := by
+      rw [huc]; field_simp; ring
+    rw [hcast, Real.cos_two_pi_sub]
+    exact key (p - r.val) (by omega) (by omega)
+
+/-- The phase cosine of any nonzero offset is at most `cos(2π/p)` — the single-frequency competitor
+ceiling. Sharpens `cos_phase_lt_one`. -/
+theorem cos_phase_le {k m : ZMod p} (hk : k ≠ 0) (hm : m ≠ 0) :
+    Real.cos (phase k m) ≤ Real.cos (2 * π / p) := by
+  simpa [phase] using cos_two_pi_val_le (mul_ne_zero hk hm)
 
 /-- **Strict argmax (exact baseline).** With a nonempty, DC-free frequency set, every wrong answer
 scores strictly below the correct one. This is `margin > 0` everywhere: in exact arithmetic the clock
@@ -247,5 +287,59 @@ theorem accuracy_eq_one_of_margin_gt (K : Finset (ZMod p))
     exact absurd (hm (ab.1 + ab.2)) (not_lt.mpr hsm)
   rw [accuracy, hempty, Set.ncard_empty]
   simp
+
+/-! ## Single-frequency fragility — why redundancy is forced
+
+A single frequency already decodes correctly in exact arithmetic (`clockLogit_lt_self`), but its
+margin is *tiny*: exactly `1 − cos(2π/p)`, independent of the frequency and the input, and shrinking
+like `2π²/p²`. So the floating-point tolerance of a one-frequency clock vanishes as `1/p²` — for large
+`p` no fixed rounding error is survivable. This is the quantitative case for the Fourier redundancy
+the trained network exhibits: only a *larger* margin (more frequencies) restores robustness. -/
+
+/-- The adjacent class `s − k⁻¹` is the strongest competitor of `s`, scoring exactly `cos(2π/p)`. -/
+theorem clockLogit_singleton_competitor {k : ZMod p} (hk : k ≠ 0) (s : ZMod p) :
+    clockLogit {k} s (s - k⁻¹) = Real.cos (2 * π / p) := by
+  haveI : Fact (1 < p) := ⟨hp.out.one_lt⟩
+  rw [clockLogit_singleton]
+  congr 1
+  rw [show s - (s - k⁻¹) = k⁻¹ from by ring, phase, mul_inv_cancel₀ hk, ZMod.val_one, Nat.cast_one,
+    mul_one]
+
+/-- **The single-frequency margin is `1 − cos(2π/p)`** — for every nonzero frequency `k` and every
+input `s`. The strongest wrong answer (`s − k⁻¹`) hits `cos(2π/p)` and none beats it
+(`cos_phase_le`), so the gap to the perfect score `1` is exactly `1 − cos(2π/p)`. -/
+theorem margin_singleton {k : ZMod p} (hk : k ≠ 0) (s : ZMod p) :
+    margin {k} s = 1 - Real.cos (2 * π / p) := by
+  rw [margin, clockLogit_self, Finset.card_singleton, Nat.cast_one]
+  congr 1
+  refine le_antisymm (Finset.sup'_le _ _ (fun c hc => ?_)) ?_
+  · rw [clockLogit_singleton]
+    exact cos_phase_le hk (sub_ne_zero.mpr (Ne.symm (Finset.ne_of_mem_erase hc)))
+  · have hmem : (s - k⁻¹) ∈ Finset.univ.erase s :=
+      Finset.mem_erase.mpr ⟨by rw [ne_eq, sub_eq_self]; exact inv_ne_zero hk, Finset.mem_univ _⟩
+    calc Real.cos (2 * π / p) = clockLogit {k} s (s - k⁻¹) :=
+          (clockLogit_singleton_competitor hk s).symm
+      _ ≤ _ := Finset.le_sup' _ hmem
+
+/-- **The `1/p²` fragility bound.** The single-frequency margin is at most `2π²/p²`, so it vanishes
+quadratically in `p`. -/
+theorem margin_singleton_le {k : ZMod p} (hk : k ≠ 0) (s : ZMod p) :
+    margin {k} s ≤ 2 * π ^ 2 / p ^ 2 := by
+  rw [margin_singleton hk]
+  have h := Real.one_sub_sq_div_two_le_cos (x := 2 * π / (p : ℝ))
+  have heq : (2 * π / p) ^ 2 / 2 = 2 * π ^ 2 / p ^ 2 := by rw [div_pow, mul_pow]; ring
+  linarith [h, heq]
+
+/-- **Single-frequency robustness threshold.** A one-frequency clock is *exactly* correct (`accuracy
+= 1`) whenever the per-logit floating-point error stays below `(1 − cos(2π/p))/2 ≈ π²/p²`. Since that
+tolerance shrinks like `1/p²`, a single frequency cannot survive a fixed rounding error at large `p`:
+robustness *requires* the redundancy of multiple frequencies (a larger margin). -/
+theorem singleton_accuracy_eq_one_of_lt {k : ZMod p} (hk : k ≠ 0)
+    (L : ZMod p → ZMod p → ZMod p → ℝ) (δ : ℝ)
+    (hL : ∀ a b c, |L a b c - clockLogit {k} (a + b) c| ≤ δ)
+    (hδ : δ < (1 - Real.cos (2 * π / p)) / 2) :
+    accuracy L = 1 := by
+  refine accuracy_eq_one_of_margin_gt {k} L δ hL (fun s => ?_)
+  rw [margin_singleton hk]; linarith
 
 end Flean.ModAddClock

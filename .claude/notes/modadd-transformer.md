@@ -82,17 +82,54 @@ Same file, all sorry-free / warning-clean:
   (pure perturbation arg — holds for ANY K). + `accuracy_eq_one_of_margin_gt` (margin `> 2δ`
   everywhere ⇒ `accuracy = 1`). The honest `1 − ε` version = bound the small-margin set.
 
-## Open / next (priority)
+### Added 2026-06-16 (session 3) — single-frequency fragility (direction #1, DONE in full)
 
-- **FP forward-error `δ` on `clockLogit`** — the concrete `hL : |L − clockLogit| ≤ δ` for the actual
-  float readout (reuse `FpDotProductBound`/`AffineFormVec`). This + a margin lower bound = first real
-  certified accuracy number. (The certification *shape* is now done; this fills in `δ`.)
-- **Concrete margin lower bound.** Full DC-free set `univ.erase 0` gives `margin = p` exactly via the
-  Dirichlet/root-of-unity sum (`∑_{k:ZMod p} cos(phase k m) = if m=0 then p else 0`; route:
-  `Complex.exp_ofReal_mul_I_re` + `geom_sum_eq`/`IsPrimitiveRoot.geom_sum_eq_zero` + ZMod→range
-  bijection — deferred, heavy bookkeeping). Sparse `K` margin is smaller & is where **structural**
-  failure appears + "margin grows with `|K|`" (the √n redundancy story).
-- Weights-into-Lean bridge (concrete `FiniteFp` matrices + forward pass) — gating step for real
-  Nanda weights.
-- Inference probes: which frequencies survive FP precision (relevant vs irrelevant operators, RG/leak
-  link); frequency redundancy as √n error correction (probabilistic layer).
+Same file, sorry-free / warning-clean. The quantitative case for *why redundancy is forced*:
+- `clockLogit_singleton` (one-term logit); `cos_two_pi_val_le`/`cos_phase_le` (every wrong-class phase
+  cosine ≤ `cos(2π/p)` — cosine folds `t ↔ p−t`, then antitone on `[0,π]` via
+  `Real.cos_le_cos_of_nonneg_of_le_pi` + `Real.cos_two_pi_sub`).
+- `clockLogit_singleton_competitor`: the adjacent class `s − k⁻¹` is the strongest competitor, scoring
+  exactly `cos(2π/p)`.
+- **`margin_singleton`** (the headline): for ANY nonzero `k` and ANY `s`, `margin {k} s =
+  1 − cos(2π/p)` — constant, independent of frequency and input.
+- **`margin_singleton_le`**: `margin {k} s ≤ 2π²/p²` (via `Real.one_sub_sq_div_two_le_cos`) — the
+  margin vanishes like `1/p²`.
+- **`singleton_accuracy_eq_one_of_lt`**: a one-frequency clock is exactly correct iff the per-logit FP
+  error `δ < (1−cos(2π/p))/2 ≈ π²/p²`. The crisp robustness threshold: tolerance shrinks like `1/p²`,
+  so a single frequency cannot survive a fixed rounding error at large `p` ⇒ multiple frequencies
+  (a larger margin) are *required* for robustness. This is the Fourier-redundancy imperative, proved.
+
+Gotchas: `Real.one_sub_sq_div_two_le_cos` lives in `…Trigonometric.Bounds` (separate import);
+`le_or_lt`→`le_or_gt` (deprecated); avoid `gcongr` on `a/p ≤ b/p` (left a junk goal) — factor
+`2π·a/p = (2π/p)·a` then `le_mul_of_one_le_right`.
+
+---
+
+## STATUS (tracker)
+
+Idealized clock decoder for `(a+b) mod p`, margin-centric, in `Flean/Operations/ModAddClock.lean`.
+
+- [x] Mechanism: `phase`, `clockLogit` (frequency-set-parameterized).
+- [x] Exact correctness: strict argmax (`clockLogit_lt_self`), `CorrectAt`, `correct_everywhere`.
+- [x] Margin object (`margin`, `margin_pos`) + failure criterion (`correct_under_perturbation`).
+- [x] Decoder = modular addition (`IsArgmax`, `isArgmax_iff_eq`, `clock_decodes_add`).
+- [x] Failure set / accuracy as first-class objects; idealized 100% (`accuracy_clock_eq_one`).
+- [x] Certified-accuracy bridge (`failureSet_subset_smallMargin`, `accuracy_eq_one_of_margin_gt`).
+- [x] **#1 Single-frequency fragility**: `margin {k} s = 1 − cos(2π/p) ≤ 2π²/p²`; `1/p²` robustness
+      threshold ⇒ redundancy imperative.
+- [ ] **#2 First concrete accuracy number** — FP forward-error `δ` on `clockLogit` (the actual float
+      readout, via `FpDotProductBound`/`AffineFormVec`), combined with a margin bound.
+- [ ] **#1b Multi-frequency margin growth** — `margin {K} s` grows with `|K|` (the √n redundancy
+      payoff; the complement of single-frequency fragility). Hard direction (Dirichlet/sparse sums).
+- [ ] **Concrete full-set margin** — `margin (univ.erase 0) s = p` via the root-of-unity sum
+      (`∑_{k:ZMod p} cos(phase k m) = if m=0 then p else 0`; route `Complex.exp_ofReal_mul_I_re` +
+      `geom_sum_eq`/`IsPrimitiveRoot.geom_sum_eq_zero` + ZMod→range bijection). Heavy; deferred.
+- [ ] **#3 Weights-into-Lean bridge** — concrete `FiniteFp` weight matrices + forward pass. The
+      gating step that converts "idealized algorithm" into "the actual trained network".
+- [ ] **#4 RG / Wisp probe** — which frequencies survive FP precision (= relevant vs irrelevant
+      operators, leak-as-truncation); frequency redundancy as √n error correction; may *explain* the
+      sparse frequency count (FP can't resolve more).
+
+**Discipline:** each step should produce a concrete number, say something about the real net, or be a
+genuinely novel quantitative insight (#1 was). Resist proving more idealized margin formulas for their
+own sake — the cathedral-admiring failure mode.
