@@ -103,6 +103,34 @@ Gotchas: `Real.one_sub_sq_div_two_le_cos` lives in `…Trigonometric.Bounds` (se
 `le_or_lt`→`le_or_gt` (deprecated); avoid `gcongr` on `a/p ≤ b/p` (left a junk goal) — factor
 `2π·a/p = (2π/p)·a` then `le_mul_of_one_le_right`.
 
+### Added 2026-07-10 — linear redundancy + floating-point tensor realization
+
+Two files, sorry-free and warning-clean relative to their own declarations:
+
+- `ModAddClock.lean` now proves the previously deferred multi-frequency lower bound directly:
+  `|K|·(1-cos(2π/p)) ≤ margin K s`, and the algebraic corollary
+  **`8|K|/p² ≤ margin K s`**.  The latter uses Mathlib's
+  `cos x ≤ 1-(2/π²)x²` bound and is suitable for comparison with a concrete FP error without
+  numerically evaluating cosine.
+- The perturbation API now has per-class (`correct_under_pointwise_perturbation`) and per-input
+  (`failureSet_subset_smallMargin_inputwise`) forms.  This corrects an important modeling issue: the
+  ideal clock margin is translation-invariant, so one global `δ` cannot by itself express a genuine
+  fractional input accuracy.
+- New `ModAddClockFp.lean` introduces `FrequencyBank p n`, a `Fin n`-indexed frequency bank suitable
+  for tensors; its `2n` cosine/sine `feature`; and `feature_dot_eq_clockLogit`, proving that the
+  feature/readout dot product is exactly the existing ideal phase-sum specification.
+- `FpClockTables` stores actual `FiniteFp` input features and readout rows with explicit coordinate
+  approximation bounds. `FpClockExecution` consumes an `FpMatVecBound` for every sum and exposes
+  the computed finite logits.
+- `logit_error_le` is the end-to-end bridge.  Its error is split into
+  `arithmeticError` (from `FpMatVecBound`) plus `quantizationError` (stored table/input deviation).
+- `failureSet_subset_certifiedBadInputs` gives the exact-margin certificate;
+  `failureSet_subset_algebraicBadInputs` gives the concrete-shape `8n/p²` over-approximation.
+
+Model boundary: `FpClockTables.input` represents the recovered Fourier feature of the sum.  The
+current layer verifies storage + readout, while construction of that feature from separate `a` and
+`b` embeddings (rounded trig identity / learned upstream network) remains the next mechanism layer.
+
 ---
 
 ## STATUS (tracker)
@@ -117,10 +145,14 @@ Idealized clock decoder for `(a+b) mod p`, margin-centric, in `Flean/Operations/
 - [x] Certified-accuracy bridge (`failureSet_subset_smallMargin`, `accuracy_eq_one_of_margin_gt`).
 - [x] **#1 Single-frequency fragility**: `margin {k} s = 1 − cos(2π/p) ≤ 2π²/p²`; `1/p²` robustness
       threshold ⇒ redundancy imperative.
-- [ ] **#2 First concrete accuracy number** — FP forward-error `δ` on `clockLogit` (the actual float
-      readout, via `FpDotProductBound`/`AffineFormVec`), combined with a margin bound.
-- [ ] **#1b Multi-frequency margin growth** — `margin {K} s` grows with `|K|` (the √n redundancy
-      payoff; the complement of single-frequency fragility). Hard direction (Dirichlet/sparse sums).
+- [x] **#1b Multi-frequency margin growth** —
+      `8|K|/p² ≤ |K|(1-cos(2π/p)) ≤ margin K s`.
+- [x] **#2a FP readout integration** — `FiniteFp` feature/readout tables + `FpMatVecBound` execution;
+      quantization/arithmetic error split; exact and algebraic failure-set certificates.
+- [ ] **#2b First concrete accuracy number** — instantiate a modulus/frequency bank, format
+      (Binary32 first, then BF16), concrete stored tables, and a chosen accumulation trace.
+- [ ] **#2c Upstream sum-feature construction** — derive `FpClockTables.input_close` from separate
+      rounded embeddings of `a` and `b`, rather than accepting the recovered sum feature as input.
 - [ ] **Concrete full-set margin** — `margin (univ.erase 0) s = p` via the root-of-unity sum
       (`∑_{k:ZMod p} cos(phase k m) = if m=0 then p else 0`; route `Complex.exp_ofReal_mul_I_re` +
       `geom_sum_eq`/`IsPrimitiveRoot.geom_sum_eq_zero` + ZMod→range bijection). Heavy; deferred.

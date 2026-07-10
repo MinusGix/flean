@@ -43,6 +43,7 @@ import Flean.Operations.PolyForm
 import Flean.Operations.MvForm
 import Flean.Operations.ProbError
 import Flean.Operations.ModAddClock
+import Flean.Operations.ModAddClockFp
 import Flean.Operations.DivPow2
 import Flean.Operations.AddErrorRepresentable
 import Flean.Operations.Fast2Sum

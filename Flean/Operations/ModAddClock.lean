@@ -175,6 +175,98 @@ theorem margin_pos (K : Finset (ZMod p)) (hK : K.Nonempty) (h0 : (0 : ZMod p) �
   rw [margin, sub_pos, Finset.sup'_lt_iff]
   exact fun c hc => clockLogit_lt_self K hK h0 (Finset.ne_of_mem_erase hc)
 
+/-- The ideal clock margin is translation-invariant: it is the same for every true sum.  Candidate
+translation `c ↦ c + (t-s)` preserves the offset, hence preserves every competitor score.  Any
+genuine input-dependent failure pattern must therefore enter through learned/rounded weights or a
+nonuniform realization error, not through the ideal clock itself. -/
+theorem margin_eq_margin (K : Finset (ZMod p)) (s t : ZMod p) : margin K s = margin K t := by
+  have hsup_le : ∀ u v : ZMod p,
+      (Finset.univ.erase u).sup' (erase_univ_nonempty u) (clockLogit K u) ≤
+        (Finset.univ.erase v).sup' (erase_univ_nonempty v) (clockLogit K v) := by
+    intro u v
+    refine Finset.sup'_le _ _ fun c hc => ?_
+    let d : ZMod p := c + (v - u)
+    have hcu : c ≠ u := Finset.ne_of_mem_erase hc
+    have hdv : d ≠ v := by
+      intro h
+      apply hcu
+      dsimp [d] at h
+      linear_combination h
+    have hdmem : d ∈ Finset.univ.erase v :=
+      Finset.mem_erase.mpr ⟨hdv, Finset.mem_univ d⟩
+    calc
+      clockLogit K u c = clockLogit K v d := by
+        unfold clockLogit
+        congr 1
+        dsimp [d]
+        ring
+      _ ≤ (Finset.univ.erase v).sup' (erase_univ_nonempty v) (clockLogit K v) :=
+        Finset.le_sup' _ hdmem
+  unfold margin
+  rw [clockLogit_self, clockLogit_self]
+  congr 1
+  exact le_antisymm (hsup_le s t) (hsup_le t s)
+
+/-- Every wrong-class logit is at most `|K| cos(2π/p)`.  This is the useful uniform form of
+`cos_phase_le`: each nonzero frequency contributes at most the single-frequency competitor
+ceiling, irrespective of the wrong offset. -/
+theorem clockLogit_le_card_mul_cos (K : Finset (ZMod p)) (h0 : (0 : ZMod p) ∉ K)
+    {s c : ZMod p} (hc : c ≠ s) :
+    clockLogit K s c ≤ (K.card : ℝ) * Real.cos (2 * π / p) := by
+  have hm : s - c ≠ 0 := sub_ne_zero.mpr (Ne.symm hc)
+  calc
+    clockLogit K s c = ∑ k ∈ K, Real.cos (phase k (s - c)) := rfl
+    _ ≤ ∑ _k ∈ K, Real.cos (2 * π / p) :=
+      Finset.sum_le_sum fun k hk => cos_phase_le (fun h => h0 (h ▸ hk)) hm
+    _ = (K.card : ℝ) * Real.cos (2 * π / p) := by
+      rw [Finset.sum_const, nsmul_eq_mul]
+
+/-- **Linear redundancy bound.** Every additional nonzero frequency contributes at least the
+single-frequency gap `1 - cos(2π/p)` against every wrong class.  Hence the worst-class margin grows
+at least linearly with the number of frequencies. -/
+theorem card_mul_one_sub_cos_le_margin (K : Finset (ZMod p)) (h0 : (0 : ZMod p) ∉ K)
+    (s : ZMod p) :
+    (K.card : ℝ) * (1 - Real.cos (2 * π / p)) ≤ margin K s := by
+  rw [margin, clockLogit_self]
+  have hsup :
+      (Finset.univ.erase s).sup' (erase_univ_nonempty s) (clockLogit K s) ≤
+        (K.card : ℝ) * Real.cos (2 * π / p) := by
+    refine Finset.sup'_le _ _ fun c hc => ?_
+    exact clockLogit_le_card_mul_cos K h0 (Finset.ne_of_mem_erase hc)
+  linarith
+
+/-- A fully algebraic version of the redundancy bound:
+`margin K s ≥ 8 |K| / p²`.  It follows from
+`cos x ≤ 1 - (2/π²)x²` on `|x| ≤ π`, applied to `x = 2π/p`.
+
+Unlike an asymptotic `Θ(1/p²)` statement, this form can be compared directly with a concrete
+floating-point forward-error bound without evaluating a transcendental function. -/
+theorem eight_card_div_sq_le_margin (K : Finset (ZMod p)) (h0 : (0 : ZMod p) ∉ K)
+    (s : ZMod p) :
+    (8 : ℝ) * K.card / (p : ℝ) ^ 2 ≤ margin K s := by
+  have hp_pos : (0 : ℝ) < p := by exact_mod_cast hp.out.pos
+  have hp_two : (2 : ℝ) ≤ p := by exact_mod_cast hp.out.two_le
+  have hangle_nonneg : (0 : ℝ) ≤ 2 * π / p := by positivity
+  have hangle_le : (2 : ℝ) * π / p ≤ π := by
+    rw [div_le_iff₀ hp_pos]
+    nlinarith [Real.pi_pos]
+  have hcos := Real.cos_le_one_sub_mul_cos_sq
+    (x := (2 : ℝ) * π / p) (by rw [abs_of_nonneg hangle_nonneg]; exact hangle_le)
+  have hpi_ne : (π : ℝ) ≠ 0 := ne_of_gt Real.pi_pos
+  have hp_ne : (p : ℝ) ≠ 0 := ne_of_gt hp_pos
+  have htrig : (8 : ℝ) / p ^ 2 ≤ 1 - Real.cos (2 * π / p) := by
+    have heq : (2 : ℝ) / π ^ 2 * (2 * π / p) ^ 2 = 8 / p ^ 2 := by
+      field_simp
+      ring
+    rw [heq] at hcos
+    linarith
+  calc
+    (8 : ℝ) * K.card / (p : ℝ) ^ 2 =
+        (K.card : ℝ) * ((8 : ℝ) / p ^ 2) := by ring
+    _ ≤ (K.card : ℝ) * (1 - Real.cos (2 * π / p)) :=
+      mul_le_mul_of_nonneg_left htrig (Nat.cast_nonneg K.card)
+    _ ≤ margin K s := card_mul_one_sub_cos_le_margin K h0 s
+
 /-- **The failure criterion.** If an arbitrary perturbed logit `L` stays within `δ` of the ideal
 clock logit at every class, and the margin exceeds `2δ`, then `s` is still the strict argmax of `L`,
 so decoding still succeeds. Contrapositive: decoding can fail only where `margin ≤ 2δ` — *that* set,
@@ -192,6 +284,25 @@ theorem correct_under_perturbation (K : Finset (ZMod p)) (s : ZMod p) (L : ZMod 
   have h1 := (abs_le.mp (hpert c)).2
   have h2 := (abs_le.mp (hpert s)).1
   linarith
+
+/-- Pointwise version of `correct_under_perturbation`.  Correctness only requires the sum of the
+error radii at the correct and competing classes to fit inside the ideal margin.  This is the form
+needed for an actual floating-point readout, whose cancellation and intermediate magnitudes can
+make the forward error depend on the input and class. -/
+theorem correct_under_pointwise_perturbation (K : Finset (ZMod p)) (s : ZMod p)
+    (L : ZMod p → ℝ) (ε : ZMod p → ℝ)
+    (hpert : ∀ c, |L c - clockLogit K s c| ≤ ε c)
+    (hmargin : ∀ c, c ≠ s → ε c + ε s < margin K s) :
+    ∀ c, c ≠ s → L c < L s := by
+  intro c hc
+  have hcmem : c ∈ Finset.univ.erase s := Finset.mem_erase.mpr ⟨hc, Finset.mem_univ c⟩
+  have hsup : clockLogit K s c
+      ≤ (Finset.univ.erase s).sup' (erase_univ_nonempty s) (clockLogit K s) :=
+    Finset.le_sup' _ hcmem
+  have hle : clockLogit K s c ≤ clockLogit K s s - margin K s := by rw [margin]; linarith
+  have h1 := (abs_le.mp (hpert c)).2
+  have h2 := (abs_le.mp (hpert s)).1
+  linarith [hmargin c hc]
 
 /-! ## The decoder and accuracy
 
@@ -270,6 +381,20 @@ theorem failureSet_subset_smallMargin (K : Finset (ZMod p))
   by_contra hlt
   push_neg at hlt
   exact hab (correct_under_perturbation K (a + b) (L a b) δ (fun c => hL a b c) hlt)
+
+/-- Input-dependent certified-accuracy bridge.  A realized decoder may have a different uniform
+per-class error radius on each input pair; failure is confined to inputs whose ideal margin does not
+beat that input's radius.  This avoids collapsing a translation-invariant clock certificate to the
+all-inputs-or-no-inputs behavior induced by one global `δ`. -/
+theorem failureSet_subset_smallMargin_inputwise (K : Finset (ZMod p))
+    (L : ZMod p → ZMod p → ZMod p → ℝ) (δ : ZMod p → ZMod p → ℝ)
+    (hL : ∀ a b c, |L a b c - clockLogit K (a + b) c| ≤ δ a b) :
+    FailureSet L ⊆ {ab | margin K (ab.1 + ab.2) ≤ 2 * δ ab.1 ab.2} := by
+  rintro ⟨a, b⟩ hab
+  simp only [FailureSet, Set.mem_setOf_eq] at hab ⊢
+  by_contra hlt
+  push_neg at hlt
+  exact hab (correct_under_perturbation K (a + b) (L a b) (δ a b) (fun c => hL a b c) hlt)
 
 /-- **Certified 100% accuracy under FP.** If the realized logits are within `δ` of the ideal and the
 margin everywhere exceeds `2δ`, the floating-point decoder is *exactly* correct. The honest version
