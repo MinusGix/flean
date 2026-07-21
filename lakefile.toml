@@ -18,3 +18,7 @@ scope = "leanprover-community"
 
 [[lean_lib]]
 name = "Flean"
+
+[[lean_exe]]
+name = "modadd_checker"
+root = "Checker.Main"
