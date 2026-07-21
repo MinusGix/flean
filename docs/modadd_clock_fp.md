@@ -1,5 +1,10 @@
 # Floating-point modular-addition clock
 
+> **Architecture note.** This file documents the shipped table-backed realization. Tables are now
+> treated as one numerical backend, not as the intended semantic interface for learned models. See
+> [`modadd_clock_representation.md`](modadd_clock_representation.md) for the representation-first
+> design and the reasons entrywise canonical-table certification is not the next objective.
+
 The modular-addition thread now has two layers:
 
 - `Flean/Operations/ModAddClock.lean` is the exact real-valued specification.
@@ -147,12 +152,19 @@ row: 112 copies of `0x3f800000` for cosine and 112 copies of `0x00000000` for si
 exact with error zero. This exercises literal decoding, finiteness, word recovery, and the
 mathematical certificate interface without assuming a host floating-point conversion.
 
+This bridge is an artifact decoder, not an endorsement of materializing the complete canonical trig
+table. Its intended long-term use includes imported learned tensors and compressed reference
+backends.
+
 ## Next concrete experiment
 
-The mathematical Binary32 execution path is now certified. Remaining experiments concern concrete
-data export and alternate formats or accumulation strategies:
+The next architectural experiment is representation-first:
 
-1. generate the remaining literal Binary32 rows and rational interval certificates for their
-   nontrivial sine/cosine coordinates;
-2. compare sequential FMA with pairwise or compensated accumulation;
-3. repeat the construction with BF16 and identify which inputs, if any, lose their margin.
+1. import one actual checkpoint and define its precise executable floating-point forward pass;
+2. verify finite-domain accuracy directly over the 12,769 input pairs;
+3. inspect its learned frequency subspaces up to changes of basis and residual error;
+4. extract an approximate cyclic-code interface from those observed invariants, then bridge the
+   existing exact Fourier clock as a reference instance.
+
+Generating the remaining literal canonical trig rows is intentionally deferred. It is a possible
+reference-backend artifact, not the route to validating the learned mechanism.

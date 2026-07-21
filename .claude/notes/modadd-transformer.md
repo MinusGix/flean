@@ -162,8 +162,32 @@ removes the recovered-`a+b`-feature oracle from the concrete `p=113` result.
 `Flean/Operations/ModAddClockBinary32Literal.lean` adds `FiniteWord`, whose decoded `FiniteFp`
 provably re-encodes to its original `BitVec 32`, plus certified literal vectors and a direct
 conversion to `FpClockTables`. `fullBank113ZeroRow` is the first complete literal row: 112 one words
-and 112 zero words, certified exact. The remaining work is bulk generation and interval
-certification of the nontrivial trig rows, not another table abstraction.
+and 112 zero words, certified exact. The initial proposed follow-up was bulk generation and interval
+certification of the nontrivial trig rows; the architecture correction below supersedes that plan.
+
+### Architecture correction 2026-07-21 — tables are a backend, not the mechanism
+
+The stronger objection to finishing the literal trig table is architectural, not just its size.
+`FpClockTables` fixes a canonical sine/cosine basis and validates implementations entrywise. A
+learned network may realize the same cyclic representation after frequency permutation, rotation or
+rescaling inside each frequency plane, and a paired change in its readout. Entrywise closeness to our
+chosen gauge is therefore the wrong invariant.
+
+The next core should be representation-first. An approximate cyclic-code interface should expose an
+encoded state, separate-input combination, candidate scoring, composition/score defects, arithmetic
+error, and a margin theorem. The exact Fourier clock becomes one instance; literal tables,
+recurrences, and learned weights become backends. Real weights should be certified through detected
+frequency subspaces, changes of basis, residual bounds, and operational defects. See
+`docs/modadd_clock_representation.md`.
+
+Keep extensional verification separate from mechanism explanation. At `p=113`, an imported concrete
+network has only 12,769 input pairs, so an executable/reflected forward-pass certificate can establish
+its actual accuracy directly. The gauge-invariant cyclic-representation certificate then explains
+the behavior and its robustness; it is not a prerequisite for the finite correctness result. Inspect
+the chosen checkpoint before freezing the new structural API.
+
+The literal bridge remains useful as generic bit-exact artifact ingestion. Do not extend it into a
+full canonical table unless a concrete reference-backend use requires that artifact.
 
 ---
 
@@ -191,13 +215,18 @@ Idealized clock decoder for `(a+b) mod p`, margin-centric, in `Flean/Operations/
       error below the full-bank margin, proving end-to-end accuracy one at `p=113`.
 - [x] **#2e Literal ingestion core** — checked finite Binary32 words, exact encode/decode round trip,
       certified literal vectors, `FpClockTables` conversion, and the complete exact zero row.
-- [ ] **#2f Full literal table artifact** — generate the other 112 rows and discharge their
-      sine/cosine rounding-cell certificates with rational interval evidence.
+- [x] **#2f Full literal table artifact — superseded decision** — do not bulk-certify canonical trig rows as
+      the main path; retain this only as an optional reference-backend artifact.
+- [ ] **#2g Representation-first core** — approximate cyclic code with composition defect, score
+      defect, arithmetic error, and margin; design it after inspecting a real checkpoint, then bridge
+      the exact Fourier clock as a reference instance.
 - [ ] **Concrete full-set margin** — `margin (univ.erase 0) s = p` via the root-of-unity sum
       (`∑_{k:ZMod p} cos(phase k m) = if m=0 then p else 0`; route `Complex.exp_ofReal_mul_I_re` +
       `geom_sum_eq`/`IsPrimitiveRoot.geom_sum_eq_zero` + ZMod→range bijection). Heavy; deferred.
-- [ ] **#3 Weights-into-Lean bridge** — concrete `FiniteFp` weight matrices + forward pass. The
-      gating step that converts "idealized algorithm" into "the actual trained network".
+- [ ] **#3 Weights-into-Lean bridge** — concrete literal tensors plus a gauge-invariant certificate:
+      learned frequency subspaces, changes of basis, residuals, composition defect, and readout
+      margin. First verify the concrete finite-domain forward pass extensionally; then add the
+      structural explanation. This is now the next discovery step.
 - [ ] **#4 RG / Wisp probe** — which frequencies survive FP precision (= relevant vs irrelevant
       operators, leak-as-truncation); frequency redundancy as √n error correction; may *explain* the
       sparse frequency count (FP can't resolve more).
