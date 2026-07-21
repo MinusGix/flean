@@ -295,6 +295,42 @@ per `docs/verified_checker_design.md` (status now recorded there too).
   boundary one layer up until only embeddings are data. Also: margin-table emitter with
   soundness ("emitted q ≤ true margin"), frequency detection.
 
+### Added 2026-07-21 (session 4 of the day) — SECOND RUNG: MLP + unembed checker
+
+Trusted-activation boundary moved one layer up: torch now only supplies embeddings +
+attention (`resid_mid`, added to `export_activations.py`); MLP and unembed are re-executed
+in the Lean spec. `Flean/Checker/ModAddMlp.lean`:
+
+- Spec: `seqDot` (generic sequential RNE dot), `mlpHidden` = `fpRelu (fpAdd ⟨W_in row, x⟩
+  b_in)`, `mlpOut` = `(x_d + ⟨W_out row, h⟩) + b_out_d`, `mlpLogit` = `⟨out, W_U col⟩`;
+  `MlpReadoutCorrect` (strict argmax, exact ℚ).
+- Exec: memoized stages `hiddenArr`/`outArr`/`rowLogitsMlp` (each neuron/coordinate once per
+  row; named defs + let-sharing, NOT inline — inlining hiddenArr into the closure would
+  recompute it 512×), `checkRowsForA`, **`checkMlpReadout` = per-`a` `Task` fan-out**;
+  reporting helpers `rowMargin`/`foldMargin` live here (Main must stay instance-free).
+- Soundness: `checkMlpReadout_sound` parametric; Task layer proof-transparent via
+  `get_spawn_const : (Task.spawn fun _ => x).get = x := rfl` (state it with the body as a
+  VARIABLE; transporting the concrete body by defeq = whnf explosion). Pointwise lemmas via
+  rfl-zeta-equations + `getD_ofFn'` (eta-clean g, avoids `f ⟨j,hj⟩` beta-redex residue that
+  breaks later `rw`s) + `seqDot_congr` (foldl-over-range induction). `congr 2` on fpAdd goals
+  = max-recursion (instance-heavy implicits); targeted `rw` of the differing seqDot subterm
+  instead.
+- Accuracy bridge refactored GENERIC: `ArgmaxCorrect L` + `realizedOf L` +
+  `failureSet_realizedOf_eq_empty`/`accuracy_realizedOf_eq_one` proved once;
+  `ReadoutCorrect ↔ ArgmaxCorrect (specLogit …)` and MLP version are `Iff.rfl`;
+  headline `accuracy_realizedMlp_eq_one`.
+- **Run (seed-0 checkpoint): `checkMlpReadout = true`, 12769/12769; exact-rational min
+  Binary32 margin = 9.605161… — identical to the readout rung to all 6 printed digits**
+  (min-margin row's logits barely touched by MLP-recompute-vs-torch order differences);
+  per-row margins differ from torch in the ~4th decimal as expected. Report pass 1045s +
+  verified pass 1052s at ~14.5 cores (~530 ms/row serial, 16 hw threads, `Task` per outer
+  `a`). Negative controls: NaN in resid_mid[5,0] propagates → rejected; single mantissa-bit
+  flip (0.067→0.098) absorbed by margin → legitimate accept.
+- NEXT rung: attention (per-head QK scores, causal mask, softmax via `fpExp`+`fpDivFinite`,
+  OV mix) then embeddings — after that only raw weight tensors are data. Attention softmax
+  spec-fidelity question to settle first: torch computes `scores/√32` and `-1e10` masking;
+  our spec must fix exact Binary32 constants and orders for these.
+
 ---
 
 ## STATUS (tracker)
@@ -336,9 +372,10 @@ Idealized clock decoder for `(a+b) mod p`, margin-centric, in `Flean/Operations/
       FLEANTEN interchange + `Flean/Checker/ModAddReadout.lean` (`checkReadout` recomputes the
       unembed layer in spec-Binary32 from torch-exported residuals, `checkReadout_sound`
       parametric) + accuracy bridge into `FailureSet`/`accuracy` + compiled run on the seed-0
-      checkpoint. REMAINING: walk the recomputation upstream (MLP+ReLU → attention/softmax →
-      embeddings) until only raw weights are data; analysis emitters (frequency subspaces,
-      margin table, range certs, composition defect).
+      checkpoint. SECOND RUNG DONE same day (session 4 entry): MLP+ReLU+unembed recomputed in
+      spec (`ModAddMlp.lean`, Task-parallel, `checkMlpReadout = true`, min margin 9.605161).
+      REMAINING: attention/softmax → embeddings until only raw weights are data; analysis
+      emitters (frequency subspaces, margin table, range certs, composition defect).
 - [ ] **#4 RG / Wisp probe** — which frequencies survive FP precision (= relevant vs irrelevant
       operators, leak-as-truncation); frequency redundancy as √n error correction; may *explain* the
       sparse frequency count (FP can't resolve more).

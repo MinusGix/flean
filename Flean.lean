@@ -38,4 +38,5 @@ import «Flean».IntegerEquivalence.RoundToIntBits
 import «Flean».IntegerEquivalence.TruncMidExp
 import «Flean».Checker.RawTensor
 import «Flean».Checker.ModAddReadout
+import «Flean».Checker.ModAddMlp
 import «Flean».Checker.ModAddReadoutAccuracy

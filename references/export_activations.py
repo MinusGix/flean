@@ -2,8 +2,9 @@
 
 Runs the float32 forward pass on all p^2 = 12769 pairs (row index = a*113 + b,
 same as eval_modadd.py) and dumps:
-  logits : (12769, 114)  final-position logits
-  resid  : (12769, 128)  final-position residual stream just before unembed
+  logits    : (12769, 114)  final-position logits
+  resid     : (12769, 128)  final-position residual stream just before unembed
+  resid_mid : (12769, 128)  final-position residual after attention, before MLP
 
 These are checker INPUTS (data, not proof-data): the Lean checker verifies
 properties of them (argmax/margin; later, that logits = resid @ W_U in exact
@@ -46,9 +47,10 @@ def forward_resid(tokens):
     z = torch.einsum('biph,biqp->biqh', v, attn)
     z_flat = z.permute(0, 2, 1, 3).reshape(tokens.shape[0], 3, 128)
     x = x + torch.einsum('df,bqf->bqd', W_O, z_flat)
+    mid = x[:, -1, :].clone()  # post-attention, pre-MLP
     h = F.relu(torch.einsum('md,bpd->bpm', W_in, x) + b_in)
     x = x + torch.einsum('dm,bpm->bpd', W_out, h) + b_out
-    return x[:, -1, :]  # (B, 128) final-position residual
+    return x[:, -1, :], mid  # (B, 128) final-position residuals
 
 
 a = torch.arange(P).repeat_interleave(P)
@@ -57,8 +59,10 @@ eq = torch.full_like(a, P)
 tokens = torch.stack([a, b, eq], dim=1)
 
 with torch.no_grad():
-    resid = torch.cat([forward_resid(tokens[i:i + 1000])
-                       for i in range(0, len(tokens), 1000)])
+    chunks = [forward_resid(tokens[i:i + 1000])
+              for i in range(0, len(tokens), 1000)]
+    resid = torch.cat([c[0] for c in chunks])
+    resid_mid = torch.cat([c[1] for c in chunks])
     logits = resid @ W_U
 
 labels = (a + b) % P
@@ -69,7 +73,7 @@ wrong[torch.arange(len(labels)), labels] = -1e30
 margin = (correct - wrong.max(dim=-1).values)
 print(f'sanity: acc={acc:.6f}, min margin={margin.min().item():.4f}')
 
-TENSORS = [('logits', logits), ('resid', resid)]
+TENSORS = [('logits', logits), ('resid', resid), ('resid_mid', resid_mid)]
 out = 'large_files/modadd_activations.fleanten'
 with open(out, 'wb') as f:
     f.write(b'FLEANTEN')

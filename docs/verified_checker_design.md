@@ -73,7 +73,20 @@ satisfy the interface.
    holds — 12769/12769 pairs, and the exact-rational min margin is 9.605161… (truncated),
    matching the float32 torch reference 9.6052. Report pass 861 s, verified pass ≈ 854 s
    (~67 ms/row each; exact bignum arithmetic, single-threaded).
-4. Extend the recomputation upstream (MLP + ReLU next, then attention/softmax) to shrink the
-   trusted-activation boundary; analysis emitters: learned-frequency detection, margin table,
-   per-layer interval/affine range certificates feeding the gauge-invariant representation
-   theorems.
+4. **DONE, second rung (2026-07-21).** MLP + unembed checker
+   (`Flean/Checker/ModAddMlp.lean`): torch is now trusted only for embeddings + attention
+   (the exported post-attention residual `resid_mid`); `mlpHidden`/`mlpOut`/`mlpLogit`
+   re-execute `relu(W_in·x + b_in)`, the residual add `x + W_out·h + b_out`, and the unembed
+   in spec Binary32 (`Fp.fpRelu`, sequential RNE mul/add). `MlpReadoutCorrect` +
+   `checkMlpReadout` (per-stage memoized arrays, per-`a` `Task` fan-out — proof-transparent
+   since `(Task.spawn fun _ => x).get = x` is `rfl`) + parametric `checkMlpReadout_sound`.
+   Accuracy bridge generalized (`ArgmaxCorrect`/`realizedOf`) and instantiated for both
+   rungs (`accuracy_realizedMlp_eq_one`). Run on the seed-0 checkpoint:
+   `checkMlpReadout = true`, 12769/12769, exact-rational min margin 9.605161… (identical to
+   the readout rung to 6 digits); ~17.5 min per pass at ~14.5 cores (~530 ms/row serial).
+   Negative controls: an injected NaN in `resid_mid` propagates and is rejected; a
+   low-mantissa-bit flip is absorbed by the ≫ margin (legitimate accept).
+5. Next rung: attention (softmax via `fpExp` + `fpDivFinite`, per-head QK/OV in spec
+   Binary32) and embeddings, until only the raw weight tensors are data. Analysis emitters:
+   learned-frequency detection, margin table, per-layer interval/affine range certificates
+   feeding the gauge-invariant representation theorems.

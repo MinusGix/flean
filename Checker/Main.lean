@@ -1,15 +1,20 @@
 import Flean.Checker.ModAddReadout
+import Flean.Checker.ModAddMlp
 
 /-!
-Executable entry point for the verified modadd readout checker.
+Executable entry point for the verified modadd checkers.
 
-Usage: `modadd_checker [weights.fleanten] [activations.fleanten] [--report-only | --rows N]`
+Usage:
+  modadd_checker [weights.fleanten] [activations.fleanten]
+                 [--layer mlp|readout] [--report-only] [--rows N]
 
-Two passes over the 12769 input pairs:
-1. an unverified *report* pass (per-row exact-rational margins, accuracy,
-   progress), and
-2. the verified pass: a single call to `checkReadout`, whose `true` result
-   establishes `ReadoutCorrect` via `checkReadout_sound`.
+`--layer readout` (first rung): trusts the torch pre-unembed residual,
+recomputes the unembed in spec Binary32 (`checkReadout`/`checkReadout_sound`).
+`--layer mlp` (default, second rung): trusts the torch post-attention
+residual, recomputes MLP + unembed (`checkMlpReadout`/`checkMlpReadout_sound`).
+
+Each mode runs an unverified *report* pass (exact-rational margins) and the
+verified pass whose `true` is covered by the soundness theorem.
 -/
 
 open Flean.Checker Flean.Checker.ModAdd
@@ -24,82 +29,134 @@ def ratToString (q : ℚ) (digits : ℕ := 4) : String :=
   let frac := "".pushn '0' (digits - frac.length) ++ frac
   s!"{sign}{n / scale.natAbs}.{frac}"
 
-def main (args : List String) : IO UInt32 := do
-  let rowLimit : Option Nat := do
-    let i ← args.idxOf? "--rows"
-    (args.getD (i + 1) "").toNat?
-  let rowsIdx := (args.idxOf? "--rows").getD args.length
-  let pos := (args.zipIdx.filter fun (a, i) =>
-    ¬a.startsWith "--" ∧ i ≠ rowsIdx + 1).map (·.1)
-  let wPath := pos.getD 0 "references/large_files/modadd_weights.fleanten"
-  let aPath := pos.getD 1 "references/large_files/modadd_activations.fleanten"
-  let reportOnly := args.contains "--report-only"
+def reportSummary (nRows correct : Nat) (minMargin : Option ℚ) (ms : Nat) :
+    IO Unit := do
+  IO.println s!"report pass: {correct}/{nRows} rows correct ({ms} ms)"
+  match minMargin with
+  | some q =>
+    IO.println s!"min Binary32 logit margin (exact rational, truncated): {ratToString q 6}"
+  | none => IO.println "no finite margins"
 
-  let weights ← readRawTensorFile wPath
-  let acts ← readRawTensorFile aPath
-  let some wU := RawTensor.find? weights "W_U" dModel vocab
-    | throw (IO.userError "W_U (128 x 114) not found in weights file")
-  let some resid := RawTensor.find? acts "resid" (p * p) dModel
-    | throw (IO.userError "resid (12769 x 128) not found in activations file")
-
-  -- Report pass: recompute logits per row, exact-rational margins.
+def runReadout (resid wU : RawTensor) (rowLimit : Option Nat)
+    (reportOnly : Bool) : IO UInt32 := do
   let nRows := min (rowLimit.getD (p * p)) (p * p)
   let mut correct := 0
   let mut minMargin : Option ℚ := none
   let t0 ← IO.monoMsNow
   for i in [0:nRows] do
-    let a := i / p
-    let b := i % p
-    let lab := (a + b) % p
     let row := rowLogits resid.data wU.data i
-    let vals : Array (Option ℚ) := row.map fpToRat?
-    match vals.getD lab none with
-    | none => IO.println s!"row {i} (a={a}, b={b}): label logit NON-FINITE"
-    | some lv =>
-      let mut worst : Option ℚ := none
-      let mut ok := true
-      for j in [0:vocab] do
-        if j ≠ lab then
-          match vals.getD j none with
-          | none => ok := false
-          | some v =>
-            worst := some (max v (worst.getD v))
-      match worst, ok with
-      | some w, true =>
-        let margin := lv - w
-        if margin > 0 then correct := correct + 1
-        else IO.println s!"row {i} (a={a}, b={b}): WRONG, margin {ratToString margin}"
-        minMargin := some (min margin (minMargin.getD margin))
-      | _, _ => IO.println s!"row {i}: non-finite wrong logit"
+    let lab := (i / p + i % p) % p
+    let m? := rowMargin row lab
+    if m?.isNone ∨ m?.getD 0 ≤ 0 then
+      IO.println s!"row {i} (a={i / p}, b={i % p}): WRONG or non-finite"
+    (correct, minMargin) := foldMargin (correct, minMargin) m?
     if (i + 1) % 500 = 0 then
-      let dt ← IO.monoMsNow
-      IO.println s!"  … {i + 1}/{nRows} rows, {dt - t0} ms"
+      IO.println s!"  … {i + 1}/{nRows} rows, {(← IO.monoMsNow) - t0} ms"
       (← IO.getStdout).flush
-  let t1 ← IO.monoMsNow
-  IO.println s!"report pass: {correct}/{nRows} rows correct ({t1 - t0} ms)"
-  match minMargin with
-  | some q => IO.println s!"min Binary32 logit margin (exact rational, truncated): {ratToString q 6}"
-  | none => pure ()
-
+  reportSummary nRows correct minMargin ((← IO.monoMsNow) - t0)
   if reportOnly || rowLimit.isSome then
     return 0
-
-  -- Verified pass: the compiled checker whose `true` is covered by
-  -- `checkReadout_sound`.
   IO.println "verified pass: running checkReadout …"
   (← IO.getStdout).flush
   let t2 ← IO.monoMsNow
   let ok := checkReadout resid.data wU.data
-  -- Print before reading the clock: forces `ok` (a pure binding the compiler
-  -- may otherwise float past `IO.monoMsNow` into its first use).
   IO.println s!"checkReadout = {ok}"
-  let t3 ← IO.monoMsNow
-  IO.println s!"verified pass took {t3 - t2} ms"
+  IO.println s!"verified pass took {(← IO.monoMsNow) - t2} ms"
   if ok then
-    IO.println "⇒ ReadoutCorrect holds for these tensors (checkReadout_sound):"
-    IO.println "  every pair (a,b): spec-Binary32 logit of (a+b) mod 113 strictly"
-    IO.println "  exceeds all 113 other logits."
+    IO.println "⇒ ReadoutCorrect holds for these tensors (checkReadout_sound)."
     return 0
   else
     IO.println "checker REJECTED the tensors"
     return 1
+
+def runMlp (residMid wIn bIn wOut bOut wU : RawTensor) (rowLimit : Option Nat)
+    (reportOnly : Bool) : IO UInt32 := do
+  let rowFor := fun (i : ℕ) =>
+    rowLogitsMlp residMid.data wIn.data bIn.data wOut.data bOut.data wU.data i
+  match rowLimit with
+  | some n =>
+    -- serial spot-check / timing mode
+    let nRows := min n (p * p)
+    let mut correct := 0
+    let mut minMargin : Option ℚ := none
+    let t0 ← IO.monoMsNow
+    for i in [0:nRows] do
+      let m? := rowMargin (rowFor i) ((i / p + i % p) % p)
+      if m?.isNone ∨ m?.getD 0 ≤ 0 then
+        IO.println s!"row {i} (a={i / p}, b={i % p}): WRONG or non-finite"
+      (correct, minMargin) := foldMargin (correct, minMargin) m?
+      IO.println s!"  row {i}: margin {(m?.map (ratToString · 6)).getD "none"}, {(← IO.monoMsNow) - t0} ms cumulative"
+    reportSummary nRows correct minMargin ((← IO.monoMsNow) - t0)
+    return 0
+  | none =>
+    -- parallel report pass, one task per outer index a
+    let t0 ← IO.monoMsNow
+    let tasks := (List.range p).map fun a => Task.spawn fun _ =>
+      (List.range p).foldl (fun acc b =>
+        foldMargin acc (rowMargin (rowFor (a * p + b)) ((a + b) % p)))
+        ((0 : Nat), (none : Option ℚ))
+    let mut correct := 0
+    let mut minMargin : Option ℚ := none
+    let mut done := 0
+    for t in tasks do
+      let (c, m?) := t.get
+      correct := correct + c
+      minMargin := match minMargin, m? with
+        | some x, some y => some (min x y)
+        | x, none => x
+        | none, y => y
+      done := done + 1
+      if done % 16 = 0 then
+        IO.println s!"  … {done}/{p} outer rows, {(← IO.monoMsNow) - t0} ms"
+        (← IO.getStdout).flush
+    reportSummary (p * p) correct minMargin ((← IO.monoMsNow) - t0)
+    if reportOnly then
+      return 0
+    IO.println "verified pass: running checkMlpReadout …"
+    (← IO.getStdout).flush
+    let t2 ← IO.monoMsNow
+    let ok := checkMlpReadout residMid.data wIn.data bIn.data wOut.data
+      bOut.data wU.data
+    IO.println s!"checkMlpReadout = {ok}"
+    IO.println s!"verified pass took {(← IO.monoMsNow) - t2} ms"
+    if ok then
+      IO.println "⇒ MlpReadoutCorrect holds for these tensors (checkMlpReadout_sound):"
+      IO.println "  from the post-attention residual, the spec-Binary32 MLP + unembed"
+      IO.println "  puts (a+b) mod 113 strictly above all other logits, on every pair."
+      return 0
+    else
+      IO.println "checker REJECTED the tensors"
+      return 1
+
+def main (args : List String) : IO UInt32 := do
+  let valueOf (flag : String) : Option String := do
+    let i ← args.idxOf? flag
+    args[i + 1]?
+  let rowLimit : Option Nat := (valueOf "--rows").bind (·.toNat?)
+  let layer := (valueOf "--layer").getD "mlp"
+  let reportOnly := args.contains "--report-only"
+  let flagVals := ["--rows", "--layer"].filterMap valueOf
+  let pos := args.filter fun a => ¬a.startsWith "--" ∧ a ∉ flagVals
+  let wPath := pos.getD 0 "references/large_files/modadd_weights.fleanten"
+  let aPath := pos.getD 1 "references/large_files/modadd_activations.fleanten"
+
+  let weights ← readRawTensorFile wPath
+  let acts ← readRawTensorFile aPath
+  let need (ts : Array RawTensor) (name : String) (r c : Nat) : IO RawTensor := do
+    match RawTensor.find? ts name r c with
+    | some t => return t
+    | none => throw (IO.userError s!"{name} ({r} x {c}) not found")
+  let wU ← need weights "W_U" dModel vocab
+
+  match layer with
+  | "readout" =>
+    let resid ← need acts "resid" (p * p) dModel
+    runReadout resid wU rowLimit reportOnly
+  | "mlp" =>
+    let residMid ← need acts "resid_mid" (p * p) dModel
+    let wIn ← need weights "W_in" dMlp dModel
+    let bIn ← need weights "b_in" 1 dMlp
+    let wOut ← need weights "W_out" dModel dMlp
+    let bOut ← need weights "b_out" 1 dModel
+    runMlp residMid wIn bIn wOut bOut wU rowLimit reportOnly
+  | l => throw (IO.userError s!"unknown --layer {l} (expected mlp|readout)")
