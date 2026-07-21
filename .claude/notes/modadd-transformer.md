@@ -189,6 +189,54 @@ the chosen checkpoint before freezing the new structural API.
 The literal bridge remains useful as generic bit-exact artifact ingestion. Do not extend it into a
 full canonical table unless a concrete reference-backend use requires that artifact.
 
+### Added 2026-07-21 (session 2 of the day) — REAL WEIGHTS IN LEAN (#3 first half)
+
+Checkpoint acquired and inspected (the "inspect before freezing the API" gate):
+
+- **Artifact**: `references/large_files/full_run_data.pth` (456MB, gdown id
+  `12pmgxpTHLDzSNMbMCuAMXP1lE_XiCQRy`, from `neelnanda-io/Grokking` / progress-measures-paper
+  helpers). Mainline run: seed 0, p=113, d_model=128, 1 layer, 4 heads × d_head 32, d_mlp 512
+  ReLU, **no LayerNorm**, vocab 114 (`0..112` + `=`), ctx `[a,b,=]`, frac_train 0.3, 500 saved
+  epochs; we use the final (epoch 49900) `model` state dict. Repos cloned under `references/`.
+- **Extensional numbers** (`references/eval_modadd.py`, float32 torch forward, all 12769 pairs):
+  **accuracy 100%** (argmax over all 114 or over 0..112), **min margin 9.6052**, mean 17.12,
+  max 21.59, 0.1% quantile 11.9. `=`-logit never beats the best wrong answer. Huge margin vs
+  any plausible FP forward error — the certificate has lots of room.
+- **Fourier check** (rfft of W_E over input dim): key frequencies **{14, 35, 41, 42, 52}**
+  (paper's exact set), ≈93.9% of non-DC power. Weight maxima per tensor all ≤ 0.298.
+- **Lean ingestion shipped** (`Flean/Operations/ModAddNanda/`):
+  - `Packed.lean` — `PackedMatrix r c T`: rows as single packed ℕ (little-endian 32-bit words),
+    ONE `decide` certificate per tensor = fused per-word check `checkWord T w` (finite ∧
+    `m·2^((e−min_exp).toNat) ≤ 2^T`, pure ℕ arithmetic so the kernel never touches ℚ/ℝ).
+    Bridges: `word_isFinite`, `value : FiniteFp`, `value_toBits` (bit-exact re-encode, via
+    Literal.FiniteWord), `abs_value_le` (`|toVal| ≤ 2^(T+min_exp−prec+1)`), `abs_value_le'`
+    (explicit `2^t` with `by decide` side condition — avoids private-local-instance rw friction).
+  - Generated `Embed.lean`/`Attn.lean`/`Mlp.lean` (via `references/export_weights.py`): all 11
+    learned tensors, 226,816 params, bit patterns as hex row-nats. `set_option maxHeartbeats 0`
+    required. decide cost ≈ 3ms/word (Embed 29.5k words ≈ 85s).
+  - `ModAddNanda.lean` umbrella: provenance docstring, `paramCount`, per-tensor magnitude
+    bounds `wE/wPos/wU ≤ 2⁻¹`, `wK ≤ 2⁻³`, `wQ ≤ 2⁻⁴`, `wV/wO ≤ 2⁻¹`, `wIn/wOut ≤ 2⁻²`,
+    `bIn ≤ 2⁻³`, `bOut ≤ 2⁻⁵`.
+- W_K/Q/V exported flattened `(4·32, 128)`; mask not stored (structural tril, not learned).
+
+**PIVOT (same day, user decision): literal artifact COMMITTED THEN REMOVED.** Commit `f5e1062`
+has the full artifact (retrievable); `d0d3105` removes it. Even at 227k params the literal path
+is rough (2.5MB source, ~15 min kernel decide, invalidated wholesale by any Packed.lean touch),
+and it was the *easy* static layer. New architecture = **verified checkers**
+(`docs/verified_checker_design.md`): bulk weights stay OUT of Lean entirely, checkpoints are
+*data not proof-data*. Pattern: (1) spec in Lean against FiniteFp semantics (e.g.
+`IsModAddNetwork W p`), (2) executable checker `check : Tensors → Bool` written for compiled
+execution (UInt32/bit-level, `IntegerEquivalence` layer as substrate), (3) soundness theorem
+`check W = true → P W` proved parametrically over ALL W, (4) `lake exe` on raw on-disk word
+dump — trust boundary = Lean compiler + file read, stated honestly, NOT kernel decide.
+Kernel-pure mathematics (margins, gauge-invariant representation certs) unchanged. Relevant
+existing substrate spotted in Operations.lean: `ExpComputable`/`LogComputable`, `Softmax`,
+`FpMatVec`, `MLP`, `IntegerEquivalence.*` (ReluBits etc.).
+- Next: (a) raw tensor interchange format + Lean IO reader; (b) survey executable-op coverage
+  (exp/div for softmax = main gap); (c) `checkModAdd` + soundness for the p=113 architecture,
+  run on the seed-0 checkpoint; (d) analysis emitters (frequency detection, margin table,
+  range certs) feeding the representation-first core (#2g).
+
 ---
 
 ## STATUS (tracker)
@@ -223,7 +271,12 @@ Idealized clock decoder for `(a+b) mod p`, margin-centric, in `Flean/Operations/
 - [ ] **Concrete full-set margin** — `margin (univ.erase 0) s = p` via the root-of-unity sum
       (`∑_{k:ZMod p} cos(phase k m) = if m=0 then p else 0`; route `Complex.exp_ofReal_mul_I_re` +
       `geom_sum_eq`/`IsPrimitiveRoot.geom_sum_eq_zero` + ZMod→range bijection). Heavy; deferred.
-- [ ] **#3 Weights-into-Lean bridge** — concrete literal tensors plus a gauge-invariant certificate:
+- [x] **#3a Weights-into-Lean ingestion — done, then deliberately retired** (2026-07-21): full
+      bit-exact literal ingestion shipped and kernel-certified (commit `f5e1062`), removed in
+      `d0d3105` in favor of the verified-checker architecture (bulk data out of Lean).
+- [ ] **#3b Verified checkers** — spec + executable checker + parametric soundness theorem +
+      compiled run on raw on-disk tensors (`docs/verified_checker_design.md`). Replaces the
+      literal path for all bulk-data claims, including the extensional forward-pass certificate:
       learned frequency subspaces, changes of basis, residuals, composition defect, and readout
       margin. First verify the concrete finite-domain forward pass extensionally; then add the
       structural explanation. This is now the next discovery step.
