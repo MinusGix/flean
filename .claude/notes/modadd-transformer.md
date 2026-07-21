@@ -131,6 +131,32 @@ Model boundary: `FpClockTables.input` represents the recovered Fourier feature o
 current layer verifies storage + readout, while construction of that feature from separate `a` and
 `b` embeddings (rounded trig identity / learned upstream network) remains the next mechanism layer.
 
+### Added 2026-07-10 — canonical Binary32 Fourier tables
+
+New `Flean/Operations/ModAddClockBinary32.lean`:
+
+- fixes the format to `FloatFormat.Binary32` and rounding to nearest-even;
+- defines each entry as the actual finite RNE result of the exact Fourier coordinate;
+- proves finiteness from `|sin|,|cos| ≤ 1` and the Binary32 largest-finite bound;
+- certifies every coordinate with
+  `tableError = 2⁻²⁴ + 2⁻¹⁵⁰` via `round_preserves_abs_error_unified`;
+- defines `tables B : FpClockTables B` for any bank;
+- defines `fullBank113` (frequencies `1,…,112`) and proves its finset is `univ.erase 0`;
+- defines `fullTables113`, the canonical `113 × 224` Binary32 cosine/sine table;
+- proves the full-bank algebraic margin `896/12769 ≤ margin` and gives the closed-form 224-coordinate
+  quantization contribution.
+
+The values are canonical mathematical `FiniteFp` roundings, not host-evaluated bit-pattern literals:
+Mathlib's real trig functions are noncomputable. Literal export is a separate interval-certificate
+engineering step, not assumed by the correctness result.
+
+### Added 2026-07-21 — end-to-end separate-input Binary32 clock
+
+`Flean/Operations/ModAddClockBinary32EndToEnd.lean` constructs the Fourier feature from separate
+`a` and `b` table rows using rounded cosine/sine addition identities, evaluates the 224-coordinate
+readout with sequential Binary32 FMA, and proves `endToEndAccuracy113_eq_one`. The theorem therefore
+removes the recovered-`a+b`-feature oracle from the concrete `p=113` result.
+
 ---
 
 ## STATUS (tracker)
@@ -149,10 +175,12 @@ Idealized clock decoder for `(a+b) mod p`, margin-centric, in `Flean/Operations/
       `8|K|/p² ≤ |K|(1-cos(2π/p)) ≤ margin K s`.
 - [x] **#2a FP readout integration** — `FiniteFp` feature/readout tables + `FpMatVecBound` execution;
       quantization/arithmetic error split; exact and algebraic failure-set certificates.
-- [ ] **#2b First concrete accuracy number** — instantiate a modulus/frequency bank, format
-      (Binary32 first, then BF16), concrete stored tables, and a chosen accumulation trace.
-- [ ] **#2c Upstream sum-feature construction** — derive `FpClockTables.input_close` from separate
-      rounded embeddings of `a` and `b`, rather than accepting the recovered sum feature as input.
+- [x] **#2b Binary32 tables** — full `p=113` nonzero bank, canonical RNE `FiniteFp` table, uniform
+      entry error, explicit table quantization term, and algebraic margin threshold.
+- [x] **#2c Upstream sum-feature construction** — compute the feature from separate rounded `a` and
+      `b` embeddings using Binary32 product/FMA blocks.
+- [x] **#2d First concrete accuracy number** — sequential 224-step Binary32 FMA readout with total
+      error below the full-bank margin, proving end-to-end accuracy one at `p=113`.
 - [ ] **Concrete full-set margin** — `margin (univ.erase 0) s = p` via the root-of-unity sum
       (`∑_{k:ZMod p} cos(phase k m) = if m=0 then p else 0`; route `Complex.exp_ofReal_mul_I_re` +
       `geom_sum_eq`/`IsPrimitiveRoot.geom_sum_eq_zero` + ZMod→range bijection). Heavy; deferred.

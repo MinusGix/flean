@@ -44,6 +44,8 @@ import Flean.Operations.MvForm
 import Flean.Operations.ProbError
 import Flean.Operations.ModAddClock
 import Flean.Operations.ModAddClockFp
+import Flean.Operations.ModAddClockBinary32
+import Flean.Operations.ModAddClockBinary32EndToEnd
 import Flean.Operations.DivPow2
 import Flean.Operations.AddErrorRepresentable
 import Flean.Operations.Fast2Sum

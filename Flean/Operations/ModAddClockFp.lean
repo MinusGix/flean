@@ -88,6 +88,52 @@ theorem cos_phase_sub (k s c : ZMod p) :
     nlinarith [Real.pi_pos]
   rw [hphase, Real.cos_add_int_mul_two_pi]
 
+/-- Canonical phases respect addition modulo `p` after applying cosine. -/
+theorem cos_phase_add (k a b : ZMod p) :
+    Real.cos (phase k (a + b)) = Real.cos (phase k a + phase k b) := by
+  haveI : NeZero p := ⟨hp.out.pos.ne'⟩
+  let A : ℤ := (k * a).val
+  let C : ℤ := (k * b).val
+  let D : ℤ := (k * (a + b)).val
+  have hdvd : (p : ℤ) ∣ A + C - D := by
+    rw [← ZMod.intCast_zmod_eq_zero_iff_dvd]
+    simp only [A, C, D, Int.cast_sub, Int.cast_add, Int.cast_natCast,
+      ZMod.natCast_zmod_val]
+    ring
+  obtain ⟨q, hq⟩ := hdvd
+  have hp0 : (p : ℝ) ≠ 0 := by exact_mod_cast hp.out.ne_zero
+  have hqR : (A : ℝ) + C - D = p * q := by exact_mod_cast hq
+  have hphase : phase k a + phase k b = phase k (a + b) + (q : ℝ) * (2 * π) := by
+    unfold phase
+    change 2 * π * (A : ℝ) / p + 2 * π * (C : ℝ) / p =
+      2 * π * (D : ℝ) / p + (q : ℝ) * (2 * π)
+    field_simp
+    nlinarith [Real.pi_pos]
+  rw [hphase, Real.cos_add_int_mul_two_pi]
+
+/-- Canonical phases respect addition modulo `p` after applying sine. -/
+theorem sin_phase_add (k a b : ZMod p) :
+    Real.sin (phase k (a + b)) = Real.sin (phase k a + phase k b) := by
+  haveI : NeZero p := ⟨hp.out.pos.ne'⟩
+  let A : ℤ := (k * a).val
+  let C : ℤ := (k * b).val
+  let D : ℤ := (k * (a + b)).val
+  have hdvd : (p : ℤ) ∣ A + C - D := by
+    rw [← ZMod.intCast_zmod_eq_zero_iff_dvd]
+    simp only [A, C, D, Int.cast_sub, Int.cast_add, Int.cast_natCast,
+      ZMod.natCast_zmod_val]
+    ring
+  obtain ⟨q, hq⟩ := hdvd
+  have hp0 : (p : ℝ) ≠ 0 := by exact_mod_cast hp.out.ne_zero
+  have hqR : (A : ℝ) + C - D = p * q := by exact_mod_cast hq
+  have hphase : phase k a + phase k b = phase k (a + b) + (q : ℝ) * (2 * π) := by
+    unfold phase
+    change 2 * π * (A : ℝ) / p + 2 * π * (C : ℝ) / p =
+      2 * π * (D : ℝ) / p + (q : ℝ) * (2 * π)
+    field_simp
+    nlinarith [Real.pi_pos]
+  rw [hphase, Real.sin_add_int_mul_two_pi]
+
 /-- **Fourier tensor identity.** The dot product of the true-sum feature vector with candidate
 class `c` is exactly the ideal clock logit.  This is the bridge from the phase-sum specification to
 the matrix-vector operation implemented by an ML readout. -/
