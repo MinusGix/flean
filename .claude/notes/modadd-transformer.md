@@ -157,6 +157,14 @@ engineering step, not assumed by the correctness result.
 readout with sequential Binary32 FMA, and proves `endToEndAccuracy113_eq_one`. The theorem therefore
 removes the recovered-`a+b`-feature oracle from the concrete `p=113` result.
 
+### Added 2026-07-21 — literal Binary32 certificate boundary
+
+`Flean/Operations/ModAddClockBinary32Literal.lean` adds `FiniteWord`, whose decoded `FiniteFp`
+provably re-encodes to its original `BitVec 32`, plus certified literal vectors and a direct
+conversion to `FpClockTables`. `fullBank113ZeroRow` is the first complete literal row: 112 one words
+and 112 zero words, certified exact. The remaining work is bulk generation and interval
+certification of the nontrivial trig rows, not another table abstraction.
+
 ---
 
 ## STATUS (tracker)
@@ -181,6 +189,10 @@ Idealized clock decoder for `(a+b) mod p`, margin-centric, in `Flean/Operations/
       `b` embeddings using Binary32 product/FMA blocks.
 - [x] **#2d First concrete accuracy number** — sequential 224-step Binary32 FMA readout with total
       error below the full-bank margin, proving end-to-end accuracy one at `p=113`.
+- [x] **#2e Literal ingestion core** — checked finite Binary32 words, exact encode/decode round trip,
+      certified literal vectors, `FpClockTables` conversion, and the complete exact zero row.
+- [ ] **#2f Full literal table artifact** — generate the other 112 rows and discharge their
+      sine/cosine rounding-cell certificates with rational interval evidence.
 - [ ] **Concrete full-set margin** — `margin (univ.erase 0) s = p` via the root-of-unity sum
       (`∑_{k:ZMod p} cos(phase k m) = if m=0 then p else 0`; route `Complex.exp_ofReal_mul_I_re` +
       `geom_sum_eq`/`IsPrimitiveRoot.geom_sum_eq_zero` + ZMod→range bijection). Heavy; deferred.

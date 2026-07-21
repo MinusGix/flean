@@ -8,6 +8,8 @@ The modular-addition thread now has two layers:
   full nonzero frequency bank for `p=113`.
 - `Flean/Operations/ModAddClockBinary32EndToEnd.lean` constructs the sum feature from separate
   inputs, executes a sequential Binary32 FMA readout, and proves accuracy one for `p=113`.
+- `Flean/Operations/ModAddClockBinary32Literal.lean` decodes explicit 32-bit words, proves exact
+  encoding round trips, and packages literal rows for the existing clock-table API.
 
 ## Exact specification and robustness
 
@@ -132,11 +134,25 @@ Binary32.endToEndAccuracy113_eq_one :
 This theorem receives `a` and `b` separately; it does not assume an oracle-provided feature of
 `a+b`.
 
+## Literal table bridge
+
+`Binary32.Literal.FiniteWord` contains an explicit `BitVec 32` and a decidable proof that the word
+is finite. Its decoded `FiniteFp` value provably re-encodes to exactly the original word.
+`CertifiedVector` adds a uniform coordinate error against an ideal real vector, while
+`LiteralClockTables.toFpClockTables` turns complete certified literal input/readout tables directly
+into the clock API used by the correctness theorems.
+
+As a concrete first certificate, `fullBank113ZeroRow` contains all 224 entries of the zero-residue
+row: 112 copies of `0x3f800000` for cosine and 112 copies of `0x00000000` for sine. The row is proved
+exact with error zero. This exercises literal decoding, finiteness, word recovery, and the
+mathematical certificate interface without assuming a host floating-point conversion.
+
 ## Next concrete experiment
 
 The mathematical Binary32 execution path is now certified. Remaining experiments concern concrete
 data export and alternate formats or accumulation strategies:
 
-1. export literal Binary32 bit patterns and certify them against the canonical rounded values;
+1. generate the remaining literal Binary32 rows and rational interval certificates for their
+   nontrivial sine/cosine coordinates;
 2. compare sequential FMA with pairwise or compensated accumulation;
 3. repeat the construction with BF16 and identify which inputs, if any, lose their margin.
