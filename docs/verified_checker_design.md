@@ -43,15 +43,37 @@ perturbation bounds — `ModAddClock*.lean`) is unchanged and stays kernel-pure:
 *any* network satisfying an interface. Checkers are how a specific on-disk network is shown to
 satisfy the interface.
 
-## Near-term build order
+## Build order and status
 
-1. Raw tensor interchange: fix a trivial on-disk format (header + row-major little-endian
-   float32 words); Python exporter from checkpoints; Lean `IO` reader returning
-   `Array (Array UInt32)`.
-2. Executable Binary32 forward-pass core on `UInt32` words, tied to Flean spec ops through
-   `IntegerEquivalence` (add/mul/fma/relu exist; check exp/div coverage for softmax — the
-   attention softmax is the main gap to survey).
-3. First checker + soundness theorem: `checkModAdd` for the p=113 architecture; run it on the
-   Nanda seed-0 checkpoint (empirically: 100% accuracy, min float32 logit margin ≈ 9.605).
-4. Analysis emitters: learned-frequency detection, margin table, per-layer interval/affine
-   range certificates feeding the gauge-invariant representation theorems.
+1. **DONE (2026-07-21).** Raw tensor interchange: FLEANTEN v1 (8-byte magic, version, per-
+   tensor name/rows/cols, row-major little-endian float32 words). Exporters
+   `references/export_raw_tensors.py` (11 weight tensors, 226,816 params) and
+   `references/export_activations.py` (final logits + pre-unembed residual for all 12,769
+   pairs). Pure parser + IO wrapper in `Flean/Checker/RawTensor.lean`; exe target
+   `lake exe modadd_checker` (`Checker/Main.lean`).
+2. **Surveyed (2026-07-21).** Executable-op coverage: all scalar spec ops (`fpAddFinite`,
+   `fpMulFinite`, `fpFMAFinite`, `fpDivFinite`) are computable under `RModeExec` (RNE via
+   `UseRoundingPolicy RoundNearestEvenPolicy`); decode is `Fp.ofBits` (computable, with
+   round-trip theorems); `fpRelu`/`bitRelu` certified; `fpExp` computable via `OpRefExec`
+   interval kernels — so softmax is assemblable from `fpExp` + `fpAdd` + `fpDivFinite`.
+   No executable matvec/softmax/MLP exists (the library's dot-product/MLP layer is
+   certificate structures, not folds) — checkers write their own folds. No native floats
+   anywhere: compiled execution is exact ℚ/ℤ bignum, correct but ~µs/op.
+3. **DONE, walking skeleton (2026-07-21).** First checker + soundness:
+   `Flean/Checker/ModAddReadout.lean`. `specLogit` = sequential spec-Binary32 dot product
+   (RNE mul/add) of a residual row with a `W_U` column; `ReadoutCorrect resid wU` = for every
+   pair the true-answer logit is finite and strictly beats all 113 others in exact rational
+   comparison; `checkReadout` recomputes all 12,769 × 114 logits and checks this;
+   `checkReadout_sound : checkReadout resid wU = true → ReadoutCorrect resid wU` is
+   parametric over all word arrays. `Flean/Checker/ModAddReadoutAccuracy.lean` bridges into
+   the kernel-pure framework: `ReadoutCorrect → FailureSet (realizedLogit …) = ∅` and
+   `accuracy … = 1` in the `ModAddClock` sense. Trust honestly stated: the residual stream is
+   torch-exported data; the unembed layer's arithmetic is re-executed in the Lean spec.
+   Run on the seed-0 checkpoint (2026-07-21): `checkReadout = true`, so `ReadoutCorrect`
+   holds — 12769/12769 pairs, and the exact-rational min margin is 9.605161… (truncated),
+   matching the float32 torch reference 9.6052. Report pass 861 s, verified pass ≈ 854 s
+   (~67 ms/row each; exact bignum arithmetic, single-threaded).
+4. Extend the recomputation upstream (MLP + ReLU next, then attention/softmax) to shrink the
+   trusted-activation boundary; analysis emitters: learned-frequency detection, margin table,
+   per-layer interval/affine range certificates feeding the gauge-invariant representation
+   theorems.

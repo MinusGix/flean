@@ -237,6 +237,64 @@ existing substrate spotted in Operations.lean: `ExpComputable`/`LogComputable`, 
   run on the seed-0 checkpoint; (d) analysis emitters (frequency detection, margin table,
   range certs) feeding the representation-first core (#2g).
 
+### Added 2026-07-21 (session 3 of the day) — FIRST VERIFIED CHECKER (#3b walking skeleton)
+
+Shipped the first spec + executable checker + parametric soundness theorem + compiled run,
+per `docs/verified_checker_design.md` (status now recorded there too).
+
+- **Interchange (FLEANTEN v1)**: magic `FLEANTEN` + version + per-tensor
+  name/rows/cols + row-major LE float32 words. `references/export_raw_tensors.py` (11 weight
+  tensors, 226,816 params, `modadd_weights.fleanten`, 907KB);
+  `references/export_activations.py` (final logits 12769×114 + pre-unembed residual
+  12769×128, float32 sanity in-script: acc 1.0, min margin 9.6052). Lean side
+  `Flean/Checker/RawTensor.lean`: pure parser `ByteArray → Except String (Array RawTensor)`
+  + `readRawTensorFile`; exe `lake exe modadd_checker` (`Checker/Main.lean`, new lakefile
+  `lean_exe` — first executable target in the repo).
+- **Op-coverage survey** (Explore agent, detailed table in its report / design doc): scalar
+  spec ops `fpAddFinite`/`fpMulFinite`/`fpFMAFinite`/`fpDivFinite` all COMPUTABLE under
+  `[RModeExec]` (RNE = `local instance : UseRoundingPolicy RoundNearestEvenPolicy := ⟨⟩` +
+  PolicyInstances); decode = `Fp.ofBits` computable; `fpExp` computable via `OpRefExec`
+  interval kernels ⇒ softmax assemblable (exp/div gap CLOSED in principle); NO executable
+  matvec/softmax/MLP (library layer = certificate structures, checkers write their own
+  folds); no native floats anywhere ⇒ compiled = exact ℚ/ℤ bignum, ~0.5µs/scalar-op scale.
+- **Checker** `Flean/Checker/ModAddReadout.lean`: `specLogit resid wU i j` = sequential
+  spec-Binary32 (RNE) mul/add dot product of residual row i with `W_U` column j (128 steps,
+  left-to-right, `Fp`-total so non-finites propagate); `ReadoutCorrect resid wU` = ∀ pair
+  (a,b), true-class logit finite ∧ strictly > all 113 other logits by exact ℚ comparison of
+  decoded values; `checkReadout : Array UInt32 → Array UInt32 → Bool` computes each row once
+  (`rowLogits` via `Array.ofFn`) and checks; **`checkReadout_sound : checkReadout resid wU =
+  true → ReadoutCorrect resid wU`** parametric over ALL word arrays (proof: `List.all_eq_true`
+  + `Array.getD`-of-`ofFn` helper + match-split; no kernel data).
+- **Accuracy bridge** `Flean/Checker/ModAddReadoutAccuracy.lean`: `realizedLogit` (ℝ-valued,
+  junk 0 at non-finite) + `ReadoutCorrect → FailureSet (realizedLogit resid wU) = ∅` and
+  `accuracy … = 1` in the kernel-pure `ModAddClock` framework. So the checker run lands
+  directly in the established failure-set/accuracy vocabulary. (ReadoutCorrect is strictly
+  stronger: also dominates the `'='` logit which ZMod-indexed FailureSet can't see.)
+- **Honest trust statement**: residual stream = torch-exported data (trusted); unembed layer
+  arithmetic = re-executed in Flean spec (not trusted); claim level = Lean compiler + file
+  read, NOT kernel decide. Negative control passed: NaN-corrupting resid row 0 → checker
+  flags non-finite label logit.
+- **Gotchas**: (1) `local instance` doesn't export — name the instance (`instB32`) and
+  re-attach with `attribute [local instance] instB32` in downstream files; keep Main
+  instance-free via small helpers (`fpToRat?`). (2) NEVER let simp/whnf touch `specLogit`
+  applied to symbolic args — the 128-step foldl explodes (deterministic whnf timeout);
+  rewrite the match *scrutinee* with an equation lemma (`realizedLogit_of_finite` via
+  `unfold` + `rw [hf]`) instead of `simp [realizedLogit, hf]`. (3) `Nat.Prime 113` by
+  norm_num needs `import Mathlib.Tactic.NormNum.Prime` + `unfold p` first.
+- **Run on seed-0 checkpoint (CONCRETE RESULT)**: `checkReadout = true` ⇒ `ReadoutCorrect`
+  holds ⇒ (bridge) `accuracy (realizedLogit resid wU) = 1`. All 12769/12769 pairs correct;
+  **exact-rational min Binary32 logit margin = 9.605161… (truncated)**, matching torch fp32
+  9.6052 — first checker-certified concrete number about the real network. Report pass 861s +
+  verified pass ≈854s (~67ms/row, exact ℚ bignum, single-threaded). Timing gotcha: a pure
+  `let ok := checkReadout …` between two `IO.monoMsNow` reads got floated by the compiler to
+  its first use (printed "0 ms"); force via println before reading the second clock (fixed in
+  Main); actual duration recovered from log-file mtimes.
+- **NEXT (shrink the trusted-activation boundary)**: recompute MLP (`W_out·relu(W_in·x+b_in)
+  +b_out` — fpRelu certified, all ops exist) from post-attention residual; then attention
+  (softmax via `fpExp`+`fpDivFinite` — survey says assemblable); each step moves the torch
+  boundary one layer up until only embeddings are data. Also: margin-table emitter with
+  soundness ("emitted q ≤ true margin"), frequency detection.
+
 ---
 
 ## STATUS (tracker)
@@ -274,12 +332,13 @@ Idealized clock decoder for `(a+b) mod p`, margin-centric, in `Flean/Operations/
 - [x] **#3a Weights-into-Lean ingestion — done, then deliberately retired** (2026-07-21): full
       bit-exact literal ingestion shipped and kernel-certified (commit `f5e1062`), removed in
       `d0d3105` in favor of the verified-checker architecture (bulk data out of Lean).
-- [ ] **#3b Verified checkers** — spec + executable checker + parametric soundness theorem +
-      compiled run on raw on-disk tensors (`docs/verified_checker_design.md`). Replaces the
-      literal path for all bulk-data claims, including the extensional forward-pass certificate:
-      learned frequency subspaces, changes of basis, residuals, composition defect, and readout
-      margin. First verify the concrete finite-domain forward pass extensionally; then add the
-      structural explanation. This is now the next discovery step.
+- [~] **#3b Verified checkers** — WALKING SKELETON DONE 2026-07-21 (session 3 entry above):
+      FLEANTEN interchange + `Flean/Checker/ModAddReadout.lean` (`checkReadout` recomputes the
+      unembed layer in spec-Binary32 from torch-exported residuals, `checkReadout_sound`
+      parametric) + accuracy bridge into `FailureSet`/`accuracy` + compiled run on the seed-0
+      checkpoint. REMAINING: walk the recomputation upstream (MLP+ReLU → attention/softmax →
+      embeddings) until only raw weights are data; analysis emitters (frequency subspaces,
+      margin table, range certs, composition defect).
 - [ ] **#4 RG / Wisp probe** — which frequencies survive FP precision (= relevant vs irrelevant
       operators, leak-as-truncation); frequency redundancy as √n error correction; may *explain* the
       sparse frequency count (FP can't resolve more).
