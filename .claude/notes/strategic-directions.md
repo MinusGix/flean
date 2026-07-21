@@ -1,5 +1,20 @@
 # Flean — Strategic Directions
 
+## Current pick (2026-07-21): range-conditioned circuit reduction
+
+The active direction is now a concrete reduction result rather than further framework widening.
+The first target is a fixed two-input ReLU network computing XOR. Its actual floating-point trace
+should be proved equivalent, on exactly encoded Boolean inputs, to bounded integer arithmetic and
+ultimately to a Boolean XOR circuit. See `docs/range_conditioned_circuit_reduction.md`.
+
+This is a calibration step toward the stronger binary-weight result: replace a finite-precision
+dot-product neuron by XNOR + popcount + integer threshold on its admitted range. The implementation
+should finish the concrete XOR theorem before extracting generic APIs or returning to `dotN`.
+
+**First increment landed 2026-07-21:** the generic exact-integer/sign-bit reduction and the exact
+Binary32/RNE output-encoding theorem are in `Flean/Operations/RangeReduction/`. The proof needed no
+generic network layer. Proceed to the fixed binary-weight XNOR + popcount + threshold target.
+
 **Status**: living document.  Captures the high-level review of where
 the project stands and what next moves are valuable, surfaced
 2026-04-22 after the tag-framework E-series + T-M3 + IsProb + lattice

@@ -28,6 +28,7 @@ import Flean.Operations.ExactIntBound
 import Flean.Operations.ExactIntModP
 import Flean.Operations.ExactIntSign
 import Flean.Operations.ExactIntSignMag
+import Flean.Operations.RangeReduction
 import Flean.Operations.ScaledExact
 import Flean.Operations.ScaledCorrection
 import Flean.Operations.ScaledInt

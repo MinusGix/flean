@@ -1,5 +1,31 @@
 # Exact-Integer Reduction (Flean reductionist thread)
 
+## Active concrete target (2026-07-21)
+
+The reduction stack now has a selected first literal network: a two-input, two-hidden-unit ReLU
+network computing XOR,
+
+```text
+h₁ = ReLU(x + y)
+h₂ = ReLU(x + y - 1)
+out = h₁ - 2 h₂.
+```
+
+For exactly encoded Boolean inputs, the intended headline is that the actual FP operation trace
+reduces through bounded integer arithmetic and sign-bit ReLU to Boolean XOR. This is deliberately a
+concrete calibration theorem, not a new generic network API. It uses existing length-two/exact-int
+machinery and avoids making `dotN` a prerequisite. The follow-up target is a fixed binary-weight
+neuron/network reduced to XNOR + popcount + threshold.
+
+Full design and completion criteria: `docs/range_conditioned_circuit_reduction.md`.
+
+**LANDED 2026-07-21.** `Flean/Operations/RangeReduction/XorNet.lean` carries the literal FP trace
+through bounded exact integers and sign-bit ReLU, with `eval_n_eq_xor` as the generic headline.
+`XorNetBinary32.lean` discharges the format contract and proves `Binary32.fpEval_eq_fpBit`: the
+actual Binary32/RNE program returns the canonical encoded XOR bit. The concrete proof extracted
+only `ExactIntB.withBound` and `ExactIntB.relu`; it did not require `dotN` or a generic net API.
+Next research target: a fixed binary-weight neuron reduced to XNOR + popcount + threshold.
+
 The first **range-conditioned reduction** piece (see `research-vision.md` — Flean's
 "floats as integer/circuit substrate" soul). Goal arc: handcraft concrete exact-integer
 reductions → generalize "what range behaves simply" → eventually extract "this float net
@@ -53,11 +79,12 @@ All sorry-free; wired into `Flean/Operations.lean`; full build green.
    `Int.natAbs_sub_le`). Total `Zero`/`One`/`Neg`. Payoff: `ExactIntB.dot2` takes a
    **single** representability hypothesis `bₐ₁·b_b₁ + bₐ₂·b_b₂ < 2^prec` (implies each
    product fits AND the sum fits, summands nonneg). `dot2_n`/`dot2_bound` by `rfl`.
-3. **n-ary sum / `dotN`** (NEXT, now unblocked). `List (ExactIntB R)` fold with a single
+3. **n-ary sum / `dotN`** (available follow-up, no longer a prerequisite for the concrete target).
+   `List (ExactIntB R)` fold with a single
    running-bound hypothesis; the bound bookkeeping is now a fold over `bound`. Natural
    bridge to matvec.
-4. **Concrete net**. Interval-propagate a small concrete network (bounds flow via
-   `ExactIntB`) and extract its integer/modular behavior. The aspirational target.
+4. **Concrete net — ACTIVE**. Implement the XOR network above, propagate its exact ranges via
+   `ExactIntB`, and extract its Boolean behavior from the literal FP trace.
 
 ## Fixed-point / correction layer (the inexact frontier — started 2026-06-15)
 
