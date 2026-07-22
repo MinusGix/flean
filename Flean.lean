@@ -39,4 +39,5 @@ import «Flean».IntegerEquivalence.TruncMidExp
 import «Flean».Checker.RawTensor
 import «Flean».Checker.ModAddReadout
 import «Flean».Checker.ModAddMlp
+import «Flean».Checker.ModAddFull
 import «Flean».Checker.ModAddReadoutAccuracy

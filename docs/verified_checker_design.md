@@ -86,7 +86,21 @@ satisfy the interface.
    the readout rung to 6 digits); ~17.5 min per pass at ~14.5 cores (~530 ms/row serial).
    Negative controls: an injected NaN in `resid_mid` propagates and is rejected; a
    low-mantissa-bit flip is absorbed by the ≫ margin (legitimate accept).
-5. Next rung: attention (softmax via `fpExp` + `fpDivFinite`, per-head QK/OV in spec
-   Binary32) and embeddings, until only the raw weight tensors are data. Analysis emitters:
-   learned-frequency detection, margin table, per-layer interval/affine range certificates
-   feeding the gauge-invariant representation theorems.
+5. **DONE, final rung (2026-07-21).** Full-forward-pass checker
+   (`Flean/Checker/ModAddFull.lean`): **no activations remain — the eleven raw weight
+   tensors are the only data.** Spec covers embedding + positional add, per-head attention
+   (QK scores scaled by division with `sqrt32 = decode 0x40b504f3`, max-subtracted softmax
+   via `fpExp`/`fpSub`/`fpDiv`; the causal mask is vacuous at the readout position), OV mix,
+   residual adds, MLP, unembed. `FullNetCorrect W` over a `Weights` bundle; nine memoized
+   executable stages; per-`a` `Task` fan-out; parametric `checkFullNet_sound`; accuracy
+   bridge `accuracy_realizedFull_eq_one`. Run on the seed-0 checkpoint:
+   **`checkFullNet = true`, 12769/12769, exact-rational min margin 9.605159…** (torch fp32
+   reference 9.6052; downstream rungs 9.605161 — sub-10⁻⁵ drift through the whole
+   attention recompute). ~40 min per pass at ~14.5 cores (~1.2 s/row serial; ~3.6 G spec
+   ops + 153k `fpExp` calls per pass, exact bignum). Negative control: NaN in `W_in[0,0]`
+   poisons all rows → rejected.
+6. Follow-ups: verified *fast* kernels via the `IntegerEquivalence` pattern (bit-level
+   `UInt32` add/mul/exp proven equal to spec ops once, ~100–1000× speedup) if the pattern
+   is to scale beyond p=113; analysis emitters: learned-frequency detection, margin table,
+   per-layer interval/affine range certificates feeding the gauge-invariant representation
+   theorems.

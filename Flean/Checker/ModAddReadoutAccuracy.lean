@@ -1,5 +1,6 @@
 import Flean.Checker.ModAddReadout
 import Flean.Checker.ModAddMlp
+import Flean.Checker.ModAddFull
 import Flean.Operations.ModAddClock
 import Mathlib.Tactic.NormNum.Prime
 
@@ -132,5 +133,37 @@ theorem accuracy_realizedMlp_eq_one
     accuracy (realizedLogitMlp residMid wIn bIn wOut bOut wU) = 1 :=
   accuracy_realizedOf_eq_one _
     ((mlpReadoutCorrect_iff_argmax residMid wIn bIn wOut bOut wU).mp h)
+
+/-- The full-net logits as a row-indexed family (`i = a * p + b`). -/
+def fullLogitRow (W : Weights) (i j : ℕ) : Fp := fullLogit W (i / p) (i % p) j
+
+theorem fullNetCorrect_argmax (W : Weights) (h : FullNetCorrect W) :
+    ArgmaxCorrect (fullLogitRow W) := by
+  intro a ha b hb j hj hne
+  have hp : p = 113 := rfl
+  have hdiv : (a * p + b) / p = a := by simp only [hp] at hb ⊢; omega
+  have hmod : (a * p + b) % p = b := by simp only [hp] at hb ⊢; omega
+  obtain ⟨ft, fw, h1, h2, h3⟩ := h a ha b hb j hj hne
+  exact ⟨ft, fw, by rw [fullLogitRow, hdiv, hmod]; exact h1,
+    by rw [fullLogitRow, hdiv, hmod]; exact h2, h3⟩
+
+/-- Realized logits of the full-forward-pass checker. -/
+noncomputable def realizedLogitFull (W : Weights) :
+    ZMod p → ZMod p → ZMod p → ℝ :=
+  realizedOf (fullLogitRow W)
+
+/-- Checker-accepted full network ⟹ empty failure set. -/
+theorem failureSet_realizedFull_eq_empty (W : Weights)
+    (h : FullNetCorrect W) :
+    FailureSet (realizedLogitFull W) = ∅ :=
+  failureSet_realizedOf_eq_empty _ (fullNetCorrect_argmax W h)
+
+/-- **Checker-certified accuracy one for the complete network**: the
+spec-Binary32 forward pass from the raw weight tensors decodes
+`(a + b) mod 113` on all `113²` input pairs. -/
+theorem accuracy_realizedFull_eq_one (W : Weights)
+    (h : FullNetCorrect W) :
+    accuracy (realizedLogitFull W) = 1 :=
+  accuracy_realizedOf_eq_one _ (fullNetCorrect_argmax W h)
 
 end Flean.Checker.ModAdd

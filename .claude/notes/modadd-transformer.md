@@ -331,6 +331,52 @@ in the Lean spec. `Flean/Checker/ModAddMlp.lean`:
   spec-fidelity question to settle first: torch computes `scores/√32` and `-1e10` masking;
   our spec must fix exact Binary32 constants and orders for these.
 
+### Added 2026-07-21 (session 5 of the day) — FINAL RUNG: FULL FORWARD PASS FROM RAW WEIGHTS
+
+**THE CAPSTONE EXTENSIONAL RESULT.** `Flean/Checker/ModAddFull.lean`: no torch activations
+remain — the eleven raw weight tensors (`Weights` structure) are the only data. Attention
+folded in AND embeddings (trivial: `W_E` column + `W_pos` add), so this went straight from
+"MLP rung" to "whole network" in one file.
+
+- **Spec decisions** (ours, not bit-matching torch; drift vs torch irrelevant given margin):
+  score scale = `fpDiv` by `sqrt32 := decode 0x40b504f3` (Binary32 nearest √32, what torch
+  uses); causal mask VACUOUS at readout position (q=2 attends to all 3 positions — check
+  `tril` row 2 = ones) so it never appears; softmax = max-subtracted (`fpMax2` NaN-propagating
+  via toRat comparison) then `fpExp`/sequential-add denom/`fpDiv`. `fpExp` computable via
+  `OpRefExec expTarget` (import `ExpComputableDefs`, priority 500 instance beats the
+  noncomputable 120 one; verified exp(−1.5) → `0x3e647c3c` correctly rounded).
+- Spec chain `xEmb→kRow/vRow/qRow→score→smax/expScore/denom/attnW→zRow→attnOutF→residMidF→
+  hiddenF→outF→fullLogit`; `FullNetCorrect W`. Exec: NINE memoized stages (qArr, scoreArr,
+  expArr, attnArr [12 entries flat `e=i*nPos+pos`], zArr, midArr, hid, out, logits); k/v rows
+  used exactly once ⇒ deliberately NOT memoized (inline in score/z entries). Per-`a` Task
+  fan-out; `checkFullNet_sound` parametric over all Weights.
+- **Proof gotchas new this rung**: (1) omega treats named constants (`nPos` etc.) as OPAQUE
+  ATOMS — `have h : nPos = 3` doesn't help; must `simp only [nPos_eq, …] at hyps ⊢` to
+  literals BEFORE omega (div/mod by literals then fine). (2) `rw [show x = x+0 from rfl]`
+  to make `i*nPos` match a lemma's `i*nPos+0` REWRITES INSIDE `+1`/`+2` terms too (subterm
+  capture) — write a separate pos-0 lemma (`scoreArrD_getD0` via `simpa`) instead. (3)
+  `congr 1` on `fpDiv (seqDot …) c = fpDiv (seqDot …) c` hit max recursion — prove the
+  seqDot equality as `have hs` (via seqDot_congr) and `rw [hs]`. (4) index-flattening
+  lemmas stated with output `f (e / nPos) (e % nPos)` compose cleanly; derive `getD'`
+  (i,pos) versions by omega div/mod rewrites.
+- **Accuracy bridge**: `fullLogitRow W i j := fullLogit W (i/p) (i%p) j` +
+  `fullNetCorrect_argmax` ((a*p+b)/p=a needs `simp only [hp] at hb ⊢; omega`) ⇒
+  `accuracy_realizedFull_eq_one`.
+- **RUN (seed-0 checkpoint): `checkFullNet = true` — 12769/12769; exact-rational min
+  Binary32 margin 9.605159…** (readout/MLP rungs: 9.605161; torch fp32: 9.6052 — the whole
+  attention+softmax recompute in our op order moves the min margin by < 2·10⁻⁶). Report
+  pass 2384s + verified pass 2378s (~40 min each, ~14.5 cores; ~1.2 s/row serial = ~280k
+  spec mul/adds + 12 fpExp per row; ~3.6G bignum spec ops/pass). Spot margins: row 0
+  17.686193 (MLP rung 17.686199). Negative control: NaN in W_in[0,0] → all rows non-finite
+  → rejected.
+- **Statement achieved**: `checkFullNet W = true → FullNetCorrect W` (parametric theorem) +
+  compiled run on the on-disk checkpoint ⇒ *the actual Nanda grokked network, as a Binary32
+  program under Flean's IEEE spec, computes (a+b) mod 113 on every input with margin ≥
+  9.605159* — trust = Lean compiler + FLEANTEN file read, honestly stated. Extensional half
+  of #3b COMPLETE. Remaining: mechanism/representation certificates (#2g), analysis emitters,
+  and (if scaling ever matters) verified fast bit-level kernels via IntegerEquivalence
+  (~100-1000× speedup path).
+
 ---
 
 ## STATUS (tracker)
@@ -374,8 +420,12 @@ Idealized clock decoder for `(a+b) mod p`, margin-centric, in `Flean/Operations/
       parametric) + accuracy bridge into `FailureSet`/`accuracy` + compiled run on the seed-0
       checkpoint. SECOND RUNG DONE same day (session 4 entry): MLP+ReLU+unembed recomputed in
       spec (`ModAddMlp.lean`, Task-parallel, `checkMlpReadout = true`, min margin 9.605161).
-      REMAINING: attention/softmax → embeddings until only raw weights are data; analysis
-      emitters (frequency subspaces, margin table, range certs, composition defect).
+      **FINAL RUNG DONE same day (session 5 entry): FULL forward pass from raw weights only
+      (`ModAddFull.lean`, embeddings+attention+softmax+MLP+unembed all in spec;
+      `checkFullNet = true`, 12769/12769, min margin 9.605159). EXTENSIONAL HALF COMPLETE.**
+      REMAINING: analysis emitters (frequency subspaces, margin table, range certs,
+      composition defect) feeding #2g; optional verified fast bit-level kernels
+      (IntegerEquivalence pattern) if scaling matters.
 - [ ] **#4 RG / Wisp probe** — which frequencies survive FP precision (= relevant vs irrelevant
       operators, leak-as-truncation); frequency redundancy as √n error correction; may *explain* the
       sparse frequency count (FP can't resolve more).

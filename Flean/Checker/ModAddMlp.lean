@@ -204,7 +204,7 @@ private theorem rowLogitsMlp_getD (i j : ℕ) (hj : j < vocab) :
 
 /-- Generic row soundness: `checkRow` accepting an array that pointwise agrees
 with a logit function forces the strict-argmax property of that function. -/
-private theorem checkRow_sound' (row : Array Fp) (L : ℕ → Fp)
+theorem checkRow_sound' (row : Array Fp) (L : ℕ → Fp)
     (hrow : ∀ j, j < vocab → row.getD j .NaN = L j) (lab : ℕ)
     (hlab : lab < vocab) (h : checkRow row lab = true) :
     ∀ j, j < vocab → j ≠ lab →
@@ -227,13 +227,15 @@ private theorem checkRow_sound' (row : Array Fp) (L : ℕ → Fp)
       case _ => exact absurd hj' (by simp)
   case _ => exact absurd h (by simp)
 
+/-- `Task.spawn` is proof-transparent (definitional) when the body is a
+variable; transporting a concrete body by defeq instead whnf-explodes. -/
+theorem get_spawn_const {α : Type} (x : α) :
+    (Task.spawn fun _ => x).get = x := rfl
+
 /-- **Soundness**: if the compiled (row-parallel) checker accepts the word
 arrays, the spec-Binary32 MLP + readout decodes modular addition —
 parametric over all inputs. The `Task` fan-out is proof-transparent:
 `(Task.spawn f).get` is definitionally `f ()`. -/
-private theorem get_spawn_const {α : Type} (x : α) :
-    (Task.spawn fun _ => x).get = x := rfl
-
 theorem checkMlpReadout_sound
     (h : checkMlpReadout residMid wIn bIn wOut bOut wU = true) :
     MlpReadoutCorrect residMid wIn bIn wOut bOut wU := by
