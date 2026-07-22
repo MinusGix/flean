@@ -481,7 +481,25 @@ Idealized clock decoder for `(a+b) mod p`, margin-centric, in `Flean/Operations/
       certifies 12584/12769 (**98.55%**), sharp correct-vs-wrong bound 12769/12769 (100%,
       min slack +0.1616). CAVEAT: the sharp bound uses realized defects ⇒ decomposition, not
       compression; a self-contained certificate needs defect bounds derived from the *weights*.
-      That is the real open problem. Proposed Lean shape in the doc's last section.
+      That is the real open problem. RICHER MODELS DON'T HELP (`analyze_clock_plus.py`):
+      clock+u[a,c]+v[b,c] holds only 1.01% extra power, cuts defect 12.41->10.58 but drops the
+      model margin 18.30->13.05, so the GLOBAL certificate gets *worse*; per-input only
+      98.55%->99.62%, at the cost of mechanistic meaning. Defect is diffuse + sup-norm-outlier
+      driven, NOT missing structure (96.32% of power is already clock). Settled on K=5.
+      **LEAN SHIPPED — `Flean/Operations/ModAddRepresentation.lean`** (sorry-free, axiom-clean,
+      wired into `Flean/Operations.lean`): abstraction is a *cyclic kernel* `g : ZMod p -> R`
+      with `kernelScore g s c = g (s - c)` — exactly the "depends only on a+b-c" class, and
+      `clockLogit K = kernelScore (clockKernel K)` holds by `rfl`. Contents: `kernelMargin`,
+      `kernelScore_le_of_ne`, `correct_of_defect` (per-input), `correct_of_defect_sharp`
+      (per-class radii; the form that certifies 100% with min slack +0.16),
+      `failureSet_subset_largeDefect`, `accuracy_ge_of_failureSet_subset`,
+      `accuracy_ge_of_defect`, `accuracy_eq_one_of_defect`, plus the exact clock as the
+      vanishing-defect instance (`kernelMargin_clockKernel_pos`, `clock_correct_of_defect`).
+      Gotcha: `div_le_div_of_nonneg_right` has a different signature than expected — use
+      `gcongr` for `a/c <= b/c`.
+      STILL OPEN (the actual hard part): defect bounds derived from the WEIGHTS rather than
+      measured — i.e. bound the off-diagonal power of `W_U . MLP` on the post-attention
+      residual. Nonlinear (ReLU); not a short proof.
 - [ ] **Concrete full-set margin** — `margin (univ.erase 0) s = p` via the root-of-unity sum
       (`∑_{k:ZMod p} cos(phase k m) = if m=0 then p else 0`; route `Complex.exp_ofReal_mul_I_re` +
       `geom_sum_eq`/`IsPrimitiveRoot.geom_sum_eq_zero` + ZMod→range bijection). Heavy; deferred.
