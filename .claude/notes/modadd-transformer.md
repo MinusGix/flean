@@ -468,9 +468,20 @@ Idealized clock decoder for `(a+b) mod p`, margin-centric, in `Flean/Operations/
       certified literal vectors, `FpClockTables` conversion, and the complete exact zero row.
 - [x] **#2f Full literal table artifact — superseded decision** — do not bulk-certify canonical trig rows as
       the main path; retain this only as an optional reference-backend artifact.
-- [ ] **#2g Representation-first core** — approximate cyclic code with composition defect, score
+- [~] **#2g Representation-first core** — approximate cyclic code with composition defect, score
       defect, arithmetic error, and margin; design it after inspecting a real checkpoint, then bridge
       the exact Fourier clock as a reference instance.
+      **NUMERICAL DESIGN PASS DONE 2026-07-22** — `references/analyze_clock.py`,
+      writeup `docs/clock_representation_analysis.md`. Headlines: freqs {14,35,41,42,52} carry
+      **100.00%** of non-DC power (K=6/8 move defect by 0.026 — nothing spectral left);
+      ideal clock margin **18.30** vs realized **9.605**, i.e. **the defect eats ~47% of the
+      ideal margin**, almost all of it *composition* defect (12.01 = logits are not a function
+      of a+b alone), NOT missing frequencies; **global sup-norm certificate is impossible at
+      every K** (`margin − 2ε = −6.5`), only per-input works — symmetric per-input bound
+      certifies 12584/12769 (**98.55%**), sharp correct-vs-wrong bound 12769/12769 (100%,
+      min slack +0.1616). CAVEAT: the sharp bound uses realized defects ⇒ decomposition, not
+      compression; a self-contained certificate needs defect bounds derived from the *weights*.
+      That is the real open problem. Proposed Lean shape in the doc's last section.
 - [ ] **Concrete full-set margin** — `margin (univ.erase 0) s = p` via the root-of-unity sum
       (`∑_{k:ZMod p} cos(phase k m) = if m=0 then p else 0`; route `Complex.exp_ofReal_mul_I_re` +
       `geom_sum_eq`/`IsPrimitiveRoot.geom_sum_eq_zero` + ZMod→range bijection). Heavy; deferred.
