@@ -100,3 +100,47 @@ Parametric, in a new `ModAddRepresentation.lean`, bridging to the existing
 - accuracy bound `1 − |{(a,b) : 2·d(a,b) ≥ m_clock}| / p²`, instantiated at the
   98.55% figure, with the exact clock instance (`clockLogit`) as the reference
   case where all defects vanish and the bound degenerates to `correct_everywhere`.
+
+---
+
+# Where the composition defect comes from
+
+*Follow-up, same day, script `references/analyze_defect_origin.py`.*
+
+The clock mechanism predicts a specific signature in the 2D Fourier basis over
+`(a,b)`: "depends only on `a+b`" is *exactly* the statement that all power sits
+on the **diagonal** modes `k_a = k_b`. Single-token dependence (`cos ωa` alone)
+sits on `(k,0)` / `(0,k)`; dependence on `a−b` sits on the anti-diagonal. So
+tracking diagonal power layer by layer shows the product-forming happen.
+
+| stage | on-diagonal `k_a = k_b` | of which at the 5 freqs | anti-diag (`a−b`) | else |
+|---|---|---|---|---|
+| resid_mid (post-attention) | **3.70%** | 3.66% | 1.54% | 94.77% |
+| hidden (post-ReLU MLP) | 15.08% | 14.81% | 6.08% | 78.84% |
+| resid_post (pre-unembed) | 88.55% | 88.10% | 0.17% | 11.28% |
+| logits | **97.51%** | 97.02% | 0.15% | 2.34% |
+
+Reading this off:
+
+- **After attention the residual is 94.8% *not* a function of `a+b`**, and its
+  dominant modes are `(52,0)`, `(0,52)`, `(61,0)`, `(0,61)` — note `61 = 113−52`,
+  so these are the ± pair of frequency 52. That is single-token structure: the
+  residual carries `a` and `b` *separately*, in the frequency basis, exactly as
+  the clock story requires. Nothing has been multiplied yet.
+- **The MLP is where products form**: 3.70% → 15.08% → 88.55% diagonal across
+  ReLU and `W_out`. This is the `cos ωa · cos ωb → cos ω(a+b)` step, and it is
+  the load-bearing computation in the network.
+- **The unembed purifies further**, 88.55% → 97.51%: `W_U` projects away much of
+  the surviving non-clock component rather than merely reading out.
+- **The 2.5% that never becomes diagonal is the composition defect** — the same
+  object that measures 12.01 in sup-norm and eats ~47% of the ideal margin. Its
+  strongest logit-level residue is at `(29,0)`/`(0,29)` (and the pair `84 =
+  113−29`), and frequency 29 is precisely the largest non-K5 frequency found in
+  the 1D analysis above (`|G_29| = 0.0210`). The leftover is a *coherent* trace
+  of a sixth, weakly-learned frequency, not diffuse noise.
+
+The consequence for #2g: a self-contained certificate must bound the
+off-diagonal power of the composition `W_U ∘ (MLP)` on the post-attention
+residual. That is a statement about two weight matrices and a ReLU, not about
+12769 forward passes — so it is the right thing to attack, but the ReLU makes it
+genuinely nonlinear and it is not a short proof.
