@@ -377,6 +377,69 @@ folded in AND embeddings (trivial: `W_E` column + `W_pos` add), so this went str
   and (if scaling ever matters) verified fast bit-level kernels via IntegerEquivalence
   (~100-1000× speedup path).
 
+### Session 6 (2026-07-21/22) — checker performance: PROFILED, two hypotheses killed
+
+Motivation: full pass = ~40 min × 2 on 14.5 cores, so any precision/frequency sweep (#4)
+is unaffordable. User chose the `@[csimp]` mechanism (prove `fast = spec` as functions,
+tag csimp ⇒ compiled code swaps, **`checkFullNet_sound` and all definitions untouched**;
+caveat: csimp does NOT affect kernel reduction / `decide` / `native_decide`).
+
+**Measure, don't hypothesize — twice bitten this session:**
+- `perf` on the readout path: >50% of runtime is `malloc`/`cfree`/`realloc` + GMP
+  (`__gmpz_n_pow_ui` 9.5%, `__gmpz_add`, `__gmpz_mul_2exp`, `lp_mathlib_Nat_clog_go` 4.6%).
+  Almost none is arithmetic.
+- **KILLED HYPOTHESIS 1 — exact alignment in `fpAddFinite`.** `Flean/Operations/Add.lean:28`
+  aligns both significands to `e_min` *exactly* (`a.m * 2^(a.e - e_min).toNat`), which looked
+  like the bignum source; I designed a guard/round/sticky theorem (cap shift at `prec+3`,
+  sticky-OR the discarded bits) to fix it. Built it and measured: **249 ms → 227 ms, only 5%.**
+  In these dot products the weights are all the same order of magnitude, so the exponent
+  spread rarely exceeds `prec+3` and exact alignment almost never does a big shift.
+  (The capped variant *was* correct — 64/64 dot products bit-identical — just pointless here.
+  Do not spend days proving the sticky-bit theorem for this workload.)
+- **REAL CULPRIT — `decode`.** Per-element costs over 51,200 mul+add pairs:
+  decode **1.7 µs**, fpMul ~0.3 µs, fpAdd ~0.27 µs. (`decode+mul` at 187 ms does *two*
+  decodes = 172 ms, so multiplication is only ~15 ms.) Decode is ~90% of runtime.
+  Cause: `decode w = Fp.ofBits ⟨w.toBitVec⟩` re-derives everything per call —
+  `FloatBits.toBitsTriple` uses `BitVec.extractLsb'` (Nat shift + `% 2^n` → GMP alloc), and
+  `isNaN`/`isInfinite` are **Props** decided through `BitVec.allOnes` comparisons.
+  The checker pays this 12769× per weight word.
+- Two fixes, same ~5-6×: (a) hoist decode out of the inner loop (measured **predecoded dot
+  43 ms vs 249 ms = 5.8×**, needs ~12 stage rewrites + `Array.getD_map` congruences), or
+  (b) **`decodeFast` on native UInt32 ops + `@[csimp] decode = decodeFast`** — ONE theorem,
+  no restructuring, reusable Encoding result. Chose (b).
+- After decode is fixed the residue is real `FiniteFp` arithmetic at ~0.84 µs/(mul+add),
+  still ~400× off native ⇒ that is where packed-`UInt64` kernels (IntegerEquivalence) earn
+  their keep. Ladder: **decode (≈5×, cheap) → packed kernels (remaining runway)**.
+- Scratch harness: `Checker/BenchAdd.lean` + `bench_add` lean_exe in `lakefile.toml`
+  (untracked). Measures decode / mul / add / predecoded separately. csimp effects are only
+  visible in the compiled exe, so this is the correct measuring instrument.
+
+**SHIPPED — `@[csimp] decode_eq_decodeFast`** (`Flean/Checker/ModAddReadout.lean`, new
+`section DecodeFast` between `decode` and `specLogit`). `decodeFast` = native UInt32
+shifts/masks; fully proved, `#print axioms` = `[propext, Classical.choice, Quot.sound]` on
+both it and `checkFullNet_sound`; full `lake build` clean; diff is **purely additive**
+(`decode`'s definition and every existing theorem byte-for-byte unchanged).
+- Measured (idle machine, best of 3): **decode 92 ms → ~1 ms (~90×)**; full dot product
+  **249 ms → 45 ms (5.5×)**. `predecoded dot` (45 ms) now equals the plain dot ⇒ decode is
+  free, so the *hoisting* option (a) is moot — don't bother implementing it.
+- End-to-end `--layer full`, BOTH passes re-run and confirmed: report 608 s + verified 609 s
+  = **1217 s vs 4762 s baseline (3.9×)**; `12769/12769`; **`checkFullNet = true`**; min margin
+  **9.605159 — bit-identical to the pre-change value**. (Report pass measured 542 s on an idle
+  machine, so ~4× is the fair figure.) Differential test of csimp'd decode vs untouched
+  `Fp.ofBits`: 305,120 words, 0 mismatches.
+- GOTCHAS: (1) **csimp placement is load-bearing** — it only rewrites declarations compiled
+  *after* the attribute is registered, so the section must sit before `specLogit`/`rowLogits`,
+  not at end of file. (2) `decodeFast` needs `dite` at BOTH branch levels; a plain `if` on the
+  exponent-zero test leaves `¬(e = 0)` out of scope and the subnormal-vs-normal
+  `IsValidFiniteVal` obligation becomes unprovable. (3) write `8388608`, not `2^23` — the
+  latter compiles to a runtime `Nat.pow` call in the hot path. (4) `exponentBias` is not a
+  separate `FloatFormat` field; it is `max_exp` (=127 for B32).
+- NEXT RUNG: `fpAdd` is now the bottleneck (dot ≈ predecoded dot ≈ 45 ms for 51,200
+  mul+add = ~0.9 µs/pair, still ~400× off native). That is the packed-`UInt64` kernel work
+  (IntegerEquivalence) — same `@[csimp]` mechanism, but a real bit-level RNE proof.
+  OPEN QUESTION for user: whether exhaustive sweeps are needed at all, or whether sampled
+  sweeps + one exhaustive final run make the packed kernels lower priority than #2g.
+
 ---
 
 ## STATUS (tracker)

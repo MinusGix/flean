@@ -22,3 +22,7 @@ name = "Flean"
 [[lean_exe]]
 name = "modadd_checker"
 root = "Checker.Main"
+
+[[lean_exe]]
+name = "bench_add"
+root = "Checker.BenchAdd"
