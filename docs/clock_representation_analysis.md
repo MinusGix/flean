@@ -144,3 +144,52 @@ off-diagonal power of the composition `W_U ∘ (MLP)` on the post-attention
 residual. That is a statement about two weight matrices and a ReLU, not about
 12769 forward passes — so it is the right thing to attack, but the ReLU makes it
 genuinely nonlinear and it is not a short proof.
+
+---
+
+# Can a richer model absorb the defect? (No.)
+
+*Follow-up, same day, script `references/analyze_clock_plus.py`.*
+
+Since the leftover power sits on the off-diagonal `(k,0)`/`(0,k)` modes, the
+natural richer model adds single-token terms:
+
+```
+L[a,b,c]  ~  clock[(a+b-c) mod p]  +  u[a,c]  +  v[b,c]
+```
+
+In the 3D Fourier basis these families are just the mode sets `{ka = kb = -kc}`,
+`{kb = 0}` and `{ka = 0}`, so the fit is one mask. (Note the *literal* "add a
+sixth frequency" test is already answered by the K=6 row above: a clock is a
+function of `a+b-c`, so extra clock modes cannot touch off-diagonal power, and
+K=6 made the defect marginally worse.)
+
+| model | sup defect | model margin (min) | global `margin − 2ε` | per-input certified |
+|---|---|---|---|---|
+| A. clock, all frequencies | 12.4326 | 18.4313 | −6.43 | 12603/12769 (98.70%) |
+| B. clock, five frequencies | 12.4082 | 18.3012 | −6.52 | 12584/12769 (**98.55%**) |
+| C. clock + `u`+`v`, all freq | 10.5861 | 13.1764 | −8.00 | 12731/12769 (99.70%) |
+| D. clock + `u`+`v`, five freq | 10.5792 | 13.0463 | −8.11 | 12721/12769 (99.62%) |
+
+Power by family: clock **96.32%** (identical whether all frequencies or just the
+five — once more, the five are everything), single-token `u,v` only **1.01%**,
+clock+`u`+`v` 97.33%.
+
+**The richer model is not worth it.** Single-token terms carry just 1.01% of the
+power and buy a 15% defect reduction (12.41 → 10.58), while *hurting* the global
+certificate: the model's own margin falls faster (18.30 → 13.05) than the defect
+does, so `margin − 2ε` gets worse, not better. The per-input figure improves only
+from 98.55% to 99.62%, at the cost of a decomposition with no clean mechanistic
+reading.
+
+The conclusion is that **the defect is not missing coherent structure** — not a
+sixth frequency, not single-token leakage — but something genuinely diffuse, and
+concentrated in sup-norm outliers rather than in power. Adding terms to the model
+chases power, which is the wrong target: 96.32% of the power is already clock,
+yet the sup-norm defect still eats 47% of the margin.
+
+**Design decision:** build the Lean certificate against **model B**, the clean
+five-frequency clock. It is the most interpretable, its margin is the largest,
+and no richer variant improves the certificate in a way that justifies the loss
+of meaning. The honest headline stays 98.55% certified by the mechanism, with
+the remaining 185 inputs falling back on the extensional checker.
